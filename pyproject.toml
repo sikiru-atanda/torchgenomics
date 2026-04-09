@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "TorchGWAS Contributors"},
+    {name = "Sikiru Atanda", email = "sikiru-atanda@github.com"},
 ]
 keywords = ["GWAS", "genomics", "PyTorch", "GPU", "association-studies", "polyploid"]
 classifiers = [
@@ -58,6 +58,8 @@ torchgwas = "torchgwas.cli:main"
 
 [project.urls]
 Repository = "https://github.com/sikiru-atanda/torchgwas"
+Documentation = "https://github.com/sikiru-atanda/torchgwas#readme"
+Issues = "https://github.com/sikiru-atanda/torchgwas/issues"
 
 [tool.setuptools.packages.find]
 include = ["torchgwas*"]

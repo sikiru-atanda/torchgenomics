@@ -1,0 +1,16 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include setup.py
+
+recursive-include csrc *.cpp *.hpp *.h
+recursive-include torchgwas *.py *.pyi
+
+prune tests
+prune bench
+prune docs
+prune scripts
+prune MT_ME
+prune gemma_demo
+prune benchmark
+prune output
