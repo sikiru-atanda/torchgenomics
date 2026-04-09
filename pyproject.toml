@@ -57,7 +57,7 @@ dev = [
 torchgwas = "torchgwas.cli:main"
 
 [project.urls]
-Repository = "https://github.com/torchgwas/torchgwas"
+Repository = "https://github.com/sikiru-atanda/torchgwas"
 
 [tool.setuptools.packages.find]
 include = ["torchgwas*"]

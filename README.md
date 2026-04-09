@@ -69,7 +69,7 @@ TorchGWAS is a modular Python library that brings GPU acceleration to GWAS pipel
 ### From source (recommended for development)
 
 ```bash
-git clone https://github.com/torchgwas/torchgwas.git
+git clone https://github.com/sikiru-atanda/torchgwas.git
 cd torchgwas
 pip install -e ".[dev]"
 ```
@@ -236,6 +236,6 @@ If you use TorchGWAS in your research, please cite:
 @software{torchgwas2026,
   title={TorchGWAS: GPU-accelerated Genome-Wide Association Studies with PyTorch},
   year={2026},
-  url={https://github.com/torchgwas/torchgwas}
+  url={https://github.com/sikiru-atanda/torchgwas}
 }
 ```
