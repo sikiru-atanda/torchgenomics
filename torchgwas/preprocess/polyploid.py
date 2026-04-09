@@ -1,0 +1,152 @@
+"""Polyploid dosage encoding, gene-action model recoding, ploidy detection."""
+
+from __future__ import annotations
+
+import torch
+from torch import Tensor
+
+
+# Gene-action model names for arbitrary ploidy k
+GENE_ACTION_MODELS = [
+    "general",
+    "additive",
+    # 1-dom through (k-1)-dom generated dynamically
+    "diplo-additive",
+    "overdominant",
+]
+
+
+def detect_ploidy(G: Tensor) -> int:
+    """Infer ploidy from the maximum non-NaN dosage value in G.
+
+    Parameters
+    ----------
+    G : Tensor, shape (n, m)
+        Dosage matrix.
+
+    Returns
+    -------
+    int
+        Detected ploidy level (2, 4, 6, etc.).
+    """
+    valid = G[~torch.isnan(G)]
+    if len(valid) == 0:
+        return 2  # default
+
+    max_dosage = int(torch.round(valid.max()).item())
+
+    # Ploidy must be even and >= 2
+    if max_dosage <= 2:
+        return 2
+    elif max_dosage <= 4:
+        return 4
+    elif max_dosage <= 6:
+        return 6
+    elif max_dosage <= 8:
+        return 8
+    else:
+        return max_dosage
+
+
+def recode_gene_action(G: Tensor, model: str, ploidy: int) -> Tensor:
+    """Recode dosage tensor under a specific gene-action model.
+
+    For ploidy k, implements GWASpoly-equivalent coding:
+
+    - ``"additive"``: dosage as-is (0..k)
+    - ``"1-dom"``: 1 if dosage >= 1, else 0
+    - ``"j-dom"``: 1 if dosage >= j, else 0 (for j in 1..k-1)
+    - ``"diplo-additive"``: min(dosage, k - dosage)
+    - ``"overdominant"``: 1 if 0 < dosage < k, else 0
+    - ``"general"``: returns (n, m, k) one-hot-like tensor for all genotype classes
+
+    Parameters
+    ----------
+    G : Tensor, shape (n, m)
+        Dosage matrix (values in [0, k]).
+    model : str
+        Gene-action model name.
+    ploidy : int
+        Organism ploidy level.
+
+    Returns
+    -------
+    Tensor
+        Recoded dosage. Shape (n, m) for scalar models, (n, m, k) for "general".
+    """
+    nan_mask = torch.isnan(G)
+
+    if model == "additive":
+        return G
+
+    elif model == "overdominant":
+        G_safe = torch.where(nan_mask, torch.zeros_like(G), G)
+        result = ((G_safe > 0) & (G_safe < ploidy)).to(G.dtype)
+        result[nan_mask] = float("nan")
+        return result
+
+    elif model == "diplo-additive":
+        G_safe = torch.where(nan_mask, torch.zeros_like(G), G)
+        result = torch.min(G_safe, ploidy - G_safe)
+        result[nan_mask] = float("nan")
+        return result
+
+    elif model.endswith("-dom"):
+        # Parse j from "j-dom"
+        j_str = model.split("-")[0]
+        try:
+            j = int(j_str)
+        except ValueError:
+            raise ValueError(f"Invalid dom model: {model}. Expected format: '1-dom', '2-dom', etc.")
+
+        if j < 1 or j >= ploidy:
+            raise ValueError(f"j-dom requires 1 <= j < ploidy ({ploidy}), got j={j}")
+
+        G_safe = torch.where(nan_mask, torch.zeros_like(G), G)
+        result = (G_safe >= j).to(G.dtype)
+        result[nan_mask] = float("nan")
+        return result
+
+    elif model == "general":
+        # One-hot-like: (n, m, k) where dim 2 indexes dosage classes 1..k-1
+        # Excludes dosage 0 and k to avoid multicollinearity
+        n, m = G.shape
+        n_classes = ploidy - 1  # 1, 2, ..., k-1
+        result = torch.zeros(n, m, n_classes, dtype=G.dtype)
+
+        G_safe = torch.where(nan_mask, torch.full_like(G, -1), G)
+        G_rounded = torch.round(G_safe).long()
+
+        for c in range(n_classes):
+            dosage_class = c + 1
+            indicator = (G_rounded == dosage_class).to(G.dtype)
+            indicator[nan_mask] = float("nan")
+            result[:, :, c] = indicator
+
+        return result
+
+    else:
+        raise ValueError(
+            f"Unknown gene-action model: '{model}'. "
+            f"Choose from: additive, 1-dom..{ploidy-1}-dom, diplo-additive, overdominant, general"
+        )
+
+
+def list_gene_action_models(ploidy: int) -> list[str]:
+    """Return all valid gene-action model names for the given ploidy.
+
+    Parameters
+    ----------
+    ploidy : int
+        Organism ploidy level.
+
+    Returns
+    -------
+    list[str]
+        Model names: additive, 1-dom...(k-1)-dom, diplo-additive, overdominant, general.
+    """
+    models = ["additive"]
+    for j in range(1, ploidy):
+        models.append(f"{j}-dom")
+    models.extend(["diplo-additive", "overdominant", "general"])
+    return models

@@ -1,0 +1,49 @@
+# Git
+.git/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Testing artifacts
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Data files
+*.bed
+*.bim
+*.fam
+*.vcf
+*.vcf.gz
+*.bgen
+*.hdf5
+*.h5
+*.zarr/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation source
+docs/
+*.pdf
+*.docx
+*.htm
+*.html
+TorchGWAS Library Design_files/
+TorchGWAS Library Design_2_files/
+
+# Other projects
+MT_ME/
+gemma_demo/
+output/
+benchmark/

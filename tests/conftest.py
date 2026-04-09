@@ -1,0 +1,41 @@
+"""Shared fixtures for TorchGWAS test suite."""
+
+from __future__ import annotations
+
+import pytest
+import torch
+
+
+@pytest.fixture
+def device() -> torch.device:
+    """Return CPU device (default for CI)."""
+    return torch.device("cpu")
+
+
+@pytest.fixture
+def gpu_device() -> torch.device:
+    """Return CUDA device; skip if unavailable."""
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA not available")
+    return torch.device("cuda:0")
+
+
+@pytest.fixture
+def rng() -> torch.Generator:
+    """Seeded RNG for reproducible tests."""
+    g = torch.Generator()
+    g.manual_seed(42)
+    return g
+
+
+@pytest.fixture
+def tiny_data(rng: torch.Generator, device: torch.device) -> dict:
+    """Tiny synthetic dataset: 50 samples, 200 SNPs, 3 covariates."""
+    n, m, c = 50, 200, 3
+    G = torch.randint(0, 3, (n, m), generator=rng, dtype=torch.float64, device=device)
+    Y = torch.randn(n, 1, generator=rng, dtype=torch.float64, device=device)
+    X0 = torch.cat([
+        torch.ones(n, 1, dtype=torch.float64, device=device),
+        torch.randn(n, c, generator=rng, dtype=torch.float64, device=device),
+    ], dim=1)
+    return {"G": G, "Y": Y, "X0": X0, "n": n, "m": m}

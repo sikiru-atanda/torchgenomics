@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.whl
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# C++ build artifacts
+*.o
+*.obj
+*.dll
+*.dylib
+*.exp
+*.lib
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data files (don't commit large data)
+*.bed
+*.bim
+*.fam
+*.vcf
+*.vcf.gz
+*.bgen
+*.pgen
+*.pvar
+*.psam
+*.hdf5
+*.h5
+*.zarr/
+
+# Output
+output/
+results/
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Benchmark outputs (keep script, not results)
+bench/native_speedups.md
+
+# Claude Code
+.claude/
+
+# Auxiliary / legacy directories
+MT_ME/
+gemma_demo/
+benchmark/
+
+# Large documents (not source)
+*.pdf
+*.docx
+*.htm
+*.html
+TorchGWAS Library Design_files/
+TorchGWAS Library Design_2_files/

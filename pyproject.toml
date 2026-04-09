@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel", "pybind11>=2.11"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchgwas"
+version = "0.1.0"
+description = "GPU-accelerated Genome-Wide Association Studies with PyTorch"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "TorchGWAS Contributors"},
+]
+keywords = ["GWAS", "genomics", "PyTorch", "GPU", "association-studies", "polyploid"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+zarr = ["zarr>=2.14"]
+hdf5 = ["h5py>=3.8"]
+parquet = ["pyarrow>=12.0"]
+plot = ["seaborn>=0.12"]
+all = [
+    "zarr>=2.14",
+    "h5py>=3.8",
+    "pyarrow>=12.0",
+    "seaborn>=0.12",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5",
+    "zarr>=2.14",
+    "h5py>=3.8",
+    "pyarrow>=12.0",
+    "seaborn>=0.12",
+]
+
+[project.scripts]
+torchgwas = "torchgwas.cli:main"
+
+[project.urls]
+Repository = "https://github.com/torchgwas/torchgwas"
+
+[tool.setuptools.packages.find]
+include = ["torchgwas*"]
+
+[tool.setuptools.package-data]
+"torchgwas._native" = ["*.pyi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+markers = [
+    "golden: golden reference tests against GEMMA/GAPIT/GWASpoly",
+    "slow: tests that take more than 30 seconds",
+    "gpu: tests that require a CUDA device",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
