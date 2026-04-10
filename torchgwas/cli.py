@@ -169,8 +169,59 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_per_trait(args: argparse.Namespace, scan_fn) -> int:
+    """Run a univariate scan for each trait separately, saving to per-trait folders.
+
+    If ``--traits`` specifies multiple traits for a univariate model, this
+    function iterates over each trait, creates a subdirectory ``<output>/<trait>/``
+    for results, and calls the scan function once per trait.
+
+    When only one trait is specified (or ``--traits`` is omitted), the scan
+    function is called directly with no wrapper behaviour.
+    """
+    import copy
+    from pathlib import Path
+
+    traits_str = getattr(args, "traits", None)
+    if traits_str is None:
+        return scan_fn(args)
+
+    trait_list = [t.strip() for t in traits_str.split(",")]
+
+    if len(trait_list) <= 1:
+        return scan_fn(args)
+
+    # Multiple traits — run each sequentially with per-trait output folder
+    base_output = args.output
+    logger.info("Multi-trait sequential scan: %d traits — %s", len(trait_list), trait_list)
+
+    for i, trait in enumerate(trait_list):
+        logger.info("===== Trait %d/%d: %s =====", i + 1, len(trait_list), trait)
+        trait_args = copy.copy(args)
+        trait_args.traits = trait  # single trait for this iteration
+
+        # Per-trait output subdirectory
+        trait_dir = Path(base_output) / trait
+        trait_dir.mkdir(parents=True, exist_ok=True)
+        trait_args.output = str(trait_dir / "results")
+
+        ret = scan_fn(trait_args)
+        if ret != 0:
+            logger.error("Trait '%s' failed with exit code %d", trait, ret)
+            return ret
+        logger.info("Trait '%s' complete — results in %s/", trait, trait_dir)
+
+    logger.info("All %d traits completed. Results in %s/<trait>/", len(trait_list), base_output)
+    return 0
+
+
 def _cmd_glm_scan(args: argparse.Namespace) -> int:
     """Run GLM association scan (streaming — no GRM needed)."""
+    return _run_per_trait(args, _cmd_glm_scan_single)
+
+
+def _cmd_glm_scan_single(args: argparse.Namespace) -> int:
+    """Run GLM association scan for a single trait (or auto-detected traits)."""
     import torch
     from .config import TorchGWASConfig, resolve_device
     from .preprocess.qc import QCFilterConfig
@@ -183,6 +234,30 @@ def _cmd_glm_scan(args: argparse.Namespace) -> int:
 
     # Streaming: align samples without materializing G
     Y, X0, aligned_reader = _align_samples(args, config)
+
+    # Add PCs as covariates if requested (requires computing GRM)
+    n_pcs = getattr(args, "n_pcs", 0)
+    if n_pcs > 0:
+        logger.info("Computing GRM for PC extraction (%d PCs)...", n_pcs)
+        from .linalg.kinship import grm_vanraden_streaming
+        K_pc, _ = grm_vanraden_streaming(
+            _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+            n_samples=aligned_reader.n_samples,
+            device=device,
+        )
+        evals, evecs = torch.linalg.eigh(K_pc)
+        n_avail = evecs.shape[1]
+        if n_pcs > n_avail:
+            logger.warning(
+                "Requested %d PCs but only %d eigenvectors available. Using %d.",
+                n_pcs, n_avail, n_avail,
+            )
+            n_pcs = n_avail
+        pc_cols = evecs[:, -n_pcs:].flip(dims=[1]).to(torch.float64)
+        X0 = torch.cat([X0, pc_cols], dim=1)
+        logger.info("Covariate matrix: %d columns (intercept + covariates + %d PCs)",
+                     X0.shape[1], n_pcs)
+        del K_pc, evals, evecs  # free memory
 
     # Select model based on --family
     family = getattr(args, "family", "gaussian")
@@ -225,6 +300,11 @@ def _cmd_glm_scan(args: argparse.Namespace) -> int:
 
 def _cmd_lmm_scan(args: argparse.Namespace) -> int:
     """Run single-trait LMM association scan (streaming GRM)."""
+    return _run_per_trait(args, _cmd_lmm_scan_single)
+
+
+def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
+    """Run single-trait LMM scan for a single trait."""
     import torch
     from .config import TorchGWASConfig, resolve_device
     from .models.single_trait_lmm import SingleTraitLMM
@@ -240,18 +320,24 @@ def _cmd_lmm_scan(args: argparse.Namespace) -> int:
         config.numerical.reml_max_iter = args.max_iter
 
     grm_method = getattr(args, "grm_method", "vanraden")
+    grm_path = getattr(args, "grm", None)
 
     # Streaming: align samples without materializing G
     Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Compute GRM — streaming or full depending on method
-    if grm_method == "zhang":
+    # Load or compute GRM
+    if grm_path is not None:
+        # User-provided GRM — load with QC validation
+        logger.info("Loading user-provided GRM from %s...", grm_path)
+        K = _load_user_grm(grm_path, aligned_reader.n_samples)
+    elif grm_method == "zhang":
         # Zhang GRM requires full genotype matrix
         logger.info("Computing kinship matrix (Zhang method, full materialization)...")
         from .linalg.kinship import grm_zhang
         G, _ = _load_full_genotype(aligned_reader)
         K, grm_meta = grm_zhang(G)
         del G  # free memory after GRM
+        logger.info("GRM: %d samples, %d SNPs used", grm_meta.n_samples, grm_meta.n_snps_used)
     else:
         # VanRaden streaming GRM — never materializes full G
         logger.info("Computing kinship matrix (VanRaden streaming)...")
@@ -261,8 +347,25 @@ def _cmd_lmm_scan(args: argparse.Namespace) -> int:
             n_samples=aligned_reader.n_samples,
             device=device,
         )
+        logger.info("GRM: %d samples, %d SNPs used", grm_meta.n_samples, grm_meta.n_snps_used)
 
-    logger.info("GRM: %d samples, %d SNPs used", grm_meta.n_samples, grm_meta.n_snps_used)
+    # Add PCs as covariates if requested
+    n_pcs = getattr(args, "n_pcs", 0)
+    if n_pcs > 0:
+        logger.info("Extracting %d principal components from GRM for covariates...", n_pcs)
+        evals, evecs = torch.linalg.eigh(K)
+        # eigh returns ascending order; take the last n_pcs (largest eigenvalues)
+        n_avail = evecs.shape[1]
+        if n_pcs > n_avail:
+            logger.warning(
+                "Requested %d PCs but only %d eigenvectors available. Using %d.",
+                n_pcs, n_avail, n_avail,
+            )
+            n_pcs = n_avail
+        pc_cols = evecs[:, -n_pcs:].flip(dims=[1]).to(torch.float64)
+        X0 = torch.cat([X0, pc_cols], dim=1)
+        logger.info("Covariate matrix: %d columns (intercept + covariates + %d PCs)",
+                     X0.shape[1], n_pcs)
 
     approx_method = getattr(args, "approx_method", None)
 
@@ -335,6 +438,9 @@ def _cmd_mvlmm_scan(args: argparse.Namespace) -> int:
         config.numerical.reml_max_iter = args.max_iter
 
     # Parse trait names
+    if args.traits is None:
+        logger.error("mvlmm-scan requires --traits (comma-separated trait column names)")
+        return 1
     trait_names = [t.strip() for t in args.traits.split(",")]
     if len(trait_names) < 2:
         logger.error("mvlmm-scan requires at least 2 traits (got %d)", len(trait_names))
@@ -796,6 +902,11 @@ def _save_met_results(result, env_names: list[str], args) -> None:
 
 def _cmd_farmcpu_scan(args: argparse.Namespace) -> int:
     """Run FarmCPU multi-locus GWAS scan."""
+    return _run_per_trait(args, _cmd_farmcpu_scan_single)
+
+
+def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
+    """Run FarmCPU scan for a single trait."""
     import torch
     from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
     from .models.farmcpu import FarmCPU
@@ -839,6 +950,11 @@ def _cmd_farmcpu_scan(args: argparse.Namespace) -> int:
 
 def _cmd_blink_scan(args: argparse.Namespace) -> int:
     """Run BLINK multi-locus GWAS scan."""
+    return _run_per_trait(args, _cmd_blink_scan_single)
+
+
+def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
+    """Run BLINK scan for a single trait."""
     import torch
     from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
     from .models.blink import BLINK
@@ -989,6 +1105,9 @@ def _cmd_mtmet_scan(args: argparse.Namespace) -> int:
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
     # Parse trait and environment columns
+    if args.traits is None:
+        logger.error("mtmet-scan requires --traits (comma-separated trait column names)")
+        return 1
     trait_names = [t.strip() for t in args.traits.split(",")]
     env_names = [e.strip() for e in args.env_cols.split(",")]
     d = len(trait_names)
@@ -2529,12 +2648,20 @@ def _align_samples(args: argparse.Namespace, config, trait_columns=None):
     logger.info("Format: %s, %d samples, %d variants",
                 fmt, reader.n_samples, reader.n_variants)
 
+    # Parse --traits into trait_columns if not already provided
+    if trait_columns is None:
+        traits_str = getattr(args, "traits", None)
+        if traits_str is not None:
+            trait_columns = [t.strip() for t in traits_str.split(",")]
+
     # Align phenotype/covariates to genotype samples
+    id_column = getattr(args, "id_column", None)
     pheno_data = load_phenotype(
         args.phenotype,
         genotype_sample_ids=reader.sample_ids,
         covariate_path=getattr(args, "covariate", None),
         trait_columns=trait_columns,
+        id_column=id_column,
     )
 
     Y = pheno_data.Y
@@ -2547,10 +2674,102 @@ def _align_samples(args: argparse.Namespace, config, trait_columns=None):
 
     aligned_reader = SampleAlignedReader(reader, geno_idx, aligned_ids)
 
-    logger.info("Data aligned: %d samples, %d variants, %d traits",
-                aligned_reader.n_samples, aligned_reader.n_variants, Y.shape[1])
+    logger.info("Data aligned: %d samples, %d variants, %d traits (%s)",
+                aligned_reader.n_samples, aligned_reader.n_variants, Y.shape[1],
+                ", ".join(pheno_data.trait_names))
 
     return Y, X0, aligned_reader
+
+
+def _load_user_grm(grm_path: str, n_samples: int) -> "torch.Tensor":
+    """Load a user-provided GRM matrix with validation.
+
+    Supports NumPy (.npy, .npz), space/tab-delimited text, and CSV.
+    Performs QC: symmetry, PSD check, dimension match.
+
+    Raises
+    ------
+    ValueError
+        If the matrix fails any validation check.
+    FileNotFoundError
+        If the file does not exist.
+    """
+    import torch
+    import numpy as np
+    from pathlib import Path
+
+    p = Path(grm_path)
+    if not p.is_file():
+        raise FileNotFoundError(f"GRM file not found: {p}")
+
+    ext = p.suffix.lower()
+    if ext == ".npy":
+        K_np = np.load(str(p))
+    elif ext == ".npz":
+        data = np.load(str(p))
+        # Take the first array in the archive
+        keys = list(data.keys())
+        K_np = data[keys[0]]
+        logger.info("Loaded GRM from .npz key '%s'", keys[0])
+    elif ext in {".csv", ".tsv"}:
+        import pandas as pd
+        sep = "," if ext == ".csv" else "\t"
+        K_np = pd.read_csv(str(p), sep=sep, header=None).values
+    else:
+        # Try space/tab-delimited text
+        K_np = np.loadtxt(str(p))
+
+    K = torch.tensor(K_np, dtype=torch.float64)
+
+    # --- QC checks ---
+    if K.ndim != 2 or K.shape[0] != K.shape[1]:
+        raise ValueError(
+            f"GRM must be a square matrix, got shape {tuple(K.shape)}."
+        )
+
+    if K.shape[0] != n_samples:
+        raise ValueError(
+            f"GRM dimension ({K.shape[0]}) does not match the number of aligned "
+            f"samples ({n_samples}). Ensure the GRM was computed on the same "
+            f"samples as the genotype/phenotype files."
+        )
+
+    # Symmetry check (allow small numerical tolerance)
+    asym = (K - K.T).abs().max().item()
+    if asym > 1e-6:
+        raise ValueError(
+            f"GRM is not symmetric (max asymmetry = {asym:.2e}). "
+            "Ensure the matrix is a valid kinship/GRM."
+        )
+    # Force exact symmetry
+    K = (K + K.T) / 2.0
+
+    # Check for NaN/Inf
+    if torch.isnan(K).any():
+        raise ValueError("GRM contains NaN values.")
+    if torch.isinf(K).any():
+        raise ValueError("GRM contains Inf values.")
+
+    # Positive semi-definiteness check (warn, don't fail — small negatives are common)
+    min_eval = torch.linalg.eigvalsh(K)[0].item()
+    if min_eval < -0.01:
+        logger.warning(
+            "GRM has negative eigenvalue (min = %.4f). This may indicate a "
+            "non-PSD matrix. Eigenvalues will be floored to 0 during "
+            "eigendecomposition.",
+            min_eval,
+        )
+    elif min_eval < 0:
+        logger.info(
+            "GRM has small negative eigenvalue (%.2e) — normal for finite-precision GRM.",
+            min_eval,
+        )
+
+    logger.info(
+        "User GRM loaded: %dx%d, range [%.4f, %.4f], trace = %.4f",
+        K.shape[0], K.shape[1], K.min().item(), K.max().item(), K.trace().item(),
+    )
+    return K
 
 
 def _load_full_genotype(aligned_reader):
@@ -2754,6 +2973,9 @@ def _add_lmm_scan_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("lmm-scan", help="Single-trait LMM association scan")
     _add_common_scan_args(p)
     p.add_argument("--loco", action="store_true", help="Leave-One-Chromosome-Out")
+    p.add_argument("--grm", default=None,
+                   help="Path to pre-computed GRM matrix (NumPy .npy, .npz, or "
+                        "space/tab-delimited text). If provided, --grm-method is ignored.")
     p.add_argument("--grm-method", default="vanraden", choices=["vanraden", "zhang"],
                    help="GRM method: 'vanraden' (streaming, scalable) or 'zhang' (matches GAPIT, requires full materialization)")
     p.add_argument("--p3d", dest="p3d", action="store_true", default=True,
@@ -2766,7 +2988,9 @@ def _add_lmm_scan_parser(subparsers: argparse._SubParsersAction) -> None:
 def _add_mvlmm_scan_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("mvlmm-scan", help="Multi-trait mvLMM association scan")
     _add_common_scan_args(p)
-    p.add_argument("--traits", required=True, help="Comma-separated trait column names")
+    p.add_argument("--grm", default=None,
+                   help="Path to pre-computed GRM matrix (NumPy .npy, .npz, or "
+                        "space/tab-delimited text). If provided, --grm-method is ignored.")
     p.add_argument("--grm-method", default="vanraden", choices=["vanraden", "zhang"],
                    help="GRM method: 'vanraden' (streaming, scalable) or 'zhang' (matches GAPIT, requires full materialization)")
 
@@ -2809,8 +3033,6 @@ def _add_gxe_scan_parser(subparsers: argparse._SubParsersAction) -> None:
                    help="Environment variable file (TSV: SAMPLE, ENV)")
     p.add_argument("--gxe-model", default="het", choices=["het", "multi"],
                    help="GxE model: 'het' (single-trait HetLMM, default) or 'multi' (multi-trait GxELMM)")
-    p.add_argument("--traits", default=None,
-                   help="Comma-separated trait columns for multi-trait mode")
 
 
 def _add_set_scan_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -2963,8 +3185,6 @@ def _add_mtmet_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Multi-trait multi-environment GWAS with separable Kronecker covariance",
     )
     _add_common_scan_args(p)
-    p.add_argument("--traits", required=True,
-                   help="Comma-separated trait names (e.g., yield,protein)")
     p.add_argument("--env-cols", required=True,
                    help="Comma-separated environment names (e.g., E1,E2,E3)")
     p.add_argument("--vg-structure", default="separable",
@@ -3855,6 +4075,17 @@ def _add_common_scan_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--fdr-covariate", default=None,
                         help="TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). "
                              "If omitted, MAF from the scan result is used.")
+    parser.add_argument("--n-pcs", type=int, default=0,
+                        help="Number of principal components from GRM eigendecomposition "
+                             "to include as covariates for population structure correction "
+                             "(default: 0, meaning no PCs added)")
+    parser.add_argument("--id-column", default=None,
+                        help="Column name in phenotype/covariate file containing sample IDs "
+                             "(default: auto-detect from column names like IID, Sample, Taxa)")
+    parser.add_argument("--traits", default=None,
+                        help="Comma-separated trait column names from phenotype file. "
+                             "For univariate models, selects the specified trait(s). "
+                             "For multivariate models, all traits are analyzed jointly.")
 
 
 def _load_weights(weights_file: str, snp_ids: list[str]) -> "torch.Tensor":

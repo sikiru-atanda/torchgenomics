@@ -84,8 +84,12 @@ def detect_format(path: str | Path) -> str:
         if suffixes.endswith(ext):
             return fmt
 
-    # --- 4. Heuristic: CSV/TSV/TXT with numeric data ---
+    # --- 4. Excel files ---
     ext_lower = p.suffix.lower()
+    if ext_lower in {".xlsx", ".xls"}:
+        return "csv"  # handled by NumericDosageReader
+
+    # --- 5. Heuristic: CSV/TSV/TXT with numeric data ---
     if ext_lower in {".csv", ".tsv", ".txt"}:
         if first_lines and len(first_lines) > 1:
             # Check if first data row is mostly numeric

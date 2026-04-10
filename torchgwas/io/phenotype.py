@@ -45,6 +45,7 @@ def load_phenotype(
     *,
     covariate_path: Optional[str | Path] = None,
     trait_columns: Optional[list[str]] = None,
+    id_column: Optional[str] = None,
 ) -> PhenotypeData:
     """Load phenotype/covariates and align to genotype samples.
 
@@ -62,7 +63,18 @@ def load_phenotype(
     """
     # --- 1. Load phenotype ---
     pheno_df = _load_tabular(phenotype_path)
-    pheno_id_col = _detect_id_column(pheno_df)
+
+    if id_column is not None:
+        # User explicitly specified the ID column
+        if id_column not in pheno_df.columns:
+            raise ValueError(
+                f"Specified ID column '{id_column}' not found in phenotype file. "
+                f"Available columns: {list(pheno_df.columns)}"
+            )
+        pheno_id_col = id_column
+    else:
+        pheno_id_col = _detect_id_column(pheno_df)
+
     pheno_df = pheno_df.set_index(pheno_id_col)
     pheno_ids = set(pheno_df.index.astype(str))
 
@@ -91,7 +103,10 @@ def load_phenotype(
 
     if covariate_path is not None:
         covar_df = _load_tabular(covariate_path)
-        covar_id_col = _detect_id_column(covar_df)
+        if id_column is not None and id_column in covar_df.columns:
+            covar_id_col = id_column
+        else:
+            covar_id_col = _detect_id_column(covar_df)
         covar_df = covar_df.set_index(covar_id_col)
         covar_ids = set(covar_df.index.astype(str))
         covar_names = list(covar_df.columns)
@@ -253,11 +268,16 @@ def write_alignment_manifest(manifest: AlignmentManifest, path: str | Path) -> N
 # --- Helpers ---
 
 def _load_tabular(path: str | Path) -> pd.DataFrame:
-    """Load a tabular file (CSV/TSV/TXT) with auto-detected delimiter."""
+    """Load a tabular file (CSV/TSV/TXT/Excel) with auto-detected delimiter."""
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(f"File not found: {p}")
 
+    ext = p.suffix.lower()
+    if ext in {".xlsx", ".xls"}:
+        return pd.read_excel(p)
+
+    # Text formats
     with open(p, "r") as _fh:
         first_line = _fh.readline()
     if "\t" in first_line:
@@ -273,7 +293,9 @@ def _load_tabular(path: str | Path) -> pd.DataFrame:
 def _detect_id_column(df: pd.DataFrame) -> str:
     """Detect the sample ID column by name heuristic."""
     candidates = {"iid", "id", "sample", "sample_id", "sampleid", "fid_iid",
-                  "taxa", "ind", "individual"}
+                  "taxa", "ind", "individual", "genotype", "geno", "geno_id",
+                  "genotype_id", "line", "accession", "entry", "cultivar",
+                  "variety"}
     for col in df.columns:
         if col.lower().strip() in candidates:
             return col
