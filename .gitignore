@@ -76,6 +76,9 @@ MT_ME/
 gemma_demo/
 benchmark/
 
+# Third-party benchmark binaries (downloaded, not source)
+tools/
+
 # Large documents (not source)
 *.pdf
 *.docx

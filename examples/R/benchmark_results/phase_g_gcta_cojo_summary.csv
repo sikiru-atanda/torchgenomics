@@ -1,0 +1,2 @@
+"phase","reference_tool","rtorchgwas_verb","dataset","cojo_p_threshold","n_gcta_leads","n_rtg_leads","n_intersect","n_union","jaccard","rtorchgwas_elapsed_s","verdict"
+"G","GCTA v1.94.1 --cojo-slct","gwas_conditional (ld_method=r2, sig=0.0001)","MDP maize EarHT (n=276)",1e-04,1,1,1,1,1,0.13,"PASS"

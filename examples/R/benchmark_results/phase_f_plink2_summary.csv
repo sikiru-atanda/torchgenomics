@@ -1,0 +1,2 @@
+"phase","reference_tool","rtorchgwas_verb","dataset","n_samples","n_cases","n_controls","n_snps_compared","cor_neg_log10_p","spearman","median_abs_d_log10p","max_abs_d_log10p","top_k","topk_jaccard","rtorchgwas_elapsed_s","verdict"
+"F","PLINK2 v2.0.0-a.6.1 --glm logistic (Wald)","gwas_binary (BinaryGLM, score)","MDP maize EarHT-dichotomized",279,139,140,2953,0.993086695875973,0.997835158576497,0.00180973197097772,1.51292445614295,20,0.739130434782609,0.0800000000000001,"PASS"

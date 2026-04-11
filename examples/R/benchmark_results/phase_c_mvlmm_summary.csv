@@ -1,0 +1,2 @@
+"phase","reference_tool","rtorchgwas_verb","dataset","n_samples","n_snps_compared","cor_neg_log10_p","spearman","median_abs_d_log10p","max_abs_d_log10p","top_k","topk_jaccard","rtorchgwas_elapsed_s","verdict"
+"C","GEMMA 0.98.5 -lmm 1 (mvLMM Wald)","gwas_multi_trait","MDP maize EarHT+dpoll",276,2926,0.998097416974971,0.999635935603425,0.00459661725709743,1.18778663527396,20,0.904761904761905,1.03,"PASS"
