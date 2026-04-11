@@ -1,5 +1,0 @@
-"label","n","pearson","spearman","top_k","jaccard","min_p_rtg","min_p_gapit","phase","reference_tool","rtorchgwas_verb","dataset","n_samples","metric","gate","verdict"
-"GLM",3093,1,0.999999999493019,20,1,2.68493866600617e-07,2.6849386660061e-07,"B","GAPIT3 GLM","gwas_glm","MDP maize EarHT",279,"pearson(-log10p)",0.95,"PASS"
-"LMM/MLM",3093,0.999986502552276,0.999971773722659,20,1,8.17309946613851e-05,8.11524741659598e-05,"B","GAPIT3 LMM/MLM","gwas_lmm","MDP maize EarHT",279,"pearson(-log10p)",0.95,"PASS"
-"FarmCPU",3093,0.264665528107177,0.211182142537633,20,0.176470588235294,3.53583850113794e-09,1.71459679986146e-08,"B","GAPIT3 FarmCPU","gwas_farmcpu","MDP maize EarHT",279,"top20_jaccard",0.5,"REVIEW"
-"BLINK",3093,0.573094496577925,0.439449727323977,20,0.290322580645161,9.27860975707544e-08,1.77240233925936e-06,"B","GAPIT3 BLINK","gwas_blink","MDP maize EarHT",279,"top20_jaccard",0.5,"REVIEW"

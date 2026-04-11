@@ -1,2 +1,0 @@
-"phase","reference_tool","rtorchgwas_verb","dataset","ploidy","n_obs","n_unique_geno","n_markers_compared","cor_neg_log10_p","spearman","median_abs_d_log10p","max_abs_d_log10p","top_k","topk_jaccard","rtorchgwas_elapsed_s","verdict"
-"D","GWASpoly additive (Q+K, env fixed)","gwas_lmm (additive, K=Z K_geno Z')","Potato vine.maturity tetraploid",4,1249,957,9888,0.999889520419652,0.999998565756111,0.000319233963037721,0.737569908706906,20,1,0.43,"PASS"
