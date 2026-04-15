@@ -8,19 +8,31 @@ Phase 49 entry points:
 * :func:`build_expression_kernel` — context kernel from molecular abundance
 """
 
+from ..stats.multipletesting import eigenmt_adjust
+from ._gene_set import mediate_gene_set
 from ._kernels import build_expression_kernel
 from ._mediate import mediate_lmm
 from ._mkernel import mkernel_h2
+from ._prefilter import coloc_prefilter_pairs
 from ._scan import scan_mediation
 from ._sensitivity import imai_rho_sensitivity
-from ._types import MediationResult, MediationScanResult, MultiKernelH2Result
+from ._types import (
+    GeneSetMediationResult,
+    MediationResult,
+    MediationScanResult,
+    MultiKernelH2Result,
+)
 
 __all__ = [
     "mediate_lmm",
+    "mediate_gene_set",
     "scan_mediation",
     "mkernel_h2",
     "build_expression_kernel",
     "imai_rho_sensitivity",
+    "eigenmt_adjust",
+    "coloc_prefilter_pairs",
+    "GeneSetMediationResult",
     "MediationResult",
     "MediationScanResult",
     "MultiKernelH2Result",

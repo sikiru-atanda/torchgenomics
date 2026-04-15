@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import torch
+from torch import Tensor
+
 
 @dataclass
 class MediationResult:
@@ -58,6 +61,37 @@ class MediationScanResult:
         if "q_indirect" not in df.columns or len(df) == 0:
             return df.iloc[0:0]
         return df.loc[df["q_indirect"] <= q_threshold].copy()
+
+
+@dataclass
+class GeneSetMediationResult:
+    """Multi-mediator joint-Wald mediation for one (SNP, mediator-set, Y) triple."""
+
+    a: Tensor        # (k,) SNP -> each mediator
+    a_cov: Tensor    # (k, k)
+    b: Tensor        # (k,) each mediator -> Y | SNP, other mediators
+    b_cov: Tensor    # (k, k)
+    indirect: Tensor # (k,) elementwise a * b
+    indirect_cov: Tensor  # (k, k) delta-method covariance of the indirect vector
+    chi2: float
+    df: int
+    pvalue: float
+    sum_indirect: float
+    sum_indirect_se: float
+    sum_indirect_pvalue: float
+    n: int
+    k: int
+    rank_deficient: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for name in self.__dataclass_fields__:
+            v = getattr(self, name)
+            if isinstance(v, torch.Tensor):
+                out[name] = v.detach().cpu().tolist()
+            else:
+                out[name] = v
+        return out
 
 
 @dataclass

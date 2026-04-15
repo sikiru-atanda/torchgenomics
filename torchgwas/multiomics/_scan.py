@@ -12,9 +12,11 @@ from torch import Tensor
 from ..stats.multipletesting import (
     benjamini_hochberg,
     benjamini_yekutieli,
+    eigenmt_adjust,
     storey_qvalue,
 )
 from ._mediate import _mediate_from_nullfit, fit_mediation_null
+from ._scan_batched import batched_scan_pairs
 from ._types import MediationScanResult
 
 logger = logging.getLogger("torchgwas.multiomics")
@@ -88,6 +90,12 @@ def scan_mediation(
     fdr_method: str = "bh",
     sensitivity: bool = True,
     seed: Optional[int] = None,
+    prefilter: Optional[str] = None,
+    coloc_sumstats=None,
+    coloc_threshold: float = 0.5,
+    device=None,
+    block_size: tuple[int, int] = (256, 64),
+    batched: Optional[bool] = None,
 ) -> MediationScanResult:
     """Mediation scan over (SNP, feature) pairs filtered by a cis window.
 
@@ -116,35 +124,89 @@ def scan_mediation(
 
     pairs = _build_pairs(snp_pos_t, feat_pos_t, snp_chrom, feature_chrom,
                          s, f, cis_window_bp)
+
+    # Optional coloc-based prefilter — drops (SNP, feature) pairs whose feature
+    # shows no colocalisation signal between Y and M in the cis window.
+    if prefilter == "coloc":
+        if coloc_sumstats is None:
+            raise ValueError(
+                "prefilter='coloc' requires coloc_sumstats=(y_sumstats, m_sumstats)."
+            )
+        from ._prefilter import coloc_prefilter_pairs
+        y_ss, m_ss = coloc_sumstats
+        pairs, _pp_h4 = coloc_prefilter_pairs(
+            pairs, y_ss, m_ss,
+            snp_chrom=snp_chrom,
+            snp_pos=snp_pos_t.tolist() if snp_pos_t is not None else None,
+            feature_chrom=feature_chrom,
+            feature_pos=feat_pos_t.tolist() if feat_pos_t is not None else None,
+            cis_window_bp=int(cis_window_bp or 1_000_000),
+            coloc_threshold=coloc_threshold,
+        )
+    elif prefilter is not None:
+        raise ValueError(f"prefilter must be None or 'coloc'; got {prefilter!r}")
+
     logger.info("scan_mediation: %d (snp, feature) pairs to test.", len(pairs))
 
     nf = fit_mediation_null(Y_t, K_t, covariates=covariates)
 
+    # Dispatch: batched path when explicitly requested, when device is CUDA,
+    # or when the pair count is large enough to amortise the fixed rotation cost.
+    use_batched = batched if batched is not None else _should_batch(device, pairs)
+
     rows: list[dict] = []
-    for (i, j) in pairs:
-        res = _mediate_from_nullfit(
-            nf, G_t[:, i], M_t[:, j],
+    if use_batched and pairs:
+        scan_rows = batched_scan_pairs(
+            nf, G_t, M_t, pairs,
             se=se, n_mc_draws=n_mc_draws, n_boot=0,
             sensitivity=sensitivity, seed=seed,
+            block_size=block_size,
         )
-        rows.append({
-            "snp": snp_ids[i],
-            "feature": feature_ids[j],
-            "snp_chrom": snp_chrom[i] if snp_chrom else "",
-            "snp_pos": int(snp_pos_t[i]) if snp_pos_t is not None else 0,
-            "feature_chrom": feature_chrom[j] if feature_chrom else "",
-            "feature_pos": int(feat_pos_t[j]) if feat_pos_t is not None else 0,
-            "a": res.a, "a_se": res.a_se,
-            "b": res.b, "b_se": res.b_se,
-            "c": res.c, "c_prime": res.c_prime,
-            "indirect": res.indirect, "indirect_se": res.indirect_se,
-            "indirect_pvalue": res.indirect_pvalue,
-            "ci_lower": res.indirect_ci_lower,
-            "ci_upper": res.indirect_ci_upper,
-            "proportion_mediated": res.proportion_mediated,
-            "inconsistent": res.inconsistent,
-            "sensitivity_rho": res.sensitivity_rho,
-        })
+        for (i, j), res in zip(pairs, scan_rows):
+            rows.append({
+                "snp": snp_ids[i],
+                "feature": feature_ids[j],
+                "snp_chrom": snp_chrom[i] if snp_chrom else "",
+                "snp_pos": int(snp_pos_t[i]) if snp_pos_t is not None else 0,
+                "feature_chrom": feature_chrom[j] if feature_chrom else "",
+                "feature_pos": int(feat_pos_t[j]) if feat_pos_t is not None else 0,
+                "a": res["a"], "a_se": res["a_se"],
+                "b": res["b"], "b_se": res["b_se"],
+                "c": res["c"], "c_prime": res["c_prime"],
+                "indirect": res["indirect"],
+                "indirect_se": res["indirect_se"],
+                "indirect_pvalue": res["indirect_pvalue"],
+                "ci_lower": res["ci_lower"],
+                "ci_upper": res["ci_upper"],
+                "proportion_mediated": res["proportion_mediated"],
+                "inconsistent": res["inconsistent"],
+                "sensitivity_rho": res["sensitivity_rho"],
+            })
+    else:
+        for (i, j) in pairs:
+            res = _mediate_from_nullfit(
+                nf, G_t[:, i], M_t[:, j],
+                se=se, n_mc_draws=n_mc_draws, n_boot=0,
+                sensitivity=sensitivity, seed=seed,
+            )
+            rows.append({
+                "snp": snp_ids[i],
+                "feature": feature_ids[j],
+                "snp_chrom": snp_chrom[i] if snp_chrom else "",
+                "snp_pos": int(snp_pos_t[i]) if snp_pos_t is not None else 0,
+                "feature_chrom": feature_chrom[j] if feature_chrom else "",
+                "feature_pos": int(feat_pos_t[j]) if feat_pos_t is not None else 0,
+                "a": res.a, "a_se": res.a_se,
+                "b": res.b, "b_se": res.b_se,
+                "c": res.c, "c_prime": res.c_prime,
+                "indirect": res.indirect, "indirect_se": res.indirect_se,
+                "indirect_pvalue": res.indirect_pvalue,
+                "ci_lower": res.indirect_ci_lower,
+                "ci_upper": res.indirect_ci_upper,
+                "proportion_mediated": res.proportion_mediated,
+                "inconsistent": res.inconsistent,
+                "sensitivity_rho": res.sensitivity_rho,
+            })
 
     if rows:
         p = torch.tensor([r["indirect_pvalue"] for r in rows], dtype=torch.float64)
@@ -154,8 +216,12 @@ def scan_mediation(
             q = benjamini_yekutieli(p)
         elif fdr_method == "storey":
             q = storey_qvalue(p)
+        elif fdr_method == "eigenmt":
+            q = _eigenmt_hierarchical_q(rows, p, G_t)
         else:
-            raise ValueError(f"fdr_method must be 'bh', 'by', or 'storey'; got {fdr_method!r}")
+            raise ValueError(
+                f"fdr_method must be 'bh', 'by', 'storey', or 'eigenmt'; got {fdr_method!r}"
+            )
         for r, qv in zip(rows, q.tolist()):
             r["q_indirect"] = float(qv)
 
@@ -166,3 +232,64 @@ def scan_mediation(
         se_method=se,
         fdr_method=fdr_method,
     )
+
+
+def _should_batch(device, pairs: list[tuple[int, int]]) -> bool:
+    """Return True when the batched path should be used."""
+    if device is not None:
+        try:
+            d = torch.device(device) if isinstance(device, str) else device
+            if d.type == "cuda":
+                return True
+        except Exception:
+            pass
+    return len(pairs) >= 10_000
+
+
+def _eigenmt_hierarchical_q(
+    rows: list[dict], p: Tensor, G_t: Tensor,
+) -> Tensor:
+    """Per-feature eigenMT + Bonferroni across genes.
+
+    For each unique feature, collect the rows belonging to that feature, build
+    the genotype LD correlation on those SNPs, call ``eigenmt_adjust`` to get a
+    gene-level effective number of tests, then Bonferroni-adjust across the
+    number of unique features.
+    """
+    feat_to_rows: dict[str, list[int]] = {}
+    for idx, r in enumerate(rows):
+        feat_to_rows.setdefault(r["feature"], []).append(idx)
+    n_features = len(feat_to_rows)
+    snp_id_to_col: dict[str, int] = {}
+    q = torch.ones_like(p)
+    for feat, row_idxs in feat_to_rows.items():
+        # Build LD on the SNPs in this feature's rows.
+        snps = [rows[idx]["snp"] for idx in row_idxs]
+        # Map SNP string IDs to their G columns via order of first appearance.
+        cols = []
+        for s_id in snps:
+            if s_id not in snp_id_to_col:
+                # Fallback: SNPs were named "snp_{i}" by default; otherwise
+                # recover column from the row ordering that produced this scan.
+                if s_id.startswith("snp_"):
+                    try:
+                        snp_id_to_col[s_id] = int(s_id.split("_", 1)[1])
+                    except ValueError:
+                        snp_id_to_col[s_id] = len(snp_id_to_col)
+                else:
+                    snp_id_to_col[s_id] = len(snp_id_to_col)
+            cols.append(snp_id_to_col[s_id])
+        cols_t = torch.tensor(cols, dtype=torch.long)
+        G_sub = G_t[:, cols_t].to(dtype=torch.float64)
+        # Column-standardise, then corr.
+        G_sub = G_sub - G_sub.mean(dim=0, keepdim=True)
+        std = G_sub.std(dim=0, unbiased=False, keepdim=True).clamp(min=1e-12)
+        G_std = G_sub / std
+        LD = (G_std.T @ G_std) / float(G_std.shape[0])
+        p_feat = p[torch.tensor(row_idxs, dtype=torch.long)]
+        p_adj, _m_eff = eigenmt_adjust(p_feat, LD)
+        # Bonferroni across genes.
+        q_feat = torch.clamp(p_adj * n_features, max=1.0)
+        for idx, qv in zip(row_idxs, q_feat.tolist()):
+            q[idx] = qv
+    return q

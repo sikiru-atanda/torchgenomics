@@ -138,3 +138,61 @@ def _cummin_reverse(x: Tensor) -> Tensor:
     flipped = x.flip(0)
     cummin_vals = torch.cummin(flipped, dim=0).values
     return cummin_vals.flip(0)
+
+
+def eigenmt_adjust(
+    pvals: Tensor,
+    LD: Tensor,
+    alpha: float = 0.05,
+    var_threshold: float = 0.995,
+) -> tuple[Tensor, float]:
+    """eigenMT effective-number-of-tests correction (Davis et al. 2016).
+
+    For a block of correlated tests (typically cis-SNPs for one gene) with
+    correlation matrix ``LD``, the effective number of independent tests is
+
+        M_eff = #{i : cumsum(lambda_i) / sum(lambda_i) <= var_threshold}
+
+    where ``lambda_i`` are the eigenvalues of ``LD`` in descending order. The
+    default ``var_threshold=0.995`` matches Davis 2016. Returned p-values are
+    Bonferroni-adjusted with ``M_eff`` instead of the naive block size.
+
+    Parameters
+    ----------
+    pvals : (m,) tensor of raw p-values.
+    LD : (m, m) genotype correlation matrix (not r^2).
+    alpha : unused, present for downstream compatibility.
+    var_threshold : eigenvalue cumulative-variance cutoff.
+
+    Returns
+    -------
+    (p_adj, M_eff) — adjusted p-values (shape (m,)) and the effective test count.
+    """
+    if pvals.ndim != 1:
+        raise ValueError(f"pvals must be 1-D; got shape {tuple(pvals.shape)}.")
+    m = pvals.shape[0]
+    if LD.shape != (m, m):
+        raise ValueError(f"LD must be ({m}, {m}); got {tuple(LD.shape)}.")
+    if m == 0:
+        return pvals.clone(), 0.0
+
+    LD64 = LD.to(dtype=torch.float64)
+    LD_sym = 0.5 * (LD64 + LD64.T)
+    eigvals = torch.linalg.eigvalsh(LD_sym)
+    eigvals = torch.clamp(eigvals, min=0.0)
+    eigvals_desc, _ = torch.sort(eigvals, descending=True)
+    total = float(eigvals_desc.sum().item())
+    if total <= 0.0:
+        m_eff = float(m)
+    else:
+        cum = torch.cumsum(eigvals_desc, dim=0) / total
+        # Smallest count whose cumulative fraction >= threshold.
+        mask = cum >= var_threshold
+        if bool(mask.any()):
+            m_eff = float(int(torch.nonzero(mask, as_tuple=False)[0].item()) + 1)
+        else:
+            m_eff = float(m)
+    m_eff = max(1.0, min(m_eff, float(m)))
+
+    p_adj = torch.clamp(pvals * m_eff, max=1.0)
+    return p_adj, m_eff
