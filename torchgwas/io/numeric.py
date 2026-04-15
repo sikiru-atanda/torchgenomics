@@ -171,13 +171,34 @@ class NumericDosageReader:
             idx_numeric = _fraction_numeric(df.index.astype(str).tolist())
             col_numeric = _fraction_numeric([str(c) for c in df.columns])
 
-            if idx_numeric < 0.5 and col_numeric < 0.5:
-                # Both look like IDs -- assume GAPIT convention: markers as rows
-                self._markers_as_rows = True
-            elif idx_numeric < col_numeric:
-                self._markers_as_rows = True
-            else:
-                self._markers_as_rows = False
+            # If a companion map file is available, use it as a ground-truth
+            # disambiguator: whichever axis overlaps more with the map's
+            # marker IDs is the marker axis.  This is more reliable than
+            # the numeric-heuristic when both axes hold string IDs (GAPIT
+            # mdp_numeric.txt has samples-as-rows but "33-16" / "PZB00859.1"
+            # both fail the numeric test).
+            _map_hint_path = map_path if map_path is not None else discover_map_file(p)
+            _orientation_resolved = False
+            if _map_hint_path is not None:
+                try:
+                    _mi_hint = read_map_file(_map_hint_path)
+                    _map_snps = set(str(s) for s in _mi_hint.snp)
+                    _idx_hit = sum(1 for x in df.index.astype(str) if x in _map_snps)
+                    _col_hit = sum(1 for c in df.columns if str(c) in _map_snps)
+                    if _idx_hit > 0 or _col_hit > 0:
+                        self._markers_as_rows = _idx_hit >= _col_hit
+                        _orientation_resolved = True
+                except Exception:
+                    pass
+
+            if not _orientation_resolved:
+                if idx_numeric < 0.5 and col_numeric < 0.5:
+                    # Both look like IDs -- assume GAPIT convention: markers as rows
+                    self._markers_as_rows = True
+                elif idx_numeric < col_numeric:
+                    self._markers_as_rows = True
+                else:
+                    self._markers_as_rows = False
 
             if self._markers_as_rows:
                 self._marker_ids = df.index.astype(str).tolist()

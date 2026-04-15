@@ -191,8 +191,8 @@ class TestQCFilters:
         assert table.num_rows == 5
         assert "SNP" in table.column_names
         assert "AF" in table.column_names
-        assert "FILTER_PASS" in table.column_names
-        assert "FILTER_REASON" in table.column_names
+        assert "PASS_QC" in table.column_names
+        assert "FAIL_REASON" in table.column_names
 
     def test_qc_filter_config_defaults(self):
         config = QCFilterConfig()
