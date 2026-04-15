@@ -1,0 +1,6 @@
+{
+  "reports": [
+    {"gene": {"gene_id": "AT1G00010", "symbol": "ARFx", "tax_id": 3702, "taxname": "Arabidopsis thaliana", "description": "auxin response factor"}},
+    {"gene": {"gene_id": "Os01g00100", "symbol": "OsARFx", "tax_id": 39947, "taxname": "Oryza sativa", "description": "auxin response factor"}}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "reports": [
+    {
+      "accession": "GCF_902167145.1",
+      "assembly_info": {
+        "assembly_name": "Zm-B73-REFERENCE-NAM-5.0",
+        "refseq_category": "reference genome"
+      }
+    }
+  ]
+}

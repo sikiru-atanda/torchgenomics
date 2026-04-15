@@ -1,0 +1,11 @@
+{
+  "taxonomy_nodes": [
+    {
+      "taxonomy": {
+        "tax_id": 4577,
+        "current_scientific_name": {"name": "Zea mays"},
+        "common_name": "maize"
+      }
+    }
+  ]
+}

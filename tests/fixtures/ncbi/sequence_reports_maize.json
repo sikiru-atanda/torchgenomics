@@ -1,0 +1,7 @@
+{
+  "reports": [
+    {"chr_name": "1", "refseq_accession": "NC_050096.1", "length": 308452471},
+    {"chr_name": "2", "refseq_accession": "NC_050097.1", "length": 243675191},
+    {"chr_name": "3", "refseq_accession": "NC_050098.1", "length": 238017767}
+  ]
+}

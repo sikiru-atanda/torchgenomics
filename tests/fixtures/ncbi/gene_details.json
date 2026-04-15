@@ -1,0 +1,43 @@
+{
+  "reports": [
+    {
+      "gene": {
+        "gene_id": "100001",
+        "symbol": "GENEA",
+        "description": "putative auxin response factor",
+        "type": "PROTEIN_CODING",
+        "chromosomes": ["1"],
+        "orientation": "plus",
+        "genomic_ranges": [
+          {
+            "accession_version": "NC_050096.1",
+            "orientation": "plus",
+            "range": [{"begin": "1010000", "end": "1015000"}]
+          }
+        ],
+        "ontology_terms": [
+          {"go_id": "GO:0009733", "name": "response to auxin", "namespace": "biological_process", "evidence_code": "IEA"},
+          {"go_id": "GO:0003700", "name": "DNA-binding transcription factor activity", "namespace": "molecular_function", "evidence_code": "IEA"}
+        ]
+      }
+    },
+    {
+      "gene": {
+        "gene_id": "100002",
+        "symbol": "GENEB",
+        "description": "hypothetical protein",
+        "type": "PROTEIN_CODING",
+        "chromosomes": ["1"],
+        "orientation": "minus",
+        "genomic_ranges": [
+          {
+            "accession_version": "NC_050096.1",
+            "orientation": "minus",
+            "range": [{"begin": "1050000", "end": "1055000"}]
+          }
+        ],
+        "ontology_terms": []
+      }
+    }
+  ]
+}
