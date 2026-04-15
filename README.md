@@ -125,7 +125,7 @@ results = apply_correction(results, method="bh")
 
 ## CLI Usage
 
-TorchGWAS provides 32 CLI subcommands covering the full GWAS pipeline:
+TorchGWAS provides 35 CLI subcommands covering the full GWAS pipeline:
 
 ```bash
 # Validate input files
@@ -156,6 +156,14 @@ torchgwas ld-blocks --genotype data.bed --method gabriel
 torchgwas pgs-fit --genotype data.bed --sumstats gwas_results.tsv --method ldpred2-auto
 torchgwas pgs-score --weights weights.pt --genotype target.bed --output scores.tsv
 
+# NCBI gene annotation for hit SNPs (±window lookup + GO terms + orthologs)
+torchgwas annotate --sumstats results.tsv --crop maize --window-up 50000 --window-down 50000 --p-threshold 5e-8 --output annotated
+
+# Multi-omics: GRM-corrected causal mediation (SNP -> M -> Y)
+torchgwas mediate --y pheno.npy --snp snp.npy --mediator expr.npy --kinship K.npy --se monte-carlo --output mediation.json
+torchgwas mediate-scan --y pheno.npy --genotype G.npy --mediator-matrix M.npy --kinship K.npy \
+    --snp-meta snp_meta.tsv --feature-meta feat_meta.tsv --cis-window 1000000 --output scan
+
 # Full pipeline
 torchgwas pipeline --genotype data.vcf.gz --impute beagle --model lmm --test wald
 ```
@@ -174,9 +182,10 @@ torchgwas/
   optim/       # 6-mode optimizer stack (PX-EM -> AI-REML -> ... -> rescue)
   pgs/         # Polygenic score construction & validation
   postgwas/    # LDSC, meta-analysis, coloc, MR, TWAS, enrichment
+  multiomics/  # GRM-corrected causal mediation + multi-kernel heritability
   viz/         # Manhattan, QQ, Miami, Circos, Haploview, trumpet plots
   _native/     # 26 C++ pybind11 accelerators + GPU kernels
-  cli.py       # 32 CLI subcommands
+  cli.py       # 35 CLI subcommands
 ```
 
 ## Data Flow

@@ -5,7 +5,8 @@ poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan, met-scan,
 farmcpu-scan, blink-scan, threshold-scan, family-scan, conditional-scan,
 mtmet-scan, ocf-scan, knockoff-scan, gu-scan, lro-scan, glmm-scan,
 me-glmm-scan, survival-scan, rr-scan, rr-met-scan, ld-blocks, ldsc,
-ldsc-rg, meta, clump, pgs-fit, pgs-score, pipeline.
+ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate, mediate, mediate-scan,
+pipeline.
 """
 
 from __future__ import annotations
@@ -70,6 +71,13 @@ def main(argv: list[str] | None = None) -> int:
     _add_pgs_fit_parser(subparsers)
     _add_pgs_score_parser(subparsers)
 
+    # --- NCBI gene annotation ---
+    _add_annotate_parser(subparsers)
+
+    # --- Multi-omics mediation (Phase 49) ---
+    _add_mediate_parser(subparsers)
+    _add_mediate_scan_parser(subparsers)
+
     # --- Full pipeline ---
     _add_pipeline_parser(subparsers)
 
@@ -115,6 +123,9 @@ def main(argv: list[str] | None = None) -> int:
         "clump": _cmd_clump,
         "pgs-fit": _cmd_pgs_fit,
         "pgs-score": _cmd_pgs_score,
+        "annotate": _cmd_annotate,
+        "mediate": _cmd_mediate,
+        "mediate-scan": _cmd_mediate_scan,
         "pipeline": _cmd_pipeline,
         "convert": _cmd_convert,
         "impute": _cmd_impute,
@@ -4130,6 +4141,241 @@ def _load_gene_map(gene_map_file: str, snp_ids: list[str]) -> list[str]:
     df = pd.read_csv(gene_map_file, sep="\t")
     gene_map = dict(zip(df["SNP"], df["GENE"]))
     return [gene_map.get(s, "unknown") for s in snp_ids]
+
+
+# ---------------------------------------------------------------------------
+# annotate — NCBI gene annotation for GWAS hit SNPs
+# ---------------------------------------------------------------------------
+
+
+def _add_annotate_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser(
+        "annotate",
+        help="Annotate GWAS hit SNPs with nearby genes via NCBI Datasets",
+    )
+    p.add_argument("--sumstats", required=True, help="Summary statistics TSV/CSV")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--crop", help="Common or scientific name, e.g. 'maize' or 'Zea mays'")
+    g.add_argument("--assembly", help="NCBI assembly accession, e.g. GCF_902167145.1")
+    p.add_argument(
+        "--taxid",
+        type=int,
+        help="Taxid (required when --assembly is used without --crop)",
+    )
+    p.add_argument("--window-up", type=int, default=50_000, help="Upstream window bp")
+    p.add_argument("--window-down", type=int, default=50_000, help="Downstream window bp")
+    p.add_argument("--p-threshold", type=float, default=5e-8, help="Hit p-value cutoff")
+    p.add_argument("--no-go", action="store_true", help="Skip GO term lookup")
+    p.add_argument("--include-orthologs", action="store_true", help="Fetch orthologs (slow)")
+    p.add_argument(
+        "--ortholog-taxa",
+        default=None,
+        help="Comma-separated taxids to filter orthologs (e.g. 9606,3702)",
+    )
+    p.add_argument("--api-key", default=None, help="NCBI API key (else NCBI_API_KEY env)")
+    p.add_argument("--output", default="torchgwas_annotated", help="Output file prefix")
+
+
+def _cmd_annotate(args: argparse.Namespace) -> int:
+    """Annotate hit SNPs via NCBI."""
+    from .annotate import NCBIClient, annotate_hits
+    from .postgwas import load_sumstats
+
+    ss = load_sumstats(args.sumstats)
+
+    ortholog_taxa = None
+    if args.ortholog_taxa:
+        ortholog_taxa = [int(x) for x in args.ortholog_taxa.split(",") if x.strip()]
+
+    client = NCBIClient(api_key=args.api_key)
+
+    result = annotate_hits(
+        ss,
+        crop=args.crop,
+        taxid=args.taxid,
+        assembly=args.assembly,
+        window_upstream_bp=args.window_up,
+        window_downstream_bp=args.window_down,
+        p_threshold=args.p_threshold,
+        include_go=not args.no_go,
+        include_orthologs=args.include_orthologs,
+        ortholog_taxa=ortholog_taxa,
+        client=client,
+    )
+
+    out_path = f"{args.output}.genes.tsv"
+    result.to_tsv(out_path)
+    n_hits = len(result.hits)
+    n_genes = sum(len(h.genes) for h in result.hits)
+    logger.info(
+        "annotate: %d hits, %d genes -> %s (assembly=%s)",
+        n_hits,
+        n_genes,
+        out_path,
+        result.assembly_accession,
+    )
+    print(f"Wrote {n_hits} hits / {n_genes} gene rows to {out_path}")
+    return 0
+
+
+def _add_mediate_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser(
+        "mediate",
+        help="GRM-corrected single-triple causal mediation (SNP -> M -> Y)",
+    )
+    p.add_argument("--y", required=True, help="Phenotype vector (.npy/.pt/.tsv)")
+    p.add_argument("--snp", required=True, help="SNP dosage vector (.npy/.pt/.tsv)")
+    p.add_argument("--mediator", required=True, help="Mediator vector (.npy/.pt/.tsv)")
+    p.add_argument("--kinship", required=True, help="GRM (n,n) (.npy/.pt)")
+    p.add_argument("--covariates", default=None, help="Covariates (n,c) (.npy/.pt/.tsv)")
+    p.add_argument("--se", choices=["sobel", "monte-carlo", "bootstrap"], default="monte-carlo")
+    p.add_argument("--n-mc", type=int, default=10_000)
+    p.add_argument("--n-boot", type=int, default=1_000)
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--no-sensitivity", action="store_true", help="Skip Imai rho")
+    p.add_argument("--output", default="mediation.json", help="Output JSON path")
+
+
+def _add_mediate_scan_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser(
+        "mediate-scan",
+        help="Genome x molecular-feature mediation scan with cis-window filtering",
+    )
+    p.add_argument("--y", required=True, help="Phenotype vector (.npy/.pt/.tsv)")
+    p.add_argument("--genotype", required=True, help="Genotype matrix (n,s) (.npy/.pt)")
+    p.add_argument("--mediator-matrix", required=True, help="Mediator matrix (n,f) (.npy/.pt)")
+    p.add_argument("--kinship", required=True, help="GRM (n,n) (.npy/.pt)")
+    p.add_argument("--snp-meta", default=None,
+                   help="TSV with columns: id,chrom,pos (one row per SNP)")
+    p.add_argument("--feature-meta", default=None,
+                   help="TSV with columns: id,chrom,pos (one row per feature)")
+    p.add_argument("--covariates", default=None, help="Covariates (.npy/.pt/.tsv)")
+    p.add_argument("--cis-window", type=int, default=1_000_000,
+                   help="Cis window in bp; -1 means no filter (all pairs)")
+    p.add_argument("--se", choices=["sobel", "monte-carlo", "bootstrap"], default="monte-carlo")
+    p.add_argument("--n-mc", type=int, default=10_000)
+    p.add_argument("--fdr", choices=["bh", "by", "storey"], default="bh")
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--output", default="mediate_scan", help="Output prefix (.tsv + .top.tsv)")
+
+
+def _load_array(path: str):
+    """Load .npy / .pt / .tsv into a torch tensor (float64, CPU)."""
+    import os
+
+    import numpy as np
+    import torch
+
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".npy":
+        arr = np.load(path)
+    elif ext in (".pt", ".pth"):
+        arr = torch.load(path, map_location="cpu")
+        if isinstance(arr, torch.Tensor):
+            return arr.double().cpu()
+        arr = np.asarray(arr)
+    elif ext in (".tsv", ".csv", ".txt"):
+        import pandas as pd
+        sep = "," if ext == ".csv" else "\t"
+        df = pd.read_csv(path, sep=sep)
+        arr = df.to_numpy()
+        if arr.shape[1] == 1:
+            arr = arr.ravel()
+    else:
+        raise ValueError(f"Unsupported extension {ext!r} for {path}.")
+    return torch.as_tensor(arr, dtype=torch.float64)
+
+
+def _cmd_mediate(args: argparse.Namespace) -> int:
+    """Single-triple mediation."""
+    import json
+
+    from .multiomics import mediate_lmm
+
+    Y = _load_array(args.y)
+    snp = _load_array(args.snp)
+    M = _load_array(args.mediator)
+    K = _load_array(args.kinship)
+    cov = _load_array(args.covariates) if args.covariates else None
+
+    res = mediate_lmm(
+        Y, snp, M, K,
+        covariates=cov,
+        se=args.se,
+        n_mc_draws=args.n_mc,
+        n_boot=args.n_boot,
+        sensitivity=not args.no_sensitivity,
+        seed=args.seed,
+    )
+
+    import math as _math
+
+    def _jsonable(v):
+        if v is None:
+            return None
+        if isinstance(v, float) and not _math.isfinite(v):
+            return None
+        return v
+
+    payload = {k: _jsonable(v) for k, v in res.to_dict().items()}
+    with open(args.output, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    print(f"Wrote mediation result to {args.output}")
+    print(
+        f"  indirect = {res.indirect:.4g} (95% CI [{res.indirect_ci_lower:.4g}, "
+        f"{res.indirect_ci_upper:.4g}], p = {res.indirect_pvalue:.4g})"
+    )
+    if res.sensitivity_rho is not None:
+        print(f"  sensitivity rho* = {res.sensitivity_rho:.3f}")
+    return 0
+
+
+def _cmd_mediate_scan(args: argparse.Namespace) -> int:
+    """Genome x feature mediation scan."""
+    import pandas as pd
+
+    from .multiomics import scan_mediation
+
+    Y = _load_array(args.y)
+    G = _load_array(args.genotype)
+    M = _load_array(args.mediator_matrix)
+    K = _load_array(args.kinship)
+    cov = _load_array(args.covariates) if args.covariates else None
+
+    snp_ids = snp_chrom = snp_pos = None
+    if args.snp_meta:
+        meta = pd.read_csv(args.snp_meta, sep="\t")
+        snp_ids = meta["id"].astype(str).tolist()
+        snp_chrom = meta["chrom"].astype(str).tolist()
+        snp_pos = meta["pos"].to_numpy()
+
+    feat_ids = feat_chrom = feat_pos = None
+    if args.feature_meta:
+        meta = pd.read_csv(args.feature_meta, sep="\t")
+        feat_ids = meta["id"].astype(str).tolist()
+        feat_chrom = meta["chrom"].astype(str).tolist()
+        feat_pos = meta["pos"].to_numpy()
+
+    cis_w = None if args.cis_window < 0 else args.cis_window
+    result = scan_mediation(
+        Y, G, M, K,
+        snp_ids=snp_ids, feature_ids=feat_ids,
+        snp_pos=snp_pos, feature_pos=feat_pos,
+        snp_chrom=snp_chrom, feature_chrom=feat_chrom,
+        cis_window_bp=cis_w,
+        covariates=cov,
+        se=args.se, n_mc_draws=args.n_mc,
+        fdr_method=args.fdr,
+        seed=args.seed,
+    )
+
+    flat_path = f"{args.output}.tsv"
+    top_path = f"{args.output}.top.tsv"
+    result.to_tsv(flat_path)
+    top = result.top_hits(0.05)
+    top.to_csv(top_path, sep="\t", index=False)
+    print(f"Wrote {result.n_pairs} pairs to {flat_path}; {len(top)} BH-significant to {top_path}")
+    return 0
 
 
 if __name__ == "__main__":
