@@ -130,6 +130,92 @@ class ScanResult:
     def __len__(self) -> int:
         return len(self.snp)
 
+    # ------------------------------------------------------------------
+    # Serialisation
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-friendly dict (tensors → nested lists).
+
+        Multi-trait ``beta`` / ``se`` become list-of-lists (one per SNP).
+        ``n_obs`` is omitted when ``None``.
+        """
+        out: dict[str, Any] = {
+            "snp": list(self.snp),
+            "chr": list(self.chr),
+            "pos": list(self.pos),
+            "a1": list(self.a1),
+            "a2": list(self.a2),
+            "af": self.af.detach().cpu().tolist(),
+            "beta": self.beta.detach().cpu().tolist(),
+            "se": self.se.detach().cpu().tolist(),
+            "stat": self.stat.detach().cpu().tolist(),
+            "p": self.p.detach().cpu().tolist(),
+            "test": self.test,
+            "inference_type": self.inference_type,
+        }
+        if self.n_obs is not None:
+            out["n_obs"] = self.n_obs.detach().cpu().tolist()
+        return out
+
+    def to_dataframe(self):  # type: ignore[no-untyped-def]
+        """Return a pandas DataFrame with one row per variant.
+
+        Multi-trait effect estimates are expanded into ``beta_1`` /
+        ``se_1`` / ``beta_2`` / ... columns, mirroring GEMMA's mvLMM
+        output convention. Single-trait effects stay in plain ``beta``
+        and ``se`` columns.
+        """
+        import pandas as pd
+
+        m = len(self)
+        data: dict[str, Any] = {
+            "snp": list(self.snp),
+            "chr": list(self.chr),
+            "pos": list(self.pos),
+            "a1": list(self.a1),
+            "a2": list(self.a2),
+            "af": self.af.detach().cpu().numpy(),
+        }
+
+        beta = self.beta.detach().cpu()
+        se = self.se.detach().cpu()
+        if beta.ndim == 1:
+            data["beta"] = beta.numpy()
+            data["se"] = se.numpy()
+        else:
+            d = beta.shape[1]
+            for j in range(d):
+                data[f"beta_{j + 1}"] = beta[:, j].numpy()
+                data[f"se_{j + 1}"] = se[:, j].numpy()
+
+        data["stat"] = self.stat.detach().cpu().numpy()
+        data["p"] = self.p.detach().cpu().numpy()
+        if self.n_obs is not None:
+            data["n_obs"] = self.n_obs.detach().cpu().numpy()
+        data["test"] = [self.test] * m
+        data["inference_type"] = [self.inference_type] * m
+        return pd.DataFrame(data)
+
+    def to_tsv(self, path: str) -> None:
+        """Write the dataframe to ``path`` as tab-separated text."""
+        self.to_dataframe().to_csv(path, sep="\t", index=False)
+
+    def to_parquet(self, path: str) -> None:
+        """Write the dataframe to ``path`` as Parquet.
+
+        Requires pyarrow (install via ``pip install torchgwas[parquet]``).
+        Raises ImportError with a clear hint if pyarrow is absent.
+        """
+        try:
+            import pyarrow  # noqa: F401
+        except ImportError as exc:  # pragma: no cover - exercised by test
+            raise ImportError(
+                "ScanResult.to_parquet requires pyarrow — install with "
+                "`pip install torchgwas[parquet]`."
+            ) from exc
+        self.to_dataframe().to_parquet(path, index=False)
+
 
 # ---------------------------------------------------------------------------
 # BaseModel protocol

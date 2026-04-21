@@ -1,0 +1,119 @@
+{
+  "_metadata": {
+    "description": "End-to-end NCBI exchange for annotate_hits(crop='maize', p_threshold=5e-8, include_go=True) on a single chr1 hit. Response payloads use the LIVE NCBI Datasets v2 schema (genomic_locations[] + gene_ontology buckets) so the _ensure_legacy_genomic_ranges and _ensure_legacy_ontology_terms adapters are actually exercised. If NCBI changes a response shape (e.g. renaming gene_ontology.processes), the cassette's legacy-shape assertions will fail — that is the canary.",
+    "refresh_instructions": "Set TORCHGWAS_NCBI_LIVE=1 and re-run scripts/record_ncbi_cassette.py (not included) to re-capture from live NCBI endpoints. Commit the refreshed JSON if upstream shape has evolved."
+  },
+  "interactions": [
+    {
+      "method": "GET",
+      "url_contains": "/taxonomy/taxon/maize",
+      "params_contains": {},
+      "body": null,
+      "response": {
+        "taxonomy_nodes": [
+          {
+            "taxonomy": {
+              "tax_id": 4577,
+              "current_scientific_name": {"name": "Zea mays"}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "url_contains": "/genome/taxon/4577/dataset_report",
+      "params_contains": {"filters.reference_only": "true"},
+      "body": null,
+      "response": {
+        "reports": [
+          {
+            "accession": "GCF_902167145.1",
+            "assembly_info": {
+              "assembly_name": "Zm-B73-REFERENCE-NAM-5.0",
+              "refseq_category": "reference genome"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "url_contains": "/genome/accession/GCF_902167145.1/sequence_reports",
+      "params_contains": {},
+      "body": null,
+      "response": {
+        "reports": [
+          {
+            "chr_name": "1",
+            "refseq_accession": "NC_050096.1",
+            "genbank_accession": "CM028892.1"
+          },
+          {
+            "chr_name": "2",
+            "refseq_accession": "NC_050097.1",
+            "genbank_accession": "CM028893.1"
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "url_contains": "esearch.fcgi",
+      "params_contains": {"db": "gene"},
+      "body": null,
+      "response": {
+        "esearchresult": {
+          "count": "1",
+          "retmax": "1000",
+          "idlist": ["100001"]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url_contains": "/gene",
+      "params_contains": {},
+      "body_contains": {"gene_ids": ["100001"]},
+      "response": {
+        "reports": [
+          {
+            "gene": {
+              "gene_id": "100001",
+              "symbol": "ZmAUXRF1",
+              "description": "auxin response factor 1",
+              "type": "PROTEIN_CODING",
+              "chromosomes": ["1"],
+              "orientation": "plus",
+              "annotations": [
+                {
+                  "genomic_locations": [
+                    {
+                      "genomic_accession_version": "NC_050096.1",
+                      "genomic_range": {
+                        "begin": "1010000",
+                        "end": "1015000",
+                        "orientation": "plus"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "gene_ontology": {
+                "processes": [
+                  {"go_id": "GO:0009733", "name": "response to auxin", "evidence_code": "IEA"}
+                ],
+                "functions": [
+                  {"go_id": "GO:0003700", "name": "DNA-binding transcription factor activity", "evidence_code": "IEA"}
+                ],
+                "components": [
+                  {"go_id": "GO:0005634", "name": "nucleus", "evidence_code": "IEA"}
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

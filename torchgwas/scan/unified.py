@@ -48,12 +48,53 @@ def merge_scan_results(results: list[ScanResult]) -> ScanResult:
     if all(r.n_obs is not None for r in results):
         n_obs = torch.cat([r.n_obs for r in results])  # type: ignore[arg-type]
 
-    return ScanResult(
+    merged = ScanResult(
         chr=chr_all, pos=pos_all, snp=snp_all, a1=a1_all, a2=a2_all,
         af=af, beta=beta, se=se, stat=stat, p=p,
         test=results[0].test,
         n_obs=n_obs,
         inference_type=results[0].inference_type,
+    )
+
+    # Preserve the dynamic `_conditional` attribute that ConditionalLMM
+    # attaches to each per-chunk ScanResult. Without this the R wrapper's
+    # gwas_conditional() silently loses block metadata for scans that
+    # straddle a chunk boundary (> chunk_size SNPs).
+    if all(hasattr(r, "_conditional") for r in results):
+        merged._conditional = _merge_conditional_payloads(
+            [r._conditional for r in results], merged,
+        )
+    return merged
+
+
+def _merge_conditional_payloads(payloads, merged_marginal):
+    """Concatenate a list of ConditionalScanResult payloads in-order."""
+    first = payloads[0]
+    cls = type(first)
+
+    cond_beta = torch.cat([p.conditional_beta for p in payloads])
+    cond_se = torch.cat([p.conditional_se for p in payloads])
+    cond_stat = torch.cat([p.conditional_stat for p in payloads])
+    cond_p = torch.cat([p.conditional_p for p in payloads])
+    persistence = torch.cat([p.persistence for p in payloads])
+    r2_to_lead = torch.cat([p.r2_to_lead for p in payloads])
+
+    block_ids: list[str] = []
+    lead_snps: list[str] = []
+    for p in payloads:
+        block_ids.extend(p.ld_block_id)
+        lead_snps.extend(p.lead_snp)
+
+    return cls(
+        marginal=merged_marginal,
+        conditional_beta=cond_beta,
+        conditional_se=cond_se,
+        conditional_stat=cond_stat,
+        conditional_p=cond_p,
+        persistence=persistence,
+        ld_block_id=block_ids,
+        r2_to_lead=r2_to_lead,
+        lead_snp=lead_snps,
     )
 
 
