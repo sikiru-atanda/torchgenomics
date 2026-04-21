@@ -1,0 +1,94 @@
+name: Build wheels
+
+# Phase C.4 — build native-extension wheels via cibuildwheel for every
+# supported CPython on manylinux2014 (Linux x86_64), win_amd64, and macOS
+# arm64. Triggered on every published GitHub release so wheels land on
+# PyPI alongside the sdist written by `publish.yml`. Also supports
+# `workflow_dispatch` for dry runs — those upload artifacts but skip the
+# PyPI publish step.
+#
+# The native extensions link against the CPU-build torch headers but the
+# resulting wheels work with either CPU or GPU torch at runtime
+# (torch.extension.h is runtime-agnostic). cibuildwheel settings live in
+# `[tool.cibuildwheel]` in pyproject.toml.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-wheels:
+    name: ${{ matrix.os }} · cp${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["310", "311", "312"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build wheel (cp${{ matrix.python }} · ${{ matrix.os }})
+        uses: pypa/cibuildwheel@v2.21.3
+        env:
+          CIBW_BUILD: "cp${{ matrix.python }}-*"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-cp${{ matrix.python }}
+          path: ./wheelhouse/*.whl
+
+  publish-wheels:
+    name: Publish wheels to PyPI
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Coexist with publish.yml's sdist upload — PyPI rejects
+          # duplicates, so skip-existing keeps reruns idempotent.
+          skip-existing: true
+
+  publish-wheels-testpypi:
+    name: Publish wheels to TestPyPI (prerelease only)
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.release.prerelease
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true

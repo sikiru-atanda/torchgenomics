@@ -53,6 +53,13 @@ dev = [
     "pyarrow>=12.0",
     "seaborn>=0.12",
 ]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
+]
 
 [project.scripts]
 torchgwas = "torchgwas.cli:main"
@@ -89,3 +96,32 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.cibuildwheel]
+# Phase C.4 — build native-extension wheels for every supported CPython on
+# manylinux2014 (Linux x86_64) and win_amd64. The pybind11 extensions link
+# against the CPU-build torch headers but the resulting wheels work with
+# either CPU or GPU torch at runtime (torch.extension.h is runtime-agnostic).
+build = "cp310-* cp311-* cp312-*"
+skip = "pp* *-musllinux_* *-win32 *-manylinux_i686"
+build-verbosity = 1
+# Dependencies needed to build the native extensions:
+#   - pybind11 exports its CMake / header location via `pybind11.get_include()`
+#   - numpy headers are pulled in by torch's extension machinery on some platforms
+#   - torch supplies `torch/extension.h` used by every `csrc/` module
+before-build = "pip install pybind11>=2.11 numpy torch"
+test-requires = ["pytest>=7.0"]
+test-command = "python -c \"from torchgwas import __version__; print('torchgwas', __version__, 'wheel install ok')\""
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux2014"
+archs = ["x86_64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+# macOS-specific: OpenMP requires libomp (brew install libomp). Disable for
+# pre-built wheels so users on stock macOS toolchains aren't surprised.
+environment = { TORCHGWAS_DISABLE_OPENMP = "1" }
