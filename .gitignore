@@ -68,6 +68,12 @@ results/
 # Benchmark outputs (keep script, not results)
 bench/native_speedups.md
 
+# MkDocs build output
+site/
+
+# Example script outputs
+examples/python/results/
+
 # Claude Code
 .claude/
 

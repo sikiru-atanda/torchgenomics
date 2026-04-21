@@ -1,0 +1,4 @@
+results/
+*.png
+*.tsv
+!expected_*.tsv

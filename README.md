@@ -1,250 +1,243 @@
 # TorchGWAS
 
-**GPU-accelerated Genome-Wide Association Studies with PyTorch**
+[![PyPI version](https://img.shields.io/pypi/v/torchgwas.svg)](https://pypi.org/project/torchgwas/)
+[![Python](https://img.shields.io/pypi/pyversions/torchgwas.svg)](https://pypi.org/project/torchgwas/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-2192%20passing-brightgreen.svg)](tests/)
+[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
-TorchGWAS is a modular Python library that brings GPU acceleration to GWAS pipelines via PyTorch. It replicates and extends established tools like GEMMA and GAPIT, achieving 4th-decimal-place p-value agreement while adding novel statistical models, native C++ accelerators, and support for both diploid and polyploid organisms.
+**GPU-accelerated Genome-Wide Association Studies with PyTorch.**
 
-## Features
+TorchGWAS is a modular Python library for running GWAS on CPU or GPU. It
+replicates GEMMA and GAPIT to the 4th decimal on shared benchmarks, then
+extends the feature surface with novel mixed-model variants, post-GWAS
+analyses, haplotype tests, polygenic scoring, and causal mediation — all in a
+single `pip install`.
 
-### GWAS Models
-- **Classical**: GLM, single-trait LMM, multi-trait LMM (MVLMM), FarmCPU, BLINK
-- **Multi-environment**: MET (reaction-norm, FA(k), multi-kernel), MT-MET (Kronecker separable)
-- **Novel LMMs**: Multi-kernel, GxE/heteroscedastic, orthogonal cross-fit (DML), knockoff FDR-controlled, genotype-uncertainty, leave-region-out LOCO
-- **Categorical traits**: Binary/ordinal/multinomial GLM and GLMM (PQL, SPA), multi-environment GLMM
-- **Survival**: Cox PH frailty model with Breslow-Clayton PQL and SPACox SPA
-- **Longitudinal**: Random regression LMM with Legendre/B-spline bases, spatio-temporal 2D P-spline, RR-MET
-- **Haplotype-based**: HTR, block, window, SKAT, plus novel methods (PCHT, HHCT, HSKAT, HapGxE, BayesHap), multi-env/multi-trait haplotype GWAS
-- **Fine-mapping**: SuSiE (IBSS) and CAVI Bayesian variable selection
-- **LD-conditional**: COJO-style stepwise conditioning with persistence metrics
-- **Within-family**: Dual-scan attenuation diagnostics for confounding detection
-- **Threshold-linear**: Bermann et al. 2026 for mixed ordinal + continuous traits
+<p align="center">
+  <img src="docs/assets/mdp_earht_manhattan.png" alt="Manhattan plot — MDP maize EarHT" width="720"/>
+  <br/>
+  <em>Example output from <code>examples/python/01_single_trait_lmm.py</code>
+  (MDP maize Ear Height, SingleTraitLMM, 276 samples × 3093 SNPs).</em>
+</p>
 
-### Polyploid Support
-- Arbitrary ploidy (diploid through hexaploid+)
-- Gene-action models: additive, dominance (all orders), diplo-additive, overdominant
-- HWE testing with double-reduction correction for autopolyploids
+## Status
 
-### LD Block Detection
-- 13 methods across 4 categories (classical, literature, novel, diagnostic)
-- PLINK 1.9 `--blocks` validated (Jaccard = 0.78 for Gabriel)
-- Diploid and polyploid compatible
+**v0.1.1 · Alpha · 2192 tests passing · Python 3.10 – 3.12 · Linux + Windows**
 
-### Post-GWAS
-- **Heritability**: LDSC h2/rg, S-LDSC partitioned, HESS regional
-- **Meta-analysis**: IVW, DerSimonian-Laird, Stouffer, RE2, MR-MEGA, MANTRA
-- **Colocalization**: Giambartolomei coloc, HyPrColoc multi-trait
-- **Mendelian randomization**: IVW, MR-Egger, weighted median, MR-PRESSO
-- **SMR/HEIDI** and **TWAS** (S-PrediXcan / PrediXcan)
-- **Gene-set enrichment**: MAGMA-style SNP-to-gene + competitive enrichment
-- **LD clumping**, **fine-mapping utilities**, **power analysis**, **winner's curse correction**
+V1 core (Phases 0 – 13) delivers GEMMA / GAPIT reference equivalence for
+Gaussian single- and multi-trait GWAS. Post-V1 extensions implemented through
+Phase 49b cover GLM / GLMM, survival, multi-environment, haplotype, threshold-
+linear, polygenic scoring, fine-mapping, post-GWAS, and causal mediation.
+Golden-data CI pins agreement with GEMMA 0.98.5 on every push.
 
-### Polygenic Score Construction
-- C+T (clumping and thresholding)
-- LDpred2 (infinitesimal, grid, auto)
-- PRS-CS (continuous shrinkage)
-- Allele harmonization, individual scoring, PGS validation metrics
+## Install
 
-### Visualization
-- Manhattan plot (linear and Circos-style polar)
-- Miami plot (two-trait comparison)
-- QQ plot with genomic inflation factor
-- Haploview-style LD triangle heatmap
-- Trumpet plot (AF vs effect size with power curves)
+```bash
+pip install torchgwas             # sdist + compiled-on-install native extensions
+pip install "torchgwas[all]"      # + zarr, h5py, pyarrow, seaborn
+pip install "torchgwas[dev]"      # + pytest, ruff, mypy (editable development)
+pip install "torchgwas[docs]"     # + mkdocs + mkdocs-material + mkdocstrings
+```
 
-### Performance
-- 26 native C++ accelerators via pybind11 (up to 12,000x speedup)
-- OpenMP parallelization for hot-loop kernels
-- GPU kernels for imputation (mode, KNN, LD-based)
-- Three-tier dispatch: GPU > native C++ > Python (automatic fallback)
-- AMP (FP16/BF16) for I/O and GRM; FP64 for statistical inference
-
-### Multiple Testing
-- Bonferroni, Holm, BH, BY, Storey q-value
-- simpleM / M_eff, GPU-accelerated permutation
-- IHW (covariate-adaptive weighting), AdaPT (covariate-adaptive thresholding)
-- Cauchy combination, local FDR, weighted FDR
-
-## Installation
-
-### From source (recommended for development)
+From source:
 
 ```bash
 git clone https://github.com/sikiru-atanda/torchgwas.git
 cd torchgwas
 pip install -e ".[dev]"
+pytest tests/ -v
 ```
 
-### With optional dependencies
+GPU support: install the matching PyTorch CUDA wheel first (see
+[docs/getting-started/installation.md](docs/getting-started/installation.md)),
+then `pip install torchgwas`. The same Python code runs on CPU or CUDA by
+changing one tensor device.
+
+## Quickstart
 
 ```bash
-pip install -e ".[all]"     # zarr, h5py, pyarrow, seaborn
-pip install -e ".[dev]"     # all + pytest, ruff, mypy
+torchgwas lmm-scan \
+  --genotype benchmark/data/mdp_numeric.txt \
+  --map benchmark/data/mdp_SNP_information.txt \
+  --phenotype benchmark/data/mdp_traits.txt \
+  --trait EarHT --test wald --correction bh \
+  --output results/mdp_earht
 ```
 
-### Docker
-
-```bash
-# CPU only
-docker build -t torchgwas .
-
-# With CUDA support
-docker build -t torchgwas:gpu --build-arg BASE_IMAGE=pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime .
-```
-
-## Quick Start
+The equivalent Python (trimmed; full script at
+[`examples/python/01_single_trait_lmm.py`](examples/python/01_single_trait_lmm.py)):
 
 ```python
+import pandas as pd
 import torch
-from torchgwas.io import read_plink
-from torchgwas.preprocess import preprocess_genotypes
-from torchgwas.linalg import compute_grm, eigendecompose
-from torchgwas.models import SingleTraitLMM
-from torchgwas.scan import UnifiedScanner
 
-# Load data
-geno, pheno, covar = read_plink("data.bed", "pheno.txt")
+from torchgwas.config import STAT_DTYPE, NumericalConfig
+from torchgwas.models import SingleTraitLMM, VariantMeta
+from torchgwas.stats import benjamini_hochberg
 
-# Preprocess
-G, variant_qc = preprocess_genotypes(geno, maf_threshold=0.05)
+geno = pd.read_csv("benchmark/data/mdp_numeric.txt", sep="\t")
+pheno = pd.read_csv("benchmark/data/mdp_traits.txt", sep="\t")
 
-# Compute kinship and eigendecompose
-K = compute_grm(G)
-eig = eigendecompose(K)
+# ... sample alignment / missing imputation (see examples/python/01) ...
 
-# Fit null model and scan
-model = SingleTraitLMM()
-model.fit_null(pheno, covar, eigendecomposition=eig)
+G = torch.tensor(geno.values, dtype=STAT_DTYPE)
+Y = torch.tensor(pheno["EarHT"].values, dtype=STAT_DTYPE).unsqueeze(1)
+X0 = torch.ones(G.shape[0], 1, dtype=STAT_DTYPE)
+K = torch.tensor(pd.read_csv("gemma_demo/output/mdp_kinship.cXX.txt",
+                             sep="\t", header=None).values, dtype=STAT_DTYPE)
+vmeta = VariantMeta(snp=list(geno.columns), chr=chrs, pos=pos,
+                    a1=["A"] * G.shape[1], a2=["G"] * G.shape[1])
 
-scanner = UnifiedScanner(model)
-results = scanner.scan(G)
+model = SingleTraitLMM(config=NumericalConfig(reml_method="emma"))
+nf = model.fit_null(Y, X0, K=K)
+result = model.score_chunk(G, nf, vmeta, test="wald")
 
-# Multiple testing correction
-from torchgwas.stats import apply_correction
-results = apply_correction(results, method="bh")
+fdr = benjamini_hochberg(result.p.cpu())
 ```
 
-## CLI Usage
+## Learn more
 
-TorchGWAS provides 35 CLI subcommands covering the full GWAS pipeline:
+- [**Docs site**](https://sikiru-atanda.github.io/torchgwas/) — installation,
+  tutorials, full API reference, and validation protocol. Built with MkDocs
+  Material; deployed on every push to `master`.
+- [**examples/python/**](examples/python/) — 10 working end-to-end scripts
+  (single/multi-trait LMM, MET, threshold-linear, PGS, SuSiE fine-mapping,
+  mediation, NCBI annotation, polyploid, haplotype).
+- [**examples/notebooks/quickstart.ipynb**](examples/notebooks/quickstart.ipynb)
+  — same as example 01 but renders the Manhattan inline.
+- [**docs/cli.md**](docs/cli.md) — every CLI subcommand with expected inputs.
+- [**docs/validation.md**](docs/validation.md) — GEMMA / GAPIT agreement tables.
+- [**docs/ROADMAP.md**](docs/ROADMAP.md) — deferred internal improvements and
+  candidate Phase 50+ features.
 
-```bash
-# Validate input files
-torchgwas validate --genotype data.bed --phenotype pheno.txt
+## Features
 
-# Standard LMM scan
-torchgwas lmm-scan --genotype data.bed --phenotype pheno.txt --test wald --correction bh
+### GWAS models
+- **Classical**: GLM, single-trait LMM, multi-trait LMM (MVLMM), FarmCPU, BLINK
+- **Multi-environment**: MET (reaction-norm, FA(k), multi-kernel), MT-MET (Kronecker separable)
+- **Novel LMMs**: Multi-kernel, GxE/heteroscedastic, orthogonal cross-fit (DML), knockoff FDR-controlled, genotype-uncertainty, leave-region-out LOCO
+- **Categorical traits**: Binary/ordinal/multinomial GLM and GLMM (PQL, SPA), multi-environment GLMM
+- **Survival**: Cox PH frailty with Breslow-Clayton PQL and SPACox SPA
+- **Longitudinal**: Random regression LMM with Legendre / B-spline bases, spatio-temporal 2D P-spline, RR-MET
+- **Haplotype-based**: HTR, block, window, SKAT, plus novel methods (PCHT, HHCT, HSKAT, HapGxE, BayesHap); multi-env / multi-trait haplotype GWAS
+- **Fine-mapping**: SuSiE (IBSS) and CAVI Bayesian variable selection
+- **LD-conditional**: COJO-style stepwise conditioning with persistence metrics
+- **Within-family**: Dual-scan attenuation diagnostics for confounding detection
+- **Threshold-linear**: Bermann et al. 2026 for mixed ordinal + continuous traits
 
-# Multi-trait scan
-torchgwas mvlmm-scan --genotype data.bed --phenotype pheno.txt --traits Y1,Y2,Y3
+### Polyploid support
+- Arbitrary ploidy (diploid through hexaploid+)
+- Gene-action models: additive, 1-dom through (k−1)-dom, diplo-additive, overdominant, general
+- HWE testing with double-reduction correction for autopolyploids
 
-# Polyploid scan
-torchgwas poly-scan --genotype data.csv --phenotype pheno.txt --ploidy 4 --gene-action all
+### LD block detection
+- 13 methods across 4 categories (classical / literature / novel / diagnostic)
+- PLINK 1.9 `--blocks` validated (Jaccard ≥ 0.78 for Gabriel)
+- Diploid and polyploid compatible
 
-# Multi-environment GWAS
-torchgwas met-scan --genotype data.bed --phenotype pheno_env.txt --vg-structure "fa(2)"
+### Post-GWAS
+- **Heritability**: LDSC h² / rg, S-LDSC partitioned, HESS regional
+- **Meta-analysis**: IVW, DerSimonian-Laird, Stouffer, RE2, MR-MEGA, MANTRA
+- **Colocalization**: Giambartolomei coloc, HyPrColoc multi-trait
+- **Mendelian randomization**: IVW, MR-Egger, weighted median, MR-PRESSO
+- **SMR / HEIDI** and **TWAS** (S-PrediXcan / PrediXcan)
+- **Gene-set enrichment**: MAGMA-style SNP-to-gene + competitive enrichment
+- **LD clumping**, **fine-mapping utilities**, **power analysis**, **winner's curse correction**
 
-# GLMM (binary trait, SAIGE-style)
-torchgwas glmm-scan --genotype data.bed --phenotype pheno.txt --family binary
+### Polygenic scores
+- C+T (clumping and thresholding), LDpred2 (Inf / Grid / Auto), PRS-CS
+- Allele harmonization, individual scoring, PGS validation metrics
 
-# Survival GWAS
-torchgwas survival-scan --genotype data.bed --phenotype pheno_surv.txt
+### Visualization
+- Manhattan (linear and Circos-style polar), Miami, QQ with λ_GC
+- Haploview-style LD triangle heatmap, trumpet plot
 
-# LD block detection
-torchgwas ld-blocks --genotype data.bed --method gabriel
+### Multi-omics
+- GRM-corrected causal mediation (single triple + GPU-batched scan + gene-set Wald)
+- Multi-kernel heritability; eigenMT FDR; colocalisation prefilter
 
-# Polygenic scores
-torchgwas pgs-fit --genotype data.bed --sumstats gwas_results.tsv --method ldpred2-auto
-torchgwas pgs-score --weights weights.pt --genotype target.bed --output scores.tsv
+### Performance
+- 26 native C++ accelerators via pybind11 (up to ~12 000× speedup on hot kernels)
+- OpenMP parallelization where measured beneficial
+- GPU kernels for imputation (mode, KNN, LD-based)
+- Three-tier dispatch: GPU > native C++ > Python (automatic fallback)
+- AMP (FP16 / BF16) for I/O and GRM; FP64 mandatory for statistical inference
 
-# NCBI gene annotation for hit SNPs (±window lookup + GO terms + orthologs)
-torchgwas annotate --sumstats results.tsv --crop maize --window-up 50000 --window-down 50000 --p-threshold 5e-8 --output annotated
-
-# Multi-omics: GRM-corrected causal mediation (SNP -> M -> Y)
-torchgwas mediate --y pheno.npy --snp snp.npy --mediator expr.npy --kinship K.npy --se monte-carlo --output mediation.json
-torchgwas mediate-scan --y pheno.npy --genotype G.npy --mediator-matrix M.npy --kinship K.npy \
-    --snp-meta snp_meta.tsv --feature-meta feat_meta.tsv --cis-window 1000000 --output scan
-
-# Full pipeline
-torchgwas pipeline --genotype data.vcf.gz --impute beagle --model lmm --test wald
-```
+### Multiple testing
+- Bonferroni, Holm, BH, BY, Storey q-value, simpleM / M_eff
+- GPU-accelerated permutation, Cauchy combination, local FDR
+- IHW (covariate-adaptive weighting), AdaPT (covariate-adaptive thresholding)
 
 ## Architecture
 
 ```
 torchgwas/
-  io/          # Format detection & reading (PLINK, VCF, BGEN, HapMap, Zarr, CSV)
-  preprocess/  # Imputation, QC, standardization, polyploid encoding
-  linalg/      # GRM, eigendecomposition, batched Cholesky
-  models/      # All GWAS models (BaseModel protocol)
-  scan/        # UnifiedScanner streaming chunks through any model
-  stats/       # Multiple testing, SPA, PVE
-  ld/          # LD block detection (13 methods), pairwise LD
-  optim/       # 6-mode optimizer stack (PX-EM -> AI-REML -> ... -> rescue)
-  pgs/         # Polygenic score construction & validation
-  postgwas/    # LDSC, meta-analysis, coloc, MR, TWAS, enrichment
-  multiomics/  # GRM-corrected causal mediation + multi-kernel heritability
-  viz/         # Manhattan, QQ, Miami, Circos, Haploview, trumpet plots
-  _native/     # 26 C++ pybind11 accelerators + GPU kernels
-  cli.py       # 35 CLI subcommands
+  io/          Format detection & readers (PLINK, VCF, BGEN, HapMap, Zarr, CSV)
+  preprocess/  Imputation (built-in + BEAGLE/IMPUTE5/Minimac4), QC, standardization
+  linalg/      GRM (diploid + polyploid), eigendecomposition, batched Cholesky
+  models/      All GWAS models (BaseModel protocol: fit_null + score_chunk)
+  scan/        UnifiedScanner streaming chunks through any model
+  stats/       Multiple testing, SPA, PVE
+  ld/          LD block detection (13 methods), pairwise LD (r², D', CI)
+  optim/       6-mode optimizer stack (PX-EM → AI-REML → ... → derivative-free rescue)
+  pgs/         PGS construction & validation
+  postgwas/    LDSC, meta-analysis, coloc, MR, TWAS, enrichment
+  multiomics/  GRM-corrected mediation + multi-kernel heritability
+  annotate/    NCBI Datasets v2 + E-utilities gene annotation
+  viz/         Manhattan, QQ, Miami, Circos, Haploview, trumpet plots
+  _native/     26 C++ pybind11 accelerators + GPU kernels + select_path dispatcher
+  cli.py       35 CLI subcommands
 ```
 
-## Data Flow
+Data flow: **Format detection → Imputation / phasing → QC → Genotype encoding
+→ GRM → Eigendecomposition → Null fitting → Scan loop → Multiple testing →
+Reporting.**
 
-```
-Format detection -> Imputation/phasing -> QC/preprocessing -> Genotype encoding
--> GRM -> Eigendecomposition -> Null fitting -> Scan loop -> Multiple testing -> Reporting
-```
+## Supported genotype formats
+
+| Format | Extension | Read | Write |
+|---|---|---|---|
+| PLINK BED | `.bed` / `.bim` / `.fam` | ✓ | ✓ |
+| PLINK2 PGEN | `.pgen` / `.pvar` / `.psam` | ✓ | — |
+| VCF / BCF | `.vcf` / `.vcf.gz` / `.bcf` | ✓ | — |
+| BGEN | `.bgen` | ✓ | — |
+| HapMap | `.hmp.txt` | ✓ | — |
+| Zarr | `.zarr` | ✓ | ✓ |
+| CSV dosage | `.csv` | ✓ | — |
 
 ## Testing
 
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific test categories
-pytest tests/ -v -m golden    # Reference validation tests
-pytest tests/ -v -m "not slow" # Skip slow tests
+pytest tests/ -v                    # full suite (2192 passing, 45 skipped)
+pytest tests/ -v -m golden          # GEMMA / GAPIT golden-data gate
+pytest tests/ -v -m "not slow"      # skip slow tests
 ```
 
-2102 tests pass across all 47 development phases.
-
-## Supported Genotype Formats
-
-| Format | Extension | Read | Write |
-|--------|-----------|------|-------|
-| PLINK BED | .bed/.bim/.fam | Yes | Yes |
-| PLINK2 PGEN | .pgen/.pvar/.psam | Yes | - |
-| VCF/BCF | .vcf/.vcf.gz/.bcf | Yes | - |
-| BGEN | .bgen | Yes | - |
-| HapMap | .hmp.txt | Yes | - |
-| Zarr | .zarr | Yes | Yes |
-| CSV Dosage | .csv | Yes | - |
+Golden-data fixtures live under `tests/golden/` and are regenerated with
+`scripts/generate_golden_data.py` (see `docs/validation.md`).
 
 ## Requirements
 
-- Python >= 3.10
-- PyTorch >= 2.0
-- NumPy >= 1.24
-- pandas >= 2.0
-- SciPy >= 1.10
-- matplotlib >= 3.7
+Python ≥ 3.10, PyTorch ≥ 2.0, NumPy ≥ 1.24, pandas ≥ 2.0, SciPy ≥ 1.10,
+matplotlib ≥ 3.7, requests ≥ 2.28.
 
-Optional: zarr, h5py, pyarrow, seaborn
-
-A C++ compiler (with pybind11) is optional but recommended for native accelerators.
+Optional: `zarr`, `h5py`, `pyarrow`, `seaborn`. A C++ compiler with pybind11 is
+optional; if unavailable, every native path falls back to the pure-torch
+reference implementation (`TORCHGWAS_DISABLE_NATIVE=1` forces this).
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE).
 
 ## Citation
 
-If you use TorchGWAS in your research, please cite:
-
 ```bibtex
 @software{torchgwas2026,
-  title={TorchGWAS: GPU-accelerated Genome-Wide Association Studies with PyTorch},
-  year={2026},
-  url={https://github.com/sikiru-atanda/torchgwas}
+  title  = {TorchGWAS: GPU-accelerated Genome-Wide Association Studies with PyTorch},
+  author = {Atanda, Sikiru A.},
+  year   = {2026},
+  url    = {https://github.com/sikiru-atanda/torchgwas},
+  note   = {Version 0.1.1},
 }
 ```
