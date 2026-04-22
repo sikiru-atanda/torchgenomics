@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import pytest
 import statsmodels.api as sm
 import torch
 from statsmodels.discrete.discrete_model import MNLogit
@@ -176,8 +177,20 @@ class TestBinaryGLMvsStatsmodels:
         result = model.score_chunk(G, nf, vmeta)
         tg_pvals = result.p.numpy()
 
-        # Direct comparison: score test p-values should be close
+        # Guard against the reference path being unusable in this env.
+        # statsmodels.GLM.score_test() has shifted keyword handling across
+        # 0.14.x point releases; in some combos every SNP call raises and
+        # sm_score_pvals ends up all-NaN. If that happens the comparison
+        # is not meaningful — skip with a pointer rather than masking it
+        # as a TorchGWAS failure.
         valid = ~np.isnan(sm_score_pvals)
+        if valid.sum() == 0:
+            pytest.skip(
+                "statsmodels score_test() unusable in this environment "
+                "(every SNP call raised) — reference comparison cannot run"
+            )
+
+        # Direct comparison: score test p-values should be close
         max_diff = np.max(np.abs(
             np.log10(np.clip(tg_pvals[valid], 1e-300, 1)) -
             np.log10(np.clip(sm_score_pvals[valid], 1e-300, 1))
