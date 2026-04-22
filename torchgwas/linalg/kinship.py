@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Iterator, Optional, Tuple
+from collections.abc import Iterator
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
@@ -27,12 +27,12 @@ class GRMMetadata:
     n_snps_used: int  # SNPs that contributed (after filtering invariant, etc.)
     ploidy: int
     standardization: str  # "center_scale" for VanRaden, "center_only" for Zhang
-    loco_chr: Optional[str] = None  # None = genome-wide; "1" = LOCO excluding chr 1
-    gemm_dtype: Optional[str] = None  # e.g. "float32" for streaming GRM
+    loco_chr: str | None = None  # None = genome-wide; "1" = LOCO excluding chr 1
+    gemm_dtype: str | None = None  # e.g. "float32" for streaming GRM
     normalizer: float = 0.0  # sum(k*p*(1-p)) or equivalent
 
 
-def grm_vanraden(G: Tensor, ploidy: int = 2) -> Tuple[Tensor, GRMMetadata]:
+def grm_vanraden(G: Tensor, ploidy: int = 2) -> tuple[Tensor, GRMMetadata]:
     """Compute VanRaden-style GRM: (X - kP)(X - kP)^T / normalizer.
 
     Matches GEMMA's "centered relatedness matrix" for diploid (k=2).
@@ -94,7 +94,7 @@ def grm_vanraden(G: Tensor, ploidy: int = 2) -> Tuple[Tensor, GRMMetadata]:
     return K, meta
 
 
-def grm_zhang(G: Tensor) -> Tuple[Tensor, GRMMetadata]:
+def grm_zhang(G: Tensor) -> tuple[Tensor, GRMMetadata]:
     """Compute Zhang (2010) kinship matrix — matches GAPIT's default.
 
     Algorithm (from GAPIT source ``GAPIT.kinship.Zhang``):
@@ -200,14 +200,14 @@ def grm_zhang(G: Tensor) -> Tuple[Tensor, GRMMetadata]:
 
 
 def grm_vanraden_streaming(
-    chunk_iter: Iterator[Tuple[Tensor, object]],
+    chunk_iter: Iterator[tuple[Tensor, object]],
     n_samples: int,
     ploidy: int = 2,
     gemm_dtype: torch.dtype = torch.float32,
     device: torch.device | None = None,
     amp_enabled: bool = False,
     amp_dtype: torch.dtype = torch.float16,
-) -> Tuple[Tensor, GRMMetadata]:
+) -> tuple[Tensor, GRMMetadata]:
     """Streaming GRM: FP32 GEMM with FP64 accumulator, chunk by chunk.
 
     Per charter: matrix multiply uses *gemm_dtype* (FP32 by default for speed)

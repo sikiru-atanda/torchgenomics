@@ -47,7 +47,7 @@ def load_plink_blocks_det(path: str | Path) -> list[PLINKBlock]:
     blocks = []
     p = Path(path)
 
-    with open(p, "r") as f:
+    with open(p) as f:
         for line_num, line in enumerate(f, 1):
             line = line.strip()
             if not line or line.startswith("#"):

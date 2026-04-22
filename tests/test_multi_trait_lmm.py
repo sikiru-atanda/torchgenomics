@@ -7,7 +7,6 @@ import math
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE
 from torchgwas.linalg.eigh import eigendecompose, rotate
 from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.models.base import NullFit, ScanResult, VariantMeta
@@ -15,10 +14,8 @@ from torchgwas.models.multi_trait_lmm import MultiTraitLMM
 from torchgwas.optim.lbfgs_reml import lbfgs_reml
 from torchgwas.optim.mvlmm_reml import (
     compute_sigma_inv,
-    mvlmm_null_quantities,
     mvlmm_reml_loglikelihood,
 )
-
 
 # ---------------------------------------------------------------
 # Fixtures: simulate multi-trait LMM data

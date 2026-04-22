@@ -1,9 +1,9 @@
 """Tests for Phase 13 approximate backends."""
 
-import pytest
-import numpy as np
-import torch
 from pathlib import Path
+
+import pytest
+import torch
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -66,8 +66,8 @@ class TestRandomizedSVD:
 
     def test_returns_eigendecomp(self):
         """Output is EigenDecomp dataclass."""
-        from torchgwas.linalg.randomized import randomized_svd
         from torchgwas.linalg.eigh import EigenDecomp
+        from torchgwas.linalg.randomized import randomized_svd
 
         K = _make_low_rank_psd(50, 10)
         ed = randomized_svd(K, n_components=5, seed=42)
@@ -112,8 +112,8 @@ class TestLOBPCG:
         assert rel_err.max() < 0.05, f"Max relative error: {rel_err.max():.4f}"
 
     def test_returns_eigendecomp(self):
-        from torchgwas.linalg.randomized import lobpcg_decompose
         from torchgwas.linalg.eigh import EigenDecomp
+        from torchgwas.linalg.randomized import lobpcg_decompose
 
         K = _make_low_rank_psd(50, 10)
         ed = lobpcg_decompose(K, n_components=5, seed=42)
@@ -158,8 +158,8 @@ class TestNystrom:
 
     def test_nystrom_approximation_quality(self):
         """Nystrom GRM close to full VanRaden GRM in top eigenvalues."""
-        from torchgwas.linalg.nystrom import nystrom_approximate
         from torchgwas.linalg.kinship import grm_vanraden
+        from torchgwas.linalg.nystrom import nystrom_approximate
 
         chunks, G = self._make_genotype_chunks(n=50, m=200, chunk_size=50)
 
@@ -180,8 +180,8 @@ class TestNystrom:
         assert corr > 0.9, f"Eigenvalue correlation: {corr:.4f}"
 
     def test_nystrom_returns_eigendecomp(self):
-        from torchgwas.linalg.nystrom import nystrom_approximate
         from torchgwas.linalg.eigh import EigenDecomp
+        from torchgwas.linalg.nystrom import nystrom_approximate
 
         chunks, _ = self._make_genotype_chunks()
         ed, _ = nystrom_approximate(iter(chunks), n_samples=50, n_landmarks=10, seed=42)
@@ -214,8 +214,8 @@ class TestSparseGRM:
 
     def test_sparse_grm_preserves_above_threshold(self):
         """Entries above threshold are preserved."""
-        from torchgwas.linalg.sparse_grm import sparse_grm_streaming
         from torchgwas.linalg.kinship import grm_vanraden
+        from torchgwas.linalg.sparse_grm import sparse_grm_streaming
 
         chunks, G = self._make_chunks()
         K_sparse, normalizer, n_snps = sparse_grm_streaming(
@@ -248,7 +248,7 @@ class TestSparseGRM:
 
     def test_sparse_matvec_matches_dense(self):
         """Sparse matvec produces same result as dense multiplication."""
-        from torchgwas.linalg.sparse_grm import sparse_grm_streaming, make_sparse_matvec
+        from torchgwas.linalg.sparse_grm import sparse_grm_streaming
 
         chunks, _ = self._make_chunks()
         K_sparse, _, _ = sparse_grm_streaming(
@@ -341,9 +341,9 @@ class TestApproxLMM:
 
     def test_randomized_svd_lmm_pvalues(self, lmm_data):
         """LMM with randomized SVD produces p-values correlated > 0.99 with exact."""
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
-        from torchgwas.models.base import VariantMeta
         from torchgwas.config import NumericalConfig
+        from torchgwas.models.base import VariantMeta
+        from torchgwas.models.single_trait_lmm import SingleTraitLMM
 
         Y, X0, K, G = lmm_data
         n, m = G.shape
@@ -388,8 +388,8 @@ class TestApproxLMM:
 
     def test_approx_nullfit_labeled(self, lmm_data):
         """Approximate NullFit has approximate=True flag set."""
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
         from torchgwas.config import NumericalConfig
+        from torchgwas.models.single_trait_lmm import SingleTraitLMM
 
         Y, X0, K, _ = lmm_data
         config = NumericalConfig(reml_method="ai_reml")
@@ -407,8 +407,8 @@ class TestApproxLMM:
 
     def test_exact_nullfit_not_labeled(self, lmm_data):
         """Exact NullFit has approximate=False."""
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
         from torchgwas.config import NumericalConfig
+        from torchgwas.models.single_trait_lmm import SingleTraitLMM
 
         Y, X0, K, _ = lmm_data
         config = NumericalConfig(reml_method="ai_reml")

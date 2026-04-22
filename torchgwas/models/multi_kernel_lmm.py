@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -78,17 +78,17 @@ class MultiKernelLMM:
     Conforms to the BaseModel protocol: ``fit_null`` + ``score_chunk``.
     """
 
-    def __init__(self, config: Optional[NumericalConfig] = None) -> None:
+    def __init__(self, config: NumericalConfig | None = None) -> None:
         self.config = config or NumericalConfig()
 
     def fit_null(
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         *,
-        kernels: Optional[list[Tensor]] = None,
-        kernel_names: Optional[list[str]] = None,
+        kernels: list[Tensor] | None = None,
+        kernel_names: list[str] | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit null model with multiple kernels.

@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import math
 from enum import Enum, auto
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -22,7 +21,7 @@ from .ai_reml import ai_reml_single
 from .em_warmstart import px_em_warmstart
 from .emma_reml import emma_reml_single
 from .mm_reml import mm_reml
-from .reml_math import _compute_P_quantities, reml_loglikelihood
+from .reml_math import _compute_P_quantities
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class OptimizerController:
     5. Log the optimizer trajectory for diagnostics.
     """
 
-    def __init__(self, config: Optional[NumericalConfig] = None) -> None:
+    def __init__(self, config: NumericalConfig | None = None) -> None:
         self.config = config or NumericalConfig()
 
     def fit(
@@ -59,8 +58,8 @@ class OptimizerController:
         *,
         n_traits: int = 1,
         max_iter: int = 100,
-        sig2_g_init: Optional[float] = None,
-        sig2_e_init: Optional[float] = None,
+        sig2_g_init: float | None = None,
+        sig2_e_init: float | None = None,
     ) -> NullFit:
         """Run the optimizer stack and return the fitted null model.
 
@@ -97,8 +96,8 @@ class OptimizerController:
         eigenvalues: Tensor,
         *,
         max_iter: int = 100,
-        sig2_g_init: Optional[float] = None,
-        sig2_e_init: Optional[float] = None,
+        sig2_g_init: float | None = None,
+        sig2_e_init: float | None = None,
     ) -> NullFit:
         """Single-trait optimizer pipeline."""
         tol = self.config.reml_convergence_tol
@@ -159,8 +158,8 @@ class OptimizerController:
         *,
         max_iter: int = 100,
         tol: float = 1e-6,
-        sig2_g_init: Optional[float] = None,
-        sig2_e_init: Optional[float] = None,
+        sig2_g_init: float | None = None,
+        sig2_e_init: float | None = None,
     ) -> NullFit:
         """PX-EM → AI-REML → MM fallback → EMMA rescue stack."""
         full_trace: list[dict] = []

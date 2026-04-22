@@ -9,9 +9,9 @@ figure to disk.
 
 from __future__ import annotations
 
+from ._haploview import haploview_plot
 from ._manhattan import circos_manhattan_plot, manhattan_plot, miami_plot
 from ._qq import qq_plot
-from ._haploview import haploview_plot
 from ._trumpet import trumpet_plot
 
 __all__ = [

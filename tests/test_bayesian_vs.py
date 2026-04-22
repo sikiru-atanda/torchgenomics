@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 import torch
-import numpy as np
 
-from torchgwas.config import STAT_DTYPE
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import NullFit, VariantMeta
-from torchgwas.models.bayesian_vs import BayesianVS, BayesianVSResult
+from torchgwas.models.base import VariantMeta
+from torchgwas.models.bayesian_vs import BayesianVS
 from torchgwas.models.single_trait_lmm import SingleTraitLMM
-
 
 # ---------------------------------------------------------------
 # Fixtures

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Tuple
 
 import numpy as np
 import pandas as pd
@@ -12,7 +12,6 @@ import torch
 from torch import Tensor
 
 from ..models.base import VariantMeta
-from .base import GenotypeReader
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ class HapMapReader:
             raise FileNotFoundError(f"HapMap file not found: {p}")
 
         # Read full file; HapMap files are typically small enough
-        with open(p, "r") as _fh:
+        with open(p) as _fh:
             _first = _fh.readline()
         sep = "\t" if "\t" in _first else r"\s+"
         self._df = pd.read_csv(p, sep=sep, dtype=str)
@@ -88,7 +87,7 @@ class HapMapReader:
     def sample_ids(self) -> list[str]:
         return list(self._sample_ids)
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         for start in range(0, self._n_variants, chunk_size):
             end = min(start + chunk_size, self._n_variants)
             chunk_df = self._df.iloc[start:end]

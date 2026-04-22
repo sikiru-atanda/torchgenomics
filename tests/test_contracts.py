@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 class TestBaseModelProtocol:
     """Verify BaseModel protocol is importable and runtime-checkable."""
@@ -14,8 +12,9 @@ class TestBaseModelProtocol:
         assert hasattr(BaseModel, "score_chunk")
 
     def test_nullfit_fields(self):
-        from torchgwas.models.base import NullFit
         import dataclasses
+
+        from torchgwas.models.base import NullFit
         fields = {f.name for f in dataclasses.fields(NullFit)}
         assert "sig2_g" in fields
         assert "sig2_e" in fields
@@ -23,8 +22,9 @@ class TestBaseModelProtocol:
         assert "converged" in fields
 
     def test_scanresult_fields(self):
-        from torchgwas.models.base import ScanResult
         import dataclasses
+
+        from torchgwas.models.base import ScanResult
         fields = {f.name for f in dataclasses.fields(ScanResult)}
         assert "p" in fields
         assert "beta" in fields
@@ -32,8 +32,9 @@ class TestBaseModelProtocol:
         assert "chr" in fields
 
     def test_variant_meta_fields(self):
-        from torchgwas.models.base import VariantMeta
         import dataclasses
+
+        from torchgwas.models.base import VariantMeta
         fields = {f.name for f in dataclasses.fields(VariantMeta)}
         assert "snp" in fields
         assert "chr" in fields
@@ -50,13 +51,15 @@ class TestIOProtocols:
         assert hasattr(GenotypeReader, "sample_ids")
 
     def test_import_preflight_report(self):
-        from torchgwas.io.validate import PreflightReport
         import dataclasses
+
+        from torchgwas.io.validate import PreflightReport
         assert dataclasses.is_dataclass(PreflightReport)
 
     def test_import_alignment_manifest(self):
-        from torchgwas.io.phenotype import AlignmentManifest
         import dataclasses
+
+        from torchgwas.io.phenotype import AlignmentManifest
         assert dataclasses.is_dataclass(AlignmentManifest)
 
 
@@ -64,14 +67,16 @@ class TestPreprocessContracts:
     """Verify preprocessing modules are importable."""
 
     def test_import_qc_config(self):
-        from torchgwas.preprocess.qc import QCFilterConfig, VariantQCStats
         import dataclasses
+
+        from torchgwas.preprocess.qc import QCFilterConfig, VariantQCStats
         assert dataclasses.is_dataclass(QCFilterConfig)
         assert dataclasses.is_dataclass(VariantQCStats)
 
     def test_import_imputation_result(self):
-        from torchgwas.preprocess.impute_external import ImputationResult
         import dataclasses
+
+        from torchgwas.preprocess.impute_external import ImputationResult
         assert dataclasses.is_dataclass(ImputationResult)
 
     def test_import_gene_action_models(self):
@@ -83,8 +88,9 @@ class TestLinalgContracts:
     """Verify linalg modules are importable."""
 
     def test_import_eigendecomp(self):
-        from torchgwas.linalg.eigh import EigenDecomp
         import dataclasses
+
+        from torchgwas.linalg.eigh import EigenDecomp
         assert dataclasses.is_dataclass(EigenDecomp)
 
 

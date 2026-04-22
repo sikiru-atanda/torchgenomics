@@ -7,7 +7,7 @@ without ever materializing the full genotype matrix.
 
 from __future__ import annotations
 
-from typing import Iterator, Tuple
+from collections.abc import Iterator
 
 from torch import Tensor
 
@@ -54,7 +54,7 @@ class SampleAlignedReader:
     def variant_meta(self) -> VariantMeta:
         return self._inner.variant_meta
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         """Yield (G_chunk, variant_meta) with rows reindexed to aligned order."""
         for G_chunk, vmeta in self._inner.iter_chunks(chunk_size):
             yield G_chunk[self._keep, :], vmeta

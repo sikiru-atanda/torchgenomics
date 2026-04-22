@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -30,7 +29,7 @@ class Region:
     end: int  # 0-based, exclusive (BED convention)
 
 
-def load_regions(bed_path: Union[str, Path]) -> list[Region]:
+def load_regions(bed_path: str | Path) -> list[Region]:
     """Parse a BED3+ file into Region objects.
 
     Expects tab-separated columns: chr, start, end, [name, ...].
@@ -49,7 +48,7 @@ def load_regions(bed_path: Union[str, Path]) -> list[Region]:
     regions = []
     path = Path(bed_path)
 
-    with open(path, "r") as f:
+    with open(path) as f:
         for line_num, line in enumerate(f, 1):
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("track") or line.startswith("browser"):

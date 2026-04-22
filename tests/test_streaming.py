@@ -1,9 +1,9 @@
 """Integration tests for Phase 12 streaming pipeline."""
 
-import pytest
-import numpy as np
-import torch
 from pathlib import Path
+
+import pytest
+import torch
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 N_SAMPLES = 10
@@ -15,8 +15,8 @@ zarr = pytest.importorskip("zarr")
 class TestSampleAlignedReader:
     def test_reindexing(self):
         """SampleAlignedReader correctly reindexes rows."""
-        from torchgwas.io.zarr import ZarrReader
         from torchgwas.io.aligned import SampleAlignedReader
+        from torchgwas.io.zarr import ZarrReader
 
         inner = ZarrReader(str(FIXTURE_DIR / "tiny.zarr"))
 
@@ -39,8 +39,8 @@ class TestSampleAlignedReader:
 
     def test_multiple_iterations(self):
         """SampleAlignedReader supports repeated iter_chunks calls."""
-        from torchgwas.io.zarr import ZarrReader
         from torchgwas.io.aligned import SampleAlignedReader
+        from torchgwas.io.zarr import ZarrReader
 
         inner = ZarrReader(str(FIXTURE_DIR / "tiny.zarr"))
         aligned = SampleAlignedReader(inner, list(range(5)), inner.sample_ids[:5])
@@ -113,7 +113,7 @@ class TestPCGSolver:
 
     def test_with_preconditioner(self):
         """PCG with diagonal preconditioner converges faster."""
-        from torchgwas.optim.pcg_solver import pcg_solve, diagonal_preconditioner
+        from torchgwas.optim.pcg_solver import diagonal_preconditioner, pcg_solve
 
         n = 100
         torch.manual_seed(42)

@@ -5,9 +5,8 @@ surface, and functional principal components."""
 import pytest
 import torch
 
-from torchgwas.models.rr_lmm import RandomRegressionLMM
-
 from tests.test_rr_lmm_scan import _simulate_with_planted_signal
+from torchgwas.models.rr_lmm import RandomRegressionLMM
 
 
 @pytest.fixture(scope="module")

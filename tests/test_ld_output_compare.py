@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import pytest
 import torch
 
+from torchgwas.io.regions import Region
 from torchgwas.ld import (
     BlockComparisonResult,
     LDBlock,
-    PLINKBlock,
     compare_all_methods,
     compare_blocks,
     detect_blocks,
@@ -23,8 +20,6 @@ from torchgwas.ld import (
     save_blocks_det,
     save_blocks_summary,
 )
-from torchgwas.io.regions import Region
-
 
 # ── Fixtures ────────────────────────────────────────────────────────
 

@@ -48,7 +48,6 @@ from torch import Tensor
 # equally valid for diploid and polyploid GWAS output.
 from ._sumstats import SumStats
 
-
 # ---------------------------------------------------------------------------
 # Normal CDF / survival / quantile helpers (pure torch, no scipy dependency)
 # ---------------------------------------------------------------------------
@@ -73,8 +72,6 @@ def _probit(p: Tensor) -> Tensor:
         return torch.special.ndtri(p)
     # Fallback for older torch versions.
     from scipy.stats import norm  # type: ignore[import-untyped]
-
-    import numpy as np
 
     return torch.tensor(
         norm.ppf(p.detach().cpu().numpy()),

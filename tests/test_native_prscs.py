@@ -14,9 +14,8 @@ import pytest
 import torch
 
 from torchgwas._native import HAS_NATIVE_PRSCS, _prscs_native
-from torchgwas.pgs.base import LDReference
 from torchgwas.pgs.ld_ref import build_ld_reference
-from torchgwas.pgs.prscs import PRSCS, _prscs_gibbs_block_dispatch, _native_enabled
+from torchgwas.pgs.prscs import PRSCS, _native_enabled, _prscs_gibbs_block_dispatch
 from torchgwas.postgwas._sumstats import SumStats
 
 pytestmark = pytest.mark.skipif(

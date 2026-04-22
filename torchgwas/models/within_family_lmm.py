@@ -13,15 +13,14 @@ strongest causal credibility assessment for genetic associations.
 from __future__ import annotations
 
 import logging
-import math
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 from .single_trait_lmm import SingleTraitLMM
 
 logger = logging.getLogger(__name__)
@@ -162,7 +161,7 @@ class WithinFamilyLMM:
 
     def __init__(
         self,
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
         min_family_size: int = 2,
         p3d: bool = True,
         confound_threshold: float = 0.5,
@@ -182,9 +181,9 @@ class WithinFamilyLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         *,
-        family_ids: Optional[Tensor] = None,
+        family_ids: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit null models for both standard and within-family scans.

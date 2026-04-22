@@ -5,16 +5,14 @@ factors against manual conjugate-normal calculations.
 """
 from __future__ import annotations
 
-import math
 import numpy as np
 import pytest
-import torch
 import statsmodels.api as sm
+import torch
 from scipy import stats as sp_stats
 
-from torchgwas.postgwas._multi_ancestry import mr_mega, mantra, MultiAncestryResult
+from torchgwas.postgwas._multi_ancestry import mantra, mr_mega
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ── Fixture helper ───────────────────────────────────────────────────────
 

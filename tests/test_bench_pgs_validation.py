@@ -9,13 +9,12 @@ import math
 
 import numpy as np
 import pytest
+import statsmodels.api as sm
 import torch
 from scipy import stats as sp_stats
-import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import Logit
 
 from torchgwas.pgs.validation import validate_pgs
-
 
 # ---------------------------------------------------------------------------
 # Helpers

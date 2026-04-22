@@ -11,13 +11,11 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from .mvlmm_reml import compute_sigma_inv
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +39,8 @@ def lbfgs_reml(
     n_traits: int = 1,
     max_iter: int = 100,
     tol: float = 1e-6,
-    Vg_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, float, list[dict]]:
     """LBFGS optimization of multi-trait REML on Cholesky factors.
 

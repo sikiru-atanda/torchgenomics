@@ -23,7 +23,7 @@ from .._native import (
     _uncertainty_blocks_native,
 )
 from ..io.regions import Region
-from ._blocks import LDBlock, PairwiseLD, _make_block
+from ._blocks import LDBlock
 from ._pairwise import compute_r2_matrix, compute_r2_pairs
 
 _EPS = 1e-10
@@ -530,8 +530,8 @@ def detect_blocks_cross_pop(
         # ``r2[..].item()`` round-trips into a single C++ pass. The Python
         # body below remains as the algorithmic spec; both paths are
         # exercised in the test suite.
-        from .._native import HAS_NATIVE_CROSS_POP, _cross_pop_native
         from .._dispatch import native_disabled
+        from .._native import HAS_NATIVE_CROSS_POP, _cross_pop_native
         cluster_stabilities: list[float] | None = None
         if (
             HAS_NATIVE_CROSS_POP and not native_disabled()
@@ -832,6 +832,7 @@ def detect_blocks_changepoint(
         If True and ``recomb_map_cm`` is provided, use cM-based signal.
     """
     import math
+
     from ._changepoint import dp_changepoint, ld_decay_signal
 
     if device:

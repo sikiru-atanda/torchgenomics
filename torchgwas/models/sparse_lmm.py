@@ -12,16 +12,17 @@ P @ y (precomputed) and g^T P g (cheap via sparse operations).
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
 from ..linalg.sparse_grm import make_sparse_matvec
-from ..optim.pcg_solver import pcg_solve, diagonal_preconditioner
+from ..optim.pcg_solver import diagonal_preconditioner, pcg_solve
 from ..optim.sparse_reml import sparse_reml_fit
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +36,16 @@ class SparseLMM:
     GRM + variance components for on-the-fly P @ g computation.
     """
 
-    def __init__(self, config: Optional[NumericalConfig] = None) -> None:
+    def __init__(self, config: NumericalConfig | None = None) -> None:
         self.config = config or NumericalConfig()
-        self._K_sparse: Optional[Tensor] = None
-        self._K_matvec: Optional[Callable] = None
+        self._K_sparse: Tensor | None = None
+        self._K_matvec: Callable | None = None
 
     def fit_null(
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit null model via PCG-based REML with sparse GRM.
@@ -80,7 +81,7 @@ class SparseLMM:
         self._K_sparse = K
 
         # Extract diagonal for preconditioner
-        K_diag = kwargs.get("K_diag", None)
+        K_diag = kwargs.get("K_diag")
         if K_diag is None:
             # Extract diagonal from sparse tensor
             K_dense_diag = torch.sparse.sum(
@@ -104,7 +105,7 @@ class SparseLMM:
             config=self.config,
             n_probes=kwargs.get("n_probes", self.config.approx_stochastic_probes),
             lanczos_iters=kwargs.get("lanczos_iters", self.config.approx_lanczos_iters),
-            seed=kwargs.get("seed", None),
+            seed=kwargs.get("seed"),
         )
 
         # Store K_sparse reference and V_matvec for score_chunk
@@ -224,8 +225,8 @@ class SparseLMM:
         stat = gPy ** 2 / (sig2_e * gPg)
 
         # P-values from chi2(1) (score test uses chi-squared, not F)
-        import scipy.stats as sp_stats
         import numpy as np
+        import scipy.stats as sp_stats
         stat_np = stat.detach().cpu().numpy().astype(np.float64)
         p_np = sp_stats.chi2.sf(stat_np, df=1)
         p_np = np.clip(p_np, 1e-300, 1.0)

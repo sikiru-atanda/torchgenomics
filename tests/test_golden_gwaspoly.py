@@ -20,10 +20,10 @@ import pytest
 import torch
 
 from torchgwas.config import STAT_DTYPE, NumericalConfig
-from torchgwas.preprocess.polyploid import recode_gene_action
 from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
 from torchgwas.models.base import VariantMeta
+from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgwas.preprocess.polyploid import recode_gene_action
 
 pytestmark = pytest.mark.golden
 

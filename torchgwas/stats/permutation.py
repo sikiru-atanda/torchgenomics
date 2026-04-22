@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -18,7 +17,7 @@ def permutation_maxT(
     Y: Tensor,
     X0: Tensor,
     n_perms: int = 1000,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> Tensor:
     """GPU-batched maxT permutation test for family-wise error rate control.
 
@@ -89,7 +88,7 @@ def adaptive_permutation_maxT(
     n_perms_max: int = 10000,
     early_stop_threshold: float = 0.01,
     early_stop_exceedances: int = 50,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     batch_size: int = 500,
 ) -> Tensor:
     """Adaptive maxT permutation test with two-phase design.

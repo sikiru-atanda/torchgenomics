@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -28,7 +28,7 @@ from torch import Tensor
 from ..config import STAT_DTYPE, NumericalConfig
 from ..linalg.eigh import eigendecompose, rotate
 from ..optim.mvlmm_reml import mvlmm_null_quantities
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +71,8 @@ class MTMETScanResult:
 
     # Metadata
     test: str = "wald"
-    trait_names: Optional[list[str]] = None
-    env_names: Optional[list[str]] = None
+    trait_names: list[str] | None = None
+    env_names: list[str] | None = None
     inference_type: str = "marginal"
 
     def __len__(self) -> int:
@@ -381,7 +381,7 @@ class MultiTraitMultiEnvLMM:
 
     def __init__(
         self,
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
         vg_structure: str = "separable",
     ) -> None:
         self.config = config or NumericalConfig()
@@ -395,12 +395,12 @@ class MultiTraitMultiEnvLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         *,
-        n_traits: Optional[int] = None,
-        n_envs: Optional[int] = None,
-        trait_names: Optional[list[str]] = None,
-        env_names: Optional[list[str]] = None,
+        n_traits: int | None = None,
+        n_envs: int | None = None,
+        trait_names: list[str] | None = None,
+        env_names: list[str] | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the MT-MET null model.
@@ -584,7 +584,7 @@ class MultiTraitMultiEnvLMM:
 
             # For large dE, precompute KED quantities for score test scan
             if dE > _KED_THRESHOLD:
-                from ..linalg.kronecker_eed import kronecker_eed_from_full, ked_reml_quantities
+                from ..linalg.kronecker_eed import ked_reml_quantities, kronecker_eed_from_full
                 ked = kronecker_eed_from_full(Vg, Ve, d, E)
                 ked_q = ked_reml_quantities(ked, ed.eigenvalues, Y_rot, X0_rot)
                 nf._ked_W_diag = ked_q["W_diag"]

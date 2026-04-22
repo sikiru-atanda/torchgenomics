@@ -10,11 +10,9 @@ lambda_GC < 1.0 suggests deflation (over-correction or low power).
 
 from __future__ import annotations
 
+import scipy.stats as sp_stats
 import torch
 from torch import Tensor
-
-import scipy.stats as sp_stats
-
 
 # Median of chi2(1) distribution
 CHI2_1_MEDIAN = 0.4549364231195724  # scipy.stats.chi2.ppf(0.5, df=1)

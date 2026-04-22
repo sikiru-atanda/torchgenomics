@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import torch
@@ -72,7 +72,7 @@ class LDReference:
     def m(self) -> int:
         return len(self.snp)
 
-    def to(self, device: torch.device | str) -> "LDReference":
+    def to(self, device: torch.device | str) -> LDReference:
         """Move all tensors to ``device`` and return a new LDReference."""
         new_R_full = self.R_full.to(device) if self.R_full is not None else None
         new_R_blocks = (
@@ -258,7 +258,7 @@ class PGSResult:
             json.dump(sidecar, f, indent=2)
 
     @classmethod
-    def load(cls, path: str) -> "PGSResult":
+    def load(cls, path: str) -> PGSResult:
         """Load a PGSResult from TSV + JSON sidecar produced by ``save``."""
         import pandas as pd
 

@@ -13,14 +13,14 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 from .iterative import IterativeGWASLoop
 
 logger = logging.getLogger(__name__)
@@ -57,13 +57,13 @@ class BLINK(IterativeGWASLoop):
         self,
         max_iter: int = 10,
         cutoff: float = 0.01,
-        max_qtns: Optional[int] = None,
+        max_qtns: int | None = None,
         ld_threshold: float = 0.7,
         ld_max_samples: int = 200,
         method_sub: str = "reward",
         maf_threshold: float = 0.0,
         # Legacy parameter name
-        p_threshold: Optional[float] = None,
+        p_threshold: float | None = None,
     ) -> None:
         self.max_iter = max_iter
         self.cutoff = cutoff
@@ -79,7 +79,7 @@ class BLINK(IterativeGWASLoop):
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the BLINK null model (OLS with covariates only)."""

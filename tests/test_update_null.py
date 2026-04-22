@@ -9,11 +9,8 @@ import torch
 
 from torchgwas.config import NumericalConfig
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.linalg.eigh import eigendecompose, rotate
-from torchgwas.models.base import NullFit, update_null
+from torchgwas.models.base import update_null
 from torchgwas.models.single_trait_lmm import SingleTraitLMM
-from torchgwas.optim.controller import OptimizerController
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

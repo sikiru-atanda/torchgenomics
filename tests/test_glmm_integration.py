@@ -9,9 +9,7 @@ Covers:
 
 from __future__ import annotations
 
-import math
 import torch
-import pytest
 
 from torchgwas.models.base import VariantMeta
 

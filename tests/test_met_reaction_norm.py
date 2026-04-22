@@ -7,8 +7,7 @@ import torch
 
 from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.models.base import VariantMeta
-from torchgwas.models.multi_env_lmm import MultiEnvLMM, EnvScanResult
-
+from torchgwas.models.multi_env_lmm import MultiEnvLMM
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

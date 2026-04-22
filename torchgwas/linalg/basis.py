@@ -19,7 +19,6 @@ from torch import Tensor
 
 from ..config import STAT_DTYPE
 
-
 # ── Time standardization ────────────────────────────────────────────
 
 

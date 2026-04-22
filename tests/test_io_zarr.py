@@ -1,9 +1,10 @@
 """Tests for ZarrReader (Phase 12)."""
 
-import pytest
-import numpy as np
-import torch
 from pathlib import Path
+
+import numpy as np
+import pytest
+import torch
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 ZARR_PATH = FIXTURE_DIR / "tiny.zarr"

@@ -32,22 +32,20 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
 from ..linalg.basis import (
-    bspline_basis,
     evaluate_basis_at,
-    legendre_basis,
     place_knots,
     standardize_time,
 )
 from ..linalg.eigh import rotate
 from ..stats.tests import apply_contrast, chi2_sf
-from .base import NullFit, ScanResult, VariantMeta
+from .base import NullFit, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +96,8 @@ def longitudinal_to_wide(
     n_interior_knots: int = 4,
     degree: int = 3,
     knot_kind: str = "quantile",
-    t_min: Optional[float] = None,
-    t_max: Optional[float] = None,
+    t_min: float | None = None,
+    t_max: float | None = None,
 ) -> LongitudinalProjection:
     """Project long-format longitudinal phenotypes onto basis coefficients.
 
@@ -265,7 +263,7 @@ class RRScanResult:
 
     test: str = "wald"
     inference_type: str = "marginal"
-    n_obs: Optional[Tensor] = None
+    n_obs: Tensor | None = None
 
     # Optional per-time-point reconstruction (populated when eval_times is given)
     # eval_times shape: (n_t,) raw time values
@@ -273,15 +271,15 @@ class RRScanResult:
     # se_at_t shape:    (m, n_t)
     # stat_at_t shape:  (m, n_t)   — χ²(1) per (SNP, time)
     # p_at_t shape:     (m, n_t)
-    eval_times: Optional[Tensor] = None
-    beta_at_t: Optional[Tensor] = None
-    se_at_t: Optional[Tensor] = None
-    stat_at_t: Optional[Tensor] = None
-    p_at_t: Optional[Tensor] = None
+    eval_times: Tensor | None = None
+    beta_at_t: Tensor | None = None
+    se_at_t: Tensor | None = None
+    stat_at_t: Tensor | None = None
+    p_at_t: Tensor | None = None
 
     # Metadata
     basis_kind: str = "legendre"
-    basis_params: Optional[dict] = None
+    basis_params: dict | None = None
     b: int = 0
 
     def __len__(self) -> int:
@@ -325,7 +323,7 @@ class RandomRegressionLMM:
         k_coef_structure: str = "unstructured",
         include_pe: bool = False,
         mode: str = "projection",
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
     ) -> None:
         if basis not in ("legendre", "bspline"):
             raise ValueError(f"RandomRegressionLMM: unknown basis '{basis}'.")
@@ -352,8 +350,8 @@ class RandomRegressionLMM:
         sample_ids: Tensor,
         time_values: Tensor,
         *,
-        t_min: Optional[float] = None,
-        t_max: Optional[float] = None,
+        t_min: float | None = None,
+        t_max: float | None = None,
     ) -> LongitudinalProjection:
         """Run :func:`longitudinal_to_wide` with the model's basis configuration."""
         return longitudinal_to_wide(
@@ -377,8 +375,8 @@ class RandomRegressionLMM:
         *,
         sample_ids: Tensor,
         time_values: Tensor,
-        t_min: Optional[float] = None,
-        t_max: Optional[float] = None,
+        t_min: float | None = None,
+        t_max: float | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the random regression null model.
@@ -450,12 +448,12 @@ class RandomRegressionLMM:
         #    "unstructured" reuses the well-tested MultiTraitLMM driver;
         #    "diagonal" / "fa(k)" go through the rr_reml wrappers and then
         #    rebuild the same NullFit structure that MultiTraitLMM produces.
-        from .multi_trait_lmm import MultiTraitLMM
         from ..optim.rr_reml import (
             parse_k_coef_structure,
             rr_reml_diagonal,
             rr_reml_fa,
         )
+        from .multi_trait_lmm import MultiTraitLMM
 
         kind, fa_rank = parse_k_coef_structure(self.k_coef_structure)
 
@@ -466,9 +464,9 @@ class RandomRegressionLMM:
         # vector across all individuals). Used to cross-check the
         # projection-mode K_coef estimate.
         if self.mode == "stacked":
-            from .multi_trait_lmm import MultiTraitLMM
-            from ..optim.mvlmm_reml import mvlmm_null_quantities
             from ..linalg.eigh import eigendecompose, rotate
+            from ..optim.mvlmm_reml import mvlmm_null_quantities
+            from .multi_trait_lmm import MultiTraitLMM
 
             # Verify balanced layout: every individual has same n_obs and
             # same time vector (in the same order). Use the first
@@ -757,7 +755,7 @@ class RandomRegressionLMM:
         cls,
         null_fit: NullFit,
         t_query: Tensor,
-        n_components: Optional[int] = None,
+        n_components: int | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Functional principal components of the genetic covariance.
 
@@ -790,7 +788,7 @@ class RandomRegressionLMM:
         variant_meta: VariantMeta,
         test: str = "wald",
         *,
-        eval_times: Optional[Tensor] = None,
+        eval_times: Tensor | None = None,
         **kwargs: Any,
     ) -> RRScanResult:
         """Score a genotype chunk against the random regression null model.
@@ -929,11 +927,11 @@ class RandomRegressionLMM:
             p_tv = torch.full((m,), float("nan"), dtype=STAT_DTYPE, device=device)
 
         # --- Optional per-time-point reconstruction χ²(1) at each eval_times[k] ---
-        eval_times_out: Optional[Tensor] = None
-        beta_at_t_out: Optional[Tensor] = None
-        se_at_t_out: Optional[Tensor] = None
-        stat_at_t_out: Optional[Tensor] = None
-        p_at_t_out: Optional[Tensor] = None
+        eval_times_out: Tensor | None = None
+        beta_at_t_out: Tensor | None = None
+        se_at_t_out: Tensor | None = None
+        stat_at_t_out: Tensor | None = None
+        p_at_t_out: Tensor | None = None
         if eval_times is not None:
             eval_times_t = torch.as_tensor(eval_times, dtype=STAT_DTYPE, device=device).reshape(-1)
             n_t = int(eval_times_t.shape[0])

@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 
 import torch
-from torch import Tensor
 
 from .._native import HAS_NATIVE_WALL_PRITCHARD, _wall_pritchard_native
 from ..io.regions import Region

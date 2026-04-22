@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import math
 
-import pytest
 import torch
-import numpy as np
 from scipy.stats import chi2
 
-from torchgwas.config import STAT_DTYPE
 from torchgwas.stats.mixture import davies_pvalue, liu_pvalue, mixture_chi2_pvalue
 
 

@@ -11,13 +11,11 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from ..linalg.safe import safe_cholesky
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,7 @@ def multikernel_reml(
     *,
     max_iter: int = 100,
     tol: float = 1e-6,
-    init_vars: Optional[list[float]] = None,
+    init_vars: list[float] | None = None,
 ) -> tuple[list[float], float, list[dict]]:
     """LBFGS-autograd REML for K scalar variance components.
 

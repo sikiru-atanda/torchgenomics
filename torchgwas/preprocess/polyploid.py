@@ -5,7 +5,6 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-
 # Gene-action model names for arbitrary ploidy k
 GENE_ACTION_MODELS = [
     "general",

@@ -22,7 +22,6 @@ from torchgwas.models.base import NullFit, ScanResult, VariantMeta
 from torchgwas.models.conditional_lmm import ConditionalScanResult
 from torchgwas.scan.unified import UnifiedScanner, merge_scan_results
 
-
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------

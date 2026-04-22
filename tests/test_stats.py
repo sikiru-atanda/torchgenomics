@@ -5,17 +5,20 @@ from __future__ import annotations
 import math
 
 import pytest
-import numpy as np
 import scipy.stats as sp_stats
 import torch
 
-from torchgwas.stats.tests import chi2_sf, wald_test, lrt_test, score_test
+from torchgwas.stats.genomic_control import diagnose_inflation, lambda_gc
 from torchgwas.stats.multipletesting import (
-    bonferroni, sidak, holm, benjamini_hochberg, benjamini_yekutieli, storey_qvalue,
+    benjamini_hochberg,
+    benjamini_yekutieli,
+    bonferroni,
+    holm,
+    sidak,
+    storey_qvalue,
 )
 from torchgwas.stats.simplem import effective_test_count, ld_correlation_eigenvalues
-from torchgwas.stats.genomic_control import lambda_gc, diagnose_inflation
-
+from torchgwas.stats.tests import chi2_sf, lrt_test, score_test, wald_test
 
 # ---------------------------------------------------------------
 # Test statistic utilities
@@ -368,7 +371,6 @@ class TestCauchyCombination:
 
     def test_known_values(self):
         """Verify against hand-computed Cauchy combination."""
-        import math
         from torchgwas.stats.cauchy import cauchy_combination
 
         p1, p2 = 0.01, 0.5

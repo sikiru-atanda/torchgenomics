@@ -4,11 +4,10 @@
 import pytest
 import torch
 
+from tests.test_rr_lmm_scan import _vmeta
 from torchgwas.linalg.basis import legendre_basis, standardize_time
 from torchgwas.models.rr_lmm import RRScanResult
 from torchgwas.models.rr_spatial import SpatioTemporalRR, fit_spatial_pspline
-
-from tests.test_rr_lmm_scan import _vmeta
 
 
 def _simulate_field_trial(

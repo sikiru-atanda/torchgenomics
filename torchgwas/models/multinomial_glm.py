@@ -11,14 +11,13 @@ with reference category J (last category, beta_J = 0).
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ class MultinomialGLM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the null multinomial logit model via IRLS.

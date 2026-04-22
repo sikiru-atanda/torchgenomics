@@ -5,11 +5,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import BaseModel, NullFit, ScanResult, VariantMeta
-from torchgwas.scan.unified import UnifiedScanner, merge_scan_results
-from torchgwas.config import TorchGWASConfig, STAT_DTYPE
+from torchgwas.config import STAT_DTYPE, TorchGWASConfig
+from torchgwas.models.base import NullFit, ScanResult, VariantMeta
 from torchgwas.preprocess.qc import QCFilterConfig
-
+from torchgwas.scan.unified import UnifiedScanner, merge_scan_results
 
 # --- Fakes for testing ---
 

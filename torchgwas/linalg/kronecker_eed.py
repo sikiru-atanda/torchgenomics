@@ -19,7 +19,7 @@ References:
 from __future__ import annotations
 
 import logging
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import torch
 from torch import Tensor

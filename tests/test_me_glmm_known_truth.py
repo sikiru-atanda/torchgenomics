@@ -39,7 +39,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
-from scipy.stats import kstest
 
 
 def _make_vmeta(m):

@@ -7,6 +7,7 @@ K=0 reduction to BinaryGLM, protocol conformance.
 from __future__ import annotations
 
 import math
+
 import pytest
 import torch
 

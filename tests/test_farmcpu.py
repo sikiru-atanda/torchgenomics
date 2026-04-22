@@ -9,7 +9,6 @@ from torchgwas.models.base import NullFit, ScanResult, VariantMeta
 from torchgwas.models.farmcpu import FarmCPU
 from torchgwas.models.iterative import IterativeGWASLoop
 
-
 # ---------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------

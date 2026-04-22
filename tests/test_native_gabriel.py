@@ -14,12 +14,11 @@ import pytest
 import torch
 
 from torchgwas._native import HAS_NATIVE_GABRIEL, _gabriel_native
+from torchgwas.ld import compute_pairwise_ld
 from torchgwas.ld._blocks import (
-    PairwiseLD,
     _gabriel_native_enabled,
     detect_blocks_gabriel,
 )
-from torchgwas.ld import compute_pairwise_ld
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_GABRIEL,

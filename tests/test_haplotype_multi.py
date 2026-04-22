@@ -1,24 +1,20 @@
 """Tests for multi-environment and multi-trait haplotype GWAS (Phase 47)."""
 
 import torch
-import pytest
 
+from torchgwas.io.regions import Region
+from torchgwas.ld._blocks import LDBlock
 from torchgwas.models.haplotype_gwas import (
-    HaplotypeBlock,
-    HaplotypeGWAS,
     _enumerate_haplotypes_phased,
 )
 from torchgwas.models.haplotype_multi import (
-    HaplotypeMultiEnvGWAS,
-    HaplotypeMultiTraitGWAS,
     HaplotypeMTMETGWAS,
-    HaplotypeMultiEnvResult,
-    HaplotypeMultiTraitResult,
     HaplotypeMTMETResult,
-    _haplotype_gls_wald,
+    HaplotypeMultiEnvGWAS,
+    HaplotypeMultiEnvResult,
+    HaplotypeMultiTraitGWAS,
+    HaplotypeMultiTraitResult,
 )
-from torchgwas.ld._blocks import LDBlock
-from torchgwas.io.regions import Region
 
 DTYPE = torch.float64
 

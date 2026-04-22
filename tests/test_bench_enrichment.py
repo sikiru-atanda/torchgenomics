@@ -6,13 +6,12 @@ enrichment regression against statsmodels OLS.
 from __future__ import annotations
 
 import numpy as np
-import torch
 import statsmodels.api as sm
+import torch
 from scipy import stats as sp_stats
 
-from torchgwas.postgwas._enrichment import snp_to_gene, gene_set_enrichment, GeneResult
+from torchgwas.postgwas._enrichment import GeneResult, gene_set_enrichment, snp_to_gene
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Helpers

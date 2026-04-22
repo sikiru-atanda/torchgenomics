@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Iterator, Protocol, Tuple
+from collections.abc import Iterator
+from typing import Protocol
 
 from torch import Tensor
 
@@ -31,6 +32,6 @@ class GenotypeReader(Protocol):
         """Ordered list of sample IDs (for alignment with phenotype)."""
         ...
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         """Yield (G_chunk, variant_meta) where G_chunk is (n_samples, m) float dosage."""
         ...

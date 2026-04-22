@@ -5,12 +5,13 @@ Covers: CGF computation, SPA correctness, tail calibration, edge cases.
 
 from __future__ import annotations
 
-import math
-import pytest
 import torch
 
 from torchgwas.stats.spa import (
-    _cgf, _cgf_deriv1, _cgf_deriv2, _solve_saddlepoint,
+    _cgf,
+    _cgf_deriv1,
+    _cgf_deriv2,
+    _solve_saddlepoint,
     saddlepoint_pvalue,
 )
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -474,8 +473,8 @@ def pxem_nr_mvreml(
     max_iter: int = 100,
     tol: float = 1e-6,
     em_iters: int = 20,
-    Vg_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, float, list[dict]]:
     """PX-EM + AI-REML for multi-trait REML variance components.
 

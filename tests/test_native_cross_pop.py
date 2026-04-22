@@ -16,7 +16,6 @@ import torch
 from torchgwas._native import HAS_NATIVE_CROSS_POP, _cross_pop_native
 from torchgwas.ld._blocks_novel import detect_blocks_cross_pop
 
-
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_CROSS_POP, reason="native cross-pop extension not built"
 )

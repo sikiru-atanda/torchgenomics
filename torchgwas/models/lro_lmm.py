@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -155,10 +154,10 @@ class LROLMM:
         -------
         LROResult
         """
-        from .single_trait_lmm import SingleTraitLMM
-        from .base import VariantMeta
         from ..ld import detect_blocks
-        from ..linalg.kinship import grm_vanraden, compute_allele_frequencies
+        from ..linalg.kinship import grm_vanraden
+        from .base import VariantMeta
+        from .single_trait_lmm import SingleTraitLMM
 
         G = G.to(STAT_DTYPE)
         device = G.device

@@ -17,11 +17,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import exp, log, pi, sqrt
-from typing import Optional
 
 import torch
 from torch import Tensor
-
 
 # ---------------------------------------------------------------------------
 # Result dataclass
@@ -40,14 +38,14 @@ class PGSValidation:
     mae: float  # mean absolute error (PGS as predictor)
 
     # Binary-trait metrics (None for continuous)
-    auc: Optional[float] = None
-    nagelkerke_r2: Optional[float] = None
-    liability_r2: Optional[float] = None  # Lee et al. 2012 correction
+    auc: float | None = None
+    nagelkerke_r2: float | None = None
+    liability_r2: float | None = None  # Lee et al. 2012 correction
 
     # Sample info
     n: int = 0
     trait_type: str = "continuous"  # "continuous" or "binary"
-    prevalence: Optional[float] = None  # for liability R² correction
+    prevalence: float | None = None  # for liability R² correction
 
     def __repr__(self) -> str:
         lines = [f"PGSValidation(n={self.n}, trait_type='{self.trait_type}')"]
@@ -355,9 +353,9 @@ def validate_pgs(
     pgs: Tensor,
     y: Tensor,
     *,
-    covariates: Optional[Tensor] = None,
+    covariates: Tensor | None = None,
     trait_type: str = "continuous",
-    prevalence: Optional[float] = None,
+    prevalence: float | None = None,
 ) -> PGSValidation:
     """Evaluate polygenic score predictive performance.
 
@@ -457,9 +455,9 @@ def validate_pgs(
     mae = (y - y_hat).abs().mean().item()
 
     # ---- binary metrics --------------------------------------------------
-    auc_val: Optional[float] = None
-    nagelkerke_val: Optional[float] = None
-    liability_val: Optional[float] = None
+    auc_val: float | None = None
+    nagelkerke_val: float | None = None
+    liability_val: float | None = None
 
     if trait_type == "binary":
         auc_val = _auc_mannwhitney(pgs, y)

@@ -16,7 +16,7 @@ NIPS 2001.
 from __future__ import annotations
 
 import logging
-from typing import Iterator, Optional, Tuple
+from collections.abc import Iterator
 
 import torch
 from torch import Tensor
@@ -28,13 +28,13 @@ logger = logging.getLogger(__name__)
 
 
 def nystrom_approximate(
-    chunk_iter: Iterator[Tuple[Tensor, object]],
+    chunk_iter: Iterator[tuple[Tensor, object]],
     n_samples: int,
     n_landmarks: int = 500,
     ploidy: int = 2,
-    seed: Optional[int] = None,
-    device: Optional[torch.device] = None,
-) -> Tuple[EigenDecomp, float]:
+    seed: int | None = None,
+    device: torch.device | None = None,
+) -> tuple[EigenDecomp, float]:
     """Streaming Nystrom GRM approximation.
 
     Builds a low-rank approximation of the VanRaden GRM from streaming

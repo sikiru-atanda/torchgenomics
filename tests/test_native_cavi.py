@@ -12,12 +12,10 @@ from __future__ import annotations
 import math
 import os
 
-import numpy as np
 import pytest
 import torch
 
 from torchgwas._native import HAS_NATIVE_CAVI, _cavi_native
-
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_CAVI, reason="native CAVI extension not built"

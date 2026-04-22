@@ -21,7 +21,6 @@ from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.models.base import VariantMeta
 from torchgwas.models.lro_lmm import LROLMM, LROResult, _block_grm_contribution
 
-
 # ===================================================================
 # Helper: simulate data
 # ===================================================================

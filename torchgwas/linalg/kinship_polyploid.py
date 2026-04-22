@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -152,7 +151,7 @@ def grm_asv_transform(K: Tensor) -> Tensor:
 
 def grm_epistatic_hadamard(
     K_add: Tensor,
-    K_dom: Optional[Tensor] = None,
+    K_dom: Tensor | None = None,
 ) -> dict[str, Tensor]:
     """Compute epistatic GRMs via Hadamard (element-wise) products.
 

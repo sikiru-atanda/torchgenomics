@@ -9,7 +9,6 @@ from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.models.base import VariantMeta
 from torchgwas.models.multi_env_lmm import MultiEnvLMM, _parse_vg_structure
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────
 
 @pytest.fixture

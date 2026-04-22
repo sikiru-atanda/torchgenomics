@@ -11,8 +11,6 @@ wrapper's summary counts.
 
 from __future__ import annotations
 
-import math
-
 import pytest
 import torch
 
@@ -24,7 +22,6 @@ from torchgwas.postgwas._smr import (
     smr_test,
 )
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Helper

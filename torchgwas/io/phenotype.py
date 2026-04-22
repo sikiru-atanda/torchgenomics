@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -43,9 +42,9 @@ def load_phenotype(
     phenotype_path: str | Path,
     genotype_sample_ids: list[str],
     *,
-    covariate_path: Optional[str | Path] = None,
-    trait_columns: Optional[list[str]] = None,
-    id_column: Optional[str] = None,
+    covariate_path: str | Path | None = None,
+    trait_columns: list[str] | None = None,
+    id_column: str | None = None,
 ) -> PhenotypeData:
     """Load phenotype/covariates and align to genotype samples.
 
@@ -97,7 +96,7 @@ def load_phenotype(
             )
 
     # --- 1b. Load covariates ---
-    covar_df: Optional[pd.DataFrame] = None
+    covar_df: pd.DataFrame | None = None
     covar_ids: set[str]
     covar_names: list[str] = []
 
@@ -278,7 +277,7 @@ def _load_tabular(path: str | Path) -> pd.DataFrame:
         return pd.read_excel(p)
 
     # Text formats
-    with open(p, "r") as _fh:
+    with open(p) as _fh:
         first_line = _fh.readline()
     if "\t" in first_line:
         sep = "\t"

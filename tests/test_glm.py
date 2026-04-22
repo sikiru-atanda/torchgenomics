@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE
 from torchgwas.models.base import NullFit, ScanResult, VariantMeta
 from torchgwas.models.glm import GLM
 

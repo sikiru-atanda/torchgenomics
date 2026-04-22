@@ -24,7 +24,7 @@ seed / ``se`` are passed.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -32,8 +32,7 @@ from torch import Tensor
 
 from ..linalg.eigh import rotate
 from ..models.base import NullFit
-from ._mediate import _as_tensor, fit_mediation_null
-from ._se import bootstrap_se, monte_carlo_se, sobel_se
+from ._se import monte_carlo_se, sobel_se
 from ._sensitivity import imai_rho_sensitivity
 
 logger = logging.getLogger("torchgwas.multiomics")
@@ -275,7 +274,7 @@ def batched_scan_pairs(
     n_mc_draws: int = 10_000,
     n_boot: int = 0,
     sensitivity: bool = True,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     block_size: tuple[int, int] = (256, 64),
 ) -> list[dict[str, Any]]:
     """Run the batched mediation scan over ``pairs``.
@@ -299,7 +298,7 @@ def batched_scan_pairs(
         key = (i // s_b, j // f_b)
         pair_by_block.setdefault(key, []).append((row_idx, (i, j)))
 
-    results: list[Optional[dict[str, Any]]] = [None] * len(pairs)
+    results: list[dict[str, Any] | None] = [None] * len(pairs)
 
     for (sb_idx, fb_idx), members in pair_by_block.items():
         snp_start = sb_idx * s_b

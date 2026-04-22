@@ -7,21 +7,19 @@ import torch
 
 from torchgwas.ld import (
     LDBlock,
-    PairwiseLD,
     compute_dprime_matrix,
     compute_pairwise_ld,
     compute_r2_matrix,
     detect_blocks,
     save_blocks_bed,
 )
+from torchgwas.ld._dprime_ci import dprime_confidence_interval
 from torchgwas.ld._em_haplotype import build_genotype_counts, em_haplotype_freq
 from torchgwas.ld._pairwise import (
     compute_dprime_phased,
     compute_dprime_unphased,
     compute_r2_pairs,
 )
-from torchgwas.ld._dprime_ci import dprime_confidence_interval
-
 
 # ── Fixtures ────────────────────────────────────────────────────────
 

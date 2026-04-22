@@ -19,15 +19,14 @@ References:
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
-from .base import BaseModel, NullFit, VariantMeta
+from .base import NullFit, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,7 @@ class GxEScanResult:
     p_joint: Tensor
 
     test: str = "wald"
-    n_obs: Optional[Tensor] = None
+    n_obs: Tensor | None = None
 
     def __len__(self) -> int:
         return len(self.snp)
@@ -87,16 +86,16 @@ class HetLMM:
     Conforms to the BaseModel protocol: ``fit_null`` + ``score_chunk``.
     """
 
-    def __init__(self, config: Optional[NumericalConfig] = None) -> None:
+    def __init__(self, config: NumericalConfig | None = None) -> None:
         self.config = config or NumericalConfig()
 
     def fit_null(
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         *,
-        env: Optional[Tensor] = None,
+        env: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit null model (no SNP main or interaction effect).
@@ -112,7 +111,7 @@ class HetLMM:
         -------
         NullFit with cached rotated quantities + environment.
         """
-        from ..linalg.eigh import compute_weights, eigendecompose, rotate
+        from ..linalg.eigh import eigendecompose, rotate
         from ..optim.controller import OptimizerController
         from ..optim.reml_math import _compute_P_quantities
 
@@ -343,16 +342,16 @@ class GxELMM:
     Conforms to the BaseModel protocol: ``fit_null`` + ``score_chunk``.
     """
 
-    def __init__(self, config: Optional[NumericalConfig] = None) -> None:
+    def __init__(self, config: NumericalConfig | None = None) -> None:
         self.config = config or NumericalConfig()
 
     def fit_null(
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         *,
-        env: Optional[Tensor] = None,
+        env: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit null model with 3 variance components: Vg, Vge, Ve.

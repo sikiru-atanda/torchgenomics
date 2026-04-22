@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 from .iterative import IterativeGWASLoop
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class FarmCPU(IterativeGWASLoop):
         max_iter: int = 10,
         p_threshold: float = 0.01,
         max_qtns: int = 20,
-        bin_sizes: Optional[list[int]] = None,
+        bin_sizes: list[int] | None = None,
         method_bin: str = "static",
         method_sub: str = "reward",
         maf_threshold: float = 0.0,
@@ -70,7 +70,7 @@ class FarmCPU(IterativeGWASLoop):
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the FarmCPU null model (OLS with covariates only)."""

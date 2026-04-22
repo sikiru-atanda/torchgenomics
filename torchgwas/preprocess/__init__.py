@@ -7,6 +7,7 @@ Imputation methods:
 
 from .dosage_uncertainty import dosage_rsq, dosage_variance, expected_dosage  # noqa: F401
 from .impute import impute_knn, impute_ld, impute_mean, impute_mode  # noqa: F401
+from .impute_gpu import impute_deep_learning, impute_li_stephens  # noqa: F401
 from .polyploid import detect_ploidy, list_gene_action_models, recode_gene_action  # noqa: F401
 from .polyrad_wrapper import DosageProbabilities, run_polyrad, run_updog  # noqa: F401
 from .qc import (  # noqa: F401
@@ -15,7 +16,6 @@ from .qc import (  # noqa: F401
     compute_variant_qc,
     write_variant_qc_parquet,
 )
-from .impute_gpu import impute_deep_learning, impute_li_stephens  # noqa: F401
 from .standardize import (  # noqa: F401
     center_genotypes,
     compute_allele_frequencies,

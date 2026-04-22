@@ -2,28 +2,24 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import numpy as np
 import pytest
 import torch
 
+from torchgwas.models.base import VariantMeta
+from torchgwas.preprocess.covariates import build_covariate_matrix
+from torchgwas.preprocess.impute import impute_mean, impute_mode
+from torchgwas.preprocess.qc import (
+    QCFilterConfig,
+    apply_qc_filters,
+    compute_variant_qc,
+    write_variant_qc_parquet,
+)
 from torchgwas.preprocess.standardize import (
     center_genotypes,
     compute_allele_frequencies,
     compute_maf,
     scale_genotypes,
 )
-from torchgwas.preprocess.impute import impute_mean, impute_mode
-from torchgwas.preprocess.qc import (
-    QCFilterConfig,
-    VariantQCStats,
-    apply_qc_filters,
-    compute_variant_qc,
-    write_variant_qc_parquet,
-)
-from torchgwas.preprocess.covariates import build_covariate_matrix
-from torchgwas.models.base import VariantMeta
 
 
 @pytest.fixture

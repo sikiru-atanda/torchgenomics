@@ -7,14 +7,14 @@ reference implementations (statsmodels WLS, scipy).
 from __future__ import annotations
 
 import math
+
 import numpy as np
-import torch
 import statsmodels.api as sm
+import torch
 from scipy import stats as sp_stats
 
-from torchgwas.postgwas._mr import mr_ivw, mr_egger, mr_weighted_median, mr_presso
+from torchgwas.postgwas._mr import mr_egger, mr_ivw, mr_presso, mr_weighted_median
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture

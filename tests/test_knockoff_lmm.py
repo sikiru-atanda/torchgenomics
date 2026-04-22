@@ -29,7 +29,6 @@ from torchgwas.models.knockoff_lmm import (
     _knockoff_plus_filter,
 )
 
-
 # ===================================================================
 # Helper: simulate knockoff data with LD block structure
 # ===================================================================

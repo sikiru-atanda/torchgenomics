@@ -23,7 +23,6 @@ from torchgwas.linalg.truncated_mvn import (
 )
 from torchgwas.optim.squarem import squarem
 
-
 # ===================================================================
 # Truncated MVN moments
 # ===================================================================

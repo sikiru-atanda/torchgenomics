@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Tuple
 
 import numpy as np
 import torch
 from torch import Tensor
 
 from ..models.base import VariantMeta
-from .base import GenotypeReader
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +72,7 @@ class VCFReader:
     def sample_ids(self) -> list[str]:
         return list(self._sample_ids)
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         vcf = cyvcf2.VCF(self._path)
 
         buffer_dosage: list[np.ndarray] = []
@@ -146,7 +145,7 @@ class VCFReader:
         dosage_list: list[np.ndarray],
         snp: list[str], chr_: list[str], pos: list[int],
         a1: list[str], a2: list[str],
-    ) -> Tuple[Tensor, VariantMeta]:
+    ) -> tuple[Tensor, VariantMeta]:
         """Stack buffered variants into a chunk."""
         dosage_arr = np.stack(dosage_list, axis=0)  # (m, n)
         G_chunk = torch.from_numpy(dosage_arr.T.copy()).to(torch.float64)

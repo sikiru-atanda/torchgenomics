@@ -5,12 +5,11 @@ from __future__ import annotations
 import pytest
 import torch
 
+from torchgwas.linalg.eigh import compute_weights, eigendecompose, rotate
 from torchgwas.linalg.kinship import grm_vanraden, grm_vanraden_streaming
 from torchgwas.linalg.kinship_polyploid import grm_loco, grm_polyploid_gene_action
-from torchgwas.linalg.eigh import EigenDecomp, eigendecompose, rotate, compute_weights
-from torchgwas.linalg.safe import safe_cholesky, safe_logdet, symmetrize
+from torchgwas.linalg.safe import safe_cholesky, safe_logdet
 from torchgwas.linalg.woodbury import woodbury_inverse
-from torchgwas.preprocess.impute import impute_mean
 
 
 @pytest.fixture

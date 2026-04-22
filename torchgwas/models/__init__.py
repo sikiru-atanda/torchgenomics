@@ -19,53 +19,29 @@ Post-V1 novel models (Phases 15-19+):
 """
 
 from .base import BaseModel, NullFit, ScanResult, VariantMeta, update_null  # noqa: F401
+from .bayesian_vs import BayesianVS, BayesianVSResult  # noqa: F401
+from .binary_glm import BinaryGLM  # noqa: F401
+from .binary_glmm import BinaryGLMM  # noqa: F401
 from .blink import BLINK  # noqa: F401
+from .conditional_lmm import ConditionalLMM, ConditionalScanResult  # noqa: F401
 from .farmcpu import FarmCPU  # noqa: F401
 from .glm import GLM  # noqa: F401
-from .iterative import IterativeGWASLoop  # noqa: F401
-from .multi_trait_lmm import MultiTraitLMM  # noqa: F401
-from .multi_kernel_lmm import MultiKernelLMM, build_multi_kernels  # noqa: F401
-from .lmm_gxe import HetLMM, GxELMM, GxEScanResult  # noqa: F401
-from .set_based import SetBasedScanner, SetBasedResult  # noqa: F401
-from .bayesian_vs import BayesianVS, BayesianVSResult  # noqa: F401
-from .multi_env_lmm import MultiEnvLMM, EnvScanResult  # noqa: F401
-from .single_trait_lmm import SingleTraitLMM  # noqa: F401
-from .threshold_linear import ThresholdLinearModel, ThresholdNullFit  # noqa: F401
-from .within_family_lmm import WithinFamilyLMM, WithinFamilyNullFit  # noqa: F401
-from .conditional_lmm import ConditionalLMM, ConditionalScanResult  # noqa: F401
-from .multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM, MTMETScanResult  # noqa: F401
-from .ocf_lmm import OCFLMM, OCFNullFit  # noqa: F401
-from .knockoff_lmm import KnockoffLMM, KnockoffResult  # noqa: F401
-from .gu_lmm import GULM, GUResult  # noqa: F401
-from .lro_lmm import LROLMM, LROResult  # noqa: F401
 from .glm_link import (  # noqa: F401
-    LinkFunction, LogitLink, ProbitLink, CumulativeLogitLink, IdentityLink,
+    CumulativeLogitLink,
+    IdentityLink,
+    LinkFunction,
+    LogitLink,
+    ProbitLink,
 )
-from .binary_glm import BinaryGLM  # noqa: F401
-from .ordinal_glm import OrdinalGLM  # noqa: F401
-from .multinomial_glm import MultinomialGLM  # noqa: F401
-from .binary_glmm import BinaryGLMM  # noqa: F401
-from .ordinal_glmm import OrdinalGLMM  # noqa: F401
-from .multinomial_glmm import MultinomialGLMM  # noqa: F401
-from .multi_env_glmm import MultiEnvGLMM  # noqa: F401
-from .survival_glmm import SurvivalGLMM  # noqa: F401
-from .rr_lmm import (  # noqa: F401
-    RandomRegressionLMM,
-    RRScanResult,
-    LongitudinalProjection,
-    longitudinal_to_wide,
-)
-from .rr_spatial import SpatioTemporalRR, fit_spatial_pspline  # noqa: F401
-from .rr_met import (  # noqa: F401
-    RandomRegressionMultiEnvLMM,
-    RRMetScanResult,
-    MultiEnvLongitudinalProjection,
-    project_multi_env,
-)
-from .haplotype_gwas import HaplotypeGWAS, HaplotypeGWASResult, HaplotypeBlock  # noqa: F401
+from .gu_lmm import GULM, GUResult  # noqa: F401
+from .haplotype_gwas import HaplotypeBlock, HaplotypeGWAS, HaplotypeGWASResult  # noqa: F401
 from .haplotype_multi import (  # noqa: F401
-    HaplotypeMultiEnvGWAS, HaplotypeMultiTraitGWAS, HaplotypeMTMETGWAS,
-    HaplotypeMultiEnvResult, HaplotypeMultiTraitResult, HaplotypeMTMETResult,
+    HaplotypeMTMETGWAS,
+    HaplotypeMTMETResult,
+    HaplotypeMultiEnvGWAS,
+    HaplotypeMultiEnvResult,
+    HaplotypeMultiTraitGWAS,
+    HaplotypeMultiTraitResult,
 )
 from .haplotype_novel import (  # noqa: F401
     BayesHapResult,
@@ -81,3 +57,35 @@ from .haplotype_novel import (  # noqa: F401
     hskat_test,
     pcht_score_test,
 )
+from .iterative import IterativeGWASLoop  # noqa: F401
+from .knockoff_lmm import KnockoffLMM, KnockoffResult  # noqa: F401
+from .lmm_gxe import GxELMM, GxEScanResult, HetLMM  # noqa: F401
+from .lro_lmm import LROLMM, LROResult  # noqa: F401
+from .multi_env_glmm import MultiEnvGLMM  # noqa: F401
+from .multi_env_lmm import EnvScanResult, MultiEnvLMM  # noqa: F401
+from .multi_kernel_lmm import MultiKernelLMM, build_multi_kernels  # noqa: F401
+from .multi_trait_lmm import MultiTraitLMM  # noqa: F401
+from .multi_trait_multi_env_lmm import MTMETScanResult, MultiTraitMultiEnvLMM  # noqa: F401
+from .multinomial_glm import MultinomialGLM  # noqa: F401
+from .multinomial_glmm import MultinomialGLMM  # noqa: F401
+from .ocf_lmm import OCFLMM, OCFNullFit  # noqa: F401
+from .ordinal_glm import OrdinalGLM  # noqa: F401
+from .ordinal_glmm import OrdinalGLMM  # noqa: F401
+from .rr_lmm import (  # noqa: F401
+    LongitudinalProjection,
+    RandomRegressionLMM,
+    RRScanResult,
+    longitudinal_to_wide,
+)
+from .rr_met import (  # noqa: F401
+    MultiEnvLongitudinalProjection,
+    RandomRegressionMultiEnvLMM,
+    RRMetScanResult,
+    project_multi_env,
+)
+from .rr_spatial import SpatioTemporalRR, fit_spatial_pspline  # noqa: F401
+from .set_based import SetBasedResult, SetBasedScanner  # noqa: F401
+from .single_trait_lmm import SingleTraitLMM  # noqa: F401
+from .survival_glmm import SurvivalGLMM  # noqa: F401
+from .threshold_linear import ThresholdLinearModel, ThresholdNullFit  # noqa: F401
+from .within_family_lmm import WithinFamilyLMM, WithinFamilyNullFit  # noqa: F401

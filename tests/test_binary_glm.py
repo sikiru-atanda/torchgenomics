@@ -7,7 +7,7 @@ null calibration, power, edge cases, protocol conformance.
 from __future__ import annotations
 
 import math
-import pytest
+
 import torch
 
 from torchgwas.models.base import VariantMeta

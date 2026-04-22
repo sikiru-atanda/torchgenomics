@@ -8,7 +8,7 @@ through ``-log10`` to match the axis.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -29,8 +29,8 @@ def qq_plot(
     confidence_band: bool = True,
     lambda_gc: bool = True,
     ax=None,
-    output_path: Optional[str] = None,
-    title: Optional[str] = None,
+    output_path: str | None = None,
+    title: str | None = None,
     point_color: str = "#1f77b4",
     band_color: str = "#cccccc",
     point_size: float = 8.0,

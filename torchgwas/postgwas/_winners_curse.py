@@ -37,9 +37,6 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from ._sumstats import SumStats
-
-
 # ---------------------------------------------------------------------------
 # Normal helpers
 # ---------------------------------------------------------------------------

@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
 import torch
-import numpy as np
 
-from torchgwas.config import STAT_DTYPE
 from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.models.base import BaseModel, NullFit, VariantMeta
-from torchgwas.models.lmm_gxe import HetLMM, GxELMM, GxEScanResult
+from torchgwas.models.lmm_gxe import GxELMM, GxEScanResult, HetLMM
 from torchgwas.optim.gxe_lbfgs_reml import gxe_lbfgs_reml
-
 
 # ---------------------------------------------------------------
 # Fixtures

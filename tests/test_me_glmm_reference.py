@@ -27,12 +27,11 @@ in limiting cases, and that the multi-env extension is a proper generalization.
 from __future__ import annotations
 
 import math
-import numpy as np
-import pytest
-import torch
-from scipy.stats import spearmanr, kstest
 
+import numpy as np
 import statsmodels.api as sm
+import torch
+from scipy.stats import kstest, spearmanr
 
 
 def _make_vmeta(m):
@@ -150,8 +149,8 @@ class TestMEGLMMvsBinaryGLMM:
 
     def test_per_env_pvalues_correlate_with_binary_glmm(self):
         """Per-env marginal p-values should rank-correlate with BinaryGLMM."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
         from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_independent_envs(n=300, E=3, m=30, seed=42)
         vmeta = _make_vmeta(30)
@@ -182,8 +181,8 @@ class TestMEGLMMvsBinaryGLMM:
 
     def test_score_numerator_matches_binary_glmm(self):
         """Score U = g'(Y-μ) should have consistent sign with BinaryGLMM."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
         from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_independent_envs(n=300, E=2, m=20, seed=43)
         vmeta = _make_vmeta(20)
@@ -552,8 +551,8 @@ class TestMEGLMMPowerConsistency:
 
     def test_both_detect_planted_signal(self):
         """A strong SNP effect should be detected by both ME-GLMM and BinaryGLMM."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
         from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(80)
         np.random.seed(80)

@@ -11,7 +11,6 @@ Requirements: PLINK 1.9 accessible at the path below.
 from __future__ import annotations
 
 import os
-import struct
 import subprocess
 import tempfile
 from pathlib import Path
@@ -625,7 +624,7 @@ class TestFullComparisonReport:
             f.write("TorchGWAS Block Detection: Full Validation Report\n")
             f.write("=" * 60 + "\n\n")
             f.write(f"Data: {G.shape[0]} samples x {G.shape[1]} SNPs\n")
-            f.write(f"Synthetic: 5 LD blocks of 10 SNPs, 10 independent between\n\n")
+            f.write("Synthetic: 5 LD blocks of 10 SNPs, 10 independent between\n\n")
             f.write("Methods vs PLINK Reference\n")
             f.write("-" * 60 + "\n")
             f.write(table + "\n\n")

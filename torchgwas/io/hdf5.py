@@ -18,8 +18,8 @@ Expected HDF5 layout::
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Tuple
 
 import torch
 from torch import Tensor
@@ -125,7 +125,7 @@ class HDF5Reader:
             a2=self._alt,
         )
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         """Yield (G_chunk, variant_meta) where G_chunk is (n_samples, m) float64 dosage.
 
         Only the requested slice is read from disk — memory usage stays

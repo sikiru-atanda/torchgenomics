@@ -13,17 +13,15 @@ distinguishing likely causal variants from LD proxies (Yang et al. 2012).
 from __future__ import annotations
 
 import logging
-import math
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
 from ..linalg.eigh import rotate
-from ..optim.reml_math import _compute_P_quantities
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 from .single_trait_lmm import SingleTraitLMM, _f_sf
 
 logger = logging.getLogger(__name__)
@@ -192,7 +190,7 @@ class ConditionalLMM:
 
     def __init__(
         self,
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
         ld_method: str = "r2",
         max_kb: float = 200.0,
         persistence_ratio: float = 0.5,
@@ -212,7 +210,7 @@ class ConditionalLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit null model (delegates to SingleTraitLMM)."""

@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Union
 
 import torch
 from torch import Tensor
@@ -71,18 +70,18 @@ from ._compare import (
     format_comparison_table,
 )
 from ._dprime_ci import dprime_confidence_interval
-from ._plink_compat import (
-    PLINKBlock,
-    ldblocks_to_plink_det,
-    load_plink_blocks_det,
-    plink_blocks_to_ldblocks,
-)
-from ._em_haplotype import build_genotype_counts, em_haplotype_freq
+from ._em_haplotype import build_genotype_counts
 from ._pairwise import (
     compute_dprime_phased,
     compute_dprime_unphased,
     compute_r2_matrix,
     compute_r2_pairs,
+)
+from ._plink_compat import (
+    PLINKBlock,
+    ldblocks_to_plink_det,
+    load_plink_blocks_det,
+    plink_blocks_to_ldblocks,
 )
 
 __all__ = [
@@ -607,13 +606,13 @@ def save_blocks_summary(
     total_variants = sum(sizes)
 
     with open(path, "w") as f:
-        f.write(f"Block Detection Summary\n")
+        f.write("Block Detection Summary\n")
         f.write(f"{'=' * 50}\n")
         f.write(f"Method:             {method}\n")
         f.write(f"Total blocks:       {len(blocks)}\n")
         f.write(f"Total variants:     {total_variants}\n")
-        f.write(f"\n")
-        f.write(f"Block Size (variants)\n")
+        f.write("\n")
+        f.write("Block Size (variants)\n")
         f.write(f"{'-' * 30}\n")
         f.write(f"  Min:              {min(sizes)}\n")
         f.write(f"  Max:              {max(sizes)}\n")
@@ -621,21 +620,21 @@ def save_blocks_summary(
         f.write(f"  Median:           {statistics.median(sizes):.1f}\n")
         if len(sizes) > 1:
             f.write(f"  Std:              {statistics.stdev(sizes):.1f}\n")
-        f.write(f"\n")
-        f.write(f"Block Span (kb)\n")
+        f.write("\n")
+        f.write("Block Span (kb)\n")
         f.write(f"{'-' * 30}\n")
         f.write(f"  Min:              {min(spans_kb):.2f}\n")
         f.write(f"  Max:              {max(spans_kb):.2f}\n")
         f.write(f"  Mean:             {statistics.mean(spans_kb):.2f}\n")
         f.write(f"  Median:           {statistics.median(spans_kb):.2f}\n")
-        f.write(f"\n")
-        f.write(f"Within-Block LD (mean r2)\n")
+        f.write("\n")
+        f.write("Within-Block LD (mean r2)\n")
         f.write(f"{'-' * 30}\n")
         f.write(f"  Min:              {min(r2s):.4f}\n")
         f.write(f"  Max:              {max(r2s):.4f}\n")
         f.write(f"  Mean:             {statistics.mean(r2s):.4f}\n")
-        f.write(f"\n")
-        f.write(f"Per-Chromosome Breakdown\n")
+        f.write("\n")
+        f.write("Per-Chromosome Breakdown\n")
         f.write(f"{'-' * 30}\n")
         f.write(f"  {'CHR':<8}{'BLOCKS':>8}{'VARIANTS':>10}\n")
         for c in sorted(chr_counts):

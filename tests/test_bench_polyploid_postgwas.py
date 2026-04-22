@@ -17,19 +17,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
-import torch
 import numpy as np
+import torch
 from scipy import stats as sp_stats
 
-from torchgwas.postgwas._mr import mr_ivw, mr_egger, mr_weighted_median, mr_all
-from torchgwas.postgwas._enrichment import snp_to_gene, gene_set_enrichment
-from torchgwas.postgwas._finemapping import extract_credible_sets, annotate_sumstats
-from torchgwas.postgwas._multi_ancestry import mr_mega, mantra
-from torchgwas.postgwas._sumstats import SumStats
 from torchgwas.pgs.validation import validate_pgs
-
+from torchgwas.postgwas._enrichment import gene_set_enrichment, snp_to_gene
+from torchgwas.postgwas._finemapping import annotate_sumstats, extract_credible_sets
+from torchgwas.postgwas._mr import mr_all, mr_egger, mr_ivw
+from torchgwas.postgwas._multi_ancestry import mantra, mr_mega
+from torchgwas.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Mock BayesianVSResult for fine-mapping tests
@@ -46,8 +44,8 @@ class _MockBVS:
     pip: torch.Tensor
     beta_mean: torch.Tensor
     beta_sd: torch.Tensor
-    credible_sets: Optional[list[list[int]]] = None
-    alpha: Optional[torch.Tensor] = None
+    credible_sets: list[list[int]] | None = None
+    alpha: torch.Tensor | None = None
     n_signals: int = 0
     method: str = "cavi"
 

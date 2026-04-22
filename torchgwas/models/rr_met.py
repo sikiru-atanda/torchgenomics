@@ -31,21 +31,19 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
 from ..linalg.basis import (
-    bspline_basis,
     evaluate_basis_at,
-    legendre_basis,
     place_knots,
     standardize_time,
 )
 from ..stats.tests import apply_contrast, chi2_sf
-from .base import NullFit, ScanResult, VariantMeta
+from .base import NullFit, VariantMeta
 from .multi_trait_multi_env_lmm import (
     MultiTraitMultiEnvLMM,
     _gls_wald_scan,
@@ -430,21 +428,21 @@ class RRMetScanResult:
     df_by_test: dict[str, int] = field(default_factory=dict)
 
     # Optional per-time-point × per-env reconstruction
-    eval_times: Optional[Tensor] = None
-    beta_at_t: Optional[Tensor] = None        # (m, n_t, E)
-    se_at_t: Optional[Tensor] = None          # (m, n_t, E)
-    stat_at_t: Optional[Tensor] = None        # (m, n_t, E)
-    p_at_t: Optional[Tensor] = None           # (m, n_t, E)
+    eval_times: Tensor | None = None
+    beta_at_t: Tensor | None = None        # (m, n_t, E)
+    se_at_t: Tensor | None = None          # (m, n_t, E)
+    stat_at_t: Tensor | None = None        # (m, n_t, E)
+    p_at_t: Tensor | None = None           # (m, n_t, E)
 
     test: str = "wald"
     inference_type: str = "marginal"
 
     # Metadata
     basis_kind: str = "legendre"
-    basis_params: Optional[dict] = None
+    basis_params: dict | None = None
     b: int = 0
     E: int = 0
-    env_index: Optional[Tensor] = None
+    env_index: Tensor | None = None
 
     def __len__(self) -> int:
         return len(self.snp)
@@ -492,7 +490,7 @@ class RandomRegressionMultiEnvLMM:
         degree: int = 3,
         knot_kind: str = "quantile",
         vg_structure: str = "separable",
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
     ) -> None:
         if basis not in ("legendre", "bspline"):
             raise ValueError(f"RandomRegressionMultiEnvLMM: unknown basis '{basis}'.")
@@ -534,7 +532,7 @@ class RandomRegressionMultiEnvLMM:
         sample_ids: Tensor,
         env_ids: Tensor,
         time_values: Tensor,
-        env_names: Optional[list[str]] = None,
+        env_names: list[str] | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the RR-MET null model.
@@ -667,7 +665,7 @@ class RandomRegressionMultiEnvLMM:
         variant_meta: VariantMeta,
         test: str = "wald",
         *,
-        eval_times: Optional[Tensor] = None,
+        eval_times: Tensor | None = None,
         **kwargs: Any,
     ) -> RRMetScanResult:
         """Score a genotype chunk with RR-MET Wald tests.
@@ -726,11 +724,11 @@ class RandomRegressionMultiEnvLMM:
             df_by_test[name] = int(C.shape[0])
 
         # --- Optional per-time × per-env reconstruction ---
-        eval_times_out: Optional[Tensor] = None
-        beta_at_t_out: Optional[Tensor] = None
-        se_at_t_out: Optional[Tensor] = None
-        stat_at_t_out: Optional[Tensor] = None
-        p_at_t_out: Optional[Tensor] = None
+        eval_times_out: Tensor | None = None
+        beta_at_t_out: Tensor | None = None
+        se_at_t_out: Tensor | None = None
+        stat_at_t_out: Tensor | None = None
+        p_at_t_out: Tensor | None = None
         if eval_times is not None:
             eval_times_t = torch.as_tensor(
                 eval_times, dtype=STAT_DTYPE, device=device
@@ -892,7 +890,7 @@ class RandomRegressionMultiEnvLMM:
         null_fit: NullFit,
         env: int,
         t_query: Tensor,
-        n_components: Optional[int] = None,
+        n_components: int | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Functional principal components of the env-``e`` genetic operator.
 

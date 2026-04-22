@@ -5,13 +5,12 @@ from __future__ import annotations
 import torch
 
 from torchgwas.postgwas._enrichment import (
-    GeneResult,
     EnrichmentResult,
-    snp_to_gene,
+    GeneResult,
     gene_set_enrichment,
+    snp_to_gene,
 )
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Helper

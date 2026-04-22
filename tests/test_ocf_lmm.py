@@ -18,16 +18,13 @@ import pytest
 import torch
 
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
+from torchgwas.models.base import ScanResult, VariantMeta
 from torchgwas.models.ocf_lmm import (
     OCFLMM,
     OCFNullFit,
-    FoldResult,
     _create_folds,
     _fit_fold,
-    _dml_score_batch,
 )
-
 
 # ===================================================================
 # Helper: simulate LMM data

@@ -7,7 +7,6 @@ import math
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE
 from torchgwas.linalg.eigh import eigendecompose, rotate
 from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.models.base import NullFit, ScanResult, VariantMeta
@@ -16,8 +15,6 @@ from torchgwas.optim.ai_reml import ai_reml_single
 from torchgwas.optim.em_warmstart import px_em_warmstart
 from torchgwas.optim.mm_reml import mm_reml
 from torchgwas.optim.reml_math import reml_derivatives, reml_loglikelihood
-from torchgwas.preprocess.impute import impute_mean
-
 
 # ---------------------------------------------------------------
 # Fixtures: simulate a simple LMM dataset with known parameters

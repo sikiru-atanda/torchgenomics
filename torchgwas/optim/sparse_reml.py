@@ -18,15 +18,15 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import torch
 from torch import Tensor
 
-from ..config import NumericalConfig, STAT_DTYPE
+from ..config import STAT_DTYPE, NumericalConfig
 from ..models.base import NullFit
-from .pcg_solver import pcg_solve, diagonal_preconditioner
-from .stochastic_trace import hutchinson_trace, stochastic_logdet
+from .pcg_solver import diagonal_preconditioner, pcg_solve
+from .stochastic_trace import stochastic_logdet
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,12 @@ def sparse_reml_fit(
     K_matvec: Callable[[Tensor], Tensor],
     K_diag: Tensor,
     n: int,
-    config: Optional[NumericalConfig] = None,
+    config: NumericalConfig | None = None,
     n_probes: int = 30,
     lanczos_iters: int = 50,
     pcg_tol: float = 1e-8,
     pcg_max_iter: int = 500,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> NullFit:
     """REML estimation via PCG + stochastic trace/logdet.
 

@@ -3,20 +3,28 @@
 from __future__ import annotations
 
 import torch
-from torchgwas.config import STAT_DTYPE, IO_DTYPE, GRM_ACCUM_DTYPE, TorchGWASConfig, NumericalConfig, AMPConfig
+
+from torchgwas.config import (
+    GRM_ACCUM_DTYPE,
+    IO_DTYPE,
+    STAT_DTYPE,
+    AMPConfig,
+    NumericalConfig,
+    TorchGWASConfig,
+)
 
 
 class TestDtypePolicy:
     """Verify dtype constants are correct."""
 
     def test_stat_dtype_is_float64(self):
-        assert STAT_DTYPE == torch.float64
+        assert torch.float64 == STAT_DTYPE
 
     def test_io_dtype_is_float32(self):
-        assert IO_DTYPE == torch.float32
+        assert torch.float32 == IO_DTYPE
 
     def test_grm_accum_dtype_is_float64(self):
-        assert GRM_ACCUM_DTYPE == torch.float64
+        assert torch.float64 == GRM_ACCUM_DTYPE
 
 
 class TestTorchGWASConfig:

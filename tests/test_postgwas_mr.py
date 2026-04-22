@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import math
+
 import torch
 
-from torchgwas.postgwas._mr import MRResult, mr_ivw, mr_egger, mr_weighted_median, mr_presso, mr_all
+from torchgwas.postgwas._mr import MRResult, mr_all, mr_egger, mr_ivw, mr_presso, mr_weighted_median
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Helper

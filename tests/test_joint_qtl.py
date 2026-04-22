@@ -6,7 +6,6 @@ import pytest
 import torch
 
 from torchgwas.models.joint_qtl import fit_joint_qtl
-from torchgwas.config import NumericalConfig
 
 
 @pytest.fixture

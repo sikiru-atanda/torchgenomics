@@ -7,8 +7,6 @@ without a GPU so the suite still runs in CPU-only CI.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 import torch
 
@@ -19,7 +17,6 @@ from torchgwas._dispatch import (
     native_disabled,
     select_path,
 )
-
 
 # ---------------------------------------------------------------------------
 # CPU branches

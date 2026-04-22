@@ -2,7 +2,6 @@
 (Phase 38, Step 12)."""
 
 import json
-from pathlib import Path
 
 import pandas as pd
 import pytest

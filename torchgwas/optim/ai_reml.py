@@ -11,7 +11,6 @@ line search to ensure monotonic likelihood increase.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from torch import Tensor
 
@@ -25,7 +24,7 @@ def ai_reml_single(
     X0_rot: Tensor,
     eigenvalues: Tensor,
     *,
-    lam_init: Optional[float] = None,
+    lam_init: float | None = None,
     max_iter: int = 100,
     tol: float = 1e-6,
     lam_min: float = 1e-10,

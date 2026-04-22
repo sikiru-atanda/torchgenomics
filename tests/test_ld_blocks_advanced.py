@@ -5,8 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.ld import detect_blocks, LDBlock
-
+from torchgwas.ld import LDBlock, detect_blocks
 
 # ── Fixtures ────────────────────────────────────────────────────────
 

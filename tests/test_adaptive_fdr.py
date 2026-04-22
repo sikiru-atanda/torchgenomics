@@ -10,7 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import pytest
 import torch
 
 from torchgwas.stats.adaptive_fdr import (
@@ -21,7 +20,6 @@ from torchgwas.stats.adaptive_fdr import (
     ihw,
 )
 from torchgwas.stats.multipletesting import benjamini_hochberg
-
 
 # ===================================================================
 # Helper: simulate p-values with informative covariate

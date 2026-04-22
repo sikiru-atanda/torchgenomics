@@ -10,9 +10,6 @@ import pytest
 import torch
 
 from torchgwas.annotate import (
-    AnnotatedGene,
-    AnnotatedHit,
-    AnnotationResult,
     AssemblyNotFoundError,
     CropNotFoundError,
     NCBIClient,
@@ -24,10 +21,10 @@ from torchgwas.annotate import (
     resolve_assembly,
     resolve_taxid,
 )
-from torchgwas.annotate._client import _TokenBucket
-from torchgwas.annotate._resolve import normalise_chrom
 from torchgwas.annotate._annotate import _signed_distance
+from torchgwas.annotate._client import _TokenBucket
 from torchgwas.annotate._genes import extract_go_terms, genomic_range
+from torchgwas.annotate._resolve import normalise_chrom
 from torchgwas.postgwas._sumstats import SumStats
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ncbi"

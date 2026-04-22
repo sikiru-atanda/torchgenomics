@@ -9,14 +9,13 @@ ordinal score test.
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 from .glm_link import CumulativeLogitLink
 
 logger = logging.getLogger(__name__)
@@ -56,7 +55,7 @@ class OrdinalGLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the null ordinal GLMM via PQL.
@@ -186,7 +185,7 @@ class OrdinalGLMM:
                 H_a = torch.zeros(n_thresh, n_thresh, dtype=STAT_DTYPE,
                                   device=Y.device)
                 for jj in range(n_thresh):
-                    D_jj = (Y <= jj).float()
+                    D_jj = (jj >= Y).float()
                     g_jj = gamma_nr[:, jj]
                     w_jj = g_jj * (1.0 - g_jj)
                     score_a[jj] = (D_jj - g_jj).sum()
@@ -256,7 +255,7 @@ class OrdinalGLMM:
         from .binary_glmm import BinaryGLMM
         boundary_fits = []
         for j in range(J - 1):
-            Y_bin_j = (Y > j).float()
+            Y_bin_j = (j < Y).float()
             bglmm = BinaryGLMM(use_spa=False)
             nf_bin = bglmm.fit_null(Y_bin_j, X0, K=K)
             boundary_fits.append(nf_bin)
@@ -286,7 +285,6 @@ class OrdinalGLMM:
         J = null_fit._glm_n_categories
         boundary_fits = null_fit._boundary_fits
 
-        from ..stats.tests import chi2_sf
         from ..stats.cauchy import cauchy_combination
         from .binary_glmm import BinaryGLMM
 

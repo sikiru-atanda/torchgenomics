@@ -9,9 +9,8 @@ Typical speed-up: converges in ~1/3 of the unaccelerated iterations.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
-import torch
 from torch import Tensor
 
 
@@ -23,7 +22,7 @@ def squarem(
     tol: float = 1e-8,
     step_min: float = 1.0,
     step_max: float = 1.0,
-    obj_fn: Optional[Callable[[Tensor], float]] = None,
+    obj_fn: Callable[[Tensor], float] | None = None,
 ) -> tuple[Tensor, int, bool]:
     """SQUAREM acceleration of a fixed-point mapping.
 

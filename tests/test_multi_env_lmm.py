@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 import torch
 
 from torchgwas.config import NumericalConfig
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import NullFit, VariantMeta
+from torchgwas.models.base import VariantMeta
 from torchgwas.models.multi_env_lmm import (
-    MultiEnvLMM,
     EnvScanResult,
-    reshape_long_to_wide,
+    MultiEnvLMM,
     complete_case_filter,
+    reshape_long_to_wide,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

@@ -13,8 +13,8 @@ matrix-vector products without forming the full matrix.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 import torch
 from torch import Tensor
@@ -36,8 +36,8 @@ def pcg_solve(
     A_matvec: Callable[[Tensor], Tensor],
     b: Tensor,
     *,
-    x0: Optional[Tensor] = None,
-    precond: Optional[Callable[[Tensor], Tensor]] = None,
+    x0: Tensor | None = None,
+    precond: Callable[[Tensor], Tensor] | None = None,
     max_iter: int = 500,
     tol: float = 1e-8,
 ) -> PCGResult:

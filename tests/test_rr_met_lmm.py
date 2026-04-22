@@ -5,13 +5,11 @@ import torch
 
 from torchgwas.linalg.basis import legendre_basis, standardize_time
 from torchgwas.models.base import VariantMeta
-from torchgwas.models.rr_lmm import RandomRegressionLMM
 from torchgwas.models.rr_met import (
     RandomRegressionMultiEnvLMM,
     RRMetScanResult,
     _build_rr_met_contrasts,
 )
-
 
 # ── Simulator ────────────────────────────────────────────────────────
 

@@ -16,8 +16,6 @@ import math
 import torch
 from torch import Tensor
 
-from ..config import STAT_DTYPE
-
 
 def compute_sigma_inv(
     eigenvalues: Tensor,

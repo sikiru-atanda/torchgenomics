@@ -6,9 +6,8 @@ import math
 import pytest
 import torch
 
-from torchgwas.postgwas._multi_ancestry import MultiAncestryResult, mr_mega, mantra
+from torchgwas.postgwas._multi_ancestry import MultiAncestryResult, mantra, mr_mega
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ── Helper ───────────────────────────────────────────────────────────────
 

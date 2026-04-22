@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -44,9 +43,9 @@ def gxe_lbfgs_reml(
     n_traits: int = 2,
     max_iter: int = 100,
     tol: float = 1e-6,
-    Vg_init: Optional[Tensor] = None,
-    Vge_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_init: Tensor | None = None,
+    Vge_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, Tensor, float, list[dict]]:
     """LBFGS-autograd REML with 3 variance components: Vg, Vge, Ve.
 

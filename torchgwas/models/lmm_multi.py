@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from torch import Tensor
 
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 
 
 class MultiTraitLMM:
@@ -18,7 +18,7 @@ class MultiTraitLMM:
     Implements :class:`BaseModel`.
     """
 
-    def fit_null(self, Y: Tensor, X0: Tensor, K: Optional[Tensor] = None, **kwargs: Any) -> NullFit:
+    def fit_null(self, Y: Tensor, X0: Tensor, K: Tensor | None = None, **kwargs: Any) -> NullFit:
         raise NotImplementedError  # Phase 5
 
     def score_chunk(self, G_chunk: Tensor, null_fit: NullFit, variant_meta: VariantMeta, test: str = "wald") -> ScanResult:

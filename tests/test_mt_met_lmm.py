@@ -16,12 +16,11 @@ import pytest
 import torch
 
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import BaseModel, NullFit, ScanResult, VariantMeta
+from torchgwas.models.base import VariantMeta
 from torchgwas.models.multi_trait_multi_env_lmm import (
-    MultiTraitMultiEnvLMM,
     MTMETScanResult,
+    MultiTraitMultiEnvLMM,
 )
-
 
 # ===================================================================
 # Helper: simulate MT-MET data

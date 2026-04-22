@@ -46,6 +46,7 @@ all = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-timeout>=2.1",
     "ruff>=0.1.0",
     "mypy>=1.5",
     "zarr>=2.14",
@@ -90,6 +91,30 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+# Stylistic rules we don't enforce on a scientific codebase — they catch
+# opinion, not bugs. Kept real bug-catchers (F401, F811, F821, B006, B008,
+# E9xx). Rationale per rule:
+#   E402 — some modules set env vars before importing torch (legitimate).
+#   E501 — scientific code routinely has long array-literal / docstring lines.
+#   E702 — inline `import; x = ...` is common in short test stubs.
+#   E741 — `l`, `I`, `O` are standard in linear-algebra shorthand.
+#   F841 — test locals often capture intermediates for clarity.
+#   B007 — `for _ in range(n):` style is common; rename isn't always worth it.
+#   B011 — `assert False, "msg"` is fine in unreachable branches.
+#   B017 — pytest.raises(Exception) is used when specificity is tested elsewhere.
+#   B023 — closures used within the same loop iteration aren't leaking late-binding.
+#   B028 — warnings.warn without stacklevel isn't wrong, just less informative.
+#   B904 — exception chaining is orthogonal; many re-raises don't need `from`.
+#   B905 — zip(strict=True) is a 3.10+ stylistic preference.
+#   SIM* — ternary / if-exp simplifications are subjective.
+#   UP0xx remaining — PEP-604 union syntax preference, not load-bearing.
+ignore = [
+    "E402", "E501", "E702", "E741",
+    "F841",
+    "B007", "B011", "B017", "B023", "B028", "B904", "B905",
+    "SIM102", "SIM105", "SIM108", "SIM113", "SIM115", "SIM300", "SIM910",
+    "UP006", "UP007", "UP035", "UP037", "UP045",
+]
 
 [tool.mypy]
 python_version = "3.10"

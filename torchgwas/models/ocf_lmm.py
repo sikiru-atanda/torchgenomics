@@ -19,8 +19,8 @@ References:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import scipy.stats as sp_stats
@@ -28,10 +28,9 @@ import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
-from ..linalg.eigh import eigendecompose, rotate, compute_weights
+from ..linalg.eigh import eigendecompose, rotate
 from ..optim.controller import OptimizerController
-from ..optim.reml_math import _compute_P_quantities
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import ScanResult, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +78,7 @@ class OCFNullFit:
 
     # Convergence: all folds converged
     converged: bool
-    device: Optional[torch.device] = None
+    device: torch.device | None = None
 
     # DML scan options (stored at fit time, used at scan time)
     variance_type: str = "HC"
@@ -94,7 +93,7 @@ class OCFNullFit:
         return self.mean_sig2_e
 
     @property
-    def log_likelihood(self) -> Optional[float]:
+    def log_likelihood(self) -> float | None:
         lls = [fr.log_likelihood for fr in self.fold_results]
         return sum(lls) / len(lls) if lls else None
 
@@ -106,7 +105,7 @@ class OCFNullFit:
 def _create_folds(
     n: int,
     n_folds: int,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> list[Tensor]:
     """Create K random fold assignments.
 
@@ -133,8 +132,8 @@ def _fit_fold(
     test_indices: Tensor,
     train_indices: Tensor,
     config: NumericalConfig,
-    sig2_g_init: Optional[float] = None,
-    sig2_e_init: Optional[float] = None,
+    sig2_g_init: float | None = None,
+    sig2_e_init: float | None = None,
     fold_id: int = 0,
 ) -> FoldResult:
     """Fit nuisance on train set, BLUP predict on test set, compute residual.
@@ -334,9 +333,9 @@ class OCFLMM:
 
     def __init__(
         self,
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
         n_folds: int = 5,
-        seed: Optional[int] = None,
+        seed: int | None = None,
         variance_type: str = "HC",
         project_genotype: bool = True,
     ) -> None:
@@ -354,7 +353,7 @@ class OCFLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> OCFNullFit:
         """Cross-fit null model: K-fold nuisance estimation.

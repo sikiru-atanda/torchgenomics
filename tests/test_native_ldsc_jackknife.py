@@ -20,9 +20,7 @@ from torchgwas.postgwas._ldsc import (
     _block_jackknife_se,
     _weighted_lstsq,
     ldsc_h2,
-    ldsc_rg,
 )
-
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_LDSC, reason="native LDSC extension not built"

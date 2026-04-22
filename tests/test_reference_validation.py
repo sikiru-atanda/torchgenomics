@@ -16,18 +16,17 @@ statsmodels, with no cherry-picking of seeds or tolerances.
 from __future__ import annotations
 
 import math
-import numpy as np
-import pytest
-import torch
 
+import numpy as np
 import statsmodels.api as sm
-from statsmodels.discrete.discrete_model import Logit, MNLogit
+import torch
+from statsmodels.discrete.discrete_model import MNLogit
 from statsmodels.miscmodels.ordinal_model import OrderedModel
 
 from torchgwas.models.base import VariantMeta
 from torchgwas.models.binary_glm import BinaryGLM
-from torchgwas.models.ordinal_glm import OrdinalGLM
 from torchgwas.models.multinomial_glm import MultinomialGLM
+from torchgwas.models.ordinal_glm import OrdinalGLM
 
 
 def _make_vmeta(m):

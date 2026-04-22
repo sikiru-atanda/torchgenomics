@@ -1,10 +1,9 @@
 """Tests for haplotype-based GWAS module."""
 
-import torch
 import pytest
+import torch
 
 from torchgwas.models.haplotype_gwas import (
-    HaplotypeBlock,
     HaplotypeGWAS,
     HaplotypeGWASResult,
     _enumerate_haplotypes_phased,
@@ -14,7 +13,6 @@ from torchgwas.models.haplotype_gwas import (
     _htr_lrt,
     _pool_rare_haplotypes,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -205,8 +203,8 @@ class TestBlockScan:
 
     def test_block_scan_with_precomputed_blocks(self):
         """Runs correctly with pre-supplied LDBlock objects."""
-        from torchgwas.ld._blocks import LDBlock
         from torchgwas.io.regions import Region
+        from torchgwas.ld._blocks import LDBlock
 
         torch.manual_seed(42)
         n, m = 100, 10
@@ -245,8 +243,8 @@ class TestBlockScan:
 
     def test_block_scan_fewer_tests(self):
         """Number of tests equals number of blocks, not number of SNPs."""
-        from torchgwas.ld._blocks import LDBlock
         from torchgwas.io.regions import Region
+        from torchgwas.ld._blocks import LDBlock
 
         torch.manual_seed(42)
         n, m = 100, 20
@@ -369,8 +367,8 @@ class TestSKATAndEdgeCases:
         pos = list(range(0, m * 1000, 1000))
         chrs = ["1"] * m
 
-        from torchgwas.ld._blocks import LDBlock
         from torchgwas.io.regions import Region
+        from torchgwas.ld._blocks import LDBlock
 
         blocks = [LDBlock(
             region=Region(chr="1", start=0, end=10000, region_id="blk1"),
@@ -395,8 +393,8 @@ class TestSKATAndEdgeCases:
         G = torch.zeros(n, 3)  # all homozygous ref
         Y = torch.randn(n, dtype=torch.float64)
 
-        from torchgwas.ld._blocks import LDBlock
         from torchgwas.io.regions import Region
+        from torchgwas.ld._blocks import LDBlock
 
         blocks = [LDBlock(
             region=Region(chr="1", start=0, end=3000, region_id="blk1"),
@@ -493,8 +491,8 @@ class TestHaplotypeGWASLMM:
         pos = list(range(0, m * 1000, 1000))
         chrs = ["1"] * m
 
-        from torchgwas.ld._blocks import LDBlock
         from torchgwas.io.regions import Region
+        from torchgwas.ld._blocks import LDBlock
         blocks = [LDBlock(
             region=Region(chr="1", start=0, end=6000, region_id="blk1"),
             n_variants=m, variant_indices=list(range(m)),
@@ -517,8 +515,8 @@ class TestHaplotypeGWASLMM:
         pos = list(range(0, m * 1000, 1000))
         chrs = ["1"] * m
 
-        from torchgwas.ld._blocks import LDBlock
         from torchgwas.io.regions import Region
+        from torchgwas.ld._blocks import LDBlock
         blocks = [LDBlock(
             region=Region(chr="1", start=0, end=6000, region_id="blk1"),
             n_variants=m, variant_indices=list(range(m)),
@@ -556,8 +554,8 @@ class TestHaplotypeGWASLMM:
 
         pos = [0, 1000, 2000]
         chrs = ["1"] * 3
-        from torchgwas.ld._blocks import LDBlock
         from torchgwas.io.regions import Region
+        from torchgwas.ld._blocks import LDBlock
         blocks = [LDBlock(
             region=Region(chr="1", start=0, end=3000, region_id="blk1"),
             n_variants=3, variant_indices=[0, 1, 2],

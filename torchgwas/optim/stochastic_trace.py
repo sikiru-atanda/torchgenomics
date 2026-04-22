@@ -16,7 +16,7 @@ Quadrature." SIAM J. Matrix Anal. Appl.
 from __future__ import annotations
 
 import logging
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import torch
 from torch import Tensor
@@ -28,8 +28,8 @@ def hutchinson_trace(
     A_matvec: Callable[[Tensor], Tensor],
     n: int,
     n_probes: int = 30,
-    seed: Optional[int] = None,
-    device: Optional[torch.device] = None,
+    seed: int | None = None,
+    device: torch.device | None = None,
     dtype: torch.dtype = torch.float64,
 ) -> float:
     """Estimate tr(A) using Hutchinson's stochastic estimator.
@@ -150,8 +150,8 @@ def stochastic_logdet(
     n: int,
     n_probes: int = 30,
     lanczos_iters: int = 50,
-    seed: Optional[int] = None,
-    device: Optional[torch.device] = None,
+    seed: int | None = None,
+    device: torch.device | None = None,
     dtype: torch.dtype = torch.float64,
 ) -> float:
     """Estimate log|det(A)| via stochastic Lanczos quadrature (SLQ).

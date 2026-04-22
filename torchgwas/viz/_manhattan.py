@@ -20,7 +20,8 @@ highlight colors are likewise parameterized.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -61,17 +62,17 @@ def manhattan_plot(
     p: Any,
     *,
     significance_threshold: float = 5e-8,
-    suggestive_threshold: Optional[float] = 1e-5,
-    highlight: Optional[Sequence[int]] = None,
-    annotate: Optional[Sequence[tuple[int, str]]] = None,
+    suggestive_threshold: float | None = 1e-5,
+    highlight: Sequence[int] | None = None,
+    annotate: Sequence[tuple[int, str]] | None = None,
     colors: Sequence[str] = ("#1f77b4", "#d62728"),
     highlight_color: str = "#2ca02c",
     significance_color: str = "red",
     suggestive_color: str = "grey",
     ax=None,
-    output_path: Optional[str] = None,
-    title: Optional[str] = None,
-    ylim: Optional[tuple[float, float]] = None,
+    output_path: str | None = None,
+    title: str | None = None,
+    ylim: tuple[float, float] | None = None,
     point_size: float = 6.0,
 ):
     """Classic linear Manhattan plot.
@@ -191,12 +192,12 @@ def miami_plot(
     p_bottom: Any,
     *,
     significance_threshold: float = 5e-8,
-    suggestive_threshold: Optional[float] = 1e-5,
-    top_label: Optional[str] = None,
-    bottom_label: Optional[str] = None,
+    suggestive_threshold: float | None = 1e-5,
+    top_label: str | None = None,
+    bottom_label: str | None = None,
     colors: Sequence[str] = ("#1f77b4", "#d62728"),
-    output_path: Optional[str] = None,
-    title: Optional[str] = None,
+    output_path: str | None = None,
+    title: str | None = None,
     figsize: tuple[float, float] = (11, 6),
 ):
     """Two-trait back-to-back Manhattan plot.
@@ -291,9 +292,9 @@ def circos_manhattan_plot(
     p: Any,
     *,
     significance_threshold: float = 5e-8,
-    suggestive_threshold: Optional[float] = 1e-5,
-    highlight: Optional[Sequence[int]] = None,
-    annotate: Optional[Sequence[tuple[int, str]]] = None,
+    suggestive_threshold: float | None = 1e-5,
+    highlight: Sequence[int] | None = None,
+    annotate: Sequence[tuple[int, str]] | None = None,
     colors: Sequence[str] = ("#1f77b4", "#d62728"),
     highlight_color: str = "#2ca02c",
     significance_color: str = "red",
@@ -302,8 +303,8 @@ def circos_manhattan_plot(
     ring_width: float = 1.0,
     gap_frac: float = 0.01,
     ax=None,
-    output_path: Optional[str] = None,
-    title: Optional[str] = None,
+    output_path: str | None = None,
+    title: str | None = None,
     point_size: float = 6.0,
     chrom_label_fontsize: float = 8.0,
     figsize: tuple[float, float] = (7.5, 7.5),

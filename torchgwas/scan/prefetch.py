@@ -8,9 +8,9 @@ falls back to simple passthrough on CPU (no threading overhead).
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from queue import Queue
 from threading import Thread
-from typing import Iterator, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -36,7 +36,7 @@ class PrefetchIterator:
 
     def __init__(
         self,
-        chunk_iter: Iterator[Tuple[Tensor, VariantMeta]],
+        chunk_iter: Iterator[tuple[Tensor, VariantMeta]],
         device: torch.device,
         n_prefetch: int = 2,
     ) -> None:
@@ -45,7 +45,7 @@ class PrefetchIterator:
         self._n_prefetch = n_prefetch
         self._use_prefetch = device.type == "cuda"
 
-    def __iter__(self) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def __iter__(self) -> Iterator[tuple[Tensor, VariantMeta]]:
         if not self._use_prefetch:
             yield from self._iter
             return

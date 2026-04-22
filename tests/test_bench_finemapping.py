@@ -5,23 +5,18 @@ against ground-truth manual calculations using numpy.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import numpy as np
-import pytest
 import torch
-from scipy import stats as sp_stats
 
 from torchgwas.postgwas._finemapping import (
-    CredibleSet,
     annotate_sumstats,
     extract_credible_sets,
     locus_summary,
     to_coloc_sumstats,
 )
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Mock BayesianVSResult (mirrors the real dataclass without importing the
@@ -40,8 +35,8 @@ class _MockBVS:
     pip: torch.Tensor
     beta_mean: torch.Tensor
     beta_sd: torch.Tensor
-    credible_sets: Optional[list[list[int]]] = None
-    alpha: Optional[torch.Tensor] = None
+    credible_sets: list[list[int]] | None = None
+    alpha: torch.Tensor | None = None
     n_signals: int = 0
     method: str = "cavi"
 
@@ -59,7 +54,7 @@ def _make_mock_bvs(
     pips: list[float],
     *,
     method: str = "cavi",
-    alpha: Optional[torch.Tensor] = None,
+    alpha: torch.Tensor | None = None,
 ) -> _MockBVS:
     """Build a minimal _MockBVS with the given PIPs."""
     n = len(pips)

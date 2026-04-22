@@ -22,10 +22,8 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import numpy as np
-import torch
 from torch import Tensor
 
 logger = logging.getLogger(__name__)

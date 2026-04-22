@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import torch
 from torch import Tensor
@@ -47,28 +47,28 @@ class NullFit:
     """
 
     # Variance components
-    sig2_g: Optional[float] = None  # genetic variance (single-trait)
-    sig2_e: Optional[float] = None  # residual variance (single-trait)
-    Vg: Optional[Tensor] = None  # (d, d) genetic covariance (multi-trait)
-    Ve: Optional[Tensor] = None  # (d, d) residual covariance (multi-trait)
+    sig2_g: float | None = None  # genetic variance (single-trait)
+    sig2_e: float | None = None  # residual variance (single-trait)
+    Vg: Tensor | None = None  # (d, d) genetic covariance (multi-trait)
+    Ve: Tensor | None = None  # (d, d) residual covariance (multi-trait)
 
     # Eigendecomposition artefacts
-    eigenvalues: Optional[Tensor] = None  # (n,)
-    eigenvectors: Optional[Tensor] = None  # (n, n) or (n, k) truncated
+    eigenvalues: Tensor | None = None  # (n,)
+    eigenvectors: Tensor | None = None  # (n, n) or (n, k) truncated
 
     # Rotated quantities (U^T Y, U^T X)
-    Y_rot: Optional[Tensor] = None
-    X0_rot: Optional[Tensor] = None
+    Y_rot: Tensor | None = None
+    X0_rot: Tensor | None = None
 
     # Null-model normal equations (for Schur-complement scan)
-    M00: Optional[Tensor] = None
-    b0: Optional[Tensor] = None
+    M00: Tensor | None = None
+    b0: Tensor | None = None
 
     # Per-individual weights (inverse covariance diagonal in rotated space)
-    weights: Optional[Tensor] = None  # (n,) single-trait or (n, d, d) multi-trait
+    weights: Tensor | None = None  # (n,) single-trait or (n, d, d) multi-trait
 
     # Log-likelihood at null
-    log_likelihood: Optional[float] = None
+    log_likelihood: float | None = None
 
     # Optimizer trace for diagnostics
     optimizer_trace: list[dict[str, Any]] = field(default_factory=list)
@@ -77,12 +77,12 @@ class NullFit:
     converged: bool = False
 
     # Device the tensors live on
-    device: Optional[torch.device] = None
+    device: torch.device | None = None
 
     # Approximate backend metadata (Phase 13)
     approximate: bool = False
-    approx_method: Optional[str] = None  # "randomized_svd", "nystrom", "sparse", "lobpcg"
-    approx_config: Optional[dict] = None  # Parameters used (n_components, threshold, etc.)
+    approx_method: str | None = None  # "randomized_svd", "nystrom", "sparse", "lobpcg"
+    approx_config: dict | None = None  # Parameters used (n_components, threshold, etc.)
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +119,7 @@ class ScanResult:
     test: str  # "score", "wald", or "lrt"
 
     # Number of samples used (may vary if per-SNP missingness filtering)
-    n_obs: Optional[Tensor] = None  # (m,)
+    n_obs: Tensor | None = None  # (m,)
 
     # Inference type: "marginal" (GLM/LMM — calibrated), or
     # "post_selection" (FarmCPU/BLINK — conditional on selected pseudo-QTNs).
@@ -236,7 +236,7 @@ class BaseModel(Protocol):
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the null model (no SNP effect).
@@ -293,7 +293,7 @@ def update_null(
     null_fit: NullFit,
     *,
     max_iter: int = 100,
-    config: Optional[Any] = None,
+    config: Any | None = None,
 ) -> NullFit:
     """Resume optimization from a previous NullFit (ASReml-R update style).
 
@@ -518,7 +518,6 @@ def _update_random_regression_met(
     """RR-MET warm-start: refit via MultiTraitMultiEnvLMM with the
     cached structure (separable / unstructured / fa(k)) and re-attach the
     RR-MET metadata so the resumed fit remains a valid RR-MET NullFit."""
-    from .multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
     from ..optim.mvlmm_reml import mvlmm_null_quantities
 
     if null_fit.Y_rot is None or null_fit.X0_rot is None or null_fit.eigenvalues is None:
@@ -564,6 +563,7 @@ def _update_random_regression_met(
         Vg_env = None
     elif structure.lower().startswith("fa("):
         import re
+
         from ..optim.fa_lbfgs_reml import fa_lbfgs_reml
         m = re.match(r"^fa\((\d+)\)$", structure, re.IGNORECASE)
         fa_rank = int(m.group(1))

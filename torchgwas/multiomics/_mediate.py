@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 import torch
@@ -197,7 +196,7 @@ def mediate_lmm(
     n_mc_draws: int = 10_000,
     n_boot: int = 1_000,
     sensitivity: bool = True,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> MediationResult:
     """GRM-corrected causal mediation for a single (SNP, mediator, outcome) triple.
 

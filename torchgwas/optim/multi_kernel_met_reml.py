@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -95,7 +94,7 @@ def multi_kernel_met_reml(
 
     trace: list[dict] = []
     best_ll = float("-inf")
-    best_result: Optional[dict] = None
+    best_result: dict | None = None
 
     optimizer = torch.optim.LBFGS(
         all_params,

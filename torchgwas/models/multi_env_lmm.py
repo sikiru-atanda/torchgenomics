@@ -30,15 +30,15 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from dataclasses import dataclass
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
 from ..linalg.eigh import eigendecompose, rotate
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -80,17 +80,17 @@ class EnvScanResult:
     p_marginal: Tensor  # (m, E)
 
     # Reaction-norm fields (populated when parameterization="reaction_norm")
-    alpha: Optional[Tensor] = None  # (m,) stable effect across environments
-    se_alpha: Optional[Tensor] = None  # (m,) SE of stable effect
-    stat_stable: Optional[Tensor] = None  # (m,) χ²(1) for stable effect
-    p_stable: Optional[Tensor] = None  # (m,)
-    delta: Optional[Tensor] = None  # (m, E) GxE deviations (sum to zero)
-    stat_gxe: Optional[Tensor] = None  # (m,) χ²(E-1) for GxE
-    p_gxe: Optional[Tensor] = None  # (m,)
+    alpha: Tensor | None = None  # (m,) stable effect across environments
+    se_alpha: Tensor | None = None  # (m,) SE of stable effect
+    stat_stable: Tensor | None = None  # (m,) χ²(1) for stable effect
+    p_stable: Tensor | None = None  # (m,)
+    delta: Tensor | None = None  # (m, E) GxE deviations (sum to zero)
+    stat_gxe: Tensor | None = None  # (m,) χ²(E-1) for GxE
+    p_gxe: Tensor | None = None  # (m,)
 
     test: str = "wald"
-    n_obs: Optional[Tensor] = None
-    env_names: Optional[list[str]] = None
+    n_obs: Tensor | None = None
+    env_names: list[str] | None = None
     inference_type: str = "marginal"
 
     def __len__(self) -> int:
@@ -282,7 +282,7 @@ class MultiEnvLMM:
 
     def __init__(
         self,
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
         parameterization: str = "per_env",
         vg_structure: str = "unstructured",
     ) -> None:
@@ -299,9 +299,9 @@ class MultiEnvLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Union[Tensor, dict[str, Tensor]]] = None,
+        K: Tensor | dict[str, Tensor] | None = None,
         *,
-        env_names: Optional[list[str]] = None,
+        env_names: list[str] | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit null model treating environments as pseudo-traits.

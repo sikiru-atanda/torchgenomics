@@ -17,7 +17,6 @@ import torch
 from torchgwas._native import HAS_NATIVE_HWE, _hwe_native
 from torchgwas.preprocess.qc import _compute_hwe_pvalue
 
-
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_HWE, reason="native HWE extension not built"
 )

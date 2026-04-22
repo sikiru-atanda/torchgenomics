@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
+from torchgwas.ld._changepoint import dp_changepoint, ld_decay_signal
 from torchgwas.ld._graph_utils import (
     adjacency_to_laplacian,
-    normalized_laplacian,
-    spectral_partition,
     connected_components,
     greedy_mwis,
+    normalized_laplacian,
+    spectral_partition,
 )
-from torchgwas.ld._changepoint import dp_changepoint, ld_decay_signal
-
 
 # ── Laplacian tests ────────────────────────────────────────────────
 

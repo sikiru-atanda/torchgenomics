@@ -48,7 +48,7 @@ def _signed_distance(snp_pos: int, gene_start: int, gene_end: int) -> int:
 
 
 def annotate_hits(
-    ss: "SumStats",
+    ss: SumStats,
     *,
     crop: str | None = None,
     taxid: int | None = None,

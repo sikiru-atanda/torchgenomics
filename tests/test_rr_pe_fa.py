@@ -4,17 +4,11 @@ RandomRegressionLMM (Phase 38, Steps 6a and 6b)."""
 import pytest
 import torch
 
-from torchgwas.models.base import VariantMeta
+from tests.test_rr_lmm_scan import _simulate_with_planted_signal, _vmeta
 from torchgwas.models.rr_lmm import RandomRegressionLMM
 from torchgwas.optim.rr_reml import (
     parse_k_coef_structure,
-    rr_reml_diagonal,
-    rr_reml_fa,
-    rr_reml_unstructured,
 )
-
-from tests.test_rr_lmm_scan import _simulate_with_planted_signal, _vmeta
-
 
 # ── parse_k_coef_structure ─────────────────────────────────────────
 

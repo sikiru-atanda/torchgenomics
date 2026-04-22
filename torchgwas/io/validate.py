@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional
 
 from .detect import detect_format
 
@@ -36,7 +34,7 @@ class PreflightReport:
 def run_preflight(
     genotype_path: str,
     phenotype_path: str,
-    covariate_path: Optional[str] = None,
+    covariate_path: str | None = None,
     ploidy: int = 2,
 ) -> PreflightReport:
     """Run all pre-flight checks and return a structured report.
@@ -121,13 +119,12 @@ def run_preflight(
         miss_pct = 0.0
 
     # 5. Load phenotype for sample count
-    from .phenotype import _load_tabular, _detect_id_column
+    from .phenotype import _detect_id_column, _load_tabular
     pheno_df = _load_tabular(phenotype_path)
     pheno_id_col = _detect_id_column(pheno_df)
     n_pheno = len(pheno_df)
 
     # Phenotype missingness
-    import pandas as pd
     numeric_cols = pheno_df.select_dtypes(include="number").columns
     pheno_miss_pct = float(pheno_df[numeric_cols].isna().mean().mean()) * 100 if len(numeric_cols) > 0 else 0.0
     n_traits = len(numeric_cols)

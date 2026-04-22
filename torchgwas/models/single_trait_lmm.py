@@ -11,18 +11,17 @@ Supports Wald, LRT, and Score tests.
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE, NumericalConfig
-from ..linalg.eigh import EigenDecomp, eigendecompose, rotate
+from ..linalg.eigh import eigendecompose, rotate
 from ..optim.controller import OptimizerController
 from ..optim.emma_reml import gapit_emma_remle
-from ..optim.reml_math import _compute_P_quantities, reml_loglikelihood
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from ..optim.reml_math import _compute_P_quantities
+from .base import NullFit, ScanResult, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class SingleTraitLMM:
 
     def __init__(
         self,
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
         p3d: bool = True,
     ) -> None:
         self.config = config or NumericalConfig()
@@ -45,7 +44,7 @@ class SingleTraitLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the null model (no SNP effect).
@@ -555,8 +554,8 @@ class SingleTraitLMM:
 
 def _f_sf(stat: Tensor, df1: int = 1, df2: int = 1) -> Tensor:
     """P-values from F-distribution (matches GAPIT's MLM test)."""
-    import scipy.stats as sp_stats
     import numpy as np
+    import scipy.stats as sp_stats
 
     stat_np = stat.detach().cpu().numpy().astype(np.float64)
     p_np = sp_stats.f.sf(stat_np, dfn=df1, dfd=df2)

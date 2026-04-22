@@ -18,7 +18,6 @@ Drezner, Z. & Wesolowsky, G.O. (1990). *J. Statist. Comput. Simul.* 35, 101–10
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -247,7 +246,7 @@ def mvn_truncated_moments(
     b: Tensor,
     *,
     n_qmc: int = 10_000,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> tuple[Tensor, Tensor]:
     r"""Truncated MVN moments via quasi-Monte Carlo (Genz & Bretz 2009).
 
@@ -300,7 +299,7 @@ def _qmc_truncated_moments(
     b: Tensor,
     *,
     n_qmc: int = 10_000,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> tuple[Tensor, Tensor]:
     """QMC-based truncated MVN moments for c ≥ 3.
 

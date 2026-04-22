@@ -31,6 +31,7 @@ from ..postgwas._sumstats import SumStats
 from .base import BasePGSMethod, LDReference, PGSResult
 from .ldpred2 import _block_iter, _marginal_beta_std
 
+
 # Native dispatch toggle: TORCHGWAS_DISABLE_NATIVE=1 forces the pure-Python
 # reference path even when the compiled extension is available. Used by tests
 # to exercise both code paths and as an escape hatch if the C++ port ever

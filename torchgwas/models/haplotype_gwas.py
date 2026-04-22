@@ -32,7 +32,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from itertools import product
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -362,7 +361,7 @@ def _enumerate_haplotypes_unphased(
             compat = compat_new
 
         # Check convergence
-        if H == len(freq_old) and (freq - freq_old[:H]).abs().max() < tol:
+        if len(freq_old) == H and (freq - freq_old[:H]).abs().max() < tol:
             break
 
     return candidates, freq, dosage
@@ -440,7 +439,8 @@ def _htr_f_test(
     ses : (H-1,) standard errors
     p_per_hap : (H-1,) per-haplotype p-values
     """
-    from scipy.stats import f as f_dist, t as t_dist
+    from scipy.stats import f as f_dist
+    from scipy.stats import t as t_dist
 
     n = Y.shape[0]
     c = X0.shape[1]
@@ -501,7 +501,8 @@ def _htr_lrt(
 
     Returns the same tuple as ``_htr_f_test``.
     """
-    from scipy.stats import chi2 as chi2_dist, t as t_dist
+    from scipy.stats import chi2 as chi2_dist
+    from scipy.stats import t as t_dist
 
     n = Y.shape[0]
     c = X0.shape[1]
@@ -563,7 +564,8 @@ def _htr_with_lmm(
 
     Returns the same tuple as ``_htr_f_test``.
     """
-    from scipy.stats import f as f_dist, t as t_dist
+    from scipy.stats import f as f_dist
+    from scipy.stats import t as t_dist
 
     n = Y_rot.shape[0]
     c = X0_rot.shape[1]
@@ -860,7 +862,7 @@ class HaplotypeGWAS:
         self,
         Y: Tensor,
         G: Tensor,
-        X0: Optional[Tensor] = None,
+        X0: Tensor | None = None,
         variant_pos: list[int] | None = None,
         variant_chr: list[str] | None = None,
         blocks: list | None = None,

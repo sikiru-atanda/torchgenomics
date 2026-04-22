@@ -1,6 +1,7 @@
 """Tests for torchgwas.viz.trumpet_plot (trumpet plot visualization)."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -9,7 +10,6 @@ import pytest
 import torch
 
 from torchgwas.viz import trumpet_plot
-
 
 # ---------------------------------------------------------------------------
 # Shared synthetic data

@@ -3,10 +3,9 @@ NullFits (Phase 38, Step 10)."""
 
 import torch
 
+from tests.test_rr_lmm_scan import _simulate_with_planted_signal, _vmeta
 from torchgwas.models.base import update_null
 from torchgwas.models.rr_lmm import RandomRegressionLMM
-
-from tests.test_rr_lmm_scan import _simulate_with_planted_signal, _vmeta
 
 
 class TestUpdateNullRandomRegression:

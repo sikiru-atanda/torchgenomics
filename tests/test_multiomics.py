@@ -34,7 +34,6 @@ from torchgwas.multiomics import (
 from torchgwas.multiomics._mediate import _mediate_from_nullfit, fit_mediation_null
 from torchgwas.multiomics._se import bootstrap_se, monte_carlo_se, sobel_se  # noqa: F401
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

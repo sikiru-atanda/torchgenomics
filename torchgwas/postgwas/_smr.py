@@ -35,7 +35,6 @@ from torch import Tensor
 
 from ._sumstats import SumStats
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -53,7 +52,6 @@ def _chi2_sf(x: Tensor, df: int) -> Tensor:
     if df == 1:
         return _chi2_sf_1df(x)
     from scipy.stats import chi2  # type: ignore[import-untyped]
-    import numpy as np
     p = chi2.sf(x.detach().cpu().numpy(), df=df)
     return torch.tensor(p, dtype=x.dtype, device=x.device)
 

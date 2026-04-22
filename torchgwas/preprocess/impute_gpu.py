@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -444,7 +443,7 @@ def impute_deep_learning(
     lr: float = 1e-3,
     hidden_dims: tuple[int, ...] = (512, 256, 128),
     dropout: float = 0.1,
-    device: Optional[torch.device] = None,
+    device: torch.device | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Deep learning imputation using a masked autoencoder.
 

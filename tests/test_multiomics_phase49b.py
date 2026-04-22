@@ -14,17 +14,15 @@ import pytest
 import torch
 
 from torchgwas.multiomics import (
-    GeneSetMediationResult,
     coloc_prefilter_pairs,
     eigenmt_adjust,
     mediate_gene_set,
     mediate_lmm,
     scan_mediation,
 )
-from torchgwas.multiomics._scan_batched import batched_scan_pairs
 from torchgwas.multiomics._mediate import fit_mediation_null
+from torchgwas.multiomics._scan_batched import batched_scan_pairs
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Shared simulators (mirror test_multiomics.py helpers)
@@ -409,7 +407,6 @@ def test_coloc_prefilter_requires_position_metadata():
 
 def test_coloc_prefilter_mismatched_sumstats_raises():
     """y_sumstats and m_sumstats must align to the same SNP panel."""
-    import torch
     ss_y = _make_sumstats(5, np.zeros(5), np.full(5, 0.1), ["1"] * 5, list(range(5)))
     ss_m = _make_sumstats(6, np.zeros(6), np.full(6, 0.1), ["1"] * 6, list(range(6)))
     with pytest.raises(ValueError):

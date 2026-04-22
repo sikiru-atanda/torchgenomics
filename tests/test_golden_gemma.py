@@ -40,8 +40,8 @@ import torch
 
 from torchgwas.config import STAT_DTYPE, NumericalConfig
 from torchgwas.models.base import VariantMeta
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
 from torchgwas.models.multi_trait_lmm import MultiTraitLMM
+from torchgwas.models.single_trait_lmm import SingleTraitLMM
 
 pytestmark = pytest.mark.golden
 

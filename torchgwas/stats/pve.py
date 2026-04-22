@@ -58,8 +58,7 @@ fall back to the marginal path.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
@@ -110,7 +109,7 @@ class PVEResult:
 
 
 def _residualize(
-    Y: Tensor, X0: Optional[Tensor]
+    Y: Tensor, X0: Tensor | None
 ) -> Tensor:
     """Return ``Y - X0 (X0'X0)^{-1} X0' Y`` or ``Y`` if ``X0 is None``."""
     if X0 is None or X0.shape[1] == 0:
@@ -132,7 +131,7 @@ def _marginal_pve(
 
 
 def _joint_pve(
-    G_sig: Tensor, y: Tensor, X0: Optional[Tensor]
+    G_sig: Tensor, y: Tensor, X0: Tensor | None
 ) -> tuple[Tensor, float, float, bool]:
     """Joint OLS PVE via squared semi-partial correlation.
 
@@ -183,8 +182,8 @@ def compute_pve(
     result: ScanResult,
     y: Tensor,
     *,
-    G: Optional[Tensor] = None,
-    X0: Optional[Tensor] = None,
+    G: Tensor | None = None,
+    X0: Tensor | None = None,
     significance_threshold: float = 5e-8,
     method: str = "marginal",
     ploidy: int = 2,

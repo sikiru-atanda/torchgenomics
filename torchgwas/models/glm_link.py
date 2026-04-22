@@ -13,13 +13,11 @@ Link functions:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-
 
 # ===================================================================
 # Base link function
@@ -201,7 +199,7 @@ class CumulativeLogitLink(LinkFunction):
         device = device or Y.device
         counts = torch.zeros(J, dtype=dtype, device=device)
         for j in range(J):
-            counts[j] = (Y == j).sum().float()
+            counts[j] = (j == Y).sum().float()
         freq = counts / counts.sum()
         cum_freq = torch.cumsum(freq, dim=0)[:-1]  # (J-1,)
         cum_freq = torch.clamp(cum_freq, min=0.01, max=0.99)

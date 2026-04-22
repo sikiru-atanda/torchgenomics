@@ -10,11 +10,9 @@ re-evaluating the basis at user-specified raw time values.
 import pytest
 import torch
 
-from torchgwas.linalg.basis import evaluate_basis_at, legendre_basis, standardize_time
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.rr_lmm import RandomRegressionLMM, RRScanResult
-
 from tests.test_rr_lmm_scan import _simulate_with_planted_signal, _vmeta
+from torchgwas.linalg.basis import evaluate_basis_at
+from torchgwas.models.rr_lmm import RandomRegressionLMM, RRScanResult
 
 
 class TestEvalTimesBasic:

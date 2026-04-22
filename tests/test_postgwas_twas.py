@@ -12,20 +12,18 @@ sign of association.
 
 from __future__ import annotations
 
-import math
 import warnings
 
 import pytest
 import torch
 
+from torchgwas.postgwas._sumstats import SumStats
 from torchgwas.postgwas._twas import (
     TWASGeneResult,
     TWASResult,
     twas_individual,
     twas_sumstat,
 )
-from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Helper

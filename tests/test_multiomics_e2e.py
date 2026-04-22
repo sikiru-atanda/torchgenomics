@@ -26,7 +26,6 @@ import torch
 from torchgwas.multiomics import coloc_prefilter_pairs, scan_mediation
 from torchgwas.postgwas._sumstats import SumStats
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

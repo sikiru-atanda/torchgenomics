@@ -1,13 +1,10 @@
 """Tests for novel haplotype GWAS methods: PCHT, HHCT, HSKAT, HapGxE, BayesHap."""
 
 import torch
-import pytest
 
 from torchgwas.models.haplotype_gwas import (
     HaplotypeBlock,
-    HaplotypeGWAS,
     _enumerate_haplotypes_phased,
-    _enumerate_haplotypes_unphased,
 )
 from torchgwas.models.haplotype_novel import (
     BayesHapResult,
@@ -23,7 +20,6 @@ from torchgwas.models.haplotype_novel import (
     hskat_test,
     pcht_score_test,
 )
-
 
 DTYPE = torch.float64
 

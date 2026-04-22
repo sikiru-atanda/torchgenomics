@@ -19,7 +19,8 @@ Input conventions:
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -48,14 +49,14 @@ def _block_ranges(blocks: Iterable[Any]) -> list[tuple[int, int]]:
 def haploview_plot(
     ld_matrix: Any,
     *,
-    blocks: Optional[Sequence[Any]] = None,
+    blocks: Sequence[Any] | None = None,
     metric: str = "r2",
-    cmap: Optional[str] = None,
+    cmap: str | None = None,
     show_snp_track: bool = True,
-    snp_labels: Optional[Sequence[str]] = None,
+    snp_labels: Sequence[str] | None = None,
     ax=None,
-    output_path: Optional[str] = None,
-    title: Optional[str] = None,
+    output_path: str | None = None,
+    title: str | None = None,
     colorbar: bool = True,
 ):
     """Haploview-style LD triangle.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 # Set the cuBLAS deterministic workspace config before torch initialises CUDA,
 # otherwise `torch.use_deterministic_algorithms(True)` raises on CUDA >= 10.2
@@ -13,7 +12,6 @@ from typing import Optional
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import torch
-
 
 # ---------------------------------------------------------------------------
 # Dtype policy
@@ -95,7 +93,7 @@ class NumericalConfig:
 # Device selection
 # ---------------------------------------------------------------------------
 
-def resolve_device(device: Optional[str] = None) -> torch.device:
+def resolve_device(device: str | None = None) -> torch.device:
     """Resolve compute device. If *device* is None, prefer CUDA when available.
 
     Logs which device was selected and why, so users know whether GPU
@@ -160,7 +158,7 @@ class PloidyConfig:
     ploidy: int | str = 2
     """One of {2, 4, 6, ...} or "from_vcf" or "per_variant_map"."""
 
-    crop: Optional[str] = None
+    crop: str | None = None
     """Optional shortcut (e.g., "potato" → P=4). Never overrides explicit ploidy."""
 
     strict_ploidy: bool = True
@@ -169,7 +167,7 @@ class PloidyConfig:
     ploidy_mismatch_policy: str = "error"
     """One of "error" (default) or "warn+override"."""
 
-    per_variant_map_path: Optional[str] = None
+    per_variant_map_path: str | None = None
     """Path to per-variant ploidy map when ploidy="per_variant_map"."""
 
     eps_dosage: float = 1e-6

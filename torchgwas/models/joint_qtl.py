@@ -7,8 +7,8 @@ drops non-significant QTL. Equivalent to GWASpoly's ``fit.QTL``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor

@@ -13,7 +13,6 @@ Validates:
 from __future__ import annotations
 
 import math
-import warnings
 
 import pytest
 import torch
@@ -22,8 +21,6 @@ from scipy import stats as sp_stats
 from torchgwas.config import STAT_DTYPE
 from torchgwas.linalg.eigh import auto_n_components
 from torchgwas.linalg.kronecker_eed import (
-    KronEED,
-    _joint_diag_factor,
     diagonal_precision,
     inverse_rotate_from_ked,
     ked_reml_quantities,
@@ -32,7 +29,6 @@ from torchgwas.linalg.kronecker_eed import (
     rotate_to_ked_basis,
     woodbury_fa_precision,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

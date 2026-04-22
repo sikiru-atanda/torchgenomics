@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -61,7 +60,7 @@ class BayesianVSResult:
     beta_sd: Tensor  # (p,) posterior SD
 
     # Credible sets for fine-mapping
-    credible_sets: Optional[list[list[int]]] = None
+    credible_sets: list[list[int]] | None = None
 
     # ELBO convergence trace
     elbo_trace: list[float] = field(default_factory=list)
@@ -72,7 +71,7 @@ class BayesianVSResult:
     prior_sig2_beta: float = 0.1
 
     # SuSiE-specific fields
-    alpha: Optional[Tensor] = None  # (L, p) per-layer inclusion probs
+    alpha: Tensor | None = None  # (L, p) per-layer inclusion probs
     n_signals: int = 0  # number of active signals detected
     method: str = "cavi"  # "cavi" or "susie"
 

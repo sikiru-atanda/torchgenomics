@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -292,8 +291,8 @@ def triad_reml(
     n_traits: int = 1,
     max_iter: int = 100,
     tol: float = 1e-6,
-    Vg_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
     initial_trust_radius: float = 1.0,
     max_trust_radius: float = 100.0,
     eta1: float = 0.1,

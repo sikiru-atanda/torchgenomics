@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -40,11 +39,11 @@ class VariantQCStats:
     filter_pass: list[bool]  # (m,)
     filter_reason: list[str]  # (m,) e.g. "PASS", "MAF<0.01", "MISS>0.10"
     # Polyploid-specific fields (populated only when ploidy > 2)
-    dosage_class_freq: Optional[Tensor] = None  # (m, k+1) per-dosage-class freq
-    het_per_class: Optional[Tensor] = None  # (m, k-1) per-het-class freq (simplex..k-1-plex)
-    double_reduction_alpha: Optional[Tensor] = None  # (m,) estimated DR param
-    hwe_p_dr: Optional[Tensor] = None  # (m,) HWE p-value accounting for double reduction
-    mean_dosage_var: Optional[Tensor] = None  # (m,) mean Var[d] from dosage probs
+    dosage_class_freq: Tensor | None = None  # (m, k+1) per-dosage-class freq
+    het_per_class: Tensor | None = None  # (m, k-1) per-het-class freq (simplex..k-1-plex)
+    double_reduction_alpha: Tensor | None = None  # (m,) estimated DR param
+    hwe_p_dr: Tensor | None = None  # (m,) HWE p-value accounting for double reduction
+    mean_dosage_var: Tensor | None = None  # (m,) mean Var[d] from dosage probs
 
 
 @dataclass
@@ -52,13 +51,13 @@ class QCFilterConfig:
     """CLI-configurable QC filter thresholds with GEMMA/GAPIT-matching defaults."""
 
     maf_min: float = 0.01
-    mac_min: Optional[int] = None  # off by default; e.g., 20 for rare-variant filtering
+    mac_min: int | None = None  # off by default; e.g., 20 for rare-variant filtering
     miss_max: float = 0.10
     hwe_p_min: float = 1e-6
-    het_excess_max: Optional[float] = None  # off by default
+    het_excess_max: float | None = None  # off by default
     imp_rsq_min: float = 0.3
-    max_geno_freq: Optional[float] = None  # e.g. 1 - 5/N for polyploid gene-action models
-    dosage_var_max: Optional[float] = None  # max mean dosage variance (dosage certainty filter)
+    max_geno_freq: float | None = None  # e.g. 1 - 5/N for polyploid gene-action models
+    dosage_var_max: float | None = None  # max mean dosage variance (dosage certainty filter)
     use_double_reduction_hwe: bool = False  # use DR-aware HWE test for autopolyploids
 
 
@@ -66,9 +65,9 @@ def compute_variant_qc(
     G: Tensor,
     variant_meta: VariantMeta,
     ploidy: int = 2,
-    imputed_mask: Optional[Tensor] = None,
-    imp_rsq: Optional[Tensor] = None,
-    dosage_probs: Optional[Tensor] = None,
+    imputed_mask: Tensor | None = None,
+    imp_rsq: Tensor | None = None,
+    dosage_probs: Tensor | None = None,
 ) -> VariantQCStats:
     """Compute per-variant QC statistics for the full genotype matrix.
 
@@ -411,7 +410,7 @@ def _compute_observed_het(G: Tensor, ploidy: int = 2) -> Tensor:
     if ploidy == 2:
         het_count = ((G == 1.0) & mask).sum(dim=0).to(torch.float64)
     else:
-        het_count = ((G > 0) & (G < ploidy) & mask).sum(dim=0).to(torch.float64)
+        het_count = ((G > 0) & (ploidy > G) & mask).sum(dim=0).to(torch.float64)
 
     return het_count / n_obs
 
@@ -438,7 +437,6 @@ def _compute_hwe_pvalue(G: Tensor, af: Tensor, ploidy: int = 2) -> Tensor:
     Polyploid: (k+1)-class test with k df (Levene 1949 extension).
     """
     from scipy import stats as sp_stats
-    import numpy as np
 
     n, m = G.shape
 
@@ -446,8 +444,8 @@ def _compute_hwe_pvalue(G: Tensor, af: Tensor, ploidy: int = 2) -> Tensor:
     # genotype-class .item() round-trips into a single C++ pass that uses
     # a hand-rolled regularized upper incomplete gamma. The pure-Python loop
     # below remains the algorithmic spec.
-    from .._native import HAS_NATIVE_HWE, _hwe_native
     from .._dispatch import native_disabled
+    from .._native import HAS_NATIVE_HWE, _hwe_native
 
     if (
         HAS_NATIVE_HWE and not native_disabled()
@@ -619,8 +617,9 @@ def _compute_hwe_double_reduction(
     hwe_p_dr : Tensor, shape (m,)
         HWE p-value under double-reduction model.
     """
-    from scipy import stats as sp_stats
     from math import comb
+
+    from scipy import stats as sp_stats
 
     n, m = G.shape
     alpha_est = torch.zeros(m, dtype=torch.float64)
@@ -634,8 +633,8 @@ def _compute_hwe_double_reduction(
     # Native shortcut: pushes the per-SNP scipy.stats.chi2.sf + .item() loop
     # into a single GIL-released C++ pass. The Python body below remains as
     # the algorithmic spec; both paths are exercised in the test suite.
-    from .._native import HAS_NATIVE_HWE, _hwe_native
     from .._dispatch import native_disabled
+    from .._native import HAS_NATIVE_HWE, _hwe_native
     if (
         HAS_NATIVE_HWE and not native_disabled()
         and G.device.type == "cpu" and m > 0

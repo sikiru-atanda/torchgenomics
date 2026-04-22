@@ -19,8 +19,6 @@ set-level summary ``sum_indirect = sum(a_j * b_j)`` with its delta-method SE.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 from torch import Tensor
 
@@ -63,7 +61,7 @@ def mediate_gene_set(
     K,
     *,
     covariates=None,
-    seed: Optional[int] = None,  # retained for API symmetry with mediate_lmm
+    seed: int | None = None,  # retained for API symmetry with mediate_lmm
 ) -> GeneSetMediationResult:
     """Multi-mediator joint-Wald mediation for a mediator set.
 

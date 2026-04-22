@@ -10,8 +10,6 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from ..config import STAT_DTYPE
-
 
 def chi2_sf(stat: Tensor, df: int) -> Tensor:
     """Survival function (1 - CDF) of chi-square distribution.

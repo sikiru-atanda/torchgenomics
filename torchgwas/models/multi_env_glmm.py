@@ -24,13 +24,13 @@ References
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from .base import BaseModel, NullFit, VariantMeta
+from .base import NullFit, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class MultiEnvGLMM:
         if family == "ordinal" and (n_categories is None or n_categories < 2):
             raise ValueError("ordinal family requires n_categories >= 2")
         if parameterization not in ("per_env", "reaction_norm"):
-            raise ValueError(f"parameterization must be 'per_env' or 'reaction_norm'")
+            raise ValueError("parameterization must be 'per_env' or 'reaction_norm'")
         self.family = family
         self.n_categories = n_categories
         self.parameterization = parameterization
@@ -94,7 +94,7 @@ class MultiEnvGLMM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         *,
         env_names: list[str] | None = None,
         **kwargs: Any,

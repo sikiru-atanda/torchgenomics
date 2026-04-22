@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-import math
-import tempfile
-from pathlib import Path
-
+import numpy as np
 import pytest
 import torch
-import numpy as np
 from scipy.stats import kstest
 
-from torchgwas.config import STAT_DTYPE
+from torchgwas.io.regions import Region, compute_skat_weights, load_regions, map_regions_to_variants
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.io.regions import Region, load_regions, map_regions_to_variants, compute_skat_weights
-from torchgwas.models.base import NullFit, VariantMeta
-from torchgwas.models.set_based import SetBasedScanner, SetBasedResult
+from torchgwas.models.set_based import SetBasedResult, SetBasedScanner
 from torchgwas.models.single_trait_lmm import SingleTraitLMM
-
 
 # ---------------------------------------------------------------
 # Fixtures

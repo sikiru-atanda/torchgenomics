@@ -1,24 +1,19 @@
 """Tests for ``torchgwas.postgwas._finemapping`` — fine-mapping utilities."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import pytest
 import torch
 from torch import Tensor
 
 from torchgwas.postgwas._finemapping import (
-    CredibleSet,
-    AnnotatedSumStats,
-    LocusSummary,
-    extract_credible_sets,
     annotate_sumstats,
+    extract_credible_sets,
     locus_summary,
     to_coloc_sumstats,
 )
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Mock BayesianVSResult (avoids importing the real class which needs NullFit)
@@ -38,8 +33,8 @@ class _MockBVSResult:
     pip: Tensor
     beta_mean: Tensor
     beta_sd: Tensor
-    credible_sets: Optional[list[list[int]]] = None
-    alpha: Optional[Tensor] = None
+    credible_sets: list[list[int]] | None = None
+    alpha: Tensor | None = None
     n_signals: int = 0
     method: str = "cavi"
 

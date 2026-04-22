@@ -32,7 +32,6 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-
 # ---------------------------------------------------------------------------
 # Normal helpers (pure torch, no scipy)
 # ---------------------------------------------------------------------------

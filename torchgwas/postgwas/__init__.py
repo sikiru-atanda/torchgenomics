@@ -4,6 +4,12 @@ Mendelian Randomization, gene-set enrichment, power analysis,
 winner's curse correction, SMR/HEIDI, TWAS, and HESS."""
 
 from ._clump import ClumpResult, ld_clump  # noqa: F401
+from ._enrichment import (  # noqa: F401
+    EnrichmentResult,
+    GeneResult,
+    gene_set_enrichment,
+    snp_to_gene,
+)
 from ._finemapping import (  # noqa: F401
     AnnotatedSumStats,
     CredibleSet,
@@ -13,11 +19,11 @@ from ._finemapping import (  # noqa: F401
     locus_summary,
     to_coloc_sumstats,
 )
-from ._enrichment import (  # noqa: F401
-    EnrichmentResult,
-    GeneResult,
-    gene_set_enrichment,
-    snp_to_gene,
+from ._hess import (  # noqa: F401
+    HESSRegionResult,
+    HESSResult,
+    hess_local_h2,
+    hess_local_rg,
 )
 from ._hyprcoloc import (  # noqa: F401
     ColocPairwiseResult,
@@ -41,11 +47,6 @@ from ._meta import (  # noqa: F401
     meta_random_effect,
     meta_sample_size,
 )
-from ._multi_ancestry import (  # noqa: F401
-    MultiAncestryResult,
-    mantra,
-    mr_mega,
-)
 from ._mr import (  # noqa: F401
     MRResult,
     mr_all,
@@ -54,12 +55,10 @@ from ._mr import (  # noqa: F401
     mr_presso,
     mr_weighted_median,
 )
-from ._sldsc import SLDSCResult, sldsc_h2_partitioned  # noqa: F401
-from ._hess import (  # noqa: F401
-    HESSRegionResult,
-    HESSResult,
-    hess_local_h2,
-    hess_local_rg,
+from ._multi_ancestry import (  # noqa: F401
+    MultiAncestryResult,
+    mantra,
+    mr_mega,
 )
 from ._power import (  # noqa: F401
     PowerResult,
@@ -67,6 +66,7 @@ from ._power import (  # noqa: F401
     power_curve,
     required_n,
 )
+from ._sldsc import SLDSCResult, sldsc_h2_partitioned  # noqa: F401
 from ._smr import (  # noqa: F401
     SMRResult,
     SMRSummary,

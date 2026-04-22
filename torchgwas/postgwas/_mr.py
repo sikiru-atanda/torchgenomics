@@ -42,13 +42,11 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Optional
 
 import torch
 from torch import Tensor
 
 from ._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Result container

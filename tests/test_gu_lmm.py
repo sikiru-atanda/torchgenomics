@@ -18,10 +18,9 @@ import pytest
 import torch
 
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.gu_lmm import GULM, GUResult, _compute_diag_P
+from torchgwas.models.base import ScanResult, VariantMeta
+from torchgwas.models.gu_lmm import GULM, GUResult
 from torchgwas.models.single_trait_lmm import SingleTraitLMM
-
 
 # ===================================================================
 # Helper: simulate data

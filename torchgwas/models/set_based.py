@@ -20,10 +20,8 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
 
-import numpy as np
 import torch
 from torch import Tensor
 
@@ -55,7 +53,7 @@ class SetBasedResult:
     test: str  # "skat", "burden", "skat_o"
 
     # SKAT-O specific
-    rho_opt: Optional[Tensor] = None
+    rho_opt: Tensor | None = None
 
     def __len__(self) -> int:
         return len(self.region_id)
@@ -139,8 +137,8 @@ class SetBasedScanner:
         self,
         G_region: Tensor,
         region: Region,
-        weights: Optional[Tensor] = None,
-        allele_freq: Optional[Tensor] = None,
+        weights: Tensor | None = None,
+        allele_freq: Tensor | None = None,
     ) -> tuple[float, float]:
         """SKAT test for a single region.
 
@@ -211,8 +209,8 @@ class SetBasedScanner:
         self,
         G_region: Tensor,
         region: Region,
-        weights: Optional[Tensor] = None,
-        allele_freq: Optional[Tensor] = None,
+        weights: Tensor | None = None,
+        allele_freq: Tensor | None = None,
     ) -> tuple[float, float]:
         """Burden test for a single region.
 
@@ -272,9 +270,9 @@ class SetBasedScanner:
         self,
         G_region: Tensor,
         region: Region,
-        weights: Optional[Tensor] = None,
-        allele_freq: Optional[Tensor] = None,
-        rho_grid: Optional[Tensor] = None,
+        weights: Tensor | None = None,
+        allele_freq: Tensor | None = None,
+        rho_grid: Tensor | None = None,
     ) -> tuple[float, float, float]:
         """SKAT-O: optimal combination of SKAT and Burden.
 

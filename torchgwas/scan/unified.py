@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -115,7 +114,7 @@ class UnifiedScanner:
         self,
         reader: GenotypeReader,
         model: BaseModel,
-        config: Optional[TorchGWASConfig] = None,
+        config: TorchGWASConfig | None = None,
     ) -> None:
         self.reader = reader
         self.model = model
@@ -125,7 +124,7 @@ class UnifiedScanner:
         self,
         null_fit: NullFit,
         test: str = "wald",
-        qc_config: Optional[QCFilterConfig] = None,
+        qc_config: QCFilterConfig | None = None,
     ) -> ScanResult:
         """Run the full genome scan: iterate chunks, score each, collect results.
 

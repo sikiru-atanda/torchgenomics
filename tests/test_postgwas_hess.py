@@ -6,12 +6,10 @@ import pytest
 import torch
 
 from torchgwas.postgwas._hess import (
-    HESSRegionResult,
     HESSResult,
     hess_local_h2,
     hess_local_rg,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. Identity LD: h2 near 0 under the null

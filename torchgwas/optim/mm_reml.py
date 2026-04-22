@@ -15,7 +15,6 @@ Used as fallback when Newton-type methods (AI-REML) oscillate or diverge.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -30,7 +29,7 @@ def mm_reml(
     X0_rot: Tensor,
     eigenvalues: Tensor,
     *,
-    lam_init: Optional[float] = None,
+    lam_init: float | None = None,
     max_iter: int = 200,
     tol: float = 1e-6,
     lam_min: float = 1e-10,

@@ -20,7 +20,6 @@ import torch
 from torchgwas._native import HAS_NATIVE_SPA, _spa_native
 from torchgwas.stats.spa import saddlepoint_pvalue
 
-
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_SPA, reason="native SPA extension not built"
 )

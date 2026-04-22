@@ -16,7 +16,6 @@ from .._native import (
 )
 from ._impute_gpu import impute_knn_gpu, impute_ld_gpu, impute_mode_gpu
 
-
 # ---------------------------------------------------------------------------
 # Path-selection helpers
 # ---------------------------------------------------------------------------

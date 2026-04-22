@@ -3,7 +3,6 @@
 import pytest
 import torch
 
-from torchgwas.linalg.basis import standardize_time
 from torchgwas.models.rr_lmm import longitudinal_to_wide
 from torchgwas.models.rr_met import (
     MultiEnvLongitudinalProjection,

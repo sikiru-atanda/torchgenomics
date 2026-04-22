@@ -98,8 +98,8 @@ def _block_jackknife_se(
     # accumulator and subtracts the per-block contribution. Eliminates
     # ~200 torch.linalg.lstsq dispatch round-trips per LDSC call. The
     # pure-Python path remains intact below as the algorithmic spec.
-    from .._native import HAS_NATIVE_LDSC, _ldsc_native
     from .._dispatch import native_disabled
+    from .._native import HAS_NATIVE_LDSC, _ldsc_native
 
     if (
         HAS_NATIVE_LDSC and not native_disabled()

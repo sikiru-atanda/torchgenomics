@@ -15,6 +15,13 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
+
+    from .models.multi_env_lmm import EnvScanResult
+    from .models.multi_trait_multi_env_lmm import MTMETScanResult
 
 logger = logging.getLogger("torchgwas")
 
@@ -234,6 +241,7 @@ def _cmd_glm_scan(args: argparse.Namespace) -> int:
 def _cmd_glm_scan_single(args: argparse.Namespace) -> int:
     """Run GLM association scan for a single trait (or auto-detected traits)."""
     import torch
+
     from .config import TorchGWASConfig, resolve_device
     from .preprocess.qc import QCFilterConfig
 
@@ -317,10 +325,10 @@ def _cmd_lmm_scan(args: argparse.Namespace) -> int:
 def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
     """Run single-trait LMM scan for a single trait."""
     import torch
+
     from .config import TorchGWASConfig, resolve_device
     from .models.single_trait_lmm import SingleTraitLMM
     from .preprocess.qc import QCFilterConfig
-    from .preprocess.impute import impute_mean
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(
@@ -433,7 +441,6 @@ def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
 
 def _cmd_mvlmm_scan(args: argparse.Namespace) -> int:
     """Run multi-trait mvLMM association scan (streaming GRM)."""
-    import torch
     from .config import TorchGWASConfig, resolve_device
     from .models.multi_trait_lmm import MultiTraitLMM
     from .preprocess.qc import QCFilterConfig
@@ -503,7 +510,6 @@ def _cmd_mvlmm_scan(args: argparse.Namespace) -> int:
 
 def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
     """Run multi-kernel LMM scan (additive + dominance + epistatic variance components)."""
-    import torch
     from .config import TorchGWASConfig, resolve_device
     from .models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
     from .preprocess.qc import QCFilterConfig
@@ -562,7 +568,8 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
     """Run gene-environment interaction LMM scan."""
     import pandas as pd
     import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+
+    from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
     from .linalg.kinship import grm_vanraden
     from .preprocess.qc import QCFilterConfig
 
@@ -610,12 +617,12 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
 def _cmd_set_scan(args: argparse.Namespace) -> int:
     """Run set-based association tests (SKAT/Burden/SKAT-O)."""
     import pandas as pd
-    import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+
+    from .config import TorchGWASConfig, resolve_device
     from .io.regions import load_regions
     from .linalg.kinship import grm_vanraden
-    from .models.single_trait_lmm import SingleTraitLMM
     from .models.set_based import SetBasedScanner
+    from .models.single_trait_lmm import SingleTraitLMM
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
@@ -670,11 +677,11 @@ def _cmd_set_scan(args: argparse.Namespace) -> int:
 def _cmd_bayes_scan(args: argparse.Namespace) -> int:
     """Run Bayesian variable selection (spike-and-slab) GWAS."""
     import pandas as pd
-    import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+
+    from .config import TorchGWASConfig, resolve_device
     from .linalg.kinship import grm_vanraden
-    from .models.single_trait_lmm import SingleTraitLMM
     from .models.bayesian_vs import BayesianVS
+    from .models.single_trait_lmm import SingleTraitLMM
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
@@ -748,7 +755,8 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
     """Run multi-environment trial (MET) GWAS scan."""
     import pandas as pd
     import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+
+    from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
     from .linalg.kinship import grm_vanraden
     from .models.multi_env_lmm import MultiEnvLMM
 
@@ -812,7 +820,6 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
                 {name: f"{h:.3f}" for name, h in zip(env_cols, h2.tolist())})
 
     # Scan all chunks
-    from .models.base import VariantMeta
     results = []
     for chunk_idx, (G_c, vm) in enumerate(reader.iter_chunks(config.chunk_size)):
         G_c = G_c.to(device)
@@ -820,7 +827,6 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
         results.append(result)
 
     # Merge results
-    from .models.multi_env_lmm import EnvScanResult
     merged = _merge_env_results(results)
 
     # Save TSV
@@ -828,9 +834,10 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _merge_env_results(results: list) -> "EnvScanResult":
+def _merge_env_results(results: list) -> EnvScanResult:
     """Concatenate EnvScanResult objects across chunks."""
     import torch
+
     from .models.multi_env_lmm import EnvScanResult
 
     chr_all, pos_all, snp_all, a1_all, a2_all = [], [], [], [], []
@@ -918,8 +925,7 @@ def _cmd_farmcpu_scan(args: argparse.Namespace) -> int:
 
 def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
     """Run FarmCPU scan for a single trait."""
-    import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+    from .config import TorchGWASConfig, resolve_device
     from .models.farmcpu import FarmCPU
     from .preprocess.qc import QCFilterConfig
 
@@ -966,8 +972,7 @@ def _cmd_blink_scan(args: argparse.Namespace) -> int:
 
 def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
     """Run BLINK scan for a single trait."""
-    import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+    from .config import TorchGWASConfig, resolve_device
     from .models.blink import BLINK
     from .preprocess.qc import QCFilterConfig
 
@@ -1009,9 +1014,10 @@ def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
 
 def _cmd_threshold_scan(args: argparse.Namespace) -> int:
     """Run threshold-linear GWAS scan for ordinal + continuous traits."""
-    import torch
     import numpy as np
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+    import torch
+
+    from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
     from .models.threshold_linear import ThresholdLinearModel
     from .preprocess.qc import QCFilterConfig
 
@@ -1063,8 +1069,7 @@ def _cmd_threshold_scan(args: argparse.Namespace) -> int:
 
 def _cmd_conditional_scan(args: argparse.Namespace) -> int:
     """Run LD-conditional GWAS scan with persistence metrics."""
-    import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+    from .config import TorchGWASConfig, resolve_device
     from .models.conditional_lmm import ConditionalLMM
     from .preprocess.qc import QCFilterConfig
 
@@ -1107,8 +1112,7 @@ def _cmd_conditional_scan(args: argparse.Namespace) -> int:
 
 def _cmd_mtmet_scan(args: argparse.Namespace) -> int:
     """Run multi-trait multi-environment GWAS scan."""
-    import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+    from .config import TorchGWASConfig, resolve_device
     from .models.multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
     from .preprocess.qc import QCFilterConfig
 
@@ -1133,7 +1137,7 @@ def _cmd_mtmet_scan(args: argparse.Namespace) -> int:
 
     # Load phenotype: expect columns like trait_env or user-specified pattern
     import pandas as pd
-    from .io.phenotype import load_phenotype
+
 
     pheno_df = pd.read_csv(args.phenotype, sep=None, engine="python")
 
@@ -1196,15 +1200,20 @@ def _cmd_mtmet_scan(args: argparse.Namespace) -> int:
 
 
 def _save_mtmet_results(
-    result: "MTMETScanResult",
+    result: MTMETScanResult,
     args: argparse.Namespace,
     trait_names: list[str],
     env_names: list[str],
 ) -> None:
     """Save MT-MET results with flattened per-trait-per-env columns."""
     import pandas as pd
+
     from .stats.multipletesting import (
-        bonferroni, holm, benjamini_hochberg, benjamini_yekutieli, storey_qvalue,
+        benjamini_hochberg,
+        benjamini_yekutieli,
+        bonferroni,
+        holm,
+        storey_qvalue,
     )
 
     p = result.p
@@ -1279,7 +1288,6 @@ def _save_mtmet_results(
 
 def _cmd_ocf_scan(args: argparse.Namespace) -> int:
     """Run Orthogonal Cross-Fit LMM (debiased) GWAS scan."""
-    import torch
     from .config import TorchGWASConfig, resolve_device
     from .models.ocf_lmm import OCFLMM
     from .preprocess.qc import QCFilterConfig
@@ -1326,8 +1334,8 @@ def _cmd_ocf_scan(args: argparse.Namespace) -> int:
 
 def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
     """Run knockoff FDR-controlled GWAS scan."""
-    import torch
     import pandas as pd
+
     from .config import TorchGWASConfig, resolve_device
     from .models.knockoff_lmm import KnockoffLMM
 
@@ -1402,7 +1410,7 @@ def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
 def _cmd_gu_scan(args: argparse.Namespace) -> int:
     """Run genotype-uncertainty–corrected GWAS scan."""
     import torch
-    import pandas as pd
+
     from .config import TorchGWASConfig, resolve_device
     from .models.gu_lmm import GULM
 
@@ -1448,8 +1456,6 @@ def _cmd_gu_scan(args: argparse.Namespace) -> int:
 
 def _cmd_lro_scan(args: argparse.Namespace) -> int:
     """Run leave-region-out GWAS scan (block-level LOCO)."""
-    import torch
-    import pandas as pd
     from .config import TorchGWASConfig, resolve_device
     from .models.lro_lmm import LROLMM
 
@@ -1486,7 +1492,6 @@ def _cmd_lro_scan(args: argparse.Namespace) -> int:
 
 def _cmd_glmm_scan(args: argparse.Namespace) -> int:
     """Run GLMM association scan (binary/ordinal with random effects)."""
-    import torch
     from .config import TorchGWASConfig, resolve_device
 
     device = resolve_device(args.device)
@@ -1531,8 +1536,6 @@ def _cmd_glmm_scan(args: argparse.Namespace) -> int:
 
 def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
     """Run multi-environment GLMM association scan."""
-    import torch
-    import pandas as pd
     from .config import TorchGWASConfig, resolve_device
 
     device = resolve_device(args.device)
@@ -1579,7 +1582,6 @@ def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
 
 def _cmd_survival_scan(args: argparse.Namespace) -> int:
     """Run survival GWAS scan (Cox PH frailty model)."""
-    import torch
     from .config import TorchGWASConfig, resolve_device
 
     device = resolve_device(args.device)
@@ -1622,8 +1624,9 @@ def _cmd_survival_scan(args: argparse.Namespace) -> int:
 
 def _cmd_family_scan(args: argparse.Namespace) -> int:
     """Run within-family GWAS scan with confounding diagnostics."""
-    import torch
     import pandas as pd
+    import torch
+
     from .config import TorchGWASConfig, resolve_device
     from .models.within_family_lmm import WithinFamilyLMM
     from .preprocess.qc import QCFilterConfig
@@ -1703,11 +1706,10 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
     - When --gene-action=all, scans every applicable model and outputs per-model results,
       then selects the best model per marker and performs peak pruning + optional joint QTL.
     """
-    import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
-    from .models.single_trait_lmm import SingleTraitLMM
+    from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
     from .linalg.kinship_polyploid import grm_polyploid_gene_action
-    from .preprocess.polyploid import recode_gene_action, list_gene_action_models
+    from .models.single_trait_lmm import SingleTraitLMM
+    from .preprocess.polyploid import list_gene_action_models, recode_gene_action
     from .preprocess.qc import QCFilterConfig, compute_max_genotype_freq
 
     device = resolve_device(args.device)
@@ -1814,7 +1816,6 @@ def _poly_scan_post_analysis(
 ) -> None:
     """Run best-model selection, peak pruning, and optional joint QTL fitting."""
     import pandas as pd
-    import torch
 
     n_samples = Y.shape[0]
     output_base = args.output
@@ -1888,8 +1889,8 @@ def _poly_scan_post_analysis(
     do_joint = getattr(args, "joint_qtl", False)
     if do_joint and peaks:
         try:
-            from .models.joint_qtl import fit_joint_qtl
             from .config import resolve_device
+            from .models.joint_qtl import fit_joint_qtl
 
             device = resolve_device(args.device)
 
@@ -1945,7 +1946,8 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
     the full genotype matrix.  FarmCPU/BLINK need full G in memory.
     """
     import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+
+    from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
     from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
@@ -1983,8 +1985,8 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
             null_fit = model.fit_null(Y, X0)
 
         elif model_name == "lmm":
-            from .models.single_trait_lmm import SingleTraitLMM
             from .linalg.kinship import grm_vanraden_streaming
+            from .models.single_trait_lmm import SingleTraitLMM
             logger.info("Computing kinship matrix (VanRaden streaming, ploidy=%d)...", ploidy)
             K, grm_meta = grm_vanraden_streaming(
                 _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
@@ -2003,8 +2005,8 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
             )
 
         elif model_name == "mvlmm":
-            from .models.multi_trait_lmm import MultiTraitLMM
             from .linalg.kinship import grm_vanraden_streaming
+            from .models.multi_trait_lmm import MultiTraitLMM
             if Y.shape[1] < 2:
                 logger.error("mvlmm requires >= 2 traits, got %d", Y.shape[1])
                 return 1
@@ -2066,8 +2068,9 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
     # GxE LMM (single-trait HetLMM via pipeline)
     elif model_name == "gxe":
         import pandas as pd
-        from .models.lmm_gxe import HetLMM
+
         from .linalg.kinship import grm_vanraden
+        from .models.lmm_gxe import HetLMM
         G, Y, X0, vmeta, reader = _load_scan_data(args, config)
         K, _ = grm_vanraden(G.to(device))
         # GxE requires an environment covariate — use first covariate column
@@ -2086,6 +2089,7 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
     # Multi-environment trial (MET)
     elif model_name == "met":
         import pandas as pd
+
         from .linalg.kinship import grm_vanraden
         from .models.multi_env_lmm import MultiEnvLMM
         G, Y, X0, vmeta, reader = _load_scan_data(args, config)
@@ -2150,8 +2154,9 @@ def _cmd_impute(args: argparse.Namespace) -> int:
 
     # --- GPU-accelerated built-in methods ---
     if method in ("li-stephens", "deep-learning"):
-        from .preprocess.impute_gpu import impute_li_stephens, impute_deep_learning
         import torch
+
+        from .preprocess.impute_gpu import impute_deep_learning, impute_li_stephens
 
         G = _load_genotype_matrix(args.genotype)
         logger.info("Loaded %d samples x %d markers, method=%s",
@@ -2168,8 +2173,9 @@ def _cmd_impute(args: argparse.Namespace) -> int:
 
     # --- Simple built-in methods ---
     if method in ("mean", "mode", "knn", "ld"):
-        from .preprocess.impute import impute_mean, impute_mode, impute_knn, impute_ld
         import torch
+
+        from .preprocess.impute import impute_knn, impute_ld, impute_mean, impute_mode
 
         G = _load_genotype_matrix(args.genotype)
         logger.info("Loaded %d samples x %d markers, method=%s",
@@ -2228,9 +2234,10 @@ def _cmd_impute(args: argparse.Namespace) -> int:
 def _cmd_ld_blocks(args: argparse.Namespace) -> int:
     """Detect haplotype blocks."""
     import torch
-    from .ld import detect_blocks, save_blocks_bed
+
     from .io.detect import detect_format
     from .io.validate import _open_reader
+    from .ld import detect_blocks, save_blocks_bed
 
     device = torch.device(args.device) if args.device else None
 
@@ -2345,9 +2352,10 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
 def _cmd_ldsc(args: argparse.Namespace) -> int:
     """Estimate SNP heritability via LDSC."""
     import torch
-    from .postgwas import compute_ld_scores, ldsc_h2, load_sumstats
+
     from .io.detect import detect_format
     from .io.validate import _open_reader
+    from .postgwas import compute_ld_scores, ldsc_h2, load_sumstats
 
     ss = load_sumstats(args.sumstats)
     n = int(ss.n[~ss.n.isnan()].median().item()) if not ss.n.isnan().all() else args.n
@@ -2380,9 +2388,10 @@ def _cmd_ldsc(args: argparse.Namespace) -> int:
 def _cmd_ldsc_rg(args: argparse.Namespace) -> int:
     """Estimate genetic correlation via cross-trait LDSC."""
     import torch
-    from .postgwas import compute_ld_scores, ldsc_rg_from_z, load_sumstats, align_sumstats
+
     from .io.detect import detect_format
     from .io.validate import _open_reader
+    from .postgwas import align_sumstats, compute_ld_scores, ldsc_rg_from_z, load_sumstats
 
     ss1 = load_sumstats(args.sumstats1)
     ss2 = load_sumstats(args.sumstats2)
@@ -2417,9 +2426,14 @@ def _cmd_ldsc_rg(args: argparse.Namespace) -> int:
 def _cmd_meta(args: argparse.Namespace) -> int:
     """Run meta-analysis across multiple GWAS results."""
     import torch
+
     from .postgwas import (
-        load_sumstats, align_sumstats,
-        meta_fixed_effect, meta_random_effect, meta_sample_size, meta_han_eskin,
+        align_sumstats,
+        load_sumstats,
+        meta_fixed_effect,
+        meta_han_eskin,
+        meta_random_effect,
+        meta_sample_size,
     )
 
     ss_list = [load_sumstats(p) for p in args.input]
@@ -2466,9 +2480,10 @@ def _cmd_meta(args: argparse.Namespace) -> int:
 def _cmd_clump(args: argparse.Namespace) -> int:
     """LD clumping to identify independent loci."""
     import torch
-    from .postgwas import load_sumstats, ld_clump
+
     from .io.detect import detect_format
     from .io.validate import _open_reader
+    from .postgwas import ld_clump, load_sumstats
 
     ss = load_sumstats(args.sumstats)
 
@@ -2501,14 +2516,13 @@ def _cmd_clump(args: argparse.Namespace) -> int:
 
 def _cmd_pgs_fit(args: argparse.Namespace) -> int:
     """Fit PGS weights from GWAS sumstats."""
-    import torch
 
     from .pgs import (
+        PRSCS,
         ClumpingThresholding,
         LDpred2Auto,
         LDpred2Grid,
         LDpred2Inf,
-        PRSCS,
         load_ld_reference,
         load_pgs_sumstats,
     )
@@ -2617,9 +2631,10 @@ def _cmd_pgs_score(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_genotype_matrix(genotype_path: str) -> "torch.Tensor":
+def _load_genotype_matrix(genotype_path: str) -> torch.Tensor:
     """Load full genotype matrix from any supported format."""
     import torch
+
     from .io.detect import detect_format
     from .io.validate import _open_reader
 
@@ -2648,10 +2663,10 @@ def _align_samples(args: argparse.Namespace, config, trait_columns=None):
         If provided, select specific trait columns from phenotype file
         (used by mvlmm-scan for multi-trait selection).
     """
-    from .io.detect import detect_format
-    from .io.validate import _open_reader
-    from .io.phenotype import load_phenotype
     from .io.aligned import SampleAlignedReader
+    from .io.detect import detect_format
+    from .io.phenotype import load_phenotype
+    from .io.validate import _open_reader
 
     # Detect format and open reader
     fmt = detect_format(args.genotype)
@@ -2692,7 +2707,7 @@ def _align_samples(args: argparse.Namespace, config, trait_columns=None):
     return Y, X0, aligned_reader
 
 
-def _load_user_grm(grm_path: str, n_samples: int) -> "torch.Tensor":
+def _load_user_grm(grm_path: str, n_samples: int) -> torch.Tensor:
     """Load a user-provided GRM matrix with validation.
 
     Supports NumPy (.npy, .npz), space/tab-delimited text, and CSV.
@@ -2705,9 +2720,10 @@ def _load_user_grm(grm_path: str, n_samples: int) -> "torch.Tensor":
     FileNotFoundError
         If the file does not exist.
     """
-    import torch
-    import numpy as np
     from pathlib import Path
+
+    import numpy as np
+    import torch
 
     p = Path(grm_path)
     if not p.is_file():
@@ -2835,10 +2851,14 @@ def _impute_chunk_iter(chunk_iter):
 
 def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
     """Apply multiple testing correction and save results."""
-    import torch
     import pandas as pd
+
     from .stats.multipletesting import (
-        bonferroni, holm, benjamini_hochberg, benjamini_yekutieli, storey_qvalue,
+        benjamini_hochberg,
+        benjamini_yekutieli,
+        bonferroni,
+        holm,
+        storey_qvalue,
     )
 
     p = result.p
@@ -2879,7 +2899,8 @@ def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
             group_ids = _load_gene_map(gene_map_file, result.snp)
             p_adj = hierarchical_fdr(p, group_ids)
     elif correction in ("ihw", "adapt"):
-        from .stats.adaptive_fdr import ihw as _ihw, adapt as _adapt
+        from .stats.adaptive_fdr import adapt as _adapt
+        from .stats.adaptive_fdr import ihw as _ihw
         cov = _load_fdr_covariate(args, result)
         if correction == "ihw":
             res_fdr = _ihw(p, cov, q=0.05)
@@ -3569,6 +3590,7 @@ def _add_rr_scan_parser(subparsers: argparse._SubParsersAction) -> None:
 def _merge_rr_results(results: list):
     """Concatenate RRScanResult objects across genotype chunks."""
     import torch
+
     from .models.rr_lmm import RRScanResult
 
     chr_all, pos_all, snp_all, a1_all, a2_all = [], [], [], [], []
@@ -3658,9 +3680,11 @@ def _save_rr_results(result, args) -> None:
 def _cmd_rr_scan(args: argparse.Namespace) -> int:
     """Run a Random Regression LMM GWAS scan on long-format longitudinal data."""
     import json
+
     import pandas as pd
     import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+
+    from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
     from .linalg.kinship import grm_vanraden
     from .models.rr_lmm import RandomRegressionLMM
     from .models.rr_spatial import SpatioTemporalRR
@@ -3843,6 +3867,7 @@ def _add_rr_met_scan_parser(subparsers: argparse._SubParsersAction) -> None:
 def _merge_rr_met_results(results: list):
     """Concatenate RRMetScanResult objects across genotype chunks."""
     import torch
+
     from .models.rr_met import RRMetScanResult
 
     chr_all, pos_all, snp_all, a1_all, a2_all = [], [], [], [], []
@@ -3944,9 +3969,11 @@ def _save_rr_met_results(result, args, env_labels: list[str]) -> None:
 def _cmd_rr_met_scan(args: argparse.Namespace) -> int:
     """Run a Random Regression × Multi-Environment LMM GWAS scan on long-format data."""
     import json
+
     import pandas as pd
     import torch
-    from .config import TorchGWASConfig, STAT_DTYPE, resolve_device
+
+    from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
     from .linalg.kinship import grm_vanraden
     from .models.rr_met import RandomRegressionMultiEnvLMM
 
@@ -4099,10 +4126,10 @@ def _add_common_scan_args(parser: argparse.ArgumentParser) -> None:
                              "For multivariate models, all traits are analyzed jointly.")
 
 
-def _load_weights(weights_file: str, snp_ids: list[str]) -> "torch.Tensor":
+def _load_weights(weights_file: str, snp_ids: list[str]) -> torch.Tensor:
     """Load per-SNP weights from a TSV file (columns: SNP, WEIGHT)."""
-    import torch
     import pandas as pd
+    import torch
 
     df = pd.read_csv(weights_file, sep="\t")
     weight_map = dict(zip(df["SNP"], df["WEIGHT"]))
@@ -4113,10 +4140,10 @@ def _load_weights(weights_file: str, snp_ids: list[str]) -> "torch.Tensor":
     return weights
 
 
-def _load_fdr_covariate(args: "argparse.Namespace", result) -> "torch.Tensor":
+def _load_fdr_covariate(args: argparse.Namespace, result) -> torch.Tensor:
     """Load auxiliary covariate for IHW/AdaPT. Falls back to MAF."""
-    import torch
     import pandas as pd
+    import torch
 
     fdr_cov_file = getattr(args, "fdr_covariate", None)
     if fdr_cov_file is not None:

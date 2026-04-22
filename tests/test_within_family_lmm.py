@@ -17,14 +17,13 @@ import pytest
 import torch
 
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import BaseModel, NullFit, ScanResult, VariantMeta
+from torchgwas.models.base import ScanResult, VariantMeta
 from torchgwas.models.within_family_lmm import (
     WithinFamilyLMM,
     WithinFamilyNullFit,
     _demean_within_families,
     _parse_family_ids,
 )
-
 
 # ===================================================================
 # Helper: simulate family-structured data

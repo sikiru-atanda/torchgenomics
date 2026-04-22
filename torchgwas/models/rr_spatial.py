@@ -32,7 +32,7 @@ References
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -128,7 +128,7 @@ class SpatioTemporalRR:
         k_coef_structure: str = "unstructured",
         include_pe: bool = False,
         mode: str = "projection",
-        config: Optional[NumericalConfig] = None,
+        config: NumericalConfig | None = None,
         *,
         n_knots_row: int = 8,
         n_knots_col: int = 8,
@@ -165,8 +165,8 @@ class SpatioTemporalRR:
         time_values: Tensor,
         row_coords: Tensor,
         col_coords: Tensor,
-        t_min: Optional[float] = None,
-        t_max: Optional[float] = None,
+        t_min: float | None = None,
+        t_max: float | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Pre-fit spatial smoother, deconfound Y, then fit temporal RR null.

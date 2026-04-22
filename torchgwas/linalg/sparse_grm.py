@@ -14,7 +14,7 @@ analysis of large-scale data." Nature Genetics 51:1749-1755. (fastGWA)
 from __future__ import annotations
 
 import logging
-from typing import Callable, Iterator, Optional, Tuple
+from collections.abc import Callable, Iterator
 
 import torch
 from torch import Tensor
@@ -25,12 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 def sparse_grm_streaming(
-    chunk_iter: Iterator[Tuple[Tensor, object]],
+    chunk_iter: Iterator[tuple[Tensor, object]],
     n_samples: int,
     threshold: float = 0.05,
     ploidy: int = 2,
-    device: Optional[torch.device] = None,
-) -> Tuple[Tensor, float, int]:
+    device: torch.device | None = None,
+) -> tuple[Tensor, float, int]:
     """Build a sparse GRM by streaming chunks and thresholding.
 
     Algorithm

@@ -7,12 +7,11 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.linalg.eigh import eigendecompose, rotate
+from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.optim.ai_reml import ai_reml_single
 from torchgwas.optim.controller import OptimizerController, OptimizerMode
 from torchgwas.optim.em_warmstart import px_em_warmstart
-from torchgwas.optim.mm_reml import mm_reml
 
 
 @pytest.fixture

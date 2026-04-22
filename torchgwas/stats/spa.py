@@ -16,8 +16,6 @@ import math
 import torch
 from torch import Tensor
 
-from ..config import STAT_DTYPE
-
 
 def _cgf(t: Tensor, mu: Tensor, g: Tensor) -> Tensor:
     """Cumulant generating function K(t) = sum_i log(q_i exp(-mu_i g_i t) + mu_i exp(q_i g_i t)).
@@ -160,8 +158,8 @@ def saddlepoint_pvalue(
     # Python implementation below. The pure-Python path remains intact as the
     # algorithmic spec and runs whenever the extension is missing, the data is
     # not on CPU, or TORCHGWAS_DISABLE_NATIVE=1 is set.
-    from .._native import HAS_NATIVE_SPA, _spa_native
     from .._dispatch import native_disabled
+    from .._native import HAS_NATIVE_SPA, _spa_native
 
     use_native_spa = (
         HAS_NATIVE_SPA and not native_disabled()

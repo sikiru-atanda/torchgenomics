@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE, TorchGWASConfig, AMPConfig
+from torchgwas.config import STAT_DTYPE
 
 HAS_CUDA = torch.cuda.is_available()
 skip_no_gpu = pytest.mark.skipif(not HAS_CUDA, reason="No CUDA GPU available")
@@ -31,8 +31,8 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_scan_cpu_gpu_match(self):
         """Scan p-values on GPU match CPU within declared tolerance (<=1e-4 relative)."""
-        from torchgwas.models.glm import GLM
         from torchgwas.models.base import VariantMeta
+        from torchgwas.models.glm import GLM
 
         torch.manual_seed(42)
         n, m = 100, 50
@@ -84,8 +84,8 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_eigendecompose_gpu(self):
         """Eigendecomposition on GPU matches CPU."""
-        from torchgwas.linalg.kinship import grm_vanraden
         from torchgwas.linalg.eigh import eigendecompose
+        from torchgwas.linalg.kinship import grm_vanraden
 
         torch.manual_seed(42)
         G = torch.randint(0, 3, (30, 100), dtype=STAT_DTYPE)
@@ -102,10 +102,9 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_lmm_scan_gpu(self):
         """LMM scan on GPU matches CPU."""
-        import math
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
         from torchgwas.linalg.kinship import grm_vanraden
         from torchgwas.models.base import VariantMeta
+        from torchgwas.models.single_trait_lmm import SingleTraitLMM
 
         torch.manual_seed(42)
         n, m = 80, 40
@@ -161,8 +160,8 @@ class TestAMP:
     @skip_no_gpu
     def test_amp_inference_fp64(self):
         """Statistical inference (p-values, SE) uses float64 regardless of AMP."""
-        from torchgwas.models.glm import GLM
         from torchgwas.models.base import VariantMeta
+        from torchgwas.models.glm import GLM
 
         torch.manual_seed(42)
         n, m = 50, 20
@@ -263,8 +262,8 @@ class TestPrefetch:
 
     def test_prefetch_cpu_passthrough(self):
         """On CPU, PrefetchIterator passes through without overhead."""
-        from torchgwas.scan.prefetch import PrefetchIterator
         from torchgwas.models.base import VariantMeta
+        from torchgwas.scan.prefetch import PrefetchIterator
 
         chunks = [
             (torch.randn(10, 5), VariantMeta(
@@ -280,8 +279,8 @@ class TestPrefetch:
 
     def test_move_nullfit_to_device(self):
         """move_nullfit_to_device handles all tensor fields."""
-        from torchgwas.scan.prefetch import move_nullfit_to_device
         from torchgwas.models.base import NullFit
+        from torchgwas.scan.prefetch import move_nullfit_to_device
 
         nf = NullFit(
             sig2_g=1.0, sig2_e=1.0,
@@ -299,8 +298,8 @@ class TestPrefetch:
     @skip_no_gpu
     def test_move_nullfit_to_gpu(self):
         """NullFit tensors move to GPU correctly."""
-        from torchgwas.scan.prefetch import move_nullfit_to_device
         from torchgwas.models.base import NullFit
+        from torchgwas.scan.prefetch import move_nullfit_to_device
 
         nf = NullFit(
             sig2_g=1.0, sig2_e=1.0,

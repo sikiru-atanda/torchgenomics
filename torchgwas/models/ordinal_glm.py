@@ -13,14 +13,13 @@ category boundaries, giving a chi2(1) test statistic per SNP.
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 from .glm_link import CumulativeLogitLink
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,7 @@ class OrdinalGLM:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the null proportional odds model via IRLS.
@@ -141,7 +140,7 @@ class OrdinalGLM:
                             dtype=STAT_DTYPE, device=Y.device)
 
             for j in range(n_thresh):
-                D_j = (Y <= j).float()  # (n,)
+                D_j = (j >= Y).float()  # (n,)
                 gamma_j = gamma[:, j]  # (n,)
                 w_j = gamma_j * (1.0 - gamma_j)  # (n,) weight for boundary j
                 w_j = torch.clamp(w_j, min=1e-10)
@@ -276,7 +275,7 @@ class OrdinalGLM:
         C = torch.zeros(m, n_params, dtype=STAT_DTYPE, device=G_chunk.device)
 
         for j in range(J - 1):
-            D_j = (Y <= j).float()  # (n,)
+            D_j = (j >= Y).float()  # (n,)
             resid_j = D_j - gamma[:, j]  # (n,)
             U += G_chunk.T @ resid_j  # (m,)
 

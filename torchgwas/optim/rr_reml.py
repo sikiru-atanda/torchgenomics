@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -38,7 +37,7 @@ from .lbfgs_reml import lbfgs_reml
 logger = logging.getLogger(__name__)
 
 
-def parse_k_coef_structure(spec: str) -> tuple[str, Optional[int]]:
+def parse_k_coef_structure(spec: str) -> tuple[str, int | None]:
     """Parse a ``k_coef_structure`` string into ``(kind, fa_rank)``.
 
     Examples
@@ -64,8 +63,8 @@ def rr_reml_unstructured(
     eigenvalues: Tensor,
     *,
     b: int,
-    Vg_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
     max_iter: int = 150,
     tol: float = 1e-6,
 ) -> tuple[Tensor, Tensor, float, list[dict]]:
@@ -161,8 +160,8 @@ def rr_reml_fa(
     *,
     b: int,
     fa_rank: int,
-    Vg_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
     max_iter: int = 150,
     tol: float = 1e-6,
 ) -> tuple[Tensor, Tensor, float, list[dict]]:

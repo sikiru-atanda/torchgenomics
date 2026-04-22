@@ -17,7 +17,8 @@ Power curves are computed via the NCP-based normal approximation from
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -150,6 +151,7 @@ def trumpet_plot(
 
     if sample_sizes:
         import torch
+
         from torchgwas.postgwas._power import power_curve as _power_curve
 
         af_grid = torch.logspace(

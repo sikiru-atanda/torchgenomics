@@ -14,8 +14,7 @@ Supports joint Wald test chi2(d) and per-trait Wald test chi2(1).
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -23,8 +22,8 @@ from torch import Tensor
 from ..config import STAT_DTYPE, NumericalConfig
 from ..linalg.eigh import eigendecompose, rotate
 from ..optim.lbfgs_reml import lbfgs_reml
-from ..optim.mvlmm_reml import compute_sigma_inv, mvlmm_null_quantities
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from ..optim.mvlmm_reml import mvlmm_null_quantities
+from .base import NullFit, ScanResult, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +34,14 @@ class MultiTraitLMM:
     Conforms to the BaseModel protocol: ``fit_null`` + ``score_chunk``.
     """
 
-    def __init__(self, config: Optional[NumericalConfig] = None) -> None:
+    def __init__(self, config: NumericalConfig | None = None) -> None:
         self.config = config or NumericalConfig()
 
     def fit_null(
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the multi-trait null model (no SNP effect).

@@ -9,14 +9,13 @@ from torchgwas.preprocess.impute_gpu import (
     GenotypeAutoencoder,
     _build_emissions,
     _compute_posteriors,
+    _imputation_rsq,
     _log_backward,
     _log_forward,
     compute_transition_matrices,
     impute_deep_learning,
     impute_li_stephens,
-    _imputation_rsq,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

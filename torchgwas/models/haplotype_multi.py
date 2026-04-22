@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 import torch
@@ -103,7 +102,7 @@ class HaplotypeMultiEnvResult:
     p_hap_gxe: Tensor = field(default_factory=lambda: torch.tensor([]))
 
     haplotype_labels: list[list[str]] = field(default_factory=list)
-    env_names: Optional[list[str]] = None
+    env_names: list[str] | None = None
     n_obs: int = 0
 
 
@@ -135,7 +134,7 @@ class HaplotypeMultiTraitResult:
     p_per_trait: list[Tensor] = field(default_factory=list)
 
     haplotype_labels: list[list[str]] = field(default_factory=list)
-    trait_names: Optional[list[str]] = None
+    trait_names: list[str] | None = None
     n_obs: int = 0
 
 
@@ -175,8 +174,8 @@ class HaplotypeMTMETResult:
     p_hap_gxe: list[Tensor] = field(default_factory=list)
 
     haplotype_labels: list[list[str]] = field(default_factory=list)
-    trait_names: Optional[list[str]] = None
-    env_names: Optional[list[str]] = None
+    trait_names: list[str] | None = None
+    env_names: list[str] | None = None
     n_obs: int = 0
 
 
@@ -443,7 +442,7 @@ class HaplotypeMultiEnvGWAS:
         X0: Tensor,
         K: Tensor,
         *,
-        env_names: Optional[list[str]] = None,
+        env_names: list[str] | None = None,
         **kwargs,
     ) -> NullFit:
         """Fit multi-environment null model.
@@ -737,7 +736,7 @@ class HaplotypeMultiTraitGWAS:
         variant_chr: list[str] | None = None,
         blocks=None,
         haplotypes: Tensor | None = None,
-        trait_names: Optional[list[str]] = None,
+        trait_names: list[str] | None = None,
         **block_kwargs,
     ) -> HaplotypeMultiTraitResult:
         """Run multi-trait haplotype scan.
@@ -919,8 +918,8 @@ class HaplotypeMTMETGWAS:
         d: int,
         E: int,
         *,
-        trait_names: Optional[list[str]] = None,
-        env_names: Optional[list[str]] = None,
+        trait_names: list[str] | None = None,
+        env_names: list[str] | None = None,
         **kwargs,
     ) -> NullFit:
         """Fit MT-MET null model.

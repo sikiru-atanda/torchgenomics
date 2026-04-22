@@ -14,8 +14,6 @@ cheap (one ABF pass per feature) and typically shrinks the candidate set
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from ..postgwas._hyprcoloc import coloc_pairwise
@@ -45,10 +43,10 @@ def coloc_prefilter_pairs(
     y_sumstats: SumStats,
     m_sumstats: SumStats,
     *,
-    snp_chrom: Optional[list[str]] = None,
-    snp_pos: Optional[list[int]] = None,
-    feature_chrom: Optional[list[str]] = None,
-    feature_pos: Optional[list[int]] = None,
+    snp_chrom: list[str] | None = None,
+    snp_pos: list[int] | None = None,
+    feature_chrom: list[str] | None = None,
+    feature_pos: list[int] | None = None,
     cis_window_bp: int = 1_000_000,
     coloc_threshold: float = 0.5,
 ) -> tuple[list[tuple[int, int]], dict[int, float]]:

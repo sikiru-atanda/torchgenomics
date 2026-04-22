@@ -7,7 +7,6 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +26,8 @@ def run_beagle(
     input_path: str,
     output_path: str,
     *,
-    ref_panel: Optional[str] = None,
-    beagle_jar: Optional[str] = None,
+    ref_panel: str | None = None,
+    beagle_jar: str | None = None,
     java_mem: str = "4g",
     nthreads: int = 1,
     ploidy: int = 2,
@@ -102,7 +101,7 @@ def run_impute5(
     output_path: str,
     *,
     ref_panel: str,
-    map_file: Optional[str] = None,
+    map_file: str | None = None,
 ) -> ImputationResult:
     """Run IMPUTE5 for imputation.
 

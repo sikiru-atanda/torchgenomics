@@ -6,8 +6,7 @@ import pytest
 import torch
 
 from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.blink import BLINK, _ld_remove_block, _bic_forward_select, _compute_bic_gapit
-
+from torchgwas.models.blink import BLINK, _bic_forward_select, _ld_remove_block
 
 # ---------------------------------------------------------------
 # Fixtures

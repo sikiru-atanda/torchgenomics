@@ -17,8 +17,7 @@ import pytest
 import torch
 
 from torchgwas._native import HAS_NATIVE_CT
-from torchgwas.postgwas._clump import ld_clump, ClumpResult
-
+from torchgwas.postgwas._clump import ClumpResult, ld_clump
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_CT, reason="native C+T extension not built"

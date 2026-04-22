@@ -1,9 +1,9 @@
 """Tests for GWAS power analysis module."""
 
-import torch
 import pytest
+import torch
 
-from torchgwas.postgwas._power import gwas_power, power_curve, required_n, PowerResult
+from torchgwas.postgwas._power import PowerResult, gwas_power, power_curve, required_n
 
 
 class TestGWASPower:

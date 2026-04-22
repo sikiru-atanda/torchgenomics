@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Tuple
 
 import numpy as np
 import torch
 from torch import Tensor
 
 from ..models.base import VariantMeta
-from .base import GenotypeReader
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +105,7 @@ class PlinkBedReader:
         """Full variant metadata for the entire file."""
         return self._variant_meta
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         """Yield (G_chunk, variant_meta) where G_chunk is (n_samples, m) float64 dosage.
 
         Decoding: each byte holds 4 genotypes (2 bits each, LSB first).
@@ -171,14 +170,14 @@ def _decode_bed_chunk(raw: np.ndarray, n_samples: int) -> np.ndarray:
     return dosage
 
 
-def _parse_fam(path: Path) -> Tuple[list[str], int]:
+def _parse_fam(path: Path) -> tuple[list[str], int]:
     """Parse PLINK .fam file → (sample_ids, n_samples).
 
     .fam columns: FID IID father mother sex phenotype
     We use IID (column 1) as the sample identifier.
     """
     sample_ids: list[str] = []
-    with open(path, "r") as fh:
+    with open(path) as fh:
         for line in fh:
             parts = line.strip().split()
             if len(parts) < 2:
@@ -210,7 +209,7 @@ def _parse_bim(path: Path) -> VariantMeta:
     a1s: list[str] = []
     a2s: list[str] = []
 
-    with open(path, "r") as fh:
+    with open(path) as fh:
         for line in fh:
             parts = line.strip().split("\t")
             if len(parts) < 6:

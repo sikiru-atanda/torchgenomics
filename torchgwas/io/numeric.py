@@ -32,8 +32,8 @@ Excel files (``.xlsx``, ``.xls``) are read transparently via ``pandas``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Tuple
 
 import numpy as np
 import pandas as pd
@@ -41,8 +41,7 @@ import torch
 from torch import Tensor
 
 from ..models.base import VariantMeta
-from .base import GenotypeReader
-from .map_file import MapInfo, discover_map_file, read_map_file
+from .map_file import discover_map_file, read_map_file
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +259,7 @@ class NumericDosageReader:
     def sample_ids(self) -> list[str]:
         return list(self._sample_ids)
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         for start in range(0, self._n_variants, chunk_size):
             end = min(start + chunk_size, self._n_variants)
 
@@ -288,7 +287,7 @@ def _read_tabular(p: Path) -> pd.DataFrame:
         return pd.read_excel(p, index_col=0)
 
     # Text formats -- detect delimiter
-    with open(p, "r") as _fh:
+    with open(p) as _fh:
         first_line = _fh.readline()
     if "\t" in first_line:
         sep = "\t"

@@ -17,7 +17,6 @@ Tests are skipped if data is unavailable.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -25,7 +24,7 @@ import pandas as pd
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig
+from torchgwas.config import STAT_DTYPE
 from torchgwas.models.base import VariantMeta
 
 # ---------------------------------------------------------------------------
@@ -306,9 +305,9 @@ class TestDiploidNovel:
         _assert_valid_pvalues(result.p_joint, "HetLMM")
 
     def test_set_based_skat(self, mdp):
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
-        from torchgwas.models.set_based import SetBasedScanner
         from torchgwas.io.regions import Region
+        from torchgwas.models.set_based import SetBasedScanner
+        from torchgwas.models.single_trait_lmm import SingleTraitLMM
 
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
@@ -651,8 +650,8 @@ class TestPolyploid:
 
     def test_gene_action_models(self, potato):
         """Test multiple gene-action model encodings."""
-        from torchgwas.preprocess.polyploid import recode_gene_action
         from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgwas.preprocess.polyploid import recode_gene_action
 
         model = SingleTraitLMM()
         nf = model.fit_null(potato["Y"], potato["X0"], K=potato["K"])
@@ -722,9 +721,9 @@ class TestPolyploid:
         _assert_valid_pvalues(result.p, "BinaryGLMM-Polyploid")
 
     def test_set_based_polyploid(self, potato):
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
-        from torchgwas.models.set_based import SetBasedScanner
         from torchgwas.io.regions import Region
+        from torchgwas.models.set_based import SetBasedScanner
+        from torchgwas.models.single_trait_lmm import SingleTraitLMM
 
         model = SingleTraitLMM()
         nf = model.fit_null(potato["Y"], potato["X0"], K=potato["K"])
@@ -754,10 +753,9 @@ class TestPostGWAS:
     """Post-GWAS analyses on MDP-derived summary statistics."""
 
     def test_ldsc_h2(self, mdp):
-        from torchgwas.postgwas._ldsc import ldsc_h2
-
         # Generate summary stats from LMM
         from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgwas.postgwas._ldsc import ldsc_h2
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -780,10 +778,9 @@ class TestPostGWAS:
         assert hasattr(h2_result, "h2")
 
     def test_meta_analysis(self, mdp):
-        from torchgwas.postgwas._meta import meta_fixed_effect
-
         # Generate two "studies" with slightly different p-values
         from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgwas.postgwas._meta import meta_fixed_effect
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -806,10 +803,9 @@ class TestPostGWAS:
         _assert_valid_pvalues(meta_result.p_meta, "Meta-FE")
 
     def test_ld_clump(self, mdp):
-        from torchgwas.postgwas._clump import ld_clump
-
         # Generate p-values
         from torchgwas.models.glm import GLM
+        from torchgwas.postgwas._clump import ld_clump
         model = GLM()
         nf = model.fit_null(mdp["Y"], mdp["X0"])
         result = model.score_chunk(

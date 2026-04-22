@@ -18,14 +18,13 @@ import pytest
 import torch
 
 from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import BaseModel, NullFit, ScanResult, VariantMeta
+from torchgwas.models.base import ScanResult, VariantMeta
 from torchgwas.models.conditional_lmm import (
     ConditionalLMM,
     ConditionalScanResult,
     _conditional_wald_batch,
     _stepwise_leads,
 )
-
 
 # ===================================================================
 # Helper: simulate data with LD structure

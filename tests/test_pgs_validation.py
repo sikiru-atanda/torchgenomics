@@ -6,8 +6,7 @@ import math
 import pytest
 import torch
 
-from torchgwas.pgs.validation import PGSValidation, validate_pgs
-
+from torchgwas.pgs.validation import validate_pgs
 
 # ---------------------------------------------------------------------------
 # Continuous-trait tests

@@ -33,7 +33,6 @@ from torchgwas.viz import (  # noqa: E402
     qq_plot,
 )
 
-
 # ---------------------------------------------------------------------------
 # Synthetic GWAS fixture
 # ---------------------------------------------------------------------------
@@ -388,8 +387,14 @@ def test_haploview_plot_rejects_tiny_matrix():
 def test_stats_plots_shim_reexports_viz_entry_points():
     from torchgwas.stats.plots import (
         haploview_plot as h,
+    )
+    from torchgwas.stats.plots import (
         manhattan_plot as m,
+    )
+    from torchgwas.stats.plots import (
         miami_plot as mi,
+    )
+    from torchgwas.stats.plots import (
         qq_plot as q,
     )
 

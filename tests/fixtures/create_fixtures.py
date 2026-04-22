@@ -5,8 +5,8 @@ Creates PLINK BED/BIM/FAM, HapMap, CSV dosage, phenotype, and covariate files.
 """
 
 from pathlib import Path
+
 import numpy as np
-import struct
 
 FIXTURE_DIR = Path(__file__).parent
 N_SAMPLES = 10

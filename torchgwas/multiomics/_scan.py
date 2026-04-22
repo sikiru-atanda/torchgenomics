@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 import torch
@@ -27,13 +26,13 @@ def _as_tensor(x, dtype=torch.float64) -> Tensor:
 
 
 def _build_pairs(
-    snp_pos: Optional[Tensor],
-    feat_pos: Optional[Tensor],
-    snp_chrom: Optional[list[str]],
-    feat_chrom: Optional[list[str]],
+    snp_pos: Tensor | None,
+    feat_pos: Tensor | None,
+    snp_chrom: list[str] | None,
+    feat_chrom: list[str] | None,
     s: int,
     f: int,
-    cis_window_bp: Optional[int],
+    cis_window_bp: int | None,
 ) -> list[tuple[int, int]]:
     """Return (snp_idx, feat_idx) pairs subject to cis-window + chromosome match."""
     if cis_window_bp is None:
@@ -77,25 +76,25 @@ def scan_mediation(
     M,
     K,
     *,
-    snp_ids: Optional[list[str]] = None,
-    feature_ids: Optional[list[str]] = None,
-    snp_pos: Optional[Tensor] = None,
-    feature_pos: Optional[Tensor] = None,
-    snp_chrom: Optional[list[str]] = None,
-    feature_chrom: Optional[list[str]] = None,
-    cis_window_bp: Optional[int] = 1_000_000,
+    snp_ids: list[str] | None = None,
+    feature_ids: list[str] | None = None,
+    snp_pos: Tensor | None = None,
+    feature_pos: Tensor | None = None,
+    snp_chrom: list[str] | None = None,
+    feature_chrom: list[str] | None = None,
+    cis_window_bp: int | None = 1_000_000,
     covariates=None,
     se: str = "monte-carlo",
     n_mc_draws: int = 10_000,
     fdr_method: str = "bh",
     sensitivity: bool = True,
-    seed: Optional[int] = None,
-    prefilter: Optional[str] = None,
+    seed: int | None = None,
+    prefilter: str | None = None,
     coloc_sumstats=None,
     coloc_threshold: float = 0.5,
     device=None,
     block_size: tuple[int, int] = (256, 64),
-    batched: Optional[bool] = None,
+    batched: bool | None = None,
 ) -> MediationScanResult:
     """Mediation scan over (SNP, feature) pairs filtered by a cis window.
 

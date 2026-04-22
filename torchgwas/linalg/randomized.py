@@ -14,7 +14,7 @@ SIAM Review 53(2):217-288.
 from __future__ import annotations
 
 import logging
-from typing import Callable, Optional, Union
+from collections.abc import Callable
 
 import torch
 from torch import Tensor
@@ -29,7 +29,7 @@ def randomized_svd(
     n_components: int = 100,
     n_oversamples: int = 10,
     n_power_iters: int = 2,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> EigenDecomp:
     """Low-rank eigendecomposition via randomized SVD.
 
@@ -126,12 +126,12 @@ def randomized_svd(
 
 
 def lobpcg_decompose(
-    K: Union[Tensor, Callable[[Tensor], Tensor]],
+    K: Tensor | Callable[[Tensor], Tensor],
     n_components: int = 100,
-    n_samples: Optional[int] = None,
+    n_samples: int | None = None,
     max_iter: int = 200,
     tol: float = 1e-6,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> EigenDecomp:
     """Top-k eigenpairs via Locally Optimal Block Preconditioned Conjugate Gradient.
 

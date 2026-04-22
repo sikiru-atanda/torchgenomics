@@ -12,15 +12,13 @@ lambda = sig2_g / sig2_e           (GEMMA convention)
 from __future__ import annotations
 
 import logging
-import math
-from typing import Optional
 
 import numpy as np
-from scipy.optimize import brentq
 import torch
+from scipy.optimize import brentq
 from torch import Tensor
 
-from .reml_math import reml_loglikelihood, reml_derivatives
+from .reml_math import reml_derivatives, reml_loglikelihood
 
 logger = logging.getLogger(__name__)
 

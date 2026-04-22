@@ -92,8 +92,8 @@ def ld_clump(
     # chromosome to a "block" of the block-diagonal LD reference. The
     # algorithm is purely deterministic so the two paths produce identical
     # ClumpResults; the C++ path eliminates the per-pair r2.item() calls.
-    from .._native import HAS_NATIVE_CT, _ct_native
     from .._dispatch import native_disabled
+    from .._native import HAS_NATIVE_CT, _ct_native
 
     if (
         HAS_NATIVE_CT and not native_disabled()

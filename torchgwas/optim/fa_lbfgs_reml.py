@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -155,8 +154,8 @@ def fa_lbfgs_reml(
     fa_rank: int = 1,
     max_iter: int = 150,
     tol: float = 1e-6,
-    Vg_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, float, list[dict], Tensor, Tensor]:
     """FA(k) REML optimizer using L-BFGS with autograd.
 
@@ -241,10 +240,10 @@ def fa_lbfgs_reml(
     # --- Optimizer setup ---
     trace: list[dict] = []
     best_ll = float("-inf")
-    best_Vg: Optional[Tensor] = None
-    best_Ve: Optional[Tensor] = None
-    best_Lambda: Optional[Tensor] = None
-    best_psi: Optional[Tensor] = None
+    best_Vg: Tensor | None = None
+    best_Ve: Tensor | None = None
+    best_Lambda: Tensor | None = None
+    best_psi: Tensor | None = None
 
     optimizer = torch.optim.LBFGS(
         [loading_params, log_psi_param, Le_param],

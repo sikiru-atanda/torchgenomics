@@ -26,12 +26,6 @@ from .kinship_polyploid import (  # noqa: F401
     grm_loco,
     grm_polyploid_gene_action,
 )
-from .safe import safe_cholesky, safe_logdet  # noqa: F401
-from .truncated_mvn import (  # noqa: F401
-    bivariate_truncated_moments,
-    mvn_truncated_moments,
-    truncated_normal_moments,
-)
 from .kronecker_eed import (  # noqa: F401
     KronEED,
     diagonal_precision,
@@ -41,5 +35,11 @@ from .kronecker_eed import (  # noqa: F401
     kronecker_eed_from_full,
     rotate_to_ked_basis,
     woodbury_fa_precision,
+)
+from .safe import safe_cholesky, safe_logdet  # noqa: F401
+from .truncated_mvn import (  # noqa: F401
+    bivariate_truncated_moments,
+    mvn_truncated_moments,
+    truncated_normal_moments,
 )
 from .woodbury import woodbury_inverse, woodbury_logdet  # noqa: F401

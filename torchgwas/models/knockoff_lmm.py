@@ -19,8 +19,7 @@ This is a whole-genome procedure — requires all genotypes at once
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
@@ -298,8 +297,8 @@ def _knockoff_plus_filter(
     threshold = float("inf")
     for t in candidates:
         t_val = t.item()
-        n_above = (W >= t_val).sum().item()
-        n_below = (W <= -t_val).sum().item()
+        n_above = (t_val <= W).sum().item()
+        n_below = (-t_val >= W).sum().item()
         ratio = (1.0 + n_below) / max(1.0, n_above)
         if ratio <= target_fdr:
             threshold = t_val
@@ -387,8 +386,8 @@ class KnockoffLMM:
         -------
         KnockoffResult
         """
-        from .single_trait_lmm import SingleTraitLMM
         from ..ld import detect_blocks
+        from .single_trait_lmm import SingleTraitLMM
 
         device = G.device
         n, m = G.shape

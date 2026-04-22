@@ -186,7 +186,6 @@ def ld_decay_signal(
     device = r2_pairs.device
 
     if _ld_decay_signal_native_enabled():
-        import numpy as np
         ii_np = idx_i.detach().to(torch.int64).cpu().numpy()
         jj_np = idx_j.detach().to(torch.int64).cpu().numpy()
         r2_np = r2_pairs.detach().to(torch.float64).cpu().numpy()

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -23,7 +22,7 @@ class EigenDecomp:
 def eigendecompose(
     K: Tensor,
     *,
-    n_components: Optional[int] = None,
+    n_components: int | None = None,
     eigenvalue_floor: float = 0.0,
 ) -> EigenDecomp:
     """Eigendecompose K = U diag(evals) U^T with negative-eigenvalue clamping.

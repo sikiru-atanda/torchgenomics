@@ -7,7 +7,6 @@ import math
 import pytest
 import torch
 
-from torchgwas.pgs.base import LDReference
 from torchgwas.pgs.ld_ref import build_ld_reference
 from torchgwas.pgs.prscs import (
     PRSCS,

@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Tuple
 
 import numpy as np
 import torch
 from torch import Tensor
 
 from ..models.base import VariantMeta
-from .base import GenotypeReader
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +80,7 @@ class Plink2PgenReader:
     def sample_ids(self) -> list[str]:
         return list(self._sample_ids)
 
-    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[Tuple[Tensor, VariantMeta]]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[tuple[Tensor, VariantMeta]]:
         buf = np.empty(self._n_samples, dtype=np.int8)
 
         for start in range(0, self._n_variants, chunk_size):
@@ -121,7 +120,7 @@ def _parse_psam(path: Path) -> list[str]:
     sample_ids: list[str] = []
     header_seen = False
 
-    with open(path, "r") as fh:
+    with open(path) as fh:
         for line in fh:
             line = line.strip()
             if line.startswith("#"):
@@ -147,7 +146,7 @@ def _parse_pvar(path: Path) -> VariantMeta:
     """
     chrs, snps, positions, a1s, a2s = [], [], [], [], []
 
-    with open(path, "r") as fh:
+    with open(path) as fh:
         for line in fh:
             if line.startswith("#"):
                 continue

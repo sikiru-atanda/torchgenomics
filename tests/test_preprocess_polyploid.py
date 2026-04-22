@@ -292,8 +292,8 @@ class TestPolyploidQC:
 
     def test_dr_not_computed_for_diploid(self):
         """DR fields should be None for diploid data."""
-        from torchgwas.preprocess.qc import compute_variant_qc
         from torchgwas.models.base import VariantMeta
+        from torchgwas.preprocess.qc import compute_variant_qc
         G = torch.tensor([[0, 1], [1, 2], [2, 0]], dtype=torch.float64)
         vmeta = VariantMeta(snp=["s1", "s2"], chr=["1", "1"], pos=[1, 2], a1=["A", "A"], a2=["T", "T"])
         stats = compute_variant_qc(G, vmeta, ploidy=2)
@@ -304,8 +304,8 @@ class TestPolyploidQC:
 
     def test_dosage_certainty_filter(self):
         """Markers with high mean dosage variance should be filtered."""
-        from torchgwas.preprocess.qc import compute_variant_qc, apply_qc_filters, QCFilterConfig
         from torchgwas.models.base import VariantMeta
+        from torchgwas.preprocess.qc import QCFilterConfig, apply_qc_filters, compute_variant_qc
 
         n, m, ploidy = 40, 3, 4
         # Well-behaved genotypes that will pass MAF/HWE: balanced dosages
@@ -350,7 +350,7 @@ class TestPolyploidQC:
 
     def test_dr_hwe_filter_integration(self, G_tetra_qc, vmeta_4):
         """use_double_reduction_hwe should use hwe_p_dr instead of hwe_p."""
-        from torchgwas.preprocess.qc import compute_variant_qc, apply_qc_filters, QCFilterConfig
+        from torchgwas.preprocess.qc import QCFilterConfig, apply_qc_filters, compute_variant_qc
 
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
 
@@ -404,9 +404,9 @@ class TestPolyploidQC:
 
     def test_polyploid_hwe_uses_binomial_expansion(self, vmeta_4):
         """HWE test for polyploid uses C(k,d)*p^d*q^(k-d) expected frequencies."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+
         from torchgwas.models.base import VariantMeta
-        from math import comb
+        from torchgwas.preprocess.qc import compute_variant_qc
 
         # Create data that perfectly matches HWE expectation for p=0.5, k=4
         # Expected: C(4,d)*0.5^4 = [1, 4, 6, 4, 1]/16

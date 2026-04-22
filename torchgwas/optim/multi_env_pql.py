@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -74,7 +73,7 @@ def multi_env_pql_fit(
         gamma : (n, E, J-1) cumulative probs (ordinal only)
         thresholds : (E, J-1) per-env thresholds (ordinal only)
     """
-    from .mvlmm_reml import compute_sigma_inv, mvlmm_reml_loglikelihood
+    from .mvlmm_reml import compute_sigma_inv
 
     Y = Y.to(STAT_DTYPE)
     X0 = X0.to(STAT_DTYPE)

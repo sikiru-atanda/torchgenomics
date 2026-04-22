@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -48,9 +47,9 @@ def separable_kron_reml(
     *,
     max_iter: int = 100,
     tol: float = 1e-6,
-    Vg_trait_init: Optional[Tensor] = None,
-    Vg_env_init: Optional[Tensor] = None,
-    Ve_init: Optional[Tensor] = None,
+    Vg_trait_init: Tensor | None = None,
+    Vg_env_init: Tensor | None = None,
+    Ve_init: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, Tensor, float, list[dict]]:
     """LBFGS-autograd REML with separable Kronecker Vg constraint.
 
@@ -238,10 +237,10 @@ def separable_kron_reml_ked(
     *,
     max_iter: int = 100,
     tol: float = 1e-6,
-    Vg_trait_init: Optional[Tensor] = None,
-    Vg_env_init: Optional[Tensor] = None,
-    Ve_trait_init: Optional[Tensor] = None,
-    Ve_env_init: Optional[Tensor] = None,
+    Vg_trait_init: Tensor | None = None,
+    Vg_env_init: Tensor | None = None,
+    Ve_trait_init: Tensor | None = None,
+    Ve_env_init: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor, float, list[dict]]:
     """Separable REML with KED diagonal likelihood — scales to dE > 1000.
 
@@ -266,7 +265,6 @@ def separable_kron_reml_ked(
     -------
     Vg_trait, Vg_env, Ve_trait, Ve_env, ll, trace
     """
-    from ..linalg.kronecker_eed import _joint_diag_factor
 
     n = Y_rot.shape[0]
     d = n_traits

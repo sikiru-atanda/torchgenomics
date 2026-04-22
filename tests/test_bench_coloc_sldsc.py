@@ -15,24 +15,17 @@ Part 3 -- Polyploid compatibility:
 from __future__ import annotations
 
 import itertools
-import math
 
 import numpy as np
-import pytest
 import torch
-from scipy import stats as sp_stats
 
 from torchgwas.postgwas._hyprcoloc import (
-    ColocPairwiseResult,
-    HyprcolocResult,
-    _log_sum_exp,
     _wakefield_log_abf,
     coloc_pairwise,
     hyprcoloc,
 )
-from torchgwas.postgwas._sldsc import SLDSCResult, sldsc_h2_partitioned
+from torchgwas.postgwas._sldsc import sldsc_h2_partitioned
 from torchgwas.postgwas._sumstats import SumStats
-
 
 # ---------------------------------------------------------------------------
 # Helpers

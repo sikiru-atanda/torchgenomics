@@ -330,7 +330,7 @@ def _parse_dosage_output(
 def _read_id_csv(path: Path) -> list[str]:
     """Read a single-column CSV of IDs."""
     ids = []
-    with open(path, "r", newline="") as fh:
+    with open(path, newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
             ids.append(row["id"])
@@ -340,7 +340,7 @@ def _read_id_csv(path: Path) -> list[str]:
 def _read_matrix_csv(path: Path, skip_rownames: bool = False) -> Tensor:
     """Read a CSV into a float64 tensor."""
     rows = []
-    with open(path, "r", newline="") as fh:
+    with open(path, newline="") as fh:
         reader = csv.reader(fh)
         header = next(reader)  # skip header
         for row in reader:

@@ -12,7 +12,6 @@ column aliasing and unit conversions PGS pipelines typically need:
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import torch
 from torch import Tensor

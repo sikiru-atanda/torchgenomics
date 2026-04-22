@@ -22,17 +22,14 @@ All R calls via subprocess (Rscript). Tests skip if R/coxme not available.
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import tempfile
-from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 from scipy.stats import spearmanr
-
 
 # ---------------------------------------------------------------------------
 # Check R + coxme availability
@@ -712,7 +709,6 @@ class TestSurvivalPvalueAgreement:
 
     def test_pvalue_correlation_multi_seed(self):
         """Median Spearman rho of -log10(p) should be > 0.60 across 5 seeds."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
 
         rhos = []
         for seed in [42, 55, 77, 88, 99]:

@@ -28,7 +28,6 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -391,6 +390,7 @@ def pcht_score_test_lmm(
     PCHTResult
     """
     from scipy.stats import chi2 as chi2_dist
+
     from ..linalg.eigh import rotate
     from ..optim.reml_math import _compute_P_quantities
 
@@ -868,6 +868,7 @@ def haplotype_gxe_test_lmm(
     HapGxEResult
     """
     from scipy.stats import f as f_dist
+
     from ..linalg.eigh import rotate
 
     nf = null_fit

@@ -7,7 +7,7 @@ import torch
 from torchgwas.linalg.basis import legendre_basis, standardize_time
 from torchgwas.models.base import VariantMeta
 from torchgwas.models.multi_trait_lmm import MultiTraitLMM
-from torchgwas.models.rr_lmm import RRScanResult, RandomRegressionLMM
+from torchgwas.models.rr_lmm import RandomRegressionLMM, RRScanResult
 
 
 def _simulate_with_planted_signal(

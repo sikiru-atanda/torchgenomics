@@ -19,14 +19,12 @@ benjamini_hochberg(), local_fdr().
 from __future__ import annotations
 
 import logging
-import math
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
-from .multipletesting import benjamini_hochberg, _cummin_reverse
+from .multipletesting import benjamini_hochberg
 from .weighted_fdr import weighted_bh
 
 logger = logging.getLogger(__name__)

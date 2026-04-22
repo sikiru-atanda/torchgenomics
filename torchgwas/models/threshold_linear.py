@@ -26,20 +26,19 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from ..config import STAT_DTYPE
 from ..linalg.truncated_mvn import (
-    bivariate_truncated_moments,
     mvn_truncated_moments,
     truncated_normal_moments,
 )
 from ..optim.squarem import squarem
-from .base import BaseModel, NullFit, ScanResult, VariantMeta
+from .base import NullFit, ScanResult, VariantMeta
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +59,7 @@ class ThresholdConfig:
         probit quantiles of observed category frequencies.
     """
     n_categories: int
-    thresholds: Optional[Tensor] = None
+    thresholds: Tensor | None = None
 
 
 # ===================================================================
@@ -86,11 +85,11 @@ class ThresholdNullFit:
     G_cov: Tensor  # (c, c) genetic covariance
 
     # Per-individual modified precision (from NR)
-    R_tilde_inv: Optional[Tensor] = None  # (n, c, c) if NR was used
+    R_tilde_inv: Tensor | None = None  # (n, c, c) if NR was used
 
     # Working quantities for score test
-    WtRW: Optional[Tensor] = None  # (p, p) W'R̃⁻¹W + S
-    WtRW_inv: Optional[Tensor] = None  # (p, p) inverse
+    WtRW: Tensor | None = None  # (p, p) W'R̃⁻¹W + S
+    WtRW_inv: Tensor | None = None  # (p, p) inverse
 
     # Convergence info
     solver: str = "nr"
@@ -165,7 +164,7 @@ class ThresholdLinearModel:
         self,
         Y: Tensor,
         X0: Tensor,
-        K: Optional[Tensor] = None,
+        K: Tensor | None = None,
         **kwargs: Any,
     ) -> NullFit:
         """Fit the null model (no SNP effect) for threshold-linear model.
@@ -404,7 +403,7 @@ class ThresholdLinearModel:
 
     def _init_thresholds(
         self,
-        Y_cat: Optional[Tensor],
+        Y_cat: Tensor | None,
         device: torch.device,
     ) -> list[Tensor]:
         """Initialise thresholds from probit quantiles of observed frequencies."""
@@ -431,7 +430,7 @@ class ThresholdLinearModel:
 
     def _init_liabilities(
         self,
-        Y_cat: Optional[Tensor],
+        Y_cat: Tensor | None,
         thresholds_list: list[Tensor],
         n: int,
         device: torch.device,
@@ -463,7 +462,7 @@ class ThresholdLinearModel:
     def _build_augmented_y(
         self,
         liabilities: Tensor,
-        Y_con: Optional[Tensor],
+        Y_con: Tensor | None,
         n: int,
         device: torch.device,
     ) -> Tensor:
@@ -483,10 +482,10 @@ class ThresholdLinearModel:
 
     def _solve_em(
         self,
-        Y_cat: Optional[Tensor],
-        Y_con: Optional[Tensor],
+        Y_cat: Tensor | None,
+        Y_con: Tensor | None,
         X0: Tensor,
-        K: Optional[Tensor],
+        K: Tensor | None,
         R: Tensor,
         R_inv: Tensor,
         theta: Tensor,
@@ -536,8 +535,8 @@ class ThresholdLinearModel:
 
     def _e_step(
         self,
-        Y_cat: Optional[Tensor],
-        Y_con: Optional[Tensor],
+        Y_cat: Tensor | None,
+        Y_con: Tensor | None,
         X0: Tensor,
         R: Tensor,
         R_inv: Tensor,
@@ -620,10 +619,10 @@ class ThresholdLinearModel:
 
     def _solve_nr(
         self,
-        Y_cat: Optional[Tensor],
-        Y_con: Optional[Tensor],
+        Y_cat: Tensor | None,
+        Y_con: Tensor | None,
         X0: Tensor,
-        K: Optional[Tensor],
+        K: Tensor | None,
         R: Tensor,
         R_inv: Tensor,
         theta: Tensor,
@@ -689,8 +688,8 @@ class ThresholdLinearModel:
 
     def _compute_delta_gamma(
         self,
-        Y_cat: Optional[Tensor],
-        Y_con: Optional[Tensor],
+        Y_cat: Tensor | None,
+        Y_con: Tensor | None,
         X0: Tensor,
         R: Tensor,
         R_inv: Tensor,
@@ -782,8 +781,8 @@ class ThresholdLinearModel:
 
     def _build_pseudo_obs(
         self,
-        Y_cat: Optional[Tensor],
-        Y_con: Optional[Tensor],
+        Y_cat: Tensor | None,
+        Y_con: Tensor | None,
         X0: Tensor,
         R: Tensor,
         R_inv: Tensor,
@@ -820,8 +819,8 @@ class ThresholdLinearModel:
 
     def _compute_R_tilde_inv(
         self,
-        Y_cat: Optional[Tensor],
-        Y_con: Optional[Tensor],
+        Y_cat: Tensor | None,
+        Y_con: Tensor | None,
         X0: Tensor,
         R: Tensor,
         R_inv: Tensor,
@@ -866,8 +865,8 @@ class ThresholdLinearModel:
 
     def _loglik(
         self,
-        Y_cat: Optional[Tensor],
-        Y_con: Optional[Tensor],
+        Y_cat: Tensor | None,
+        Y_con: Tensor | None,
         X0: Tensor,
         R: Tensor,
         R_inv: Tensor,
@@ -912,6 +911,5 @@ def _chi2_sf(x: Tensor, df: int = 1) -> Tensor:
         )
     except AttributeError:
         from scipy import stats as sp_stats
-        import numpy as np
         p_np = sp_stats.chi2.sf(x.detach().cpu().numpy(), df=df)
         return torch.tensor(p_np, dtype=x.dtype, device=x.device)

@@ -6,7 +6,6 @@ import io
 import math
 from contextlib import redirect_stdout
 
-import pytest
 import torch
 
 from torchgwas.cli import main as cli_main
