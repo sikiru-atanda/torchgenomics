@@ -37,8 +37,12 @@ def _make_multi_ancestry_data(
     for pop in range(n_pops):
         beta = torch.randn(m_snps, generator=rng, dtype=torch.float64) * 0.02
         se = torch.full((m_snps,), 0.2, dtype=torch.float64)
-        # Strong shared signal
-        beta[shared_signal_idx] = 0.5 + 0.05 * pop  # slight pop variation
+        # Strong shared signal — tight residual across populations so the
+        # MR-MEGA intercept (p_meta) picks it up rather than attributing it to
+        # ancestry-correlated heterogeneity (which the 0.05*pop trend did).
+        beta[shared_signal_idx] = (
+            0.5 + torch.randn(1, generator=rng, dtype=torch.float64).item() * 0.01
+        )
         se[shared_signal_idx] = 0.1
 
         p = 2.0 * torch.erfc(beta.abs() / se / math.sqrt(2.0))
@@ -46,9 +50,13 @@ def _make_multi_ancestry_data(
 
         n = torch.full((m_snps,), 5000.0 + pop * 500, dtype=torch.float64)
 
-        # Allele frequencies vary across populations
+        # Allele frequencies vary across populations — add per-population
+        # noise so that F_centered is not rank-1, else the cross-population
+        # correlation matrix collapses to rank 1 and the PCA produces
+        # numerical-noise axes that blow up (X'WX)^{-1}.
         base_af = torch.linspace(0.1, 0.5, m_snps, dtype=torch.float64)
-        af = (base_af + 0.05 * pop).clamp(0.01, 0.99)
+        af_noise = torch.randn(m_snps, generator=rng, dtype=torch.float64) * 0.08
+        af = (base_af + 0.05 * pop + af_noise).clamp(0.01, 0.99)
 
         ss_list.append(
             SumStats(

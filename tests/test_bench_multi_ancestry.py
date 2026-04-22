@@ -99,7 +99,13 @@ def _reconstruct_pca_loadings(
     eigvals = eigvals[::-1]
     eigvecs = eigvecs[:, ::-1]
 
-    return eigvecs[:, :n_axes]  # (K, n_axes)
+    # Mirror mr_mega: centre each PC column so they are orthogonal to the
+    # intercept in the WLS design, avoiding multicollinearity-driven SE
+    # inflation on the intercept Wald test.
+    PC = eigvecs[:, :n_axes]  # (K, n_axes)
+    if n_axes > 0:
+        PC = PC - PC.mean(axis=0, keepdims=True)
+    return PC
 
 
 # ── Tests ────────────────────────────────────────────────────────────────

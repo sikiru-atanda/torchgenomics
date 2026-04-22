@@ -218,8 +218,13 @@ def mr_mega(
     eigvals = eigvals.flip(0)
     eigvecs = eigvecs.flip(1)
 
-    # Take top n_axes eigenvectors as PC loadings: (K, n_axes)
+    # Take top n_axes eigenvectors as PC loadings: (K, n_axes). Centre each
+    # column so the PC axes are orthogonal to the intercept — otherwise the
+    # intercept ↔ PC1 near-collinearity inflates (X'WX)^{-1}[0,0] and the
+    # intercept Wald test loses power even on strongly shared signals.
     PC = eigvecs[:, :n_axes]  # (K, n_axes)
+    if n_axes > 0:
+        PC = PC - PC.mean(dim=0, keepdim=True)
 
     # ── 4. Stack per-population effects and SEs ──────────────────────
     beta_all = torch.stack(
