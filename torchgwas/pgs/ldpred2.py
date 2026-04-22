@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from typing import Any
 
 import torch
@@ -33,7 +34,15 @@ def _native_enabled() -> bool:
 
     Disabled when the extension was not built or when the user sets
     ``TORCHGWAS_DISABLE_NATIVE=1`` in the environment.
+
+    Also disabled on Python 3.12: the extension segfaults on both Linux
+    and Windows 3.12 runners during ``ldpred2_gibbs_block`` (passes on
+    3.10 / 3.11). The Python body is correct and already the documented
+    algorithmic reference, so we route 3.12 through it until the C++
+    path is diagnosed. Track in ROADMAP as a follow-up.
     """
+    if sys.version_info >= (3, 12):
+        return False
     return HAS_NATIVE_LDPRED2 and not os.environ.get("TORCHGWAS_DISABLE_NATIVE")
 
 
