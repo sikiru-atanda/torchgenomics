@@ -675,12 +675,18 @@ class ThresholdLinearModel:
                 Y_cat, Y_con, X0, R, R_inv, theta_new, liabilities, thresholds_list,
             )
 
-            # Check convergence
-            rel_change = (theta_new - theta).norm() / (theta.norm() + 1e-15)
+            # Check convergence using combined absolute + relative tolerance.
+            # The relative criterion alone blows up near theta=0 (the 1e-15
+            # floor is overwhelmed once theta.norm() drops below ~tol), which
+            # is exactly the regime for binary-trait null fits where the
+            # intercept sits near zero. Accept either: the step is tiny in
+            # absolute terms, or it's tiny relative to a non-vanishing theta.
+            abs_change = (theta_new - theta).norm()
+            rel_change = abs_change / (theta.norm() + 1e-15)
             theta = theta_new
             liabilities = new_liab
 
-            if rel_change < self.tol:
+            if abs_change < self.tol or rel_change < self.tol:
                 converged = True
                 break
 
