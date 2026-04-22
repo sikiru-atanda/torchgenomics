@@ -82,6 +82,10 @@ MT_ME/
 gemma_demo/
 benchmark/
 
+# Sanity-script outputs (the scripts under scripts/ are tracked;
+# their run artifacts are not)
+scripts/*.tsv
+
 # Third-party benchmark binaries (downloaded, not source)
 tools/
 
