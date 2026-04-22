@@ -203,8 +203,11 @@ def ld_decay_signal(
     jj = idx_j.long()
     dist = (jj - ii).abs()
 
-    # Only use k nearest neighbors (smallest index distance)
-    # Sort by distance and keep top-k per variant
+    # Only use k nearest neighbors (smallest index distance).
+    # Use a stable sort on the distance so ties are broken by pair-table
+    # order — this matches the C++ `std::stable_sort` in the native path
+    # and stays deterministic across torch versions (torch.topk's tie
+    # handling changed between 2.4 and 2.11).
     for v in range(n_variants):
         mask_i = ii == v
         mask_j = jj == v
@@ -213,10 +216,9 @@ def ld_decay_signal(
             continue
         r2_v = r2_pairs[mask]
         dist_v = dist[mask]
-        # Keep k nearest
         k = min(k_neighbors, r2_v.shape[0])
-        _, topk_idx = dist_v.topk(k, largest=False)
-        r2_sum[v] = r2_v[topk_idx].sum()
+        order = torch.argsort(dist_v, stable=True)
+        r2_sum[v] = r2_v[order[:k]].sum()
         r2_count[v] = k
 
     r2_count = r2_count.clamp(min=1.0)
