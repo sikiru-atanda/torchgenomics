@@ -26,6 +26,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Pin torch and numpy to the versions TorchGWAS is validated
+          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml keeps the
+          # public constraint loose (torch>=2.0) so users aren't forced to
+          # this range, but CI uses the validated set — torch 2.11 and
+          # numpy 2.4 have surfaced numerical/API drift in a handful of
+          # statsmodels-reference and convergence tests that hasn't been
+          # worked through yet.
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install -e ".[dev]"
 
       - name: Lint with ruff
@@ -52,6 +60,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Pin torch and numpy to the versions TorchGWAS is validated
+          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml keeps the
+          # public constraint loose (torch>=2.0) so users aren't forced to
+          # this range, but CI uses the validated set — torch 2.11 and
+          # numpy 2.4 have surfaced numerical/API drift in a handful of
+          # statsmodels-reference and convergence tests that hasn't been
+          # worked through yet.
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install -e ".[dev]"
 
       - name: Run golden reference tests
@@ -73,6 +89,7 @@ jobs:
       - name: Install with native extensions
         run: |
           python -m pip install --upgrade pip
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install pybind11>=2.11
           pip install -e ".[dev]"
 
@@ -96,6 +113,7 @@ jobs:
           TORCHGWAS_DISABLE_OPENMP: "1"
         run: |
           python -m pip install --upgrade pip
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install pybind11>=2.11
           pip install -e ".[dev]"
 
@@ -118,6 +136,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Pin torch and numpy to the versions TorchGWAS is validated
+          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml keeps the
+          # public constraint loose (torch>=2.0) so users aren't forced to
+          # this range, but CI uses the validated set — torch 2.11 and
+          # numpy 2.4 have surfaced numerical/API drift in a handful of
+          # statsmodels-reference and convergence tests that hasn't been
+          # worked through yet.
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install -e ".[dev]"
 
       - name: Type check with mypy
