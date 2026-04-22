@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from typing import Any
 
 import torch
@@ -36,7 +37,14 @@ from .ldpred2 import _block_iter, _marginal_beta_std
 # reference path even when the compiled extension is available. Used by tests
 # to exercise both code paths and as an escape hatch if the C++ port ever
 # diverges from the Python spec.
+#
+# Also disabled on Python 3.12: the extension segfaults in the block
+# Gibbs sampler on 3.12 runners (passes on 3.10 / 3.11). The Python
+# body is the documented algorithmic reference, so 3.12 routes
+# through it until the C++ path is diagnosed.
 def _native_enabled() -> bool:
+    if sys.version_info >= (3, 12):
+        return False
     return HAS_NATIVE_PRSCS and not os.environ.get("TORCHGWAS_DISABLE_NATIVE")
 
 
