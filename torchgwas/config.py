@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional
+
+# Set the cuBLAS deterministic workspace config before torch initialises CUDA,
+# otherwise `torch.use_deterministic_algorithms(True)` raises on CUDA >= 10.2
+# matmul. Keeping this at module import means any downstream call to
+# ``set_deterministic(True)`` works regardless of test ordering.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import torch
 
@@ -120,6 +127,12 @@ def set_deterministic(enabled: bool = True) -> None:
     When enabled, ``torch.use_deterministic_algorithms(True)`` is set so that
     GPU results are bitwise reproducible across runs (at a performance cost).
     """
+    if enabled:
+        # CUDA >= 10.2 requires CUBLAS_WORKSPACE_CONFIG to be set before any
+        # cuBLAS call under deterministic mode, otherwise matmul raises. The
+        # `:4096:8` form is recommended by NVIDIA for broad kernel coverage.
+        import os
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     torch.use_deterministic_algorithms(enabled)
 
 
