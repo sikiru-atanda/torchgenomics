@@ -24,6 +24,11 @@ def phase_beagle(
 ) -> str:
     """Run BEAGLE phasing. Returns path to phased output VCF.
 
+    BEAGLE 5.x is **diploid-only**. For polyploid phasing use a dedicated
+    polyploid phaser (PolyOrigin, TetraOrigin, hapCON, PolyPhase) and then
+    load the result via :func:`load_haplotypes`, which is ploidy-generic.
+    Integrated polyploid-phasing wrappers are tracked on the roadmap.
+
     Parameters
     ----------
     input_path : str
@@ -37,14 +42,24 @@ def phase_beagle(
     nthreads : int
         Number of threads.
     ploidy : int
-        Organism ploidy level. BEAGLE 5.4+ supports polyploid phasing
-        via the ``ploidy`` parameter (default: 2 for diploid).
+        Must be 2. Present so call sites can pass a ploidy kwarg uniformly;
+        any value other than 2 raises :class:`ValueError` with a pointer to
+        the polyploid-phasing roadmap item.
 
     Returns
     -------
     str
         Path to phased output VCF (.vcf.gz).
     """
+    if ploidy != 2:
+        raise ValueError(
+            f"phase_beagle only supports diploid (ploidy=2); got ploidy={ploidy}. "
+            "BEAGLE 5.x does not phase polyploids. Use a dedicated polyploid "
+            "phaser (PolyOrigin / TetraOrigin / hapCON / PolyPhase) and load "
+            "the phased VCF via load_haplotypes(). See docs/ROADMAP.md "
+            "\"Polyploid phasing + allele assignment\"."
+        )
+
     if beagle_jar is None:
         beagle_jar = shutil.which("beagle.jar") or "beagle.jar"
 
@@ -59,8 +74,6 @@ def phase_beagle(
         f"nthreads={nthreads}",
         "impute=false",  # phase only, no imputation
     ]
-    if ploidy > 2:
-        cmd.append(f"ploidy={ploidy}")
 
     logger.info("Running BEAGLE phasing: %s", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
