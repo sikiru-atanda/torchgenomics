@@ -437,3 +437,102 @@ def _persist_artifacts(
 
     snp_diag.to_csv(str(prefix_path) + ".snp_diag.tsv",
                     sep="\t", index=False)
+
+
+def _read_updog_version(rscript: str) -> str:
+    """Best-effort re-probe; falls back to 'unknown' on any failure."""
+    try:
+        r = subprocess.run(
+            [rscript, "-e",
+             'cat(as.character(packageVersion("updog")))'],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def run_updog(
+    input_vcf: str,
+    output_path: str,
+    *,
+    ploidy: int,
+    model: str = "norm",
+    rscript: Optional[str] = None,
+    bias: bool = True,
+    od: bool = True,
+    seq_error: Optional[float] = None,
+    n_cores: int = 1,
+    keep_tmpdir: bool = False,
+) -> DosageCallResult:
+    """Call polyploid allele dosages via updog.
+
+    Parameters
+    ----------
+    input_vcf
+        Biallelic VCF with AD format field.
+    output_path
+        Output prefix. Writes ``<prefix>.probs.pt``, ``<prefix>.meta.json``,
+        and ``<prefix>.snp_diag.tsv``.
+    ploidy
+        Organism ploidy; 2 <= ploidy <= 8.
+    model
+        updog flexdog model name (see ``_VALID_MODELS``).
+    rscript
+        Override path to Rscript. If None, auto-detected from PATH.
+    bias, od
+        Whether updog should estimate allele bias / overdispersion.
+    seq_error
+        Fix the sequencing error rate at this value, or None to estimate.
+    n_cores
+        Parallelism passed to updog's ``nc`` argument.
+    keep_tmpdir
+        Skip tempdir cleanup for debugging.
+
+    Returns
+    -------
+    DosageCallResult
+        Posterior ``P(dosage=0..k)`` plus diagnostics; artifacts also
+        persisted to disk at ``output_path``.
+    """
+    _validate_kwargs(ploidy=ploidy, model=model)
+    rscript_path = _check_environment(rscript)
+
+    sample_ids, variant_ids, refmat, sizemat = _extract_ad_from_vcf(input_vcf)
+
+    input_hash = hashlib.sha256(Path(input_vcf).read_bytes()).hexdigest()
+
+    tmp_obj = tempfile.TemporaryDirectory(prefix="torchgwas_dosage_")
+    tmpdir = Path(tmp_obj.name)
+    try:
+        ref_tsv, size_tsv = _write_input_tsvs(
+            tmpdir, sample_ids, variant_ids, refmat, sizemat
+        )
+        cmd = _run_r_subprocess(
+            rscript=rscript_path, tmpdir=tmpdir,
+            ref_tsv=ref_tsv, size_tsv=size_tsv,
+            ploidy=ploidy, model=model, bias=bias, od=od,
+            seq_error=seq_error, n_cores=n_cores,
+        )
+        probs, snp_diag = _parse_output(tmpdir, sample_ids, variant_ids, ploidy)
+        probs, n_missing = _normalize_probs(probs, ploidy)
+
+        # Best-effort version read; `_check_environment` logged it but we
+        # don't persist that string yet — re-probe cheaply.
+        version = _read_updog_version(rscript_path)
+
+        result = _build_result(
+            probs=probs,
+            sample_ids=sample_ids, variant_ids=variant_ids,
+            ploidy=ploidy, tool_version=version, model=model,
+            n_missing=n_missing, input_hash=input_hash, cmd=cmd,
+        )
+        _persist_artifacts(result, snp_diag, prefix=output_path)
+        return result
+    finally:
+        if keep_tmpdir:
+            logger.info("kept tempdir: %s", tmpdir)
+        else:
+            tmp_obj.cleanup()

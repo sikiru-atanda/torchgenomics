@@ -452,3 +452,121 @@ def test_persist_artifacts_writes_three_files(tmp_path):
     assert meta["input_hash"] == "abc"
     diag_df = pd.read_csv(str(prefix) + ".snp_diag.tsv", sep="\t")
     assert list(diag_df["snp"]) == ["v1", "v2"]
+
+
+# --- Integration tests for run_updog ---
+
+def _stub_updog_subprocess(tmpdir, sample_ids, variant_ids, ploidy,
+                            seed=0, n_missing_slots=0):
+    """Return a subprocess.run replacement that writes canned pr_*.tsv +
+    snp_diag.tsv into whatever --out-dir was passed. Inspects argv to
+    locate the output directory.
+    """
+    def fake_run(cmd, **kwargs):
+        # find out_dir = cmd[-1] per our contract
+        out_dir = Path(cmd[-1])
+        rng = np.random.default_rng(seed)
+        raw = rng.random((len(sample_ids), len(variant_ids), ploidy + 1))
+        probs = raw / raw.sum(axis=-1, keepdims=True)
+        if n_missing_slots:
+            probs[0, 0, :] = 0.0  # flag one slot missing
+        _write_canned_pr_tsvs(out_dir, sample_ids, variant_ids, ploidy, probs)
+
+        class OK:
+            returncode = 0
+            stderr = ""
+            stdout = "updog multidog complete"
+        return OK()
+    return fake_run
+
+
+def test_run_updog_end_to_end_stubbed(tmp_path, monkeypatch):
+    _reset_cache()
+    monkeypatch.setattr(dc_module.shutil, "which", lambda x: "/usr/bin/Rscript")
+
+    # Monkeypatch the VCF extractor so we don't need cyvcf2
+    sample_ids = ["S1", "S2", "S3"]
+    variant_ids = ["rs001", "rs002", "rs003", "rs004"]
+    ploidy = 4
+    refmat = np.zeros((len(variant_ids), len(sample_ids)), dtype=np.int64)
+    sizemat = np.ones((len(variant_ids), len(sample_ids)), dtype=np.int64) * 20
+    monkeypatch.setattr(
+        dc_module, "_extract_ad_from_vcf",
+        lambda _vcf: (sample_ids, variant_ids, refmat, sizemat),
+    )
+
+    # Dummy VCF so hashlib.sha256(Path(input_vcf).read_bytes()) succeeds
+    fake_vcf = tmp_path / "fake.vcf"
+    fake_vcf.write_text("#placeholder\n")
+
+    # Two subprocess calls happen: (1) updog-version probe, (2) real driver.
+    driver_run = _stub_updog_subprocess(tmp_path, sample_ids, variant_ids, ploidy)
+
+    def fake_run(cmd, **kwargs):
+        if len(cmd) >= 3 and cmd[1] == "-e":
+            class Probe:
+                returncode = 0; stderr = ""; stdout = "2.0.2"
+            return Probe()
+        return driver_run(cmd, **kwargs)
+
+    monkeypatch.setattr(dc_module.subprocess, "run", fake_run)
+
+    prefix = tmp_path / "out"
+    result = dc_module.run_updog(
+        input_vcf=str(fake_vcf),
+        output_path=str(prefix),
+        ploidy=ploidy,
+        model="norm",
+    )
+    assert result.tool == "updog"
+    assert result.ploidy == ploidy
+    assert result.sample_ids == sample_ids
+    assert result.variant_ids == variant_ids
+    assert result.probs.shape == (3, 4, 5)
+    assert (tmp_path / "out.probs.pt").is_file()
+    assert (tmp_path / "out.meta.json").is_file()
+    assert (tmp_path / "out.snp_diag.tsv").is_file()
+
+
+def test_run_updog_partial_output_raises_and_leaves_no_artifacts(
+    tmp_path, monkeypatch
+):
+    _reset_cache()
+    monkeypatch.setattr(dc_module.shutil, "which", lambda x: "/usr/bin/Rscript")
+
+    sample_ids = ["S1", "S2", "S3"]
+    variant_ids = ["rs001", "rs002", "rs003", "rs004"]
+    refmat = np.zeros((len(variant_ids), len(sample_ids)), dtype=np.int64)
+    sizemat = np.ones((len(variant_ids), len(sample_ids)), dtype=np.int64) * 20
+    monkeypatch.setattr(
+        dc_module, "_extract_ad_from_vcf",
+        lambda _vcf: (sample_ids, variant_ids, refmat, sizemat),
+    )
+
+    fake_vcf = tmp_path / "fake.vcf"
+    fake_vcf.write_text("#placeholder\n")
+
+    def broken_driver(cmd, **kwargs):
+        if len(cmd) >= 3 and cmd[1] == "-e":
+            class Probe:
+                returncode = 0; stderr = ""; stdout = "2.0.2"
+            return Probe()
+        # Only write 2 of 5 pr files, no snp_diag — triggers _parse_output error
+        out_dir = Path(cmd[-1])
+        (out_dir / "pr_0.tsv").write_text("\tS1\nrs001\t0.2\n")
+        (out_dir / "pr_1.tsv").write_text("\tS1\nrs001\t0.2\n")
+        class OK:
+            returncode = 0; stderr = ""; stdout = ""
+        return OK()
+
+    monkeypatch.setattr(dc_module.subprocess, "run", broken_driver)
+
+    prefix = tmp_path / "out"
+    with pytest.raises(RuntimeError):
+        dc_module.run_updog(input_vcf=str(fake_vcf), output_path=str(prefix),
+                             ploidy=4, model="norm")
+
+    # No user-visible output artifacts written
+    assert not (tmp_path / "out.probs.pt").exists()
+    assert not (tmp_path / "out.meta.json").exists()
+    assert not (tmp_path / "out.snp_diag.tsv").exists()
