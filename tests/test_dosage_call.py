@@ -903,6 +903,101 @@ def test_sha256_file_uses_chunked_read(tmp_path, monkeypatch):
     assert calls["n"] == 0, "regressed to Path.read_bytes one-shot read"
 
 
+def test_gu_scan_probs_passthrough_derives_genotype_and_dosage_var(
+    tmp_path, monkeypatch,
+):
+    """Phase 55 QoL: `torchgwas gu-scan --probs <x.probs.pt>` should auto-
+    derive `--genotype` and `--dosage-var` from the probs tensor via
+    expected_dosage / dosage_variance, matching the two-step Python recipe
+    byte-for-byte.
+    """
+    from torchgwas.cli import main as cli_main
+
+    # 1) Build a minimal Phase 55 artifact set (probs.pt + meta.json).
+    n_samples, n_markers, ploidy = 4, 3, 4
+    rng = np.random.default_rng(0)
+    raw = rng.random((n_samples, n_markers, ploidy + 1))
+    probs = torch.from_numpy(raw / raw.sum(axis=-1, keepdims=True)).to(torch.float64)
+
+    probs_path = tmp_path / "out.probs.pt"
+    meta_path = tmp_path / "out.meta.json"
+    torch.save(probs, str(probs_path))
+    meta_path.write_text(json.dumps({
+        "tool": "updog", "tool_version": "2.0.2", "model": "norm",
+        "ploidy": ploidy, "sample_ids": [f"S{i}" for i in range(n_samples)],
+        "variant_ids": [f"v{j}" for j in range(n_markers)],
+        "n_missing": 0, "input_hash": "x", "cmd": "",
+    }))
+
+    # 2) Monkeypatch _cmd_gu_scan_inner to capture the args it sees after
+    #    the passthrough derivation; skip the real scan (GRM, null fit, etc).
+    captured: dict = {}
+
+    def fake_inner(args, config, device):
+        captured["genotype"] = args.genotype
+        captured["dosage_var"] = args.dosage_var
+        # Load both tempfiles so we can assert on their contents.
+        captured["G"] = torch.load(args.genotype, weights_only=True)
+        captured["dvar"] = torch.load(args.dosage_var, weights_only=True)
+        return 0
+
+    import torchgwas.cli as cli_mod
+    monkeypatch.setattr(cli_mod, "_cmd_gu_scan_inner", fake_inner)
+
+    # --genotype is optional after Phase-55 wiring; pass only --probs + pheno.
+    pheno_path = tmp_path / "pheno.txt"
+    pheno_path.write_text("IID\tY\nS0\t1.0\nS1\t2.0\nS2\t3.0\nS3\t4.0\n")
+
+    rc = cli_main([
+        "gu-scan",
+        "--probs", str(probs_path),
+        "--phenotype", str(pheno_path),
+    ])
+    assert rc == 0
+
+    # The derived tempfile paths must exist during the inner call.
+    # _cmd_gu_scan cleans up after, so we only assert on captured contents.
+    from torchgwas.preprocess.dosage_uncertainty import (
+        dosage_variance as _dv,
+    )
+    from torchgwas.preprocess.dosage_uncertainty import (
+        expected_dosage as _ed,
+    )
+    torch.testing.assert_close(captured["G"], _ed(probs, ploidy))
+    torch.testing.assert_close(captured["dvar"], _dv(probs, ploidy))
+
+
+def test_gu_scan_rejects_both_probs_and_genotype(tmp_path):
+    """Mutual exclusion — passing both --probs and --genotype should error."""
+    from torchgwas.cli import main as cli_main
+
+    probs_path = tmp_path / "x.probs.pt"
+    torch.save(torch.ones(1, 1, 5, dtype=torch.float64) / 5, str(probs_path))
+    geno_path = tmp_path / "g.pt"
+    torch.save(torch.zeros(1, 1, dtype=torch.float64), str(geno_path))
+    pheno_path = tmp_path / "p.txt"
+    pheno_path.write_text("IID\tY\nS0\t1.0\n")
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        cli_main([
+            "gu-scan",
+            "--probs", str(probs_path),
+            "--genotype", str(geno_path),
+            "--phenotype", str(pheno_path),
+        ])
+
+
+def test_gu_scan_rejects_neither_probs_nor_genotype(tmp_path):
+    """Neither --probs nor --genotype given must fail cleanly."""
+    from torchgwas.cli import main as cli_main
+
+    pheno_path = tmp_path / "p.txt"
+    pheno_path.write_text("IID\tY\nS0\t1.0\n")
+
+    with pytest.raises(ValueError, match="exactly one"):
+        cli_main(["gu-scan", "--phenotype", str(pheno_path)])
+
+
 def test_missing_mask_propagates_through_run_updog(tmp_path, monkeypatch):
     # End-to-end: stub subprocess to write canned probs with one zero
     # row; confirm the mask on the DosageCallResult flags exactly that

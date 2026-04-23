@@ -35,31 +35,35 @@ This writes:
 - `out/dcall.meta.json` — IDs, ploidy, tool version, input hash, command.
 - `out/dcall.snp_diag.tsv` — per-marker `updog` diagnostics (bias, seq error, OD).
 
-## Step 2 — Convert posteriors to expected dosage + variance
+## Step 2 — Run uncertainty-aware GWAS (GU-LMM)
 
-The downstream tensors are cheap reductions of `probs.pt`:
-
-```python
-import torch
-from torchgwas.preprocess.dosage_uncertainty import (
-    expected_dosage, dosage_variance,
-)
-probs = torch.load("out/dcall.probs.pt")
-torch.save(expected_dosage(probs, 4), "out/dosage.pt")
-torch.save(dosage_variance(probs, 4), "out/dosage_var.pt")
-```
-
-## Step 3a — Run uncertainty-aware GWAS (GU-LMM)
+Pass `--probs out/dcall.probs.pt` directly to `gu-scan`; it reads the
+posterior tensor and derives the expected dosage + per-slot variance
+internally (via `expected_dosage` / `dosage_variance`, with ploidy
+picked up from the sibling `out/dcall.meta.json`):
 
 ```bash
 torchgwas gu-scan \
-  --genotype out/dosage.pt \
+  --probs out/dcall.probs.pt \
   --phenotype pheno.txt \
-  --dosage-var out/dosage_var.pt \
   --output results
 ```
 
-## Step 3b — Or run a standard polyploid scan (ignoring uncertainty)
+If you need a custom dosage variance (e.g. inflated for a stress
+test), pass `--dosage-var` alongside `--probs` — the user-supplied
+variance wins.
+
+### Alternative — standard polyploid scan (ignoring uncertainty)
+
+`poly-scan` doesn't know about `--probs`; derive expected dosages
+manually:
+
+```python
+import torch
+from torchgwas.preprocess.dosage_uncertainty import expected_dosage
+probs = torch.load("out/dcall.probs.pt", weights_only=True)
+torch.save(expected_dosage(probs, 4), "out/dosage.pt")
+```
 
 ```bash
 torchgwas poly-scan \

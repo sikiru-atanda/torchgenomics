@@ -1411,13 +1411,86 @@ def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
 
 def _cmd_gu_scan(args: argparse.Namespace) -> int:
     """Run genotype-uncertainty–corrected GWAS scan."""
+    import json
+    import tempfile
+    from pathlib import Path
+
     import torch
 
     from .config import TorchGWASConfig, resolve_device
-    from .models.gu_lmm import GULM
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
+
+    # --- Phase 55 `--probs` passthrough -------------------------------------
+    # If the user passes `--probs out/dcall.probs.pt`, derive --genotype and
+    # --dosage-var in a tempdir so the rest of the flow sees them as usual
+    # .pt files. Semantics match the manual two-step recipe in
+    # docs/getting-started/polyploid_dosage_call.md byte-for-byte.
+    _probs_tmpdir: Path | None = None
+    if args.probs:
+        if args.genotype:
+            raise ValueError(
+                "--probs and --genotype are mutually exclusive. Pass exactly "
+                "one: either a Phase 55 probs.pt (preferred) or a pre-derived "
+                "dosage tensor."
+            )
+        from .preprocess.dosage_uncertainty import (
+            dosage_variance,
+            expected_dosage,
+        )
+
+        probs_path = Path(args.probs)
+        probs = torch.load(str(probs_path), weights_only=True)
+        meta_path = probs_path.with_suffix("").with_suffix(".meta.json")
+        # Support both `<prefix>.probs.pt` and arbitrary paths whose
+        # suffix doesn't terminate in `.probs.pt` — fall back to reading
+        # ploidy from the probs tensor shape.
+        ploidy: int
+        if meta_path.is_file():
+            ploidy = int(json.loads(meta_path.read_text())["ploidy"])
+        else:
+            ploidy = int(probs.shape[-1]) - 1
+            logger.info(
+                "No sibling meta.json at %s; inferring ploidy=%d from "
+                "probs.shape[-1]-1.", meta_path, ploidy,
+            )
+
+        G_derived = expected_dosage(probs, ploidy)              # (n, m)
+        dvar_derived = dosage_variance(probs, ploidy)            # (n, m)
+
+        _probs_tmpdir = Path(tempfile.mkdtemp(prefix="torchgwas_guscan_"))
+        g_tmp = _probs_tmpdir / "genotype.pt"
+        dv_tmp = _probs_tmpdir / "dosage_var.pt"
+        torch.save(G_derived, str(g_tmp))
+        torch.save(dvar_derived, str(dv_tmp))
+        args.genotype = str(g_tmp)
+        # Only overwrite --dosage-var if the user didn't pass one. A user
+        # override wins — this is an escape hatch for custom variance.
+        if not args.dosage_var:
+            args.dosage_var = str(dv_tmp)
+        logger.info(
+            "Derived genotype (%s) and dosage variance (%s) from %s "
+            "(ploidy=%d).", g_tmp, dv_tmp, probs_path, ploidy,
+        )
+    elif not args.genotype:
+        raise ValueError(
+            "gu-scan requires exactly one of --genotype or --probs."
+        )
+
+    try:
+        return _cmd_gu_scan_inner(args, config, device)
+    finally:
+        if _probs_tmpdir is not None:
+            import shutil
+            shutil.rmtree(_probs_tmpdir, ignore_errors=True)
+
+
+def _cmd_gu_scan_inner(args, config, device) -> int:
+    """The original gu-scan body after --probs derivation (if any)."""
+    import torch
+
+    from .models.gu_lmm import GULM
 
     # Load ALL genotypes (need full G for dosage variance)
     G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
@@ -3331,8 +3404,21 @@ def _add_gu_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Genotype-Uncertainty LMM scan (dosage-variance corrected)",
     )
     _add_common_scan_args(p)
+    # Relax the common `--genotype required=True` for gu-scan so the
+    # `--probs` passthrough can derive the tensor internally. Exactly one
+    # of `--genotype` or `--probs` is validated in the handler.
+    for action in p._actions:
+        if action.dest == "genotype":
+            action.required = False
+            break
     p.add_argument("--dosage-var", default=None,
                    help="Path to dosage variance file (.pt or .npy, shape n×m)")
+    p.add_argument("--probs", default=None,
+                   help="Path to a Phase 55 <prefix>.probs.pt from "
+                        "`torchgwas dosage-call`. When given, --genotype and "
+                        "--dosage-var are derived internally via "
+                        "expected_dosage / dosage_variance (ploidy read from "
+                        "the sibling <prefix>.meta.json).")
 
 
 def _add_lro_scan_parser(subparsers: argparse._SubParsersAction) -> None:
