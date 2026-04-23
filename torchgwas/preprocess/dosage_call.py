@@ -147,6 +147,27 @@ def _extract_ad_from_vcf(
                     f"updog requires biallelic. Split first: "
                     f"bcftools norm -m -any <in> > <out>."
                 )
+            ref_allele = v.REF
+            alt_allele = v.ALT[0]
+            # Reject symbolic / spanning-deletion / non-REF ALTs — they
+            # pass the len() != 1 check above but carry no AD semantics
+            # updog can interpret.
+            if alt_allele.startswith("<") or alt_allele == "*":
+                raise ValueError(
+                    f"Symbolic or spanning-deletion ALT allele "
+                    f"{alt_allele!r} at {v.CHROM}:{v.POS} (ID={v.ID}); "
+                    f"updog requires concrete biallelic SNPs. Filter "
+                    f"with: bcftools view -e 'ALT=\"<*>\" || ALT=\"*\"'."
+                )
+            # Reject indels: both REF and ALT must be exactly one nucleotide
+            # for updog's dosage model to apply.
+            if len(ref_allele) != 1 or len(alt_allele) != 1:
+                raise ValueError(
+                    f"Non-SNP site at {v.CHROM}:{v.POS} (ID={v.ID}): "
+                    f"REF={ref_allele!r}, ALT={alt_allele!r}. updog "
+                    f"requires biallelic SNPs. Filter with: "
+                    f"bcftools view -v snps."
+                )
             ad = v.format("AD")
             if ad is None:
                 raise ValueError(

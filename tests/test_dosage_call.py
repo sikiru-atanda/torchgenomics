@@ -150,6 +150,25 @@ _TOY_VCF_MULTIALLELIC = """\
 1\t100\trs001\tA\tT,G\t.\tPASS\t.\tGT:AD\t0/0/1/2:5,5,5\t0/0/0/0:20,0,0
 """
 
+_TOY_VCF_SYMBOLIC_ALT = """\
+##fileformat=VCFv4.2
+##contig=<ID=1>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depth">
+##ALT=<ID=DEL,Description="Deletion">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2
+1\t100\trs001\tA\t<DEL>\t.\tPASS\t.\tGT:AD\t0/0/0/0:20,0\t0/0/0/1:15,5
+"""
+
+_TOY_VCF_INDEL = """\
+##fileformat=VCFv4.2
+##contig=<ID=1>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depth">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2
+1\t100\trs001\tAC\tA\t.\tPASS\t.\tGT:AD\t0/0/0/0:20,0\t0/0/0/1:15,5
+"""
+
 
 @pytest.fixture
 def toy_vcf(tmp_path):
@@ -172,6 +191,22 @@ def toy_vcf_multiallelic(tmp_path):
     pytest.importorskip("cyvcf2")
     path = tmp_path / "multi.vcf"
     path.write_text(_TOY_VCF_MULTIALLELIC)
+    return str(path)
+
+
+@pytest.fixture
+def toy_vcf_symbolic_alt(tmp_path):
+    pytest.importorskip("cyvcf2")
+    path = tmp_path / "symbolic.vcf"
+    path.write_text(_TOY_VCF_SYMBOLIC_ALT)
+    return str(path)
+
+
+@pytest.fixture
+def toy_vcf_indel(tmp_path):
+    pytest.importorskip("cyvcf2")
+    path = tmp_path / "indel.vcf"
+    path.write_text(_TOY_VCF_INDEL)
     return str(path)
 
 
@@ -204,6 +239,20 @@ def test_extract_ad_from_vcf_missing_ad_header_raises(toy_vcf_no_ad):
 def test_extract_ad_from_vcf_rejects_multiallelic(toy_vcf_multiallelic):
     with pytest.raises(ValueError, match="multi"):
         dc_module._extract_ad_from_vcf(toy_vcf_multiallelic)
+
+
+def test_extract_ad_from_vcf_rejects_symbolic_alt(toy_vcf_symbolic_alt):
+    # `<DEL>` passes the multi-allelic (`len(ALT) != 1`) check but has no
+    # AD semantics for updog. Expect a clearer error than "multi-allelic".
+    with pytest.raises(ValueError, match="[Ss]ymbolic"):
+        dc_module._extract_ad_from_vcf(toy_vcf_symbolic_alt)
+
+
+def test_extract_ad_from_vcf_rejects_indel(toy_vcf_indel):
+    # REF=AC, ALT=A is a deletion — biallelic by count but not a SNP.
+    # updog's dosage model applies only to single-nt REF/ALT pairs.
+    with pytest.raises(ValueError, match="[Nn]on-SNP"):
+        dc_module._extract_ad_from_vcf(toy_vcf_indel)
 
 
 def test_write_input_tsvs_round_trip(tmp_path):
@@ -443,7 +492,7 @@ def test_persist_artifacts_writes_three_files(tmp_path):
     prefix = tmp_path / "out"
     dc_module._persist_artifacts(r, snp_diag, prefix=str(prefix))
 
-    loaded = torch.load(str(prefix) + ".probs.pt")
+    loaded = torch.load(str(prefix) + ".probs.pt", weights_only=True)
     assert loaded.shape == probs.shape
     meta = json.loads((Path(str(prefix) + ".meta.json")).read_text())
     assert meta["tool"] == "updog"
