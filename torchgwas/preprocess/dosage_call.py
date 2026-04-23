@@ -193,3 +193,87 @@ def _write_input_tsvs(
         size_tsv, sep="\t", index=True, index_label=""
     )
     return ref_tsv, size_tsv
+
+
+_UPDOG_DRIVER_R = r"""# R driver for torchgwas.preprocess.dosage_call — invoked via Rscript.
+args <- commandArgs(trailingOnly = TRUE)
+ref_tsv <- args[1]
+size_tsv <- args[2]
+ploidy <- as.integer(args[3])
+model <- args[4]
+update_bias <- as.logical(args[5])
+update_od <- as.logical(args[6])
+seq_arg <- args[7]
+n_cores <- as.integer(args[8])
+out_dir <- args[9]
+
+suppressPackageStartupMessages(library(updog))
+
+refmat <- as.matrix(read.table(ref_tsv, sep = "\t", header = TRUE,
+                                row.names = 1, check.names = FALSE))
+sizemat <- as.matrix(read.table(size_tsv, sep = "\t", header = TRUE,
+                                 row.names = 1, check.names = FALSE))
+
+multidog_args <- list(
+  refmat = refmat, sizemat = sizemat,
+  ploidy = ploidy, model = model, nc = n_cores,
+  update_bias = update_bias, update_od = update_od
+)
+if (seq_arg != "NULL") {
+  multidog_args$seq <- as.numeric(seq_arg)
+  multidog_args$update_seq <- FALSE
+}
+mout <- do.call(multidog, multidog_args)
+
+for (d in 0:ploidy) {
+  mat <- format_multidog(mout, varname = paste0("Pr_", d))
+  write.table(mat, file.path(out_dir, paste0("pr_", d, ".tsv")),
+              sep = "\t", quote = FALSE, col.names = NA)
+}
+write.table(mout$snpdf, file.path(out_dir, "snp_diag.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+cat("updog multidog complete\n")
+"""
+
+
+def _run_r_subprocess(
+    *,
+    rscript: str,
+    tmpdir: Path,
+    ref_tsv: Path,
+    size_tsv: Path,
+    ploidy: int,
+    model: str,
+    bias: bool,
+    od: bool,
+    seq_error: Optional[float],
+    n_cores: int,
+) -> str:
+    """Write the driver script to tmpdir, spawn Rscript, return the
+    stringified command for reproducibility. Raises RuntimeError on
+    non-zero exit with stderr attached.
+    """
+    driver_path = tmpdir / "driver.R"
+    driver_path.write_text(_UPDOG_DRIVER_R)
+
+    cmd = [
+        rscript, str(driver_path),
+        str(ref_tsv), str(size_tsv),
+        str(ploidy), model,
+        "TRUE" if bias else "FALSE",
+        "TRUE" if od else "FALSE",
+        "NULL" if seq_error is None else f"{seq_error:g}",
+        str(n_cores),
+        str(tmpdir),
+    ]
+    logger.info("Running updog: %s", " ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"updog failed (exit {result.returncode}). stderr:\n{result.stderr}"
+        )
+    if result.stderr:
+        logger.info("updog stderr:\n%s", result.stderr)
+    return " ".join(cmd)

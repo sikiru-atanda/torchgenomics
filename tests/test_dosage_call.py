@@ -1,6 +1,8 @@
 """Phase 55: Polyploid allele dosage assignment (Tier 1, always-on)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -217,3 +219,90 @@ def test_write_input_tsvs_round_trip(tmp_path):
     assert list(df_ref.columns) == sample_ids
     np.testing.assert_array_equal(df_ref.to_numpy(), refmat)
     np.testing.assert_array_equal(df_size.to_numpy(), sizemat)
+
+
+def test_r_driver_constant_calls_multidog_and_format_multidog():
+    src = dc_module._UPDOG_DRIVER_R
+    assert "multidog(" in src
+    assert "format_multidog(" in src
+    assert 'library(updog)' in src
+
+
+def test_run_r_subprocess_passes_exact_args(tmp_path, monkeypatch):
+    captured = {}
+
+    class OK:
+        returncode = 0
+        stderr = ""
+        stdout = "updog multidog complete"
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return OK()
+
+    monkeypatch.setattr(dc_module.subprocess, "run", fake_run)
+
+    ref_tsv = tmp_path / "ref.tsv"
+    size_tsv = tmp_path / "size.tsv"
+    ref_tsv.touch(); size_tsv.touch()
+    dc_module._run_r_subprocess(
+        rscript="/usr/bin/Rscript",
+        tmpdir=tmp_path,
+        ref_tsv=ref_tsv,
+        size_tsv=size_tsv,
+        ploidy=4,
+        model="norm",
+        bias=True,
+        od=True,
+        seq_error=None,
+        n_cores=2,
+    )
+    cmd = captured["cmd"]
+    assert cmd[0] == "/usr/bin/Rscript"
+    # driver script path comes next
+    assert Path(cmd[1]).name == "driver.R"
+    assert cmd[2:] == [str(ref_tsv), str(size_tsv), "4", "norm",
+                       "TRUE", "TRUE", "NULL", "2", str(tmp_path)]
+
+
+def test_run_r_subprocess_nonzero_exit_raises(tmp_path, monkeypatch):
+    class Fail:
+        returncode = 42
+        stderr = "something went wrong"
+        stdout = ""
+
+    monkeypatch.setattr(dc_module.subprocess, "run", lambda *a, **kw: Fail())
+    ref_tsv = tmp_path / "ref.tsv"; size_tsv = tmp_path / "size.tsv"
+    ref_tsv.touch(); size_tsv.touch()
+    with pytest.raises(RuntimeError, match="exit 42"):
+        dc_module._run_r_subprocess(
+            rscript="/usr/bin/Rscript", tmpdir=tmp_path,
+            ref_tsv=ref_tsv, size_tsv=size_tsv,
+            ploidy=4, model="norm", bias=True, od=True,
+            seq_error=None, n_cores=1,
+        )
+
+
+def test_run_r_subprocess_passes_seq_error_as_float_string(tmp_path, monkeypatch):
+    captured = {}
+
+    class OK:
+        returncode = 0; stderr = ""; stdout = ""
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd; return OK()
+
+    monkeypatch.setattr(dc_module.subprocess, "run", fake_run)
+    ref_tsv = tmp_path / "ref.tsv"; size_tsv = tmp_path / "size.tsv"
+    ref_tsv.touch(); size_tsv.touch()
+    dc_module._run_r_subprocess(
+        rscript="Rscript", tmpdir=tmp_path,
+        ref_tsv=ref_tsv, size_tsv=size_tsv,
+        ploidy=4, model="norm", bias=False, od=False,
+        seq_error=0.005, n_cores=1,
+    )
+    cmd = captured["cmd"]
+    # boolean flags become FALSE; seq_error becomes "0.005"
+    assert cmd[6] == "FALSE"  # bias
+    assert cmd[7] == "FALSE"  # od
+    assert cmd[8] == "0.005"
