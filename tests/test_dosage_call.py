@@ -93,3 +93,22 @@ def test_check_environment_rscript_override(monkeypatch):
 
     rscript_path = dc_module._check_environment(rscript="/my/custom/Rscript")
     assert rscript_path == "/my/custom/Rscript"
+
+
+def test_validate_kwargs_rejects_ploidy_out_of_range():
+    with pytest.raises(ValueError, match="ploidy"):
+        dc_module._validate_kwargs(ploidy=1, model="norm")
+    with pytest.raises(ValueError, match="ploidy"):
+        dc_module._validate_kwargs(ploidy=9, model="norm")
+
+
+def test_validate_kwargs_rejects_bad_model_name():
+    with pytest.raises(ValueError, match="model"):
+        dc_module._validate_kwargs(ploidy=4, model="not-a-model")
+
+
+def test_validate_kwargs_accepts_valid_combinations():
+    for m in ("norm", "hw", "bb", "s1", "f1", "flex", "uniform"):
+        dc_module._validate_kwargs(ploidy=4, model=m)  # no raise
+    for p in (2, 3, 4, 6, 8):
+        dc_module._validate_kwargs(ploidy=p, model="norm")  # no raise

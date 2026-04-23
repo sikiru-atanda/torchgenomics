@@ -84,3 +84,20 @@ def _check_environment(rscript: Optional[str]) -> str:
     logger.info("updog R package detected: version %s", probe.stdout.strip())
     _UPDOG_CHECKED = True
     return rscript
+
+
+def _validate_kwargs(*, ploidy: int, model: str) -> None:
+    """Validate ploidy and model kwargs before R dispatch.
+
+    Raises ValueError if ploidy is out of range [2, 8] or model is not in
+    the updog flexdog set.
+    """
+    if not (2 <= ploidy <= 8):
+        raise ValueError(
+            f"ploidy must be in [2, 8]; got {ploidy}. updog is validated "
+            "up to ploidy=8 upstream."
+        )
+    if model not in _VALID_MODELS:
+        raise ValueError(
+            f"model={model!r} not in updog flexdog set: {sorted(_VALID_MODELS)}"
+        )
