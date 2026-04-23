@@ -365,3 +365,75 @@ def _normalize_probs(probs: Tensor, ploidy: int) -> tuple[Tensor, int]:
         )
 
     return out, n_missing
+
+
+def _build_result(
+    *,
+    probs: Tensor,
+    sample_ids: list[str],
+    variant_ids: list[str],
+    ploidy: int,
+    tool_version: str,
+    model: str,
+    n_missing: int,
+    input_hash: str,
+    cmd: str,
+) -> DosageCallResult:
+    """Assemble a DosageCallResult from validated probs and metadata.
+    Computes mean_dosage_var (uncertainty per variant) and allele_freq
+    (AF = E[dosage] / ploidy).
+    """
+    d_vals = torch.arange(ploidy + 1, dtype=probs.dtype, device=probs.device)
+    e_d = (probs * d_vals).sum(dim=-1)          # (n, m)
+    e_d2 = (probs * d_vals ** 2).sum(dim=-1)    # (n, m)
+    var_d = e_d2 - e_d ** 2
+    mean_dosage_var = var_d.mean(dim=0)          # (m,)
+    allele_freq = e_d.mean(dim=0) / ploidy       # (m,)
+
+    return DosageCallResult(
+        probs=probs,
+        sample_ids=sample_ids,
+        variant_ids=variant_ids,
+        ploidy=ploidy,
+        tool="updog",
+        tool_version=tool_version,
+        model=model,
+        mean_dosage_var=mean_dosage_var,
+        allele_freq=allele_freq,
+        n_missing=n_missing,
+        input_hash=input_hash,
+        cmd=cmd,
+    )
+
+
+def _persist_artifacts(
+    result: DosageCallResult,
+    snp_diag: pd.DataFrame,
+    *,
+    prefix: str,
+) -> None:
+    """Write `<prefix>.probs.pt`, `<prefix>.meta.json`,
+    `<prefix>.snp_diag.tsv`. Atomicity contract: caller only invokes this
+    after multidog has succeeded, so a partial call leaves no half-written
+    outputs on disk.
+    """
+    prefix_path = Path(prefix)
+    prefix_path.parent.mkdir(parents=True, exist_ok=True)
+
+    torch.save(result.probs, str(prefix_path) + ".probs.pt")
+
+    meta = {
+        "tool": result.tool,
+        "tool_version": result.tool_version,
+        "model": result.model,
+        "ploidy": result.ploidy,
+        "sample_ids": result.sample_ids,
+        "variant_ids": result.variant_ids,
+        "n_missing": result.n_missing,
+        "input_hash": result.input_hash,
+        "cmd": result.cmd,
+    }
+    Path(str(prefix_path) + ".meta.json").write_text(json.dumps(meta, indent=2))
+
+    snp_diag.to_csv(str(prefix_path) + ".snp_diag.tsv",
+                    sep="\t", index=False)

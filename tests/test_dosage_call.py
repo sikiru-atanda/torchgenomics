@@ -1,6 +1,7 @@
 """Phase 55: Polyploid allele dosage assignment (Tier 1, always-on)."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -391,3 +392,63 @@ def test_normalize_probs_rejects_wrong_last_dim():
     probs = torch.ones(1, 1, 4, dtype=torch.float64) / 4
     with pytest.raises(RuntimeError, match="shape"):
         dc_module._normalize_probs(probs, ploidy=4)  # expects k+1 = 5
+
+
+def test_build_result_computes_quality_metrics():
+    n, m, ploidy = 4, 3, 4
+    probs = torch.zeros(n, m, ploidy + 1, dtype=torch.float64)
+    # marker 0: everyone dosage 0 (AF = 0)
+    probs[:, 0, 0] = 1.0
+    # marker 1: everyone dosage 4 (AF = 1)
+    probs[:, 1, 4] = 1.0
+    # marker 2: uniform over dosage classes (AF = 0.5)
+    probs[:, 2, :] = 1.0 / (ploidy + 1)
+
+    r = dc_module._build_result(
+        probs=probs,
+        sample_ids=[f"S{i}" for i in range(n)],
+        variant_ids=[f"v{j}" for j in range(m)],
+        ploidy=ploidy,
+        tool_version="2.0.2",
+        model="norm",
+        n_missing=0,
+        input_hash="deadbeef",
+        cmd="Rscript driver.R ...",
+    )
+    assert r.probs is probs
+    assert r.tool == "updog"
+    assert r.ploidy == 4
+    assert r.mean_dosage_var.shape == (m,)
+    assert r.allele_freq.shape == (m,)
+    # marker 0: AF ≈ 0
+    assert r.allele_freq[0].item() == pytest.approx(0.0)
+    # marker 1: AF ≈ 1
+    assert r.allele_freq[1].item() == pytest.approx(1.0)
+    # marker 2: AF ≈ 0.5
+    assert r.allele_freq[2].item() == pytest.approx(0.5)
+
+
+def test_persist_artifacts_writes_three_files(tmp_path):
+    n, m, ploidy = 2, 2, 4
+    probs = torch.ones(n, m, ploidy + 1, dtype=torch.float64) / (ploidy + 1)
+    r = dc_module._build_result(
+        probs=probs,
+        sample_ids=["S1", "S2"],
+        variant_ids=["v1", "v2"],
+        ploidy=ploidy, tool_version="2.0.2", model="norm",
+        n_missing=0, input_hash="abc", cmd="Rscript ...",
+    )
+    snp_diag = pd.DataFrame({"snp": ["v1", "v2"], "bias": [1.0, 1.0]})
+
+    prefix = tmp_path / "out"
+    dc_module._persist_artifacts(r, snp_diag, prefix=str(prefix))
+
+    loaded = torch.load(str(prefix) + ".probs.pt")
+    assert loaded.shape == probs.shape
+    meta = json.loads((Path(str(prefix) + ".meta.json")).read_text())
+    assert meta["tool"] == "updog"
+    assert meta["ploidy"] == 4
+    assert meta["sample_ids"] == ["S1", "S2"]
+    assert meta["input_hash"] == "abc"
+    diag_df = pd.read_csv(str(prefix) + ".snp_diag.tsv", sep="\t")
+    assert list(diag_df["snp"]) == ["v1", "v2"]
