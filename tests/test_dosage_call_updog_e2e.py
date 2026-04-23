@@ -198,11 +198,13 @@ def test_gulm_end_to_end_on_simulated_dosages(tmp_path):
     (not a tight calibration — see test_gu_lmm.py for the full battery).
     """
     from scipy.stats import kstest
+    from torchgwas.linalg.grm import compute_grm
+
     from torchgwas.models.gu_lmm import GULM
     from torchgwas.preprocess.dosage_uncertainty import (
-        expected_dosage, dosage_variance,
+        dosage_variance,
+        expected_dosage,
     )
-    from torchgwas.linalg.grm import compute_grm
 
     n_samples, n_markers = 200, 500
     _, ref, alt, _ = _simulate_reads_tetraploid(

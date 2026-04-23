@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from torchgwas.preprocess import dosage_call as dc_module
-from torchgwas.preprocess.dosage_call import DosageCallResult, _VALID_MODELS
+from torchgwas.preprocess.dosage_call import _VALID_MODELS, DosageCallResult
 
 
 def test_dosage_call_result_dataclass_fields():
@@ -648,7 +648,7 @@ def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch):
 
 
 def test_reexports_from_torchgwas_preprocess():
-    from torchgwas.preprocess import run_updog, DosageCallResult
+    from torchgwas.preprocess import DosageCallResult, run_updog
     assert callable(run_updog)
     assert DosageCallResult is dc_module.DosageCallResult
 
