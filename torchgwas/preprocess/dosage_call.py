@@ -30,7 +30,7 @@ _VALID_MODELS: frozenset[str] = frozenset({
     "norm", "hw", "bb", "s1", "f1", "s1pp", "f1pp", "flex", "uniform",
 })
 
-_UPDOG_CHECKED: Optional[bool] = None  # cached result of environment probe
+_UPDOG_CHECKED: dict[str, str] = {}  # rscript_path -> updog_version (cached)
 
 
 @dataclass
@@ -49,14 +49,16 @@ class DosageCallResult:
     cmd: str
 
 
-def _check_environment(rscript: Optional[str]) -> str:
-    """Probe for Rscript + updog; cache the verdict. Returns Rscript path.
+def _check_environment(rscript: Optional[str]) -> tuple[str, str]:
+    """Probe for Rscript + updog; cache the verdict keyed by Rscript path.
 
-    Raises RuntimeError with install pointers if either is missing.
-    Cached on a module-level flag; the probe runs at most once per process.
+    Returns ``(rscript_path, updog_version)``. Raises :class:`RuntimeError`
+    with install pointers if either is missing. Each distinct ``rscript``
+    path is probed at most once per process; switching R installations
+    mid-session re-probes the new path without disturbing the old cache.
+    Failures are not cached — so a user who installs updog after a failed
+    probe can retry without restarting the process.
     """
-    global _UPDOG_CHECKED
-
     if rscript is None:
         rscript = shutil.which("Rscript")
     if rscript is None:
@@ -65,8 +67,9 @@ def _check_environment(rscript: Optional[str]) -> str:
             "PATH, or pass rscript=<path>."
         )
 
-    if _UPDOG_CHECKED is True:
-        return rscript
+    cached = _UPDOG_CHECKED.get(rscript)
+    if cached is not None:
+        return rscript, cached
 
     probe = subprocess.run(
         [rscript, "-e",
@@ -75,16 +78,16 @@ def _check_environment(rscript: Optional[str]) -> str:
         capture_output=True, text=True, check=False,
     )
     if probe.returncode != 0:
-        _UPDOG_CHECKED = False
         raise RuntimeError(
             "updog R package not installed. Install with: "
             "Rscript -e 'install.packages(\"updog\")'. "
             f"(probe stderr: {probe.stderr.strip()})"
         )
 
-    logger.info("updog R package detected: version %s", probe.stdout.strip())
-    _UPDOG_CHECKED = True
-    return rscript
+    version = probe.stdout.strip() or "unknown"
+    logger.info("updog R package detected: version %s", version)
+    _UPDOG_CHECKED[rscript] = version
+    return rscript, version
 
 
 def _validate_kwargs(*, ploidy: int, model: str) -> None:
@@ -493,21 +496,6 @@ def _persist_artifacts(
     os.replace(tmp_diag, final_diag)
 
 
-def _read_updog_version(rscript: str) -> str:
-    """Best-effort re-probe; falls back to 'unknown' on any failure."""
-    try:
-        r = subprocess.run(
-            [rscript, "-e",
-             'cat(as.character(packageVersion("updog")))'],
-            capture_output=True, text=True, check=False, timeout=10,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    except Exception:
-        pass
-    return "unknown"
-
-
 def run_updog(
     input_vcf: str,
     output_path: str,
@@ -552,7 +540,7 @@ def run_updog(
         persisted to disk at ``output_path``.
     """
     _validate_kwargs(ploidy=ploidy, model=model)
-    rscript_path = _check_environment(rscript)
+    rscript_path, version = _check_environment(rscript)
 
     sample_ids, variant_ids, refmat, sizemat = _extract_ad_from_vcf(input_vcf)
 
@@ -576,10 +564,6 @@ def run_updog(
         )
         probs, snp_diag = _parse_output(tmpdir, sample_ids, variant_ids, ploidy)
         probs, n_missing = _normalize_probs(probs, ploidy)
-
-        # Best-effort version read; `_check_environment` logged it but we
-        # don't persist that string yet — re-probe cheaply.
-        version = _read_updog_version(rscript_path)
 
         result = _build_result(
             probs=probs,

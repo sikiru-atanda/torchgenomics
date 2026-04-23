@@ -38,7 +38,7 @@ def test_valid_models_contains_updog_flexdog_set():
 
 
 def _reset_cache():
-    dc_module._UPDOG_CHECKED = None
+    dc_module._UPDOG_CHECKED.clear()
 
 
 def test_check_environment_missing_rscript_raises(monkeypatch):
@@ -96,8 +96,60 @@ def test_check_environment_rscript_override(monkeypatch):
         stdout = "2.0.2"
     monkeypatch.setattr(dc_module.subprocess, "run", lambda *a, **kw: OK())
 
-    rscript_path = dc_module._check_environment(rscript="/my/custom/Rscript")
+    rscript_path, version = dc_module._check_environment(rscript="/my/custom/Rscript")
     assert rscript_path == "/my/custom/Rscript"
+    assert version == "2.0.2"
+
+
+def test_check_environment_cache_is_keyed_by_rscript_path(monkeypatch):
+    # Two distinct rscript paths should each probe exactly once; switching
+    # between them within one process re-probes the new path.
+    _reset_cache()
+    monkeypatch.setattr(dc_module.shutil, "which", lambda x: "/usr/bin/Rscript")
+
+    calls: list[str] = []
+
+    def fake_run(cmd, *a, **kw):
+        calls.append(cmd[0])
+        class OK:
+            returncode = 0
+            stderr = ""
+            stdout = "2.0.2"
+        return OK()
+
+    monkeypatch.setattr(dc_module.subprocess, "run", fake_run)
+
+    dc_module._check_environment(rscript="/opt/A/Rscript")
+    dc_module._check_environment(rscript="/opt/A/Rscript")   # cached
+    dc_module._check_environment(rscript="/opt/B/Rscript")
+    dc_module._check_environment(rscript="/opt/B/Rscript")   # cached
+    assert calls == ["/opt/A/Rscript", "/opt/B/Rscript"]
+
+
+def test_check_environment_failure_does_not_cache(monkeypatch):
+    # A failed probe must not poison the cache — user can install updog
+    # mid-session and retry without restarting Python.
+    _reset_cache()
+    monkeypatch.setattr(dc_module.shutil, "which", lambda x: "/usr/bin/Rscript")
+
+    seq = {"n": 0}
+
+    def fake_run(cmd, *a, **kw):
+        seq["n"] += 1
+        class R:
+            returncode = 1 if seq["n"] == 1 else 0
+            stderr = "no package 'updog'" if seq["n"] == 1 else ""
+            stdout = "" if seq["n"] == 1 else "2.0.2"
+        return R()
+
+    monkeypatch.setattr(dc_module.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="updog R package not installed"):
+        dc_module._check_environment(rscript=None)
+    # Second call re-probes (failure was not cached); now succeeds.
+    _, version = dc_module._check_environment(rscript=None)
+    assert version == "2.0.2"
+    assert seq["n"] == 2
 
 
 def test_validate_kwargs_rejects_ploidy_out_of_range():
