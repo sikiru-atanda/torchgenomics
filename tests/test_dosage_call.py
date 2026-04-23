@@ -355,3 +355,39 @@ def test_parse_output_missing_pr_file_raises(tmp_path):
     (tmp_path / "pr_3.tsv").unlink()
     with pytest.raises(RuntimeError, match="pr_3.tsv"):
         dc_module._parse_output(tmp_path, sample_ids, variant_ids, ploidy)
+
+
+# --- Normalize probs tests ---
+
+def test_normalize_probs_accepts_within_tolerance():
+    probs = torch.tensor([[[0.5, 0.3, 0.2]]], dtype=torch.float64)  # sum=1
+    out, n_missing = dc_module._normalize_probs(probs, ploidy=2)
+    assert n_missing == 0
+    torch.testing.assert_close(out, probs)
+
+
+def test_normalize_probs_zero_row_becomes_uniform_missing():
+    probs = torch.zeros(1, 2, 3, dtype=torch.float64)
+    probs[0, 0] = torch.tensor([0.5, 0.3, 0.2])
+    # probs[0, 1] is all zero → missing
+    out, n_missing = dc_module._normalize_probs(probs, ploidy=2)
+    assert n_missing == 1
+    torch.testing.assert_close(out[0, 1], torch.tensor([1/3, 1/3, 1/3],
+                                                         dtype=torch.float64))
+    torch.testing.assert_close(out[0, 0], probs[0, 0])
+
+
+def test_normalize_probs_negative_is_clamped_and_renormalized(caplog):
+    probs = torch.tensor([[[-0.1, 0.6, 0.5]]], dtype=torch.float64)
+    with caplog.at_level("WARNING"):
+        out, _ = dc_module._normalize_probs(probs, ploidy=2)
+    # clamped to [0, 0.6, 0.5], renormalized
+    expected = torch.tensor([[[0.0, 0.6/1.1, 0.5/1.1]]], dtype=torch.float64)
+    torch.testing.assert_close(out, expected)
+    assert any("negative" in rec.message.lower() for rec in caplog.records)
+
+
+def test_normalize_probs_rejects_wrong_last_dim():
+    probs = torch.ones(1, 1, 4, dtype=torch.float64) / 4
+    with pytest.raises(RuntimeError, match="shape"):
+        dc_module._normalize_probs(probs, ploidy=4)  # expects k+1 = 5

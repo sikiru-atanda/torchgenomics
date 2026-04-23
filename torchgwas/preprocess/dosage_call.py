@@ -310,3 +310,58 @@ def _parse_output(
         raise RuntimeError(f"updog produced no snp_diag.tsv in {tmpdir}.")
     snp_diag = pd.read_csv(diag_path, sep="\t")
     return probs, snp_diag
+
+
+def _normalize_probs(probs: Tensor, ploidy: int) -> tuple[Tensor, int]:
+    """Validate + clean the (n, m, k+1) probability tensor. Returns a
+    cleaned copy plus the count of missing (zero-row) sample×marker slots.
+
+    Rules per the spec:
+      - Shape must be (n, m, ploidy+1) — else RuntimeError.
+      - Rows summing to 0 are treated as missing → set to uniform
+        1/(k+1), `n_missing += 1`.
+      - Negative entries are clamped to 0 and the row is renormalized,
+        with a warning via logger.
+      - All remaining rows must sum to within atol=1e-4 of 1.0.
+    """
+    if probs.dim() != 3 or probs.shape[-1] != ploidy + 1:
+        raise RuntimeError(
+            f"probs shape {tuple(probs.shape)} does not match "
+            f"(n, m, ploidy+1) with ploidy={ploidy}."
+        )
+
+    out = probs.clone()
+
+    # Negative handling
+    if (out < 0).any():
+        logger.warning(
+            "updog output contains %d negative probabilities; clamping to 0.",
+            int((out < 0).sum().item()),
+        )
+        out = torch.clamp(out, min=0.0)
+
+    row_sums = out.sum(dim=-1)  # (n, m)
+    zero_mask = row_sums == 0
+    n_missing = int(zero_mask.sum().item())
+
+    # Uniform fill for missing rows
+    if n_missing > 0:
+        uniform = 1.0 / (ploidy + 1)
+        out[zero_mask] = uniform
+
+    # Renormalize non-missing rows
+    non_missing = ~zero_mask
+    if non_missing.any():
+        out[non_missing] = out[non_missing] / out[non_missing].sum(
+            dim=-1, keepdim=True
+        )
+
+    # Final sanity check
+    final_sums = out.sum(dim=-1)
+    if not torch.allclose(final_sums, torch.ones_like(final_sums), atol=1e-4):
+        bad = (final_sums - 1.0).abs().max().item()
+        raise RuntimeError(
+            f"Normalized probs still deviate from 1.0 by up to {bad:.3g}."
+        )
+
+    return out, n_missing
