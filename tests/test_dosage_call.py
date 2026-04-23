@@ -306,3 +306,52 @@ def test_run_r_subprocess_passes_seq_error_as_float_string(tmp_path, monkeypatch
     assert cmd[6] == "FALSE"  # bias
     assert cmd[7] == "FALSE"  # od
     assert cmd[8] == "0.005"
+
+
+# --- Parse output tests ---
+
+def _write_canned_pr_tsvs(tmpdir, sample_ids, variant_ids, ploidy, probs):
+    """Write pr_0..pr_k TSVs matching the format R's format_multidog emits.
+    probs: (n, m, k+1) array; we write m-row, n-col per file, with a blank
+    first column header and variant_ids as rownames.
+    """
+    for d in range(ploidy + 1):
+        df = pd.DataFrame(
+            probs[:, :, d].T,   # (m, n)
+            index=variant_ids,
+            columns=sample_ids,
+        )
+        df.to_csv(tmpdir / f"pr_{d}.tsv", sep="\t", index=True, index_label="")
+    # snp_diag stub
+    pd.DataFrame({"snp": variant_ids, "bias": [1.0]*len(variant_ids),
+                  "seq": [0.005]*len(variant_ids),
+                  "od": [0.01]*len(variant_ids)}).to_csv(
+        tmpdir / "snp_diag.tsv", sep="\t", index=False)
+
+
+def test_parse_output_stacks_in_correct_order(tmp_path):
+    sample_ids = ["S1", "S2"]
+    variant_ids = ["v1", "v2", "v3"]
+    ploidy = 4
+    rng = np.random.default_rng(0)
+    raw = rng.random((2, 3, 5))
+    probs_true = raw / raw.sum(axis=-1, keepdims=True)
+    _write_canned_pr_tsvs(tmp_path, sample_ids, variant_ids, ploidy, probs_true)
+
+    probs, snp_diag = dc_module._parse_output(
+        tmp_path, sample_ids, variant_ids, ploidy
+    )
+    assert probs.shape == (2, 3, 5)
+    assert probs.dtype == torch.float64
+    np.testing.assert_allclose(probs.numpy(), probs_true, atol=1e-6)
+    assert list(snp_diag["snp"]) == variant_ids
+
+
+def test_parse_output_missing_pr_file_raises(tmp_path):
+    sample_ids = ["S1"]; variant_ids = ["v1"]; ploidy = 4
+    probs = np.ones((1, 1, 5)) / 5
+    _write_canned_pr_tsvs(tmp_path, sample_ids, variant_ids, ploidy, probs)
+    # remove pr_3.tsv
+    (tmp_path / "pr_3.tsv").unlink()
+    with pytest.raises(RuntimeError, match="pr_3.tsv"):
+        dc_module._parse_output(tmp_path, sample_ids, variant_ids, ploidy)

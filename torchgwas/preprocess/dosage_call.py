@@ -277,3 +277,36 @@ def _run_r_subprocess(
     if result.stderr:
         logger.info("updog stderr:\n%s", result.stderr)
     return " ".join(cmd)
+
+
+def _parse_output(
+    tmpdir: Path,
+    sample_ids: list[str],
+    variant_ids: list[str],
+    ploidy: int,
+) -> tuple[Tensor, pd.DataFrame]:
+    """Read pr_0..pr_k wide TSVs and snp_diag.tsv from tmpdir. Returns
+    (probs, snp_diag) where probs has shape (n, m, k+1) float64 and
+    is stacked along the last axis in dosage-class order.
+    """
+    prob_slices: list[np.ndarray] = []
+    for d in range(ploidy + 1):
+        path = tmpdir / f"pr_{d}.tsv"
+        if not path.is_file():
+            raise RuntimeError(
+                f"updog exited 0 but produced no {path.name} in {tmpdir}."
+            )
+        df = pd.read_csv(path, sep="\t", index_col=0)
+        # Reindex defensively so order matches our canonical ID lists
+        df = df.reindex(index=variant_ids, columns=sample_ids)
+        prob_slices.append(df.to_numpy(dtype=np.float64).T)  # (n, m)
+
+    # (n, m, k+1)
+    probs_np = np.stack(prob_slices, axis=-1)
+    probs = torch.from_numpy(probs_np).to(torch.float64)
+
+    diag_path = tmpdir / "snp_diag.tsv"
+    if not diag_path.is_file():
+        raise RuntimeError(f"updog produced no snp_diag.tsv in {tmpdir}.")
+    snp_diag = pd.read_csv(diag_path, sep="\t")
+    return probs, snp_diag
