@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -412,15 +413,32 @@ def _persist_artifacts(
     *,
     prefix: str,
 ) -> None:
-    """Write `<prefix>.probs.pt`, `<prefix>.meta.json`,
-    `<prefix>.snp_diag.tsv`. Atomicity contract: caller only invokes this
-    after multidog has succeeded, so a partial call leaves no half-written
-    outputs on disk.
+    """Write `<prefix>.probs.pt`, `<prefix>.meta.json`, `<prefix>.snp_diag.tsv`.
+
+    Atomicity contract — two-phase commit:
+
+    1. Write all three artifacts to sibling ``.tmp`` paths. If any write
+       raises, the ``.tmp`` siblings are cleaned up and the final paths
+       remain unchanged (so a prior successful run isn't clobbered by a
+       failed retry).
+    2. Rename all three into place via :func:`os.replace`, which is
+       atomic on both POSIX and Windows at the per-file level.
+
+    A truly cross-file atomic swap would require a single archive; the
+    three-``os.replace`` sequence has a small window where a mid-rename
+    crash could leave the three user-visible paths inconsistent, but
+    that window is orders of magnitude narrower than the write-phase
+    window it replaces.
     """
     prefix_path = Path(prefix)
     prefix_path.parent.mkdir(parents=True, exist_ok=True)
 
-    torch.save(result.probs, str(prefix_path) + ".probs.pt")
+    final_probs = str(prefix_path) + ".probs.pt"
+    final_meta = str(prefix_path) + ".meta.json"
+    final_diag = str(prefix_path) + ".snp_diag.tsv"
+    tmp_probs = final_probs + ".tmp"
+    tmp_meta = final_meta + ".tmp"
+    tmp_diag = final_diag + ".tmp"
 
     meta = {
         "tool": result.tool,
@@ -433,10 +451,25 @@ def _persist_artifacts(
         "input_hash": result.input_hash,
         "cmd": result.cmd,
     }
-    Path(str(prefix_path) + ".meta.json").write_text(json.dumps(meta, indent=2))
 
-    snp_diag.to_csv(str(prefix_path) + ".snp_diag.tsv",
-                    sep="\t", index=False)
+    try:
+        torch.save(result.probs, tmp_probs)
+        Path(tmp_meta).write_text(json.dumps(meta, indent=2))
+        snp_diag.to_csv(tmp_diag, sep="\t", index=False)
+    except Exception:
+        # Clean up any partially-written .tmp siblings; never touch the
+        # final paths on the failure path.
+        for p in (tmp_probs, tmp_meta, tmp_diag):
+            try:
+                os.unlink(p)
+            except FileNotFoundError:
+                pass
+        raise
+
+    # All three .tmp files written successfully — swap into place.
+    os.replace(tmp_probs, final_probs)
+    os.replace(tmp_meta, final_meta)
+    os.replace(tmp_diag, final_diag)
 
 
 def _read_updog_version(rscript: str) -> str:
@@ -504,8 +537,12 @@ def run_updog(
 
     input_hash = hashlib.sha256(Path(input_vcf).read_bytes()).hexdigest()
 
-    tmp_obj = tempfile.TemporaryDirectory(prefix="torchgwas_dosage_")
-    tmpdir = Path(tmp_obj.name)
+    # Manual mkdtemp + rmtree so ``keep_tmpdir=True`` is genuinely honored.
+    # `tempfile.TemporaryDirectory` installs a weakref finalizer at
+    # construction that deletes the directory when the object is GC'd,
+    # which fires as soon as the local goes out of scope — so the flag
+    # would be silently broken under normal function return.
+    tmpdir = Path(tempfile.mkdtemp(prefix="torchgwas_dosage_"))
     try:
         ref_tsv, size_tsv = _write_input_tsvs(
             tmpdir, sample_ids, variant_ids, refmat, sizemat
@@ -535,4 +572,4 @@ def run_updog(
         if keep_tmpdir:
             logger.info("kept tempdir: %s", tmpdir)
         else:
-            tmp_obj.cleanup()
+            shutil.rmtree(tmpdir, ignore_errors=True)

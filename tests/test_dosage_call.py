@@ -660,3 +660,94 @@ def test_preprocess_reexport_run_updog_points_to_dosage_call():
     from torchgwas.preprocess import run_updog as reexported
     from torchgwas.preprocess.dosage_call import run_updog as canonical
     assert reexported is canonical
+
+
+def test_keep_tmpdir_true_actually_retains_directory(tmp_path, monkeypatch):
+    """Regression for the original TemporaryDirectory finalizer bug:
+    `keep_tmpdir=True` silently lost the directory on function return.
+    Switched to mkdtemp+rmtree so the flag is honored.
+    """
+    import shutil
+
+    _reset_cache()
+    monkeypatch.setattr(dc_module.shutil, "which", lambda x: "/usr/bin/Rscript")
+
+    sample_ids = ["S1"]
+    variant_ids = ["v1", "v2"]
+    ploidy = 4
+    refmat = np.zeros((len(variant_ids), len(sample_ids)), dtype=np.int64)
+    sizemat = np.ones((len(variant_ids), len(sample_ids)), dtype=np.int64) * 20
+    monkeypatch.setattr(
+        dc_module, "_extract_ad_from_vcf",
+        lambda _vcf: (sample_ids, variant_ids, refmat, sizemat),
+    )
+
+    fake_vcf = tmp_path / "fake.vcf"
+    fake_vcf.write_text("#placeholder\n")
+
+    captured_tmpdir: dict[str, Path] = {}
+    driver_run = _stub_updog_subprocess(tmp_path, sample_ids, variant_ids, ploidy)
+
+    def fake_run(cmd, **kwargs):
+        if len(cmd) >= 3 and cmd[1] == "-e":
+            class Probe:
+                returncode = 0; stderr = ""; stdout = "2.0.2"
+            return Probe()
+        captured_tmpdir["path"] = Path(cmd[-1])
+        return driver_run(cmd, **kwargs)
+
+    monkeypatch.setattr(dc_module.subprocess, "run", fake_run)
+
+    dc_module.run_updog(
+        input_vcf=str(fake_vcf),
+        output_path=str(tmp_path / "out"),
+        ploidy=ploidy, model="norm",
+        keep_tmpdir=True,
+    )
+
+    # After run_updog returns, the tempdir must still exist on disk.
+    td = captured_tmpdir["path"]
+    try:
+        assert td.is_dir(), f"keep_tmpdir=True did not retain {td}"
+        assert (td / "ref.tsv").is_file()
+        assert (td / "driver.R").is_file()
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
+
+
+def test_persist_artifacts_rollback_on_mid_write_failure(tmp_path, monkeypatch):
+    """Regression for atomicity: if the second file write fails, the
+    final `.probs.pt` must not exist on disk (no dangling first file).
+    """
+    n, m, ploidy = 2, 2, 4
+    probs = torch.ones(n, m, ploidy + 1, dtype=torch.float64) / (ploidy + 1)
+    r = dc_module._build_result(
+        probs=probs,
+        sample_ids=["S1", "S2"], variant_ids=["v1", "v2"],
+        ploidy=ploidy, tool_version="2.0.2", model="norm",
+        n_missing=0, input_hash="abc", cmd="Rscript ...",
+    )
+    snp_diag = pd.DataFrame({"snp": ["v1", "v2"], "bias": [1.0, 1.0]})
+
+    # Force the meta.json write to fail.
+    real_write_text = Path.write_text
+
+    def failing_write_text(self, *args, **kwargs):
+        if self.name.endswith("meta.json.tmp"):
+            raise OSError("simulated mid-write failure")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write_text)
+
+    prefix = tmp_path / "out"
+    with pytest.raises(OSError, match="simulated"):
+        dc_module._persist_artifacts(r, snp_diag, prefix=str(prefix))
+
+    # None of the final user-visible paths should exist.
+    assert not Path(str(prefix) + ".probs.pt").exists()
+    assert not Path(str(prefix) + ".meta.json").exists()
+    assert not Path(str(prefix) + ".snp_diag.tsv").exists()
+    # And the .tmp siblings should have been cleaned up.
+    assert not Path(str(prefix) + ".probs.pt.tmp").exists()
+    assert not Path(str(prefix) + ".meta.json.tmp").exists()
+    assert not Path(str(prefix) + ".snp_diag.tsv.tmp").exists()
