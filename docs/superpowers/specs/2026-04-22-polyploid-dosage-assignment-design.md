@@ -66,7 +66,7 @@ class DosageCallResult:
     variant_ids: list[str]        # length m
     ploidy: int                   # k; 2 <= k <= 8
     tool: str                     # "updog"
-    tool_version: str             # e.g. "2.1.5"
+    tool_version: str             # e.g. "2.0.2" (the supported floor)
     model: str                    # flexdog model name used
     mean_dosage_var: Tensor       # (m,) — mean Var[d] per marker (quality)
     allele_freq: Tensor           # (m,) — from expected dosages
@@ -218,7 +218,7 @@ After stacking `probs`:
 | Dependency | Status | Reason |
 | --- | --- | --- |
 | `cyvcf2` | already optional (used by `torchgwas.io.vcf.VCFReader`, `load_haplotypes`) | VCF + AD extraction |
-| R ≥ 4.0 + `updog` ≥ 2.1.5 | NEW, opt-in, user-installed | the wrapped tool |
+| R ≥ 4.0 + `updog` ≥ 2.0.2 | NEW, opt-in, user-installed | the wrapped tool |
 | `pandas` | hard dep | read `k+1` output TSVs |
 
 No new Python dependency beyond `pyproject.toml`. R + `updog` is documented as an opt-in external requirement, same tier as BEAGLE / IMPUTE5 / Minimac4 already are.
@@ -267,13 +267,15 @@ File: `tests/test_dosage_call_updog_e2e.py`. Module-level `pytest.mark.skipif` g
 
 File: `bench/calibrate_updog_recovery.py`. Not picked up by pytest. Run once at phase sign-off to measure the recovery rate under the `test_simulated_recovery_*` simulation parameters, then paste the observed rate + a `# source: bench/calibrate_updog_recovery.py run 2026-XX-XX` comment into the Tier 2 assertions. `updog`'s paper gives oracle error rates by depth but not directly-comparable mode-accuracy thresholds, so self-calibration is the most honest path.
 
+**Why 2% safety floor, not a statistical bound**: `flexdog` has no stochastic elements (deterministic EM with a fixed vector of bias-parameter inits — confirmed against `updog` NEWS.md). Same version + same input produces bit-identical output. The 2% margin therefore covers only **cross-updog-version drift** (algorithmic tweaks between releases moving the EM optimum slightly). A bootstrap-based statistical bound would be misleading because there's no stochasticity to bootstrap over — it would just measure numerical jitter. 2% is a pragmatic cross-version slack that can be tightened if the phase-sign-off calibration shows the observed rate is already close to 100%.
+
 ### 5.4 The gate
 
 Phase 55 is complete when **all** of the following hold:
 
 1. All Tier 1 tests pass on every CI matrix job (Linux + Windows × 3.10/3.11/3.12).
-2. All Tier 2 tests pass locally on a machine with `R >= 4.0` and `updog >= 2.1.5`.
-3. The entry for "Polyploid phasing + allele assignment" in `docs/ROADMAP.md` is updated to mark the dosage-assignment half as shipped (and the phasing half as the still-open follow-up).
+2. All Tier 2 tests pass locally on a machine with `R >= 4.0` and `updog >= 2.0.2` (the floor where `format_multidog()`'s SNP-dimension reorder bug was fixed upstream).
+3. The Phase 55 entry in `docs/ROADMAP.md` is **removed** (it's shipped, no longer pending). The separate Phase 56 entry for polyploid phasing stays untouched.
 4. `torchgwas dosage-call --help` is captured in `docs/cli.md`.
 5. `docs/getting-started/` has one recipe walking VCF → `dosage-call` → `gu-scan` on a toy dataset.
 6. A memory file `project_dosage_call.md` is added under `C:\Users\Sikiru\.claude\projects\C--Users-Sikiru-Documents-GWAS-Expert\memory\` with scope, test count, and any gotchas discovered during implementation (mirrors the other per-phase memories).
