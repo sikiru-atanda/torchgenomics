@@ -32,6 +32,20 @@ _VALID_MODELS: frozenset[str] = frozenset({
 
 _UPDOG_CHECKED: dict[str, str] = {}  # rscript_path -> updog_version (cached)
 
+_HASH_CHUNK_BYTES = 1 << 20  # 1 MiB chunks — small enough to avoid RAM
+# pressure on multi-GB WGS VCFs, large enough to keep sha256 overhead
+# well under 0.1 s per GB on typical hardware.
+
+
+def _sha256_file(path: str) -> str:
+    """Chunked sha256 of a file on disk. Avoids loading the whole VCF
+    into memory (`Path.read_bytes()` OOMs on >10GB VCFs)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(_HASH_CHUNK_BYTES), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
 
 @dataclass
 class DosageCallResult:
@@ -45,6 +59,7 @@ class DosageCallResult:
     mean_dosage_var: Tensor
     allele_freq: Tensor
     n_missing: int
+    missing_mask: Tensor  # (n, m) bool — True where updog returned no info
     input_hash: str
     cmd: str
 
@@ -337,14 +352,19 @@ def _parse_output(
     return probs, snp_diag
 
 
-def _normalize_probs(probs: Tensor, ploidy: int) -> tuple[Tensor, int]:
-    """Validate + clean the (n, m, k+1) probability tensor. Returns a
-    cleaned copy plus the count of missing (zero-row) sample×marker slots.
+def _normalize_probs(probs: Tensor, ploidy: int) -> tuple[Tensor, int, Tensor]:
+    """Validate + clean the (n, m, k+1) probability tensor. Returns
+    ``(cleaned_probs, n_missing, missing_mask)`` where ``missing_mask``
+    is a ``(n, m)`` bool tensor, True at each sample×marker slot that
+    updog emitted with no signal (zero-row). Those slots are uniform-filled
+    in ``cleaned_probs`` so the tensor sums to 1 everywhere — the mask
+    preserves the original missingness information for downstream QC.
 
     Rules per the spec:
       - Shape must be (n, m, ploidy+1) — else RuntimeError.
       - Rows summing to 0 are treated as missing → set to uniform
-        1/(k+1), `n_missing += 1`.
+        1/(k+1), ``n_missing += 1``, and the mask is flipped True at
+        that slot.
       - Negative entries are clamped to 0 and the row is renormalized,
         with a warning via logger.
       - All remaining rows must sum to within atol=1e-4 of 1.0.
@@ -389,7 +409,7 @@ def _normalize_probs(probs: Tensor, ploidy: int) -> tuple[Tensor, int]:
             f"Normalized probs still deviate from 1.0 by up to {bad:.3g}."
         )
 
-    return out, n_missing
+    return out, n_missing, zero_mask
 
 
 def _build_result(
@@ -401,6 +421,7 @@ def _build_result(
     tool_version: str,
     model: str,
     n_missing: int,
+    missing_mask: Tensor,
     input_hash: str,
     cmd: str,
 ) -> DosageCallResult:
@@ -426,6 +447,7 @@ def _build_result(
         mean_dosage_var=mean_dosage_var,
         allele_freq=allele_freq,
         n_missing=n_missing,
+        missing_mask=missing_mask,
         input_hash=input_hash,
         cmd=cmd,
     )
@@ -544,7 +566,7 @@ def run_updog(
 
     sample_ids, variant_ids, refmat, sizemat = _extract_ad_from_vcf(input_vcf)
 
-    input_hash = hashlib.sha256(Path(input_vcf).read_bytes()).hexdigest()
+    input_hash = _sha256_file(input_vcf)
 
     # Manual mkdtemp + rmtree so ``keep_tmpdir=True`` is genuinely honored.
     # `tempfile.TemporaryDirectory` installs a weakref finalizer at
@@ -563,13 +585,14 @@ def run_updog(
             seq_error=seq_error, n_cores=n_cores,
         )
         probs, snp_diag = _parse_output(tmpdir, sample_ids, variant_ids, ploidy)
-        probs, n_missing = _normalize_probs(probs, ploidy)
+        probs, n_missing, missing_mask = _normalize_probs(probs, ploidy)
 
         result = _build_result(
             probs=probs,
             sample_ids=sample_ids, variant_ids=variant_ids,
             ploidy=ploidy, tool_version=version, model=model,
-            n_missing=n_missing, input_hash=input_hash, cmd=cmd,
+            n_missing=n_missing, missing_mask=missing_mask,
+            input_hash=input_hash, cmd=cmd,
         )
         _persist_artifacts(result, snp_diag, prefix=output_path)
         return result

@@ -25,12 +25,15 @@ def test_dosage_call_result_dataclass_fields():
         mean_dosage_var=torch.zeros(3, dtype=torch.float64),
         allele_freq=torch.zeros(3, dtype=torch.float64),
         n_missing=0,
+        missing_mask=torch.zeros(2, 3, dtype=torch.bool),
         input_hash="abc",
         cmd="Rscript driver.R ...",
     )
     assert r.probs.shape == (2, 3, 5)
     assert r.ploidy == 4
     assert r.tool == "updog"
+    assert r.missing_mask.shape == (2, 3)
+    assert r.missing_mask.dtype == torch.bool
 
 
 def test_valid_models_contains_updog_flexdog_set():
@@ -463,8 +466,10 @@ def test_parse_output_missing_pr_file_raises(tmp_path):
 
 def test_normalize_probs_accepts_within_tolerance():
     probs = torch.tensor([[[0.5, 0.3, 0.2]]], dtype=torch.float64)  # sum=1
-    out, n_missing = dc_module._normalize_probs(probs, ploidy=2)
+    out, n_missing, mask = dc_module._normalize_probs(probs, ploidy=2)
     assert n_missing == 0
+    assert mask.dtype == torch.bool
+    assert not mask.any()
     torch.testing.assert_close(out, probs)
 
 
@@ -472,8 +477,11 @@ def test_normalize_probs_zero_row_becomes_uniform_missing():
     probs = torch.zeros(1, 2, 3, dtype=torch.float64)
     probs[0, 0] = torch.tensor([0.5, 0.3, 0.2])
     # probs[0, 1] is all zero → missing
-    out, n_missing = dc_module._normalize_probs(probs, ploidy=2)
+    out, n_missing, mask = dc_module._normalize_probs(probs, ploidy=2)
     assert n_missing == 1
+    assert mask.shape == (1, 2)
+    assert mask[0, 0].item() is False
+    assert mask[0, 1].item() is True
     torch.testing.assert_close(out[0, 1], torch.tensor([1/3, 1/3, 1/3],
                                                          dtype=torch.float64))
     torch.testing.assert_close(out[0, 0], probs[0, 0])
@@ -482,11 +490,12 @@ def test_normalize_probs_zero_row_becomes_uniform_missing():
 def test_normalize_probs_negative_is_clamped_and_renormalized(caplog):
     probs = torch.tensor([[[-0.1, 0.6, 0.5]]], dtype=torch.float64)
     with caplog.at_level("WARNING"):
-        out, _ = dc_module._normalize_probs(probs, ploidy=2)
+        out, _, mask = dc_module._normalize_probs(probs, ploidy=2)
     # clamped to [0, 0.6, 0.5], renormalized
     expected = torch.tensor([[[0.0, 0.6/1.1, 0.5/1.1]]], dtype=torch.float64)
     torch.testing.assert_close(out, expected)
     assert any("negative" in rec.message.lower() for rec in caplog.records)
+    assert not mask.any()  # negatives get clamped but the row isn't flagged missing
 
 
 def test_normalize_probs_rejects_wrong_last_dim():
@@ -513,6 +522,7 @@ def test_build_result_computes_quality_metrics():
         tool_version="2.0.2",
         model="norm",
         n_missing=0,
+        missing_mask=torch.zeros(n, m, dtype=torch.bool),
         input_hash="deadbeef",
         cmd="Rscript driver.R ...",
     )
@@ -537,7 +547,8 @@ def test_persist_artifacts_writes_three_files(tmp_path):
         sample_ids=["S1", "S2"],
         variant_ids=["v1", "v2"],
         ploidy=ploidy, tool_version="2.0.2", model="norm",
-        n_missing=0, input_hash="abc", cmd="Rscript ...",
+        n_missing=0, missing_mask=torch.zeros(n, m, dtype=torch.bool),
+        input_hash="abc", cmd="Rscript ...",
     )
     snp_diag = pd.DataFrame({"snp": ["v1", "v2"], "bias": [1.0, 1.0]})
 
@@ -690,7 +701,8 @@ def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch):
             tool_version="2.0.2", model="norm",
             mean_dosage_var=torch.zeros(4, dtype=torch.float64),
             allele_freq=torch.zeros(4, dtype=torch.float64),
-            n_missing=0, input_hash="x", cmd="",
+            n_missing=0, missing_mask=torch.zeros(3, 4, dtype=torch.bool),
+            input_hash="x", cmd="",
         )
 
     monkeypatch.setattr("torchgwas.cli.run_updog", fake_run_updog,
@@ -734,7 +746,8 @@ def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch):
             ploidy=4, tool="updog", tool_version="2.0.2", model="norm",
             mean_dosage_var=torch.zeros(1, dtype=torch.float64),
             allele_freq=torch.zeros(1, dtype=torch.float64),
-            n_missing=0, input_hash="x", cmd="",
+            n_missing=0, missing_mask=torch.zeros(1, 1, dtype=torch.bool),
+            input_hash="x", cmd="",
         )
     monkeypatch.setattr("torchgwas.preprocess.dosage_call.run_updog",
                         fake_run_updog)
@@ -826,7 +839,8 @@ def test_persist_artifacts_rollback_on_mid_write_failure(tmp_path, monkeypatch):
         probs=probs,
         sample_ids=["S1", "S2"], variant_ids=["v1", "v2"],
         ploidy=ploidy, tool_version="2.0.2", model="norm",
-        n_missing=0, input_hash="abc", cmd="Rscript ...",
+        n_missing=0, missing_mask=torch.zeros(n, m, dtype=torch.bool),
+        input_hash="abc", cmd="Rscript ...",
     )
     snp_diag = pd.DataFrame({"snp": ["v1", "v2"], "bias": [1.0, 1.0]})
 
@@ -852,3 +866,89 @@ def test_persist_artifacts_rollback_on_mid_write_failure(tmp_path, monkeypatch):
     assert not Path(str(prefix) + ".probs.pt.tmp").exists()
     assert not Path(str(prefix) + ".meta.json.tmp").exists()
     assert not Path(str(prefix) + ".snp_diag.tsv.tmp").exists()
+
+
+def test_sha256_file_matches_oneshot_for_small_input(tmp_path):
+    # The chunked implementation must produce the identical digest as a
+    # naive one-shot hash on the same bytes — otherwise the input_hash
+    # field in meta.json would drift between run_updog versions.
+    import hashlib as _hashlib
+
+    data = b"#fileformat=VCFv4.2\n" + b"\t".join([b"CHROM", b"POS"]) + b"\n" * 5000
+    path = tmp_path / "sample.vcf"
+    path.write_bytes(data)
+
+    chunked = dc_module._sha256_file(str(path))
+    oneshot = _hashlib.sha256(data).hexdigest()
+    assert chunked == oneshot
+
+
+def test_sha256_file_uses_chunked_read(tmp_path, monkeypatch):
+    # Guard against a future regression where someone replaces the
+    # implementation with `Path.read_bytes()`. We verify the hash is
+    # computed via the streaming path by checking that `Path.read_bytes`
+    # is not called.
+    calls = {"n": 0}
+    real_read_bytes = Path.read_bytes
+
+    def spy_read_bytes(self):
+        calls["n"] += 1
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", spy_read_bytes)
+
+    path = tmp_path / "tiny.vcf"
+    path.write_bytes(b"hello")
+    dc_module._sha256_file(str(path))
+    assert calls["n"] == 0, "regressed to Path.read_bytes one-shot read"
+
+
+def test_missing_mask_propagates_through_run_updog(tmp_path, monkeypatch):
+    # End-to-end: stub subprocess to write canned probs with one zero
+    # row; confirm the mask on the DosageCallResult flags exactly that
+    # slot and that n_missing matches.
+    _reset_cache()
+    monkeypatch.setattr(dc_module.shutil, "which", lambda x: "/usr/bin/Rscript")
+
+    sample_ids = ["S1", "S2"]
+    variant_ids = ["v1", "v2", "v3"]
+    ploidy = 4
+    refmat = np.zeros((len(variant_ids), len(sample_ids)), dtype=np.int64)
+    sizemat = np.ones((len(variant_ids), len(sample_ids)), dtype=np.int64) * 20
+    monkeypatch.setattr(
+        dc_module, "_extract_ad_from_vcf",
+        lambda _vcf: (sample_ids, variant_ids, refmat, sizemat),
+    )
+
+    fake_vcf = tmp_path / "fake.vcf"
+    fake_vcf.write_text("#placeholder\n")
+
+    def fake_run(cmd, **kwargs):
+        if len(cmd) >= 3 and cmd[1] == "-e":
+            class Probe:
+                returncode = 0; stderr = ""; stdout = "2.0.2"
+            return Probe()
+        # Driver call — write canned probs with sample 0 / variant 1 zero.
+        out_dir = Path(cmd[-1])
+        rng = np.random.default_rng(0)
+        raw = rng.random((len(sample_ids), len(variant_ids), ploidy + 1))
+        probs = raw / raw.sum(axis=-1, keepdims=True)
+        probs[0, 1, :] = 0.0  # one slot flagged missing
+        _write_canned_pr_tsvs(out_dir, sample_ids, variant_ids, ploidy, probs)
+        class OK:
+            returncode = 0; stderr = ""; stdout = ""
+        return OK()
+
+    monkeypatch.setattr(dc_module.subprocess, "run", fake_run)
+
+    result = dc_module.run_updog(
+        input_vcf=str(fake_vcf),
+        output_path=str(tmp_path / "out"),
+        ploidy=ploidy, model="norm",
+    )
+    assert result.missing_mask.shape == (2, 3)
+    assert result.missing_mask.dtype == torch.bool
+    assert result.missing_mask[0, 1].item() is True
+    assert result.n_missing == 1
+    # All other slots should be marked non-missing.
+    assert result.missing_mask.sum().item() == 1
