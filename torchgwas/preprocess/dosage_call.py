@@ -171,3 +171,25 @@ def _extract_ad_from_vcf(
         return sample_ids, variant_ids, refmat, sizemat
     finally:
         vcf.close()
+
+
+def _write_input_tsvs(
+    tmpdir: Path,
+    sample_ids: list[str],
+    variant_ids: list[str],
+    refmat: np.ndarray,
+    sizemat: np.ndarray,
+) -> tuple[Path, Path]:
+    """Write ref.tsv and size.tsv to tmpdir. Rows=variants, cols=samples,
+    with index label row0col0 blank (R convention; pandas reads it via
+    index_col=0). Returns the two paths.
+    """
+    ref_tsv = tmpdir / "ref.tsv"
+    size_tsv = tmpdir / "size.tsv"
+    pd.DataFrame(refmat, index=variant_ids, columns=sample_ids).to_csv(
+        ref_tsv, sep="\t", index=True, index_label=""
+    )
+    pd.DataFrame(sizemat, index=variant_ids, columns=sample_ids).to_csv(
+        size_tsv, sep="\t", index=True, index_label=""
+    )
+    return ref_tsv, size_tsv

@@ -1,6 +1,8 @@
 """Phase 55: Polyploid allele dosage assignment (Tier 1, always-on)."""
 from __future__ import annotations
 
+import numpy as np
+import pandas as pd
 import pytest
 import torch
 
@@ -199,3 +201,19 @@ def test_extract_ad_from_vcf_missing_ad_header_raises(toy_vcf_no_ad):
 def test_extract_ad_from_vcf_rejects_multiallelic(toy_vcf_multiallelic):
     with pytest.raises(ValueError, match="multi"):
         dc_module._extract_ad_from_vcf(toy_vcf_multiallelic)
+
+
+def test_write_input_tsvs_round_trip(tmp_path):
+    sample_ids = ["S1", "S2"]
+    variant_ids = ["v1", "v2", "v3"]
+    refmat = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int64)
+    sizemat = np.array([[10, 20], [30, 40], [50, 60]], dtype=np.int64)
+    ref_tsv, size_tsv = dc_module._write_input_tsvs(
+        tmp_path, sample_ids, variant_ids, refmat, sizemat
+    )
+    df_ref = pd.read_csv(ref_tsv, sep="\t", index_col=0)
+    df_size = pd.read_csv(size_tsv, sep="\t", index_col=0)
+    assert list(df_ref.index) == variant_ids
+    assert list(df_ref.columns) == sample_ids
+    np.testing.assert_array_equal(df_ref.to_numpy(), refmat)
+    np.testing.assert_array_equal(df_size.to_numpy(), sizemat)
