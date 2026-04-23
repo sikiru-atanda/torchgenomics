@@ -1,9 +1,11 @@
-"""Wrappers for polyRAD and updog dosage calling from R.
+"""Wrapper for polyRAD dosage calling from R.
 
-polyRAD and updog are R packages that estimate posterior genotype
-probabilities P(dosage=0..k) per sample per marker from sequencing reads.
-These wrappers call R via subprocess and return tensors suitable for
-downstream dosage uncertainty propagation.
+polyRAD is an R package that estimates posterior genotype probabilities
+P(dosage=0..k) per sample per marker from sequencing reads using a
+Bayesian framework with population-level allele frequency priors.
+
+The parallel updog wrapper (a more robust implementation using updog's
+multidog batch API) lives in :mod:`torchgwas.preprocess.dosage_call`.
 """
 
 from __future__ import annotations
@@ -125,107 +127,6 @@ write.csv(prob_matrix, "{probs_csv.as_posix()}", row.names = FALSE)
 # Write sample and marker IDs
 write.csv(data.frame(id = rownames(probs)), "{samples_csv.as_posix()}", row.names = FALSE)
 write.csv(data.frame(id = colnames(probs)), "{markers_csv.as_posix()}", row.names = FALSE)
-"""
-        result = _run_r_script(rscript, r_script, tmpdir_path)
-        return _parse_dosage_output(
-            probs_csv, expected_csv, samples_csv, markers_csv, ploidy,
-        )
-
-
-def run_updog(
-    vcf_path: str,
-    ploidy: int,
-    *,
-    r_executable: str | None = None,
-    model: str = "norm",
-) -> DosageProbabilities:
-    """Run updog dosage calling on a VCF file.
-
-    updog uses a flexible likelihood model to estimate genotype posteriors
-    accounting for allele bias, overdispersion, and outliers.
-
-    Parameters
-    ----------
-    vcf_path : str
-        Path to input VCF file with AD (allelic depth) field.
-    ploidy : int
-        Organism ploidy level.
-    r_executable : str, optional
-        Path to Rscript. If None, searches PATH.
-    model : str
-        updog model: "norm" (normal), "hw" (Hardy-Weinberg),
-        "bb" (beta-binomial), "f1", "s1", "flex".
-
-    Returns
-    -------
-    DosageProbabilities
-    """
-    rscript = _find_rscript(r_executable)
-
-    with tempfile.TemporaryDirectory(prefix="updog_") as tmpdir:
-        tmpdir_path = Path(tmpdir)
-        probs_csv = tmpdir_path / "probs.csv"
-        expected_csv = tmpdir_path / "expected.csv"
-        samples_csv = tmpdir_path / "samples.csv"
-        markers_csv = tmpdir_path / "markers.csv"
-
-        r_script = f"""
-library(updog)
-library(vcfR)
-
-vcf <- read.vcfR("{vcf_path}")
-
-# Extract allelic depths (ref, alt)
-ad <- extract.gt(vcf, element = "AD")
-ref_depth <- matrix(NA, nrow = nrow(ad), ncol = ncol(ad))
-alt_depth <- matrix(NA, nrow = nrow(ad), ncol = ncol(ad))
-for (i in seq_len(nrow(ad))) {{
-    for (j in seq_len(ncol(ad))) {{
-        if (!is.na(ad[i, j])) {{
-            parts <- as.integer(strsplit(ad[i, j], ",")[[1]])
-            ref_depth[i, j] <- parts[1]
-            alt_depth[i, j] <- parts[2]
-        }}
-    }}
-}}
-
-n_markers <- nrow(ad)
-n_samples <- ncol(ad)
-n_classes <- {ploidy + 1}
-sample_ids <- colnames(ad)
-marker_ids <- paste0(vcf@fix[, "CHROM"], "_", vcf@fix[, "POS"])
-
-expected_mat <- matrix(NA, nrow = n_samples, ncol = n_markers)
-prob_matrix <- matrix(NA, nrow = n_samples * n_markers, ncol = n_classes)
-
-for (i in seq_len(n_markers)) {{
-    sizevec <- ref_depth[i, ] + alt_depth[i, ]
-    refvec <- alt_depth[i, ]
-
-    valid <- !is.na(sizevec) & sizevec > 0
-    if (sum(valid) < 3) next
-
-    fit <- tryCatch(
-        flexdog(refvec = refvec[valid], sizevec = sizevec[valid],
-                ploidy = {ploidy}, model = "{model}"),
-        error = function(e) NULL
-    )
-
-    if (is.null(fit)) next
-
-    expected_mat[valid, i] <- fit$postmean
-
-    idx_start <- (i - 1) * n_samples + 1
-    idx_end <- i * n_samples
-    # fit$postmat has columns 0..ploidy
-    cols_avail <- min(ncol(fit$postmat), n_classes)
-    prob_matrix[(idx_start:idx_end)[valid], 1:cols_avail] <- fit$postmat[, 1:cols_avail]
-}}
-
-write.csv(expected_mat, "{expected_csv.as_posix()}", row.names = TRUE)
-write.csv(prob_matrix, "{probs_csv.as_posix()}", row.names = FALSE)
-write.csv(data.frame(id = sample_ids), "{samples_csv.as_posix()}", row.names = FALSE)
-write.csv(data.frame(id = marker_ids), "{markers_csv.as_posix()}", row.names = FALSE)
 """
         result = _run_r_script(rscript, r_script, tmpdir_path)
         return _parse_dosage_output(

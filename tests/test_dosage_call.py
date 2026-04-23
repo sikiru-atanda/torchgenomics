@@ -645,3 +645,18 @@ def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch):
     assert captured["bias"] is False
     assert captured["od"] is False
     assert captured["seq_error"] == 0.005
+
+
+def test_reexports_from_torchgwas_preprocess():
+    from torchgwas.preprocess import run_updog, DosageCallResult
+    assert callable(run_updog)
+    assert DosageCallResult is dc_module.DosageCallResult
+
+
+def test_preprocess_reexport_run_updog_points_to_dosage_call():
+    # Disambiguate from the legacy polyrad_wrapper re-export that was
+    # removed in this commit: `torchgwas.preprocess.run_updog` is now the
+    # Phase 55 dosage_call implementation, not the older flexdog-loop one.
+    from torchgwas.preprocess import run_updog as reexported
+    from torchgwas.preprocess.dosage_call import run_updog as canonical
+    assert reexported is canonical
