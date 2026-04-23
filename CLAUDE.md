@@ -53,7 +53,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 35 as of Phase 49b (see CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
+- **CLI subcommand count**: 36 as of Phase 55 (adds `dosage-call`; see CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
 
 ## Phase Index
 
@@ -123,6 +123,9 @@ torchgwas impute --genotype data.bed --method mean --output imp.pt
 torchgwas impute --genotype data.vcf.gz --method beagle --ref-panel 1000G.vcf.gz --output imp.vcf.gz
 torchgwas impute --genotype data.vcf.gz --method li-stephens --ploidy 4 --output imp.pt
 torchgwas impute --genotype data.vcf.gz --method deep-learning --output imp.pt
+
+# --- Polyploid allele dosage calling (Phase 55) ---
+torchgwas dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4 --model norm
 
 # --- GWAS scans ---
 torchgwas glm-scan --genotype data.bed --phenotype pheno.txt --output results

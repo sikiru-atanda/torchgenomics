@@ -135,16 +135,6 @@ to any of these — each needs a brainstorming pass before execution.
   pitfalls. The R wrapper is installable but not on CRAN; a CRAN
   submission requires tests that don't touch the internet and a
   vignette that walks through a published dataset.
-- **Phase 55 — Polyploid allele dosage assignment.** *Design approved
-  2026-04-22* (see `docs/superpowers/specs/2026-04-22-polyploid-dosage-assignment-design.md`),
-  implementation pending. Wraps the R package `updog` via subprocess to
-  turn polyploid VCF read counts (AD field) into posterior
-  `P(dosage=0..k)` tensors, feeding the existing `dosage_uncertainty` /
-  `GULM` chain. Scope: one `torchgwas.preprocess.dosage_call` module,
-  one `torchgwas dosage-call` CLI subcommand, ~15 always-on Python tests
-  plus ~5 end-to-end tests that run real `updog`. Not in scope: pure-Python
-  reimplementation, `polyRAD` / `fitPoly` wrappers (Phase 55 follow-ups),
-  GPU acceleration.
 - **Phase 56 — Polyploid phasing.** Scope pending a separate brainstorm
   once Phase 55 lands. The current
   `torchgwas.preprocess.phase.phase_beagle` wrapper is diploid-only

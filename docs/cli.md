@@ -22,6 +22,43 @@ torchgwas impute   --genotype data.vcf.gz --method deep-learning \
                    --output imp.pt
 ```
 
+## Polyploid allele dosage calling (Phase 55)
+
+Convert polyploid VCF read counts (AD field) into posterior
+`P(dosage=0..k)` tensors via the R package
+[`updog`](https://cran.r-project.org/package=updog). See
+`docs/getting-started/polyploid_dosage_call.md` for the full recipe.
+
+```bash
+torchgwas dosage-call --vcf calls.vcf.gz --output out/dcall \
+                      --ploidy 4 --model norm --n-cores 4
+```
+
+```text
+usage: torchgwas dosage-call [-h] --vcf VCF --output OUTPUT --ploidy PLOIDY
+                             [--model MODEL] [--rscript RSCRIPT]
+                             [--bias | --no-bias] [--od | --no-od]
+                             [--seq-error SEQ_ERROR] [--n-cores N_CORES]
+                             [--keep-tmpdir]
+
+options:
+  -h, --help            show this help message and exit
+  --vcf VCF             Input VCF with AD format field (biallelic)
+  --output OUTPUT       Output prefix for .probs.pt / .meta.json /
+                        .snp_diag.tsv
+  --ploidy PLOIDY       Organism ploidy (2..8)
+  --model MODEL         updog flexdog model name (default: norm)
+  --rscript RSCRIPT     Path to Rscript (default: PATH lookup)
+  --bias                Estimate allele bias (default)
+  --no-bias             Fix allele bias to 1
+  --od                  Estimate overdispersion (default)
+  --no-od               Fix overdispersion to 0
+  --seq-error SEQ_ERROR
+                        Fix sequencing error rate (default: estimate)
+  --n-cores N_CORES     Parallelism passed to updog::multidog (default: 1)
+  --keep-tmpdir         Skip tempdir cleanup (debug aid)
+```
+
 ## GWAS scans
 
 ```bash
