@@ -570,3 +570,78 @@ def test_run_updog_partial_output_raises_and_leaves_no_artifacts(
     assert not (tmp_path / "out.probs.pt").exists()
     assert not (tmp_path / "out.meta.json").exists()
     assert not (tmp_path / "out.snp_diag.tsv").exists()
+
+
+def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch):
+    from torchgwas.cli import main as cli_main
+
+    fake_vcf = tmp_path / "fake.vcf"
+    fake_vcf.write_text("#placeholder\n")
+
+    captured = {}
+
+    def fake_run_updog(**kwargs):
+        captured.update(kwargs)
+        probs = torch.ones(3, 4, 5, dtype=torch.float64) / 5
+        return dc_module.DosageCallResult(
+            probs=probs, sample_ids=["S1","S2","S3"],
+            variant_ids=["v1","v2","v3","v4"], ploidy=4, tool="updog",
+            tool_version="2.0.2", model="norm",
+            mean_dosage_var=torch.zeros(4, dtype=torch.float64),
+            allele_freq=torch.zeros(4, dtype=torch.float64),
+            n_missing=0, input_hash="x", cmd="",
+        )
+
+    monkeypatch.setattr("torchgwas.cli.run_updog", fake_run_updog,
+                        raising=False)
+    monkeypatch.setattr("torchgwas.preprocess.dosage_call.run_updog",
+                        fake_run_updog)
+
+    out_prefix = tmp_path / "out"
+    rc = cli_main([
+        "dosage-call",
+        "--vcf", str(fake_vcf),
+        "--output", str(out_prefix),
+        "--ploidy", "4",
+        "--model", "norm",
+        "--n-cores", "2",
+    ])
+    assert rc == 0
+    assert captured["input_vcf"] == str(fake_vcf)
+    assert captured["output_path"] == str(out_prefix)
+    assert captured["ploidy"] == 4
+    assert captured["model"] == "norm"
+    assert captured["n_cores"] == 2
+    # defaults
+    assert captured["bias"] is True
+    assert captured["od"] is True
+    assert captured["seq_error"] is None
+
+
+def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch):
+    from torchgwas.cli import main as cli_main
+
+    fake_vcf = tmp_path / "fake.vcf"
+    fake_vcf.write_text("#placeholder\n")
+
+    captured = {}
+    def fake_run_updog(**kwargs):
+        captured.update(kwargs)
+        probs = torch.ones(1, 1, 5, dtype=torch.float64) / 5
+        return dc_module.DosageCallResult(
+            probs=probs, sample_ids=["S1"], variant_ids=["v1"],
+            ploidy=4, tool="updog", tool_version="2.0.2", model="norm",
+            mean_dosage_var=torch.zeros(1, dtype=torch.float64),
+            allele_freq=torch.zeros(1, dtype=torch.float64),
+            n_missing=0, input_hash="x", cmd="",
+        )
+    monkeypatch.setattr("torchgwas.preprocess.dosage_call.run_updog",
+                        fake_run_updog)
+
+    cli_main([
+        "dosage-call", "--vcf", str(fake_vcf), "--output", str(tmp_path / "out"),
+        "--ploidy", "4", "--no-bias", "--no-od", "--seq-error", "0.005",
+    ])
+    assert captured["bias"] is False
+    assert captured["od"] is False
+    assert captured["seq_error"] == 0.005

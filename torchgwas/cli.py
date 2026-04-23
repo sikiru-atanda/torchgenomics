@@ -1,6 +1,6 @@
 """CLI entry point for all TorchGWAS commands.
 
-Subcommands: validate, convert, impute, glm-scan, lmm-scan, mvlmm-scan,
+Subcommands: validate, convert, impute, dosage-call, glm-scan, lmm-scan, mvlmm-scan,
 poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan, met-scan,
 farmcpu-scan, blink-scan, threshold-scan, family-scan, conditional-scan,
 mtmet-scan, ocf-scan, knockoff-scan, gu-scan, lro-scan, glmm-scan,
@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_validate_parser(subparsers)
     _add_convert_parser(subparsers)
     _add_impute_parser(subparsers)
+    _add_dosage_call_parser(subparsers)
 
     # --- GWAS scan commands ---
     _add_glm_scan_parser(subparsers)
@@ -136,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         "pipeline": _cmd_pipeline,
         "convert": _cmd_convert,
         "impute": _cmd_impute,
+        "dosage-call": _cmd_dosage_call,  # Phase 55
     }
 
     handler = handlers.get(args.command)
@@ -2231,6 +2233,31 @@ def _cmd_impute(args: argparse.Namespace) -> int:
     raise NotImplementedError(f"impute CLI for method={method} not yet implemented")
 
 
+def _cmd_dosage_call(args: argparse.Namespace) -> int:
+    """Phase 55 dosage-call subcommand handler."""
+    from .preprocess.dosage_call import run_updog
+
+    result = run_updog(
+        input_vcf=args.vcf,
+        output_path=args.output,
+        ploidy=args.ploidy,
+        model=args.model,
+        rscript=args.rscript,
+        bias=args.bias,
+        od=args.od,
+        seq_error=args.seq_error,
+        n_cores=args.n_cores,
+        keep_tmpdir=args.keep_tmpdir,
+    )
+    logger.info(
+        "dosage-call: %d samples × %d variants, ploidy=%d, n_missing=%d, "
+        "tool_version=%s",
+        len(result.sample_ids), len(result.variant_ids),
+        result.ploidy, result.n_missing, result.tool_version,
+    )
+    return 0
+
+
 def _cmd_ld_blocks(args: argparse.Namespace) -> int:
     """Detect haplotype blocks."""
     import torch
@@ -2972,6 +2999,40 @@ def _add_impute_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--output", required=True)
     p.add_argument("--ploidy", type=int, default=2, help="Ploidy level (default: 2)")
     p.add_argument("--ref-panel")
+
+
+def _add_dosage_call_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser(
+        "dosage-call",
+        help="Call polyploid allele dosages from VCF read counts via updog",
+    )
+    p.add_argument("--vcf", required=True,
+                   help="Input VCF with AD format field (biallelic)")
+    p.add_argument("--output", required=True,
+                   help="Output prefix for .probs.pt / .meta.json / .snp_diag.tsv")
+    p.add_argument("--ploidy", type=int, required=True,
+                   help="Organism ploidy (2..8)")
+    p.add_argument("--model", default="norm",
+                   help="updog flexdog model name (default: norm)")
+    p.add_argument("--rscript", default=None,
+                   help="Path to Rscript (default: PATH lookup)")
+    bias_group = p.add_mutually_exclusive_group()
+    bias_group.add_argument("--bias", dest="bias", action="store_true",
+                            default=True, help="Estimate allele bias (default)")
+    bias_group.add_argument("--no-bias", dest="bias", action="store_false",
+                            help="Fix allele bias to 1")
+    od_group = p.add_mutually_exclusive_group()
+    od_group.add_argument("--od", dest="od", action="store_true",
+                          default=True,
+                          help="Estimate overdispersion (default)")
+    od_group.add_argument("--no-od", dest="od", action="store_false",
+                          help="Fix overdispersion to 0")
+    p.add_argument("--seq-error", type=float, default=None,
+                   help="Fix sequencing error rate (default: estimate)")
+    p.add_argument("--n-cores", type=int, default=1,
+                   help="Parallelism passed to updog::multidog (default: 1)")
+    p.add_argument("--keep-tmpdir", action="store_true",
+                   help="Skip tempdir cleanup (debug aid)")
 
 
 def _add_glm_scan_parser(subparsers: argparse._SubParsersAction) -> None:
