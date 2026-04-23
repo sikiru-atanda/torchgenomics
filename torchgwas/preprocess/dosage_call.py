@@ -46,3 +46,41 @@ class DosageCallResult:
     n_missing: int
     input_hash: str
     cmd: str
+
+
+def _check_environment(rscript: Optional[str]) -> str:
+    """Probe for Rscript + updog; cache the verdict. Returns Rscript path.
+
+    Raises RuntimeError with install pointers if either is missing.
+    Cached on a module-level flag; the probe runs at most once per process.
+    """
+    global _UPDOG_CHECKED
+
+    if rscript is None:
+        rscript = shutil.which("Rscript")
+    if rscript is None:
+        raise RuntimeError(
+            "Rscript not found. Install R >= 4.0 and ensure Rscript is on "
+            "PATH, or pass rscript=<path>."
+        )
+
+    if _UPDOG_CHECKED is True:
+        return rscript
+
+    probe = subprocess.run(
+        [rscript, "-e",
+         'suppressPackageStartupMessages(library(updog)); '
+         'cat(as.character(packageVersion("updog")))'],
+        capture_output=True, text=True, check=False,
+    )
+    if probe.returncode != 0:
+        _UPDOG_CHECKED = False
+        raise RuntimeError(
+            "updog R package not installed. Install with: "
+            "Rscript -e 'install.packages(\"updog\")'. "
+            f"(probe stderr: {probe.stderr.strip()})"
+        )
+
+    logger.info("updog R package detected: version %s", probe.stdout.strip())
+    _UPDOG_CHECKED = True
+    return rscript
