@@ -6,7 +6,7 @@
 
 **Architecture:** Two new modules: `torchgwas/preprocess/phase_polyorigin.py` (public surface — `run_polyorigin`, `PhasingResult`, pure converters) and `torchgwas/preprocess/_polyorigin_runtime.py` (discover-first Julia bootstrap via `juliacall`). Julia + PolyOrigin.jl are provisioned on demand on first `run_polyorigin` call: search PATH + known install paths first, fall back to juliacall's managed install only if the user consents. Julia runs in-process via `juliacall`, not a subprocess. Output is tensor-native (not VCF) — feeds `HaplotypeGWAS` directly. Tier 1 tests monkeypatch the runtime module and never touch Julia. Tier 2 tests `pytest.mark.skipif` on missing Julia / PolyOrigin.jl.
 
-**Tech Stack:** Python 3.10+, PyTorch, pandas, tempfile. External: Julia ≥ 1.10 + `PolyOrigin.jl` v1.0.5 (Tier 2 only, auto-provisioned via `juliacall`).
+**Tech Stack:** Python 3.10+, PyTorch, pandas, tempfile. External: Julia ≥ 1.10 + `PolyOrigin.jl` v1.0.3 (Tier 2 only, auto-provisioned via `juliacall`).
 
 **Spec:** `docs/superpowers/specs/2026-04-23-phase-56-polyploid-phasing-design.md`
 
@@ -82,13 +82,13 @@ And extend `[tool.setuptools.package-data]` (around line 77):
     "PolyOrigin": {
       "uuid": "IMPLEMENTER-VERIFY-FROM-UPSTREAM-PROJECT-TOML",
       "url": "https://github.com/chaozhi/PolyOrigin.jl",
-      "rev": "v1.0.5"
+      "rev": "v1.0.3"
     }
   }
 }
 ```
 
-Note: the UUID must be copied verbatim from `https://github.com/chaozhi/PolyOrigin.jl/blob/v1.0.5/Project.toml` during implementation. Replace the placeholder string before committing.
+Note: the UUID must be copied verbatim from `https://github.com/chaozhi/PolyOrigin.jl/blob/v1.0.3/Project.toml` during implementation. Replace the placeholder string before committing.
 
 - [ ] **Step 3: Create `torchgwas/preprocess/phase_polyorigin.py` skeleton**
 
@@ -220,7 +220,7 @@ def test_phasing_result_dataclass_fields():
         valent_diag=pd.DataFrame({"marker": ["v1"], "valent": ["4x"]}),
         postdose_probs=torch.zeros(3, 2, 5, dtype=torch.float64),
         tool="polyorigin",
-        tool_version="1.0.5",
+        tool_version="1.0.3",
         input_hash="abc",
         cmd="polyOrigin(...)",
         workdir=None,
@@ -1686,7 +1686,7 @@ def _stub_runtime(workdir_spy: dict):
     class FakeMain:  # juliacall Main proxy
         PolyOrigin = FakePO
 
-    return FakeMain, FakePO, "1.0.5-fake"
+    return FakeMain, FakePO, "1.0.3-fake"
 
 
 def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
@@ -1734,7 +1734,7 @@ def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
     assert Path(f"{out_prefix}.postdose_probs.pt").is_file()
     assert Path(f"{out_prefix}.meta.json").is_file()
     meta = json.loads(Path(f"{out_prefix}.meta.json").read_text())
-    assert meta["tool_version"] == "1.0.5-fake"
+    assert meta["tool_version"] == "1.0.3-fake"
     assert "input_hash" in meta
 
 
@@ -1754,7 +1754,7 @@ def test_run_polyorigin_partial_failure_no_persistent_output(tmp_path, monkeypat
                 return None
 
         class FakeMain: PolyOrigin = FakePO
-        return FakeMain, FakePO, "1.0.5-fake"
+        return FakeMain, FakePO, "1.0.3-fake"
 
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _bad_runtime())
 
@@ -1798,7 +1798,7 @@ def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
 
     class FakeMain: PolyOrigin = FakePO
 
-    monkeypatch.setattr(rt, "get_runtime", lambda **_: (FakeMain, FakePO, "1.0.5-fake"))
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: (FakeMain, FakePO, "1.0.3-fake"))
     # Also patch juliacall.JuliaError to our fake class so our except clause matches
     monkeypatch.setattr(
         "torchgwas.preprocess.phase_polyorigin._JULIA_ERROR",
@@ -2172,7 +2172,7 @@ def test_persist_rolls_back_on_partial_write(tmp_path, monkeypatch):
         valent_diag=pd.DataFrame({"marker": ["v1"], "valent": ["bivalent"]}),
         postdose_probs=torch.zeros(1, 2, 5, dtype=torch.float64),
         tool="polyorigin",
-        tool_version="1.0.5-fake",
+        tool_version="1.0.3-fake",
         input_hash="abc",
         cmd="...",
         workdir=None,
@@ -2927,7 +2927,7 @@ type: project
 
 Phase 56 ships `torchgwas.preprocess.phase_polyorigin.run_polyorigin`
 plus the `torchgwas phase-poly` CLI. Phases connected F1 polyploid
-populations (ploidy ∈ {2, 4, 6}) by calling PolyOrigin.jl v1.0.5 through
+populations (ploidy ∈ {2, 4, 6}) by calling PolyOrigin.jl v1.0.3 through
 `juliacall` in-process. Julia is auto-provisioned only if absent and the
 user consents. Output is tensor-native (`haplotypes: (n_off, ploidy,
 m)`, `origin_probs`, `parent_phased`, `postdose_probs`, `valent_diag`) —
@@ -2961,7 +2961,7 @@ Phase 46 p-values at Spearman ρ > 0.999 and max |Δ-log10p| < 0.01.
   returned `variant_ids` reflects the refined order and
   `result.map_refined: bool` flags that.
 - The exact PolyOrigin output CSV column schemas were verified against
-  a live v1.0.5 run during implementation; if upstream changes the
+  a live v1.0.3 run during implementation; if upstream changes the
   schema in a future release, regenerate the canned fixtures under
   `tests/fixtures/phase_polyorigin/`.
 ```

@@ -84,7 +84,7 @@ class PhasingResult:
     valent_diag: pd.DataFrame              # per-marker valent configs from *_polyancestry.csv
     postdose_probs: Tensor                 # (n_offspring, m, max_ploidy+1) float64
     tool: str                              # "polyorigin"
-    tool_version: str                      # e.g. "1.0.5"
+    tool_version: str                      # e.g. "1.0.3"
     input_hash: str                        # sha256 of merged genofile+pedfile+map CSVs
     cmd: str                               # exact Julia call for reproducibility
     workdir: str | None                    # None unless keep_workdir=True
@@ -184,7 +184,7 @@ def get_runtime(
     "PolyOrigin": {
       "uuid": "<verified-from-upstream-Project.toml-at-implementation>",
       "url": "https://github.com/chaozhi/PolyOrigin.jl",
-      "rev": "v1.0.5"
+      "rev": "v1.0.3"
     }
   }
 }
@@ -350,7 +350,7 @@ After parsing:
 | --- | --- | --- |
 | `juliacall` (Python) | `pip install torchgwas[polyploid-phase]` | ~15 MB |
 | Julia ≥ 1.10 | first `run_polyorigin` call **iff** no existing Julia found **iff** user consents | ~300 MB (managed) or 0 (reused) |
-| `PolyOrigin.jl` v1.0.5 | first `run_polyorigin` call | ~5 MB |
+| `PolyOrigin.jl` v1.0.3 | first `run_polyorigin` call | ~5 MB |
 | `pandas`, `torch` | already hard deps | n/a |
 
 Users who never invoke `run_polyorigin` pay only the 15 MB for `juliacall` — and only if they opted into the extra.
@@ -427,12 +427,12 @@ File: `tests/test_phase_polyorigin_e2e.py`. Module-level `pytest.mark.skipif` ga
 
 File: `bench/calibrate_polyorigin_recovery.py`. Not pytest-collected. Run once at phase sign-off to measure haplotype-origin accuracy under the `test_simulated_f1_recovery_*` parameters. Paste observed rate + `# source: bench/calibrate_polyorigin_recovery.py run 2026-XX-XX` into Tier 2 assertions.
 
-**Why 2 % slack (same rationale as Phase 55)**: PolyOrigin's HMM is deterministic given a fixed seed; the slack is for cross-version drift between v1.0.5 and future v1.x releases. Tightens if calibration shows near-100 % recovery.
+**Why 2 % slack (same rationale as Phase 55)**: PolyOrigin's HMM is deterministic given a fixed seed; the slack is for cross-version drift between v1.0.3 and future v1.x releases. Tightens if calibration shows near-100 % recovery.
 
 ### 5.4 The gate — Phase 56 is complete when
 
 1. All Tier 1 tests pass on every CI matrix job (Linux + Windows × 3.10/3.11/3.12), with zero Julia installed.
-2. All Tier 2 tests pass on a machine with Julia ≥ 1.10 + PolyOrigin.jl v1.0.5.
+2. All Tier 2 tests pass on a machine with Julia ≥ 1.10 + PolyOrigin.jl v1.0.3.
 3. `test_gwaspoly_potato_roundtrip` specifically passes — the roadmap's named integration target.
 4. The Phase 56 entry in `docs/ROADMAP.md` is **removed** (shipped).
 5. `torchgwas phase-poly --help` captured in `docs/cli.md`.
@@ -536,7 +536,7 @@ Recorded so the implementation plan doesn't re-litigate:
 9. **No Julia sysimage build shipped.** Juliacall's own caching covers same-process warmth; sysimage recipe may be a later documentation follow-up.
 10. **Both parity *and* simulated-F1 recovery** in the validation gate, plus the GWASpoly potato round-trip as the named integration target.
 11. **`polyploid-phase` pip extra**, not a hard dep.
-12. **`juliapkg.json` pins PolyOrigin.jl to URL+rev (v1.0.5).** Upgrades are deliberate spec-revision events.
+12. **`juliapkg.json` pins PolyOrigin.jl to URL+rev (v1.0.3).** Upgrades are deliberate spec-revision events.
 13. **Recovery thresholds self-calibrated** via `bench/calibrate_polyorigin_recovery.py`, same pattern as Phase 55.
 14. **Mixed-ploidy via `-1`-padded tensor + `per_individual_ploidy` dict**, not a list-of-variable-width arrays. Torch-native; dict is small, explicit, inspectable.
 
