@@ -82,6 +82,9 @@ MT_ME/
 gemma_demo/
 benchmark/
 
+# Lazy-download fixture cache (test_phase_polyorigin_e2e.py and friends)
+tests/fixtures/_cache/
+
 # Sanity-script outputs (the scripts under scripts/ are tracked;
 # their run artifacts are not)
 scripts/*.tsv

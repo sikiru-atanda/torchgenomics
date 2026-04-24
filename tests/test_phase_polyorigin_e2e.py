@@ -5,7 +5,9 @@ Gated: (i) juliacall importable, (ii) Julia >= 1.10 discoverable,
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -134,3 +136,49 @@ def test_simulated_f1_haplotype_recovery_30x(tmp_path):
 
 def test_simulated_f1_haplotype_recovery_8x(tmp_path):
     pytest.skip("Calibration numbers placeholder — fill after running bench/calibrate_polyorigin_recovery.py")
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 GWASpoly potato round-trip (integration gate)
+# ---------------------------------------------------------------------------
+
+# Lazy-download cache (gitignored)
+_CACHE = Path(__file__).parent / "fixtures" / "_cache"
+_CACHE.mkdir(parents=True, exist_ok=True)
+
+# The GWASpoly tetraploid potato F1 dataset URL and SHA-256 checksum
+# are resolved at implementation time — the implementer picks a stable
+# public mirror and captures the checksum on first download. Once pinned,
+# CI jobs rely on this checksum to detect dataset drift.
+_POTATO_URL = "PLACEHOLDER — implementer pins before first commit of this test"
+_POTATO_SHA256 = "PLACEHOLDER — implementer pins before first commit of this test"
+
+
+def _ensure_potato_dataset() -> Path:
+    local = _CACHE / "gwaspoly_potato_f1.tar.gz"
+    if local.exists():
+        h = hashlib.sha256(local.read_bytes()).hexdigest()
+        if h == _POTATO_SHA256:
+            return local
+    if _POTATO_URL.startswith("PLACEHOLDER"):
+        pytest.skip("GWASpoly potato dataset URL not pinned yet (see test source)")
+    urllib.request.urlretrieve(_POTATO_URL, local)
+    h = hashlib.sha256(local.read_bytes()).hexdigest()
+    if h != _POTATO_SHA256:
+        raise AssertionError(
+            f"Downloaded potato dataset sha256 mismatch: got {h}, expected {_POTATO_SHA256}."
+        )
+    return local
+
+
+def test_gwaspoly_potato_roundtrip(tmp_path):
+    """The roadmap's integration gate.
+
+    dosage-call → phase-poly → HaplotypeGWAS (Phase 46). Compare p-values
+    against a bare-polyOrigin reference run to verify wrapper fidelity
+    end-to-end.
+    """
+    dataset = _ensure_potato_dataset()
+    # Unpack and pipe through the full chain
+    # ... implementer fills in based on dataset structure ...
+    pytest.skip("Implementer: fill once potato dataset URL/SHA are pinned")
