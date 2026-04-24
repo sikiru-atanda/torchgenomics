@@ -115,3 +115,22 @@ def test_parity_tetraploid_f1(tmp_path):
         "origin_probs diverge: wrapper parse vs direct parse of same CSV"
     assert torch.equal(result_ours.parent_phased, ref_parent), \
         "parent_phased diverges: wrapper parse vs direct parse of same CSV"
+
+
+# ---------------------------------------------------------------------------
+# Recovery tests — haplotype-origin accuracy against simulator ground truth
+# ---------------------------------------------------------------------------
+# Calibrated by bench/calibrate_polyorigin_recovery.py on <DATE>; see
+# docs/superpowers/specs/2026-04-23-phase-56-polyploid-phasing-design.md
+# Section 5.3 for why 2% slack.
+RECOVERY_30X = 0.95  # placeholder — replace after calibration
+RECOVERY_8X = 0.80   # placeholder — replace after calibration
+SAFETY_FLOOR = 0.02
+
+
+def test_simulated_f1_haplotype_recovery_30x(tmp_path):
+    pytest.skip("Calibration numbers placeholder — fill after running bench/calibrate_polyorigin_recovery.py")
+
+
+def test_simulated_f1_haplotype_recovery_8x(tmp_path):
+    pytest.skip("Calibration numbers placeholder — fill after running bench/calibrate_polyorigin_recovery.py")
