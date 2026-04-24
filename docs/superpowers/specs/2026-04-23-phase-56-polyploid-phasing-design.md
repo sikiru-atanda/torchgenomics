@@ -48,9 +48,9 @@ probs.pt (n,m,k+1)   pedigree.tsv   map.tsv   [parent_phased.csv]
                   ▼              ▼             ▼
              run_polyorigin(..., ploidy ∈ {2,4,6})
                   │
-                  ├── haplotypes       (n_off, ploidy, m)           → HaplotypeGWAS
-                  ├── origin_probs     (n_off, ploidy, m, n_ph)     → optional downstream
-                  ├── parent_phased    (n_par, max_ploidy, m)
+                  ├── haplotypes       (n_off, m) int64             → argmax joint-origin state per marker
+                  ├── origin_probs     (n_off, m, n_states)         → PolyOrigin joint-origin posterior
+                  ├── parent_phased    (n_par, m, max_ploidy)       → per-copy parental haplotypes
                   ├── map_refined, valent_diag, postdose_probs      → diagnostics
                   └── per_individual_ploidy dict                    → mixed-ploidy support
 ```
@@ -70,9 +70,9 @@ Mirrors `DosageCallResult` in `torchgwas/preprocess/dosage_call.py` for conceptu
 ```python
 @dataclass
 class PhasingResult:
-    haplotypes: Tensor                     # (n_offspring, ploidy, m) int8 — argmax of origin_probs
-    origin_probs: Tensor                   # (n_offspring, ploidy, m, n_parent_haps) float64
-    parent_phased: Tensor                  # (n_parents, max_ploidy, m) int8
+    haplotypes: Tensor                     # (n_offspring, m) int64 — argmax of joint-origin state per marker
+    origin_probs: Tensor                   # (n_offspring, m, n_states) float64 — PolyOrigin joint-origin posterior
+    parent_phased: Tensor                  # (n_parents, m, max_ploidy) int8 — per-copy parental haplotypes
     offspring_ids: list[str]               # length n_offspring
     parent_ids: list[str]                  # length n_parents
     variant_ids: list[str]                 # length m (refined order if refinemap=True)
@@ -338,9 +338,9 @@ No silent fallback to a Python reimplementation. Always-external-or-error.
 
 After parsing:
 
-- `origin_probs.shape == (n_off, ploidy, m, n_parent_haps)` — else `RuntimeError`.
+- `origin_probs.shape == (n_off, m, n_states)` — else `RuntimeError`. `n_states` is PolyOrigin's joint-origin state count verified against the Task 14 parity run.
 - `origin_probs.sum(dim=-1)` within `atol=1e-3` of 1.0 (looser than Phase 55 — PolyOrigin's CSV writer rounds to 4 decimal places); below tolerance → renormalize + `logger.warning`.
-- `haplotypes` values in `{0, 1, ..., n_parent_haps-1, -1}` (`-1` = mixed-ploidy padding); anything else → `RuntimeError`.
+- `haplotypes` values are joint-origin state indices in `{0, 1, ..., n_states-1}` (one value per offspring-marker cell, no ploidy axis).
 - `parent_phased` allele values in `{0, 1, -1}` — else `RuntimeError`.
 - `map_refined` row count matches `m` and IDs are a permutation of input — else `RuntimeError`.
 
@@ -468,9 +468,9 @@ torchgwas phase-poly \
 ```
 
 **Writes**:
-- `<output>.haplotypes.pt` — `(n_off, ploidy, m)` int8
-- `<output>.origin_probs.pt` — `(n_off, ploidy, m, n_parent_haps)` float64
-- `<output>.parent_phased.pt` — `(n_parents, max_ploidy, m)` int8
+- `<output>.haplotypes.pt` — `(n_off, m)` int64
+- `<output>.origin_probs.pt` — `(n_off, m, n_states)` float64
+- `<output>.parent_phased.pt` — `(n_parents, m, max_ploidy)` int8
 - `<output>.postdose_probs.pt` — `(n_off, m, max_ploidy+1)` float64
 - `<output>.map_refined.tsv`, `<output>.valent_diag.tsv`
 - `<output>.meta.json`
