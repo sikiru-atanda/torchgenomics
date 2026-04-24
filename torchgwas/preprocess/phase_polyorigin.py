@@ -128,3 +128,42 @@ def _build_polyorigin_pedfile(
         rows, columns=["individual", "population", "motherid", "fatherid", "ploidy"]
     ).to_csv(out, index=False)
     return out
+
+
+def _load_map_tsv(path: str, recomrate: float) -> pd.DataFrame:
+    """Load marker map TSV. Synthesize cm from pos_bp if missing.
+
+    Required columns: ``marker``, ``chrom``, ``pos_bp``. Optional: ``cm``.
+    Missing cm → synthesize ``cm = pos_bp * recomrate / 1e6`` with a warning.
+    Non-monotonic ``pos_bp`` within a chromosome → ``ValueError``.
+    """
+    df = pd.read_csv(path, sep="\t")
+    required = {"marker", "chrom", "pos_bp"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"map TSV missing required column(s): {sorted(missing)}. "
+            "Expected: marker, chrom, pos_bp (optional: cm)."
+        )
+
+    for chrom, sub in df.groupby("chrom", sort=False):
+        diffs = sub["pos_bp"].diff().dropna()
+        bad = diffs[diffs < 0]
+        if not bad.empty:
+            first_bad_idx = bad.index[0]
+            first_bad_marker = df.loc[first_bad_idx, "marker"]
+            raise ValueError(
+                f"map TSV has non-monotonic pos_bp within chromosome {chrom!r}. "
+                f"First offender: {first_bad_marker}."
+            )
+
+    if "cm" not in df.columns:
+        logger.warning(
+            "Map TSV lacks 'cm' column; synthesizing genetic positions via "
+            "%.4f cM/Mb. Pass a linkage-map-derived 'cm' column for production runs.",
+            recomrate,
+        )
+        df = df.copy()
+        df["cm"] = df["pos_bp"].astype(float) * recomrate / 1e6
+
+    return df[["marker", "chrom", "pos_bp", "cm"]]

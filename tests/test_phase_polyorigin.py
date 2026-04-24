@@ -9,7 +9,11 @@ import pytest
 import torch
 
 import torchgwas.preprocess.phase_polyorigin as mod
-from torchgwas.preprocess.phase_polyorigin import PhasingResult, _build_polyorigin_pedfile
+from torchgwas.preprocess.phase_polyorigin import (
+    PhasingResult,
+    _build_polyorigin_pedfile,
+    _load_map_tsv,
+)
 
 
 def test_module_imports_without_juliacall():
@@ -141,3 +145,45 @@ def test_pedfile_per_row_ploidy_column(tmp_path):
     df = pd.read_csv(out)
     assert df.loc[df["individual"] == "o1", "ploidy"].iloc[0] == 6
     assert df.loc[df["individual"] == "p1", "ploidy"].iloc[0] == 4
+
+
+# ---------------------------------------------------------------------------
+# _load_map_tsv tests (Task 4)
+# ---------------------------------------------------------------------------
+
+def _write_map(tmp_path: Path, rows: list[str], header="marker\tchrom\tpos_bp") -> Path:
+    p = tmp_path / "map.tsv"
+    p.write_text(header + "\n" + "\n".join(rows) + "\n")
+    return p
+
+
+def test_load_map_with_cm_column_used_verbatim(tmp_path):
+    m = _write_map(
+        tmp_path,
+        ["v1\t1\t1000000\t0.1", "v2\t1\t2000000\t0.2"],
+        header="marker\tchrom\tpos_bp\tcm",
+    )
+    df = _load_map_tsv(str(m), recomrate=1.0)
+    assert list(df.columns) == ["marker", "chrom", "pos_bp", "cm"]
+    assert df["cm"].tolist() == [0.1, 0.2]
+
+
+def test_load_map_without_cm_synthesized_with_warning(tmp_path, caplog):
+    m = _write_map(tmp_path, ["v1\t1\t1000000", "v2\t1\t2000000"])
+    with caplog.at_level("WARNING"):
+        df = _load_map_tsv(str(m), recomrate=1.0)
+    assert df["cm"].tolist() == [1.0, 2.0]
+    assert any("synthesiz" in rec.message.lower() for rec in caplog.records)
+
+
+def test_load_map_non_monotonic_bp_rejected(tmp_path):
+    m = _write_map(tmp_path, ["v1\t1\t2000000", "v2\t1\t1000000"])
+    with pytest.raises(ValueError, match="monotonic|v2"):
+        _load_map_tsv(str(m), recomrate=1.0)
+
+
+def test_load_map_missing_required_col_rejected(tmp_path):
+    p = tmp_path / "map.tsv"
+    p.write_text("marker\tpos_bp\nv1\t1000\n")  # no chrom
+    with pytest.raises(ValueError, match="chrom"):
+        _load_map_tsv(str(p), recomrate=1.0)
