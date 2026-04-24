@@ -745,3 +745,25 @@ def test_persist_rolls_back_on_partial_write(tmp_path, monkeypatch):
     # No persistent artifacts survived
     leftovers = list(prefix.parent.glob("phased.*"))
     assert leftovers == [], f"Unexpected leftover artifacts: {leftovers}"
+
+
+# ---------------------------------------------------------------------------
+# Task 12: CLI phase-poly subcommand
+# ---------------------------------------------------------------------------
+
+import subprocess as _sp  # noqa: E402 — appended block
+
+
+def test_cli_phase_poly_help():
+    res = _sp.run(
+        [sys.executable, "-m", "torchgwas", "phase-poly", "--help"],
+        capture_output=True, text=True,
+    )
+    assert res.returncode == 0
+    # Core flags present
+    for flag in ["--probs", "--pedigree", "--map", "--output", "--ploidy",
+                 "--parent-phased", "--auto-install", "--julia-path",
+                 "--keep-workdir"]:
+        assert flag in res.stdout, (
+            f"Flag {flag!r} missing from phase-poly --help output:\n{res.stdout}"
+        )

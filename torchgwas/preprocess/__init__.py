@@ -9,6 +9,7 @@ from .dosage_call import DosageCallResult, run_updog  # noqa: F401
 from .dosage_uncertainty import dosage_rsq, dosage_variance, expected_dosage  # noqa: F401
 from .impute import impute_knn, impute_ld, impute_mean, impute_mode  # noqa: F401
 from .impute_gpu import impute_deep_learning, impute_li_stephens  # noqa: F401
+from .phase_polyorigin import PhasingResult, run_polyorigin  # noqa: F401  # Phase 56
 from .polyploid import detect_ploidy, list_gene_action_models, recode_gene_action  # noqa: F401
 from .polyrad_wrapper import DosageProbabilities, run_polyrad  # noqa: F401
 from .qc import (  # noqa: F401

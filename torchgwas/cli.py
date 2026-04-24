@@ -1,12 +1,12 @@
 """CLI entry point for all TorchGWAS commands.
 
-Subcommands: validate, convert, impute, dosage-call, glm-scan, lmm-scan, mvlmm-scan,
-poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan, met-scan,
-farmcpu-scan, blink-scan, threshold-scan, family-scan, conditional-scan,
-mtmet-scan, ocf-scan, knockoff-scan, gu-scan, lro-scan, glmm-scan,
-me-glmm-scan, survival-scan, rr-scan, rr-met-scan, ld-blocks, ldsc,
-ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate, mediate, mediate-scan,
-pipeline.
+Subcommands: validate, convert, impute, dosage-call, phase-poly, glm-scan,
+lmm-scan, mvlmm-scan, poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan,
+met-scan, farmcpu-scan, blink-scan, threshold-scan, family-scan,
+conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan, lro-scan,
+glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan, ld-blocks,
+ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate, mediate,
+mediate-scan, pipeline.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_convert_parser(subparsers)
     _add_impute_parser(subparsers)
     _add_dosage_call_parser(subparsers)
+    _add_phase_poly_parser(subparsers)  # Phase 56
 
     # --- GWAS scan commands ---
     _add_glm_scan_parser(subparsers)
@@ -138,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         "convert": _cmd_convert,
         "impute": _cmd_impute,
         "dosage-call": _cmd_dosage_call,  # Phase 55
+        "phase-poly": _cmd_phase_poly,   # Phase 56
     }
 
     handler = handlers.get(args.command)
@@ -2331,6 +2333,83 @@ def _cmd_dosage_call(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_phase_poly(args: argparse.Namespace) -> int:
+    """Phase 56 phase-poly subcommand handler — polyploid phasing via PolyOrigin."""
+    import json as _json
+
+    import torch as _torch
+
+    from .preprocess.phase_polyorigin import run_polyorigin
+
+    # Map CLI's None sentinel for --auto-install to False (non-interactive default)
+    auto = args.auto_install if args.auto_install is not None else False
+
+    # Load probs — either a raw (n,m,k+1) tensor or a dict with sample/variant IDs.
+    # Phase 55 dosage-call writes a raw tensor to <prefix>.probs.pt and puts
+    # sample_ids/variant_ids in the sibling <prefix>.meta.json, so we handle
+    # both the dict form (future-proofing) and the raw-tensor-plus-sidecar form.
+    probs_path = Path(args.probs)
+    probs_obj = _torch.load(str(probs_path), weights_only=False)
+
+    if isinstance(probs_obj, dict):
+        # Dict form: all metadata is embedded
+        probs = probs_obj["probs"]
+        sample_ids = probs_obj.get("sample_ids")
+        variant_ids = probs_obj.get("variant_ids")
+    else:
+        # Raw tensor: look for the sibling .meta.json written by dosage-call
+        probs = probs_obj
+        sample_ids = None
+        variant_ids = None
+        # Derive meta.json path: strip the trailing .pt, then look for .meta.json.
+        # Handles both "<prefix>.probs.pt" → "<prefix>.meta.json" and
+        # "<prefix>.pt" → "<prefix>.meta.json".
+        meta_candidate = probs_path.with_suffix("").with_suffix(".meta.json")
+        if not meta_candidate.is_file():
+            # Try stripping just one suffix (e.g. "foo.probs.pt" → "foo.probs.meta.json"
+            # is wrong; try "foo.meta.json" by stripping ".probs" then ".pt")
+            stem = probs_path.stem  # e.g. "dcall.probs"
+            if stem.endswith(".probs"):
+                stem = stem[: -len(".probs")]
+            meta_candidate = probs_path.parent / (stem + ".meta.json")
+        if meta_candidate.is_file():
+            meta = _json.loads(meta_candidate.read_text())
+            sample_ids = meta.get("sample_ids")
+            variant_ids = meta.get("variant_ids")
+
+    if sample_ids is None or variant_ids is None:
+        raise SystemExit(
+            "--probs must be a dict with 'sample_ids' and 'variant_ids' keys, "
+            "or a raw tensor produced by 'torchgwas dosage-call' with a sibling "
+            "<prefix>.meta.json. "
+            "Could not find sample/variant IDs in the probs file or its sidecar."
+        )
+
+    result = run_polyorigin(
+        probs=probs,
+        pedigree_tsv=args.pedigree,
+        map_tsv=args.map,
+        output_path=args.output,
+        ploidy=args.ploidy,
+        sample_ids=sample_ids,
+        variant_ids=variant_ids,
+        parent_phased_csv=args.parent_phased,
+        julia_path=args.julia_path,
+        auto_install_julia=auto,
+        refinemap=args.refinemap,
+        recomrate=args.recomrate,
+        nworkers=args.nworkers,
+        seed=args.seed,
+        keep_workdir=args.keep_workdir,
+    )
+    logger.info(
+        "phase-poly: %d offspring, %d parents, %d variants, tool_version=%s",
+        len(result.offspring_ids), len(result.parent_ids),
+        len(result.variant_ids), result.tool_version,
+    )
+    return 0
+
+
 def _cmd_ld_blocks(args: argparse.Namespace) -> int:
     """Detect haplotype blocks."""
     import torch
@@ -3106,6 +3185,73 @@ def _add_dosage_call_parser(subparsers: argparse._SubParsersAction) -> None:
                    help="Parallelism passed to updog::multidog (default: 1)")
     p.add_argument("--keep-tmpdir", action="store_true",
                    help="Skip tempdir cleanup (debug aid)")
+
+
+def _add_phase_poly_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Phase 56: polyploid F1 phasing via PolyOrigin."""
+    p = subparsers.add_parser(
+        "phase-poly",
+        help="Polyploid F1 phasing via PolyOrigin (Phase 56)",
+    )
+    p.add_argument(
+        "--probs", required=True,
+        help=(
+            "Path to .probs.pt from 'dosage-call' (raw (n,m,k+1) tensor or dict). "
+            "If a raw tensor, the sibling <prefix>.meta.json is read for sample/variant IDs."
+        ),
+    )
+    p.add_argument(
+        "--pedigree", required=True,
+        help="TSV with columns: offspring, parent1, parent2 (optional: ploidy)",
+    )
+    p.add_argument(
+        "--map", required=True,
+        help="TSV with columns: marker, chrom, pos_bp (optional: cm)",
+    )
+    p.add_argument(
+        "--output", required=True,
+        help="Output prefix; writes <prefix>.haplotypes.pt etc.",
+    )
+    p.add_argument(
+        "--ploidy", type=int, required=True, choices=[2, 4, 6],
+        help="Organism ploidy (2, 4, or 6)",
+    )
+    p.add_argument(
+        "--parent-phased", default=None,
+        help="Optional CSV of pre-phased parent genotypes (escape hatch)",
+    )
+    p.add_argument(
+        "--no-refinemap", dest="refinemap", action="store_false",
+        help="Disable PolyOrigin's map refinement (default: enabled)",
+    )
+    p.set_defaults(refinemap=True)
+    p.add_argument(
+        "--recomrate", type=float, default=1.0,
+        help="cM/Mb to synthesize genetic positions when --map lacks a cm column (default: 1.0)",
+    )
+    p.add_argument("--nworkers", type=int, default=1,
+                   help="Number of Julia worker threads (default: 1)")
+    p.add_argument("--seed", type=int, default=1234,
+                   help="Random seed for PolyOrigin (default: 1234)")
+    p.add_argument(
+        "--julia-path", default=None,
+        help="Path to an existing Julia binary; else discovered or auto-installed",
+    )
+    install_group = p.add_mutually_exclusive_group()
+    install_group.add_argument(
+        "--auto-install", dest="auto_install", action="store_true",
+        help="Auto-install Julia if not found (non-interactive; sets consent=True)",
+    )
+    install_group.add_argument(
+        "--no-auto-install", dest="auto_install", action="store_false",
+        help="Refuse to auto-install Julia (non-interactive; sets consent=False)",
+    )
+    p.set_defaults(auto_install=None)  # None → interactive prompt on tty
+    p.add_argument(
+        "--keep-workdir", action="store_true",
+        help="Do not delete the temp work directory after success (debug aid)",
+    )
+    p.set_defaults(func=_cmd_phase_poly)
 
 
 def _add_glm_scan_parser(subparsers: argparse._SubParsersAction) -> None:
