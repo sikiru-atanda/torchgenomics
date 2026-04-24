@@ -2398,8 +2398,6 @@ def _cmd_phase_poly(args: argparse.Namespace) -> int:
         auto_install_julia=auto,
         refinemap=args.refinemap,
         recomrate=args.recomrate,
-        nworkers=args.nworkers,
-        seed=args.seed,
         keep_workdir=args.keep_workdir,
     )
     logger.info(
@@ -3229,10 +3227,6 @@ def _add_phase_poly_parser(subparsers: argparse._SubParsersAction) -> None:
         "--recomrate", type=float, default=1.0,
         help="cM/Mb to synthesize genetic positions when --map lacks a cm column (default: 1.0)",
     )
-    p.add_argument("--nworkers", type=int, default=1,
-                   help="Number of Julia worker threads (default: 1)")
-    p.add_argument("--seed", type=int, default=1234,
-                   help="Random seed for PolyOrigin (default: 1234)")
     p.add_argument(
         "--julia-path", default=None,
         help="Path to an existing Julia binary; else discovered or auto-installed",

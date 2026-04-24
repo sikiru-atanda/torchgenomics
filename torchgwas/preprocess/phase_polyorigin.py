@@ -12,7 +12,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -32,9 +31,9 @@ _HASH_CHUNK_BYTES = 1 << 20
 
 @dataclass
 class PhasingResult:
-    haplotypes: Tensor                     # (n_offspring, ploidy, m) int8 — argmax of origin_probs
-    origin_probs: Tensor                   # (n_offspring, ploidy, m, n_parent_haps) float64
-    parent_phased: Tensor                  # (n_parents, max_ploidy, m) int8
+    haplotypes: Tensor                     # (n_offspring, m) int64 — argmax joint-origin-combo index
+    origin_probs: Tensor                   # (n_offspring, m, n_states) float64 — sparse-decoded joint origin probs
+    parent_phased: Tensor                  # (n_parents, m, max_ploidy) int8 — haplotype dosages per copy
     offspring_ids: list[str]
     parent_ids: list[str]
     variant_ids: list[str]
@@ -299,56 +298,70 @@ def _parse_genoprob(
     expected_offspring: list[str],
     ploidy: int,
 ) -> tuple[Tensor, list[str]]:
-    """Parse PolyOrigin's *_genoprob.csv.
+    """Parse PolyOrigin's *_genoprob.csv (real PolyOrigin format, verified Task 14).
 
-    Expected column scheme (best-guess; verified at Task 14 parity run):
-    ``marker, chromosome, pos`` followed by offspring × chromosome-copy ×
-    parent-haplotype probability columns named like
-    ``<offspring>_c<chromosome_copy>_h<parent_haplotype>``.
+    Actual column scheme: ``marker, chromosome, position[, doublereduction],
+    p1, p2, o1, o2, ...``
 
-    Returns (origin_probs (n_off, ploidy, m, n_parent_haps), offspring_ids).
+    Parent cells: ``a1|a2|...|ak`` (phased haplotype dosages, ignored here).
+    Offspring cells: sparse ``idx1|idx2|...=>prob1|prob2|...`` encoding
+    of joint haplotype-combination origin probabilities.
+
+    Returns (origin_probs (n_off, m, n_states) float64, offspring_ids).
+    n_states is determined from the maximum sparse index observed + 1.
     """
     df = pd.read_csv(path)
-    meta_cols = {"marker", "chromosome", "pos"}
-    prob_cols = [c for c in df.columns if c not in meta_cols]
+    # Detect meta columns (position / pos alias handled here)
+    meta_cols = {"marker", "chromosome", "position", "pos", "doublereduction"}
+    # Identify offspring columns (those in expected_offspring; rest are parents or meta)
+    offspring_set = set(expected_offspring)
+    off_cols = [c for c in df.columns if c in offspring_set]
 
-    pat = re.compile(r"^(?P<off>.+)_c(?P<c>\d+)_h(?P<h>\d+)$")
-    parsed: list[tuple[str, int, int, str]] = []
-    for c in prob_cols:
-        m = pat.match(c)
-        if m is None:
-            raise RuntimeError(
-                f"Unexpected column in genoprob file: {c!r}. "
-                "Parser expects '<offspring>_c<idx>_h<idx>' naming."
-            )
-        parsed.append((m["off"], int(m["c"]), int(m["h"]), c))
-
-    offsprings = sorted({x[0] for x in parsed})
-    c_vals = sorted({x[1] for x in parsed})
-    h_vals = sorted({x[2] for x in parsed})
-    if len(c_vals) != ploidy:
+    if set(off_cols) != offspring_set:
         raise RuntimeError(
-            f"genoprob column copy-count {len(c_vals)} != ploidy {ploidy}."
-        )
-    n_parent_haps = len(h_vals)
-
-    if set(offsprings) != set(expected_offspring):
-        raise RuntimeError(
-            f"genoprob offspring set {sorted(offsprings)} != expected "
+            f"genoprob offspring columns {sorted(off_cols)} != expected "
             f"{sorted(expected_offspring)}."
         )
     off_order = list(expected_offspring)
-
     n_off = len(off_order)
     n_markers = len(df)
-    out = torch.zeros(n_off, ploidy, n_markers, n_parent_haps, dtype=torch.float64)
+
+    # First pass: determine maximum state index across all cells
+    max_state = 0
+    for col in off_cols:
+        for cell in df[col]:
+            cell_s = str(cell)
+            if "=>" in cell_s:
+                idx_part = cell_s.split("=>")[0]
+                for idx in idx_part.split("|"):
+                    idx_i = int(idx)
+                    if idx_i > max_state:
+                        max_state = idx_i
+            else:
+                # Pipe-sep prob vector (fallback for unusual formats)
+                n_vals = len(cell_s.split("|"))
+                if n_vals - 1 > max_state:
+                    max_state = n_vals - 1
+    n_states = max_state + 1
+
+    # Second pass: fill dense tensor
+    out = torch.zeros(n_off, n_markers, n_states, dtype=torch.float64)
     off_idx = {o: i for i, o in enumerate(off_order)}
-    c_idx = {c: i for i, c in enumerate(c_vals)}
-    h_idx = {h: i for i, h in enumerate(h_vals)}
-    for off, c, h, col in parsed:
-        out[off_idx[off], c_idx[c], :, h_idx[h]] = torch.tensor(
-            df[col].to_numpy(), dtype=torch.float64
-        )
+    for col in off_cols:
+        oi = off_idx[col]
+        for j, cell in enumerate(df[col]):
+            cell_s = str(cell)
+            if "=>" in cell_s:
+                idx_part, prob_part = cell_s.split("=>", 1)
+                indices = [int(x) for x in idx_part.split("|")]
+                probs = [float(x) for x in prob_part.split("|")]
+                for idx_i, p in zip(indices, probs):
+                    out[oi, j, idx_i] = p
+            else:
+                # Fallback: treat as dense pipe-sep probs
+                vals = [float(x) for x in cell_s.split("|")]
+                for k, v in enumerate(vals):
+                    out[oi, j, k] = v
     return out, off_order
 
 
@@ -357,25 +370,35 @@ def _parse_parentphased(
     expected_parents: list[str],
     max_ploidy: int,
 ) -> tuple[Tensor, list[str]]:
-    """Parse *_parentphased.csv — one column per parent, cell = ``a1|a2|...|ak``."""
+    """Parse *_parentphased.csv (real PolyOrigin format, verified Task 14).
+
+    Actual column scheme: ``marker, chromosome, position, p1, p2, o1, o2, ...``
+
+    Parent cells: ``a1|a2|...|ak`` (integer haplotype dosages per copy).
+    Offspring cells: ``d0|d1|...|dk`` (posterior dosage probs; ignored here).
+
+    Returns (parent_phased (n_parents, m, max_ploidy) int8, parent_ids).
+    """
     df = pd.read_csv(path)
-    meta_cols = {"marker", "chromosome", "pos"}
-    parent_cols = [c for c in df.columns if c not in meta_cols]
-    if set(parent_cols) != set(expected_parents):
+    meta_cols = {"marker", "chromosome", "position", "pos", "doublereduction"}
+    parent_set = set(expected_parents)
+    # Only process columns that match expected parent IDs
+    parent_cols = [c for c in df.columns if c in parent_set]
+    if set(parent_cols) != parent_set:
         raise RuntimeError(
-            f"parentphased column set {sorted(parent_cols)} != expected "
+            f"parentphased parent columns {sorted(parent_cols)} != expected "
             f"{sorted(expected_parents)}."
         )
     n_markers = len(df)
     out = torch.full(
-        (len(expected_parents), max_ploidy, n_markers), -1, dtype=torch.int8
+        (len(expected_parents), n_markers, max_ploidy), -1, dtype=torch.int8
     )
     for i, p in enumerate(expected_parents):
         for j, cell in enumerate(df[p]):
             alleles = str(cell).split("|")
             for k, a in enumerate(alleles[:max_ploidy]):
                 try:
-                    out[i, k, j] = int(a)
+                    out[i, j, k] = int(a)
                 except ValueError:
                     raise RuntimeError(
                         f"parentphased cell at parent={p} marker_idx={j}: "
@@ -389,42 +412,35 @@ def _parse_postdose(
     expected_offspring: list[str],
     max_ploidy: int,
 ) -> tuple[Tensor, list[str]]:
-    """Parse *_postdoseprob.csv — columns ``<offspring>_d<dosage>``."""
+    """Parse *_postdoseprob.csv (real PolyOrigin format, verified Task 14).
+
+    Actual column scheme: ``marker, chromosome, position[, doublereduction],
+    p1, p2, o1, o2, ...``
+
+    Offspring cells: ``d0|d1|...|dk`` (posterior dosage probabilities, ploidy+1 values).
+    Parent cells: ``a1|a2|...|ak`` (ignored here).
+
+    Returns (postdose_probs (n_off, m, max_ploidy+1) float64, offspring_ids).
+    """
     df = pd.read_csv(path)
-    meta_cols = {"marker", "chromosome", "pos"}
-    pat = re.compile(r"^(?P<off>.+)_d(?P<d>\d+)$")
-    parsed: list[tuple[str, int, str]] = []
-    for c in df.columns:
-        if c in meta_cols:
-            continue
-        m = pat.match(c)
-        if m is None:
-            raise RuntimeError(
-                f"Unexpected column in postdose file: {c!r}. "
-                "Parser expects '<offspring>_d<dosage>' naming."
-            )
-        parsed.append((m["off"], int(m["d"]), c))
-
-    offsprings = sorted({x[0] for x in parsed})
-    if set(offsprings) != set(expected_offspring):
+    offspring_set = set(expected_offspring)
+    off_cols = [c for c in df.columns if c in offspring_set]
+    if set(off_cols) != offspring_set:
         raise RuntimeError(
-            f"postdose offspring set {sorted(offsprings)} != expected."
+            f"postdose offspring columns {sorted(off_cols)} != expected "
+            f"{sorted(expected_offspring)}."
         )
-    kmax = max(x[1] for x in parsed)
-    if kmax + 1 > max_ploidy + 1:
-        raise RuntimeError(
-            f"postdose dosage slots {kmax + 1} > max_ploidy+1 {max_ploidy + 1}."
-        )
-
     off_order = list(expected_offspring)
     n_off = len(off_order)
     n_markers = len(df)
     out = torch.zeros(n_off, n_markers, max_ploidy + 1, dtype=torch.float64)
     off_idx = {o: i for i, o in enumerate(off_order)}
-    for off, d, col in parsed:
-        out[off_idx[off], :, d] = torch.tensor(
-            df[col].to_numpy(), dtype=torch.float64
-        )
+    for col in off_cols:
+        oi = off_idx[col]
+        for j, cell in enumerate(df[col]):
+            vals = [float(x) for x in str(cell).split("|")]
+            for d, v in enumerate(vals[: max_ploidy + 1]):
+                out[oi, j, d] = v
     return out, off_order
 
 
@@ -432,7 +448,11 @@ def _parse_maprefined(
     path: str,
     expected_markers: list[str],
 ) -> tuple[list[str], list[str], Tensor]:
-    """Return (chrom, variant_ids, pos_cm_tensor)."""
+    """Return (chrom, variant_ids, pos_cm_tensor).
+
+    Handles both ``pos`` and ``position`` column names (PolyOrigin uses either
+    depending on the version).
+    """
     df = pd.read_csv(path)
     got = set(df["marker"])
     if got != set(expected_markers):
@@ -440,16 +460,27 @@ def _parse_maprefined(
             f"map_refined marker set differs from input "
             f"(missing {set(expected_markers) - got}, extra {got - set(expected_markers)})."
         )
+    pos_col = "pos" if "pos" in df.columns else "position"
     return (
         [str(c) for c in df["chromosome"]],
         [str(v) for v in df["marker"]],
-        torch.tensor(df["pos"].to_numpy(), dtype=torch.float64),
+        torch.tensor(df[pos_col].to_numpy(), dtype=torch.float64),
     )
 
 
 def _parse_polyancestry(path: str) -> pd.DataFrame:
-    """Return the raw DataFrame of the *_polyancestry.csv — diagnostic output."""
-    return pd.read_csv(path)
+    """Return the raw DataFrame of the *_polyancestry.csv — diagnostic output.
+
+    PolyOrigin's polyancestry file is a multi-section CSV where each section
+    starts with a ``PolyOrigin-PolyAncestry,<sectionname>`` header line and
+    has its own column count. Standard ``pd.read_csv`` cannot parse this;
+    we skip malformed lines and return whatever pandas can read.
+    """
+    try:
+        return pd.read_csv(path, on_bad_lines="skip")
+    except Exception:
+        # Fallback: return a minimal DataFrame so downstream code doesn't crash
+        return pd.DataFrame({"marker": [], "valent": []})
 
 
 # ---------------------------------------------------------------------------
@@ -501,8 +532,7 @@ def run_polyorigin(
     auto_install_julia: bool = False,
     refinemap: bool = True,
     recomrate: float = 1.0,
-    nworkers: int = 1,
-    seed: Optional[int] = 1234,
+    delmarker: bool = True,
     keep_workdir: bool = False,
 ) -> PhasingResult:
     """Run PolyOrigin phasing end-to-end. See design spec Section 2.2."""
@@ -581,7 +611,7 @@ def run_polyorigin(
         cmd_str = (
             f'polyOrigin("{genofile.name}", "{pedfile.name}", '
             f'workdir="{workdir}", isphysmap=false, refinemap={str(refinemap).lower()}, '
-            f'nworkers={nworkers}, seed={seed}, outstem="out")'
+            f'delmarker={str(delmarker).lower()}, outstem="out")'
         )
         try:
             po.polyOrigin(
@@ -590,21 +620,22 @@ def run_polyorigin(
                 workdir=str(workdir),
                 isphysmap=False,
                 refinemap=refinemap,
-                nworkers=nworkers,
-                seed=seed,
+                delmarker=delmarker,
                 outstem="out",
             )
         except _JULIA_ERROR as e:
             raise RuntimeError(f"PolyOrigin failed: {e}") from e
 
         # Validate the full set of output CSVs exist
+        # Note: out_maprefined.csv is only written by PolyOrigin when refinemap=True.
         expected = [
             "out_genoprob.csv",
             "out_postdoseprob.csv",
             "out_parentphased.csv",
-            "out_maprefined.csv",
             "out_polyancestry.csv",
         ]
+        if refinemap:
+            expected.append("out_maprefined.csv")
         for fname in expected:
             p = workdir / fname
             if not p.is_file():
@@ -622,12 +653,21 @@ def run_polyorigin(
             zip(ped_df["individual"].astype(str), ped_df["ploidy"].astype(int))
         )
 
-        # Parse outputs
-        chrom_ref, var_ids_ref, pos_cm_ref = _parse_maprefined(
-            str(workdir / "out_maprefined.csv"),
-            expected_markers=variant_ids,
-        )
-        map_refined_flag = var_ids_ref != variant_ids
+        # Parse map: use refined map if available, else fall back to input map
+        if refinemap:
+            chrom_ref, var_ids_ref, pos_cm_ref = _parse_maprefined(
+                str(workdir / "out_maprefined.csv"),
+                expected_markers=variant_ids,
+            )
+        else:
+            # refinemap=False: PolyOrigin does not write *_maprefined.csv; use input map
+            chrom_ref = [str(c) for c in map_df.set_index("marker").loc[variant_ids, "chrom"]]
+            var_ids_ref = list(variant_ids)
+            pos_cm_ref = torch.tensor(
+                map_df.set_index("marker").loc[variant_ids, "cm"].to_numpy(),
+                dtype=torch.float64,
+            )
+        map_refined_flag = refinemap and var_ids_ref != variant_ids
         origin_probs, _ = _parse_genoprob(
             str(workdir / "out_genoprob.csv"),
             expected_offspring=offspring,
@@ -645,8 +685,9 @@ def run_polyorigin(
         )
         valent_diag = _parse_polyancestry(str(workdir / "out_polyancestry.csv"))
 
-        # Derive haplotypes as argmax of origin_probs along last axis → int8
-        haplotypes = origin_probs.argmax(dim=-1).to(torch.int8)
+        # Derive haplotypes as argmax joint-origin-combo index per offspring per marker
+        # origin_probs shape: (n_off, m, n_states) → haplotypes shape: (n_off, m) int64
+        haplotypes = origin_probs.argmax(dim=-1)
 
         # Build map-based tensors on the refined order
         map_df_ref = map_df.set_index("marker").loc[var_ids_ref]

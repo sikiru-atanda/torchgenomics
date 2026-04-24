@@ -43,10 +43,13 @@ def test_module_imports_without_juliacall():
 
 
 def test_phasing_result_dataclass_fields():
+    # haplotypes: (n_off, m) int64 — argmax joint-origin-combo index
+    # origin_probs: (n_off, m, n_states) float64
+    # parent_phased: (n_parents, m, max_ploidy) int8
     r = PhasingResult(
-        haplotypes=torch.zeros(3, 4, 2, dtype=torch.int8),
-        origin_probs=torch.zeros(3, 4, 2, 4, dtype=torch.float64),
-        parent_phased=torch.zeros(2, 4, 2, dtype=torch.int8),
+        haplotypes=torch.zeros(3, 2, dtype=torch.int64),
+        origin_probs=torch.zeros(3, 2, 10, dtype=torch.float64),
+        parent_phased=torch.zeros(2, 2, 4, dtype=torch.int8),
         offspring_ids=["o1", "o2", "o3"],
         parent_ids=["p1", "p2"],
         variant_ids=["v1", "v2"],
@@ -63,8 +66,9 @@ def test_phasing_result_dataclass_fields():
         cmd="polyOrigin(...)",
         workdir=None,
     )
-    assert r.haplotypes.shape == (3, 4, 2)
-    assert r.origin_probs.shape == (3, 4, 2, 4)
+    assert r.haplotypes.shape == (3, 2)
+    assert r.origin_probs.shape == (3, 2, 10)
+    assert r.parent_phased.shape == (2, 2, 4)
     assert r.tool == "polyorigin"
     assert r.map_refined is False
 
@@ -468,27 +472,29 @@ def test_get_runtime_cached_after_first_success():
 # ---------------------------------------------------------------------------
 
 def test_parse_genoprob_shape():
+    # Fixture: 1 offspring (o1), 2 markers, sparse max index=2 → n_states=3
     origin_probs, offspring_ids = _parse_genoprob(
         str(FIXTURES / "out_genoprob.csv"),
         expected_offspring=["o1"],
         ploidy=4,
     )
-    assert origin_probs.shape == (1, 4, 2, 4)
+    assert origin_probs.shape == (1, 2, 3)  # (n_off, m, n_states)
     assert torch.allclose(
         origin_probs.sum(dim=-1),
-        torch.ones((1, 4, 2), dtype=torch.float64),
+        torch.ones((1, 2), dtype=torch.float64),
         atol=1e-3,
     )
     assert offspring_ids == ["o1"]
 
 
 def test_parse_parentphased_values():
+    # Fixture: 2 parents, 2 markers, ploidy=4 → shape (2, 2, 4)
     parent_phased, parent_ids = _parse_parentphased(
         str(FIXTURES / "out_parentphased.csv"),
         expected_parents=["p1", "p2"],
         max_ploidy=4,
     )
-    assert parent_phased.shape == (2, 4, 2)
+    assert parent_phased.shape == (2, 2, 4)  # (n_parents, m, max_ploidy)
     unique = set(parent_phased.unique().tolist())
     assert unique <= {0, 1, -1}
 
@@ -705,11 +711,11 @@ def test_persist_rolls_back_on_partial_write(tmp_path, monkeypatch):
     prefix = tmp_path / "out" / "phased"
     prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    # Build a minimal PhasingResult
+    # Build a minimal PhasingResult (new shape conventions)
     r = PhasingResult(
-        haplotypes=torch.zeros(1, 4, 2, dtype=torch.int8),
-        origin_probs=torch.zeros(1, 4, 2, 4, dtype=torch.float64),
-        parent_phased=torch.zeros(2, 4, 2, dtype=torch.int8),
+        haplotypes=torch.zeros(1, 2, dtype=torch.int64),
+        origin_probs=torch.zeros(1, 2, 10, dtype=torch.float64),
+        parent_phased=torch.zeros(2, 2, 4, dtype=torch.int8),
         offspring_ids=["o1"],
         parent_ids=["p1", "p2"],
         variant_ids=["v1", "v2"],
