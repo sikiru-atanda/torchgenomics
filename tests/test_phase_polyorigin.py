@@ -1,6 +1,8 @@
 """Phase 56: polyploid phasing via PolyOrigin (Tier 1, always-on)."""
 from __future__ import annotations
 
+import platform
+import stat
 import sys
 from pathlib import Path
 
@@ -9,6 +11,7 @@ import pytest
 import torch
 
 import torchgwas.preprocess.phase_polyorigin as mod
+from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
 from torchgwas.preprocess.phase_polyorigin import (
     PhasingResult,
     _build_polyorigin_genofile,
@@ -309,3 +312,63 @@ def test_validate_warns_on_far_off_rows(caplog):
     with caplog.at_level("WARNING"):
         _ = _validate_inputs(probs, ["s1", "s2"], ["v1", "v2"], ploidy=4)
     assert any("renormaliz" in rec.message.lower() for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Julia discovery + version probe
+# ---------------------------------------------------------------------------
+
+def _make_fake_julia(parent_dir: Path, version: str) -> Path:
+    """Cross-platform stub 'julia' responding to --version."""
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    if platform.system() == "Windows":
+        p = parent_dir / "julia.bat"
+        p.write_text(f"@echo off\necho julia version {version}\n")
+    else:
+        p = parent_dir / "julia"
+        p.write_text(f'#!/bin/sh\necho "julia version {version}"\n')
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+    return p
+
+
+def test_find_existing_julia_via_explicit_path(tmp_path):
+    fj = _make_fake_julia(tmp_path, "1.10.2")
+    found = _find_existing_julia(override=str(fj))
+    assert found == str(fj) or Path(found).resolve() == Path(fj).resolve()
+
+
+def test_find_existing_julia_via_env_var(tmp_path, monkeypatch):
+    fj = _make_fake_julia(tmp_path, "1.10.2")
+    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    found = _find_existing_julia(override=None)
+    assert Path(found).resolve() == Path(fj).resolve()
+
+
+def test_find_existing_julia_nothing_returns_none(tmp_path, monkeypatch):
+    monkeypatch.delenv("TORCHGWAS_JULIA", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    # Also neutralize the common-paths search for the test
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    monkeypatch.setattr(rt, "_common_julia_paths", lambda: [])
+    found = _find_existing_julia(override=None)
+    assert found is None
+
+
+def test_probe_version_ok(tmp_path):
+    fj = _make_fake_julia(tmp_path, "1.10.2")
+    ok, ver = _probe_version(str(fj))
+    assert ok is True
+    assert ver == "1.10.2"
+
+
+def test_probe_version_too_low(tmp_path):
+    fj = _make_fake_julia(tmp_path, "1.8.5")
+    ok, ver = _probe_version(str(fj))
+    assert ok is False
+    assert ver == "1.8.5"
+
+
+def test_override_to_nonexistent_file_raises(tmp_path):
+    bogus = tmp_path / "does-not-exist"
+    with pytest.raises(ValueError, match="not.*exist|not a file"):
+        _find_existing_julia(override=str(bogus))
