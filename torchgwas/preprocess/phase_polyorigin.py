@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+import torch
 from torch import Tensor
 
 logger = logging.getLogger(__name__)
@@ -167,3 +168,73 @@ def _load_map_tsv(path: str, recomrate: float) -> pd.DataFrame:
         df["cm"] = df["pos_bp"].astype(float) * recomrate / 1e6
 
     return df[["marker", "chrom", "pos_bp", "cm"]]
+
+
+def _build_polyorigin_genofile(
+    probs: Tensor,
+    sample_ids: list[str],
+    variant_ids: list[str],
+    map_df: pd.DataFrame,
+    parent_phased_df: pd.DataFrame | None,
+    parent_ids: set[str],
+    workdir: str,
+) -> Path:
+    """Write the merged PolyOrigin genofile CSV.
+
+    Schema: ``marker, chromosome, pos, ind1, ind2, ..., indN``.
+    Offspring cells: probability strings ``p0|p1|...|pk`` (4 decimals).
+    Parents default to the same encoding; if ``parent_phased_df`` is
+    given, those parents use their ``phasedgeno`` strings instead and a
+    warning is logged for any parent present in both sources.
+
+    Variant order: ``map_df`` row order. Sample columns: parents
+    alphabetical, then offspring alphabetical.
+    """
+    if probs.dtype != torch.float64:
+        probs = probs.to(torch.float64)
+
+    n, m, _ = probs.shape
+    if len(sample_ids) != n:
+        raise ValueError(f"sample_ids length {len(sample_ids)} != probs.shape[0] {n}")
+    if len(variant_ids) != m:
+        raise ValueError(f"variant_ids length {len(variant_ids)} != probs.shape[1] {m}")
+
+    parents_sorted = sorted(parent_ids & set(sample_ids))
+    offspring_sorted = sorted(set(sample_ids) - parent_ids)
+    col_order = parents_sorted + offspring_sorted
+
+    if parent_phased_df is not None:
+        both = parent_ids & set(parent_phased_df.index) & set(sample_ids)
+        for pid in sorted(both):
+            logger.warning(
+                "Parent %s has both probs-encoded and pre-phased entries; "
+                "using pre-phased.",
+                pid,
+            )
+
+    sample_idx = {sid: i for i, sid in enumerate(sample_ids)}
+    map_sub = map_df.set_index("marker").loc[variant_ids]
+
+    rows: list[dict] = []
+    for j, vid in enumerate(variant_ids):
+        row = {
+            "marker": vid,
+            "chromosome": map_sub.loc[vid, "chrom"],
+            "pos": map_sub.loc[vid, "cm"],
+        }
+        for sid in col_order:
+            if (
+                sid in parent_ids
+                and parent_phased_df is not None
+                and sid in parent_phased_df.index
+            ):
+                row[sid] = str(parent_phased_df.loc[sid, vid])
+            else:
+                p = probs[sample_idx[sid], j, :].tolist()
+                row[sid] = "|".join(f"{v:.4f}" for v in p)
+        rows.append(row)
+
+    out = Path(workdir) / "genofile.csv"
+    cols = ["marker", "chromosome", "pos"] + col_order
+    pd.DataFrame(rows, columns=cols).to_csv(out, index=False)
+    return out

@@ -11,6 +11,7 @@ import torch
 import torchgwas.preprocess.phase_polyorigin as mod
 from torchgwas.preprocess.phase_polyorigin import (
     PhasingResult,
+    _build_polyorigin_genofile,
     _build_polyorigin_pedfile,
     _load_map_tsv,
 )
@@ -187,3 +188,79 @@ def test_load_map_missing_required_col_rejected(tmp_path):
     p.write_text("marker\tpos_bp\nv1\t1000\n")  # no chrom
     with pytest.raises(ValueError, match="chrom"):
         _load_map_tsv(str(p), recomrate=1.0)
+
+
+# ---------------------------------------------------------------------------
+# _build_polyorigin_genofile tests (Task 5)
+# ---------------------------------------------------------------------------
+
+def _minimal_map_df():
+    return pd.DataFrame({
+        "marker": ["v1", "v2"],
+        "chrom": ["1", "1"],
+        "pos_bp": [1000, 2000],
+        "cm": [0.001, 0.002],
+    })
+
+
+def test_genofile_probability_encoded_cells(tmp_path):
+    probs = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs[:, :, 2] = 1.0  # dosage 2 for everything
+    out = _build_polyorigin_genofile(
+        probs=probs,
+        sample_ids=["p1", "o1", "o2"],
+        variant_ids=["v1", "v2"],
+        map_df=_minimal_map_df(),
+        parent_phased_df=None,
+        parent_ids={"p1"},
+        workdir=str(tmp_path),
+    )
+    df = pd.read_csv(out)
+    assert list(df.columns[:3]) == ["marker", "chromosome", "pos"]
+    assert df["marker"].tolist() == ["v1", "v2"]
+    # Parents alphabetical, then offspring alphabetical
+    assert list(df.columns[3:]) == ["p1", "o1", "o2"]
+    assert df.loc[0, "p1"] == "0.0000|0.0000|1.0000|0.0000|0.0000"
+
+
+def test_genofile_parent_phased_escape_hatch(tmp_path):
+    probs = torch.zeros(2, 2, 5, dtype=torch.float64)
+    probs[:, :, 2] = 1.0
+    parent_phased = pd.DataFrame(
+        {"v1": ["1|0|1|0"], "v2": ["0|1|0|1"]}, index=["p1"]
+    )
+    parent_phased.index.name = "individual"
+    out = _build_polyorigin_genofile(
+        probs=probs,
+        sample_ids=["p1", "o1"],
+        variant_ids=["v1", "v2"],
+        map_df=_minimal_map_df(),
+        parent_phased_df=parent_phased,
+        parent_ids={"p1"},
+        workdir=str(tmp_path),
+    )
+    df = pd.read_csv(out)
+    assert df.loc[0, "p1"] == "1|0|1|0"
+    assert df.loc[0, "o1"].count("|") == 4  # 5 probability slots
+
+
+def test_genofile_parent_in_both_sources_prefers_phased(tmp_path, caplog):
+    probs = torch.zeros(2, 2, 5, dtype=torch.float64)
+    probs[:, :, 2] = 1.0
+    parent_phased = pd.DataFrame(
+        {"v1": ["1|0|1|0"], "v2": ["0|1|0|1"]}, index=["p1"]
+    )
+    parent_phased.index.name = "individual"
+    with caplog.at_level("WARNING"):
+        out = _build_polyorigin_genofile(
+            probs=probs,
+            sample_ids=["p1", "o1"],
+            variant_ids=["v1", "v2"],
+            map_df=_minimal_map_df(),
+            parent_phased_df=parent_phased,
+            parent_ids={"p1"},
+            workdir=str(tmp_path),
+        )
+    df = pd.read_csv(out)
+    assert df.loc[0, "p1"] == "1|0|1|0"
+    assert any("pre-phased" in rec.message.lower() for rec in caplog.records)
