@@ -8,10 +8,13 @@ for the full design.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 import torch
@@ -444,3 +447,234 @@ def _parse_maprefined(
 def _parse_polyancestry(path: str) -> pd.DataFrame:
     """Return the raw DataFrame of the *_polyancestry.csv — diagnostic output."""
     return pd.read_csv(path)
+
+
+# ---------------------------------------------------------------------------
+# Module-level JuliaError alias (Task 10)
+# Tests monkeypatch this name directly:
+#   monkeypatch.setattr("torchgwas.preprocess.phase_polyorigin._JULIA_ERROR", FakeClass)
+# The placeholder is a plain Exception subclass so that the module imports
+# cleanly without touching juliacall (which would trigger Julia init).
+# run_polyorigin replaces this in the module namespace after juliacall is
+# already initialised by get_runtime(), so production catches the real class.
+# ---------------------------------------------------------------------------
+
+
+class _JULIA_ERROR(Exception):  # placeholder; replaced lazily inside run_polyorigin
+    """Placeholder for juliacall.JuliaError — swapped out lazily at runtime."""
+
+
+# ---------------------------------------------------------------------------
+# SHA-256 helpers
+# ---------------------------------------------------------------------------
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(_HASH_CHUNK_BYTES), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _sha256_str(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Main orchestration entry point
+# ---------------------------------------------------------------------------
+
+def run_polyorigin(
+    probs: Tensor | str,
+    pedigree_tsv: str,
+    map_tsv: str,
+    output_path: str,
+    *,
+    ploidy: int,
+    sample_ids: Optional[list[str]] = None,
+    variant_ids: Optional[list[str]] = None,
+    parent_phased_csv: Optional[str] = None,
+    julia_path: Optional[str] = None,
+    auto_install_julia: bool = False,
+    refinemap: bool = True,
+    recomrate: float = 1.0,
+    nworkers: int = 1,
+    seed: Optional[int] = 1234,
+    keep_workdir: bool = False,
+) -> PhasingResult:
+    """Run PolyOrigin phasing end-to-end. See design spec Section 2.2."""
+    # Resolve probs input — tensor directly, or path to a .probs.pt
+    if isinstance(probs, str):
+        loaded = torch.load(probs)
+        if isinstance(loaded, dict):
+            probs_t = loaded["probs"]
+            sample_ids = sample_ids or loaded.get("sample_ids")
+            variant_ids = variant_ids or loaded.get("variant_ids")
+        else:
+            probs_t = loaded
+    else:
+        probs_t = probs
+
+    if sample_ids is None or variant_ids is None:
+        raise ValueError(
+            "sample_ids and variant_ids are required when probs is a "
+            "tensor (or a .pt that doesn't carry them as keys)."
+        )
+
+    probs_t = _validate_inputs(probs_t, sample_ids, variant_ids, ploidy)
+
+    # Parse map first so we know cm positions for the genofile builder
+    map_df = _load_map_tsv(map_tsv, recomrate=recomrate)
+
+    # Parent-phased escape hatch
+    parent_phased_df: Optional[pd.DataFrame] = None
+    if parent_phased_csv is not None:
+        parent_phased_df = pd.read_csv(parent_phased_csv).set_index("individual")
+
+    # Import the runtime late to avoid heavy import at module load
+    from torchgwas.preprocess import _polyorigin_runtime as _rt
+
+    # Build tempdir and converted files
+    with tempfile.TemporaryDirectory(prefix="polyorigin_") as _tmp:
+        workdir = (
+            Path(tempfile.mkdtemp(prefix="polyorigin_keep_"))
+            if keep_workdir
+            else Path(_tmp)
+        )
+
+        # We need parent_ids from the pedigree TSV; parse once and derive.
+        user_ped = pd.read_csv(pedigree_tsv, sep="\t")
+        parent_ids = set(user_ped["parent1"]) | set(user_ped["parent2"])
+
+        pedfile = _build_polyorigin_pedfile(
+            pedigree_tsv,
+            ploidy_default=ploidy,
+            sample_ids_in_probs=set(sample_ids),
+            workdir=str(workdir),
+        )
+        genofile = _build_polyorigin_genofile(
+            probs=probs_t,
+            sample_ids=sample_ids,
+            variant_ids=variant_ids,
+            map_df=map_df,
+            parent_phased_df=parent_phased_df,
+            parent_ids=parent_ids,
+            workdir=str(workdir),
+        )
+
+        # Compute input hash (genofile + pedfile + original map file)
+        combined = (
+            _sha256_file(str(genofile))
+            + _sha256_file(str(pedfile))
+            + _sha256_file(map_tsv)
+        )
+        input_hash = _sha256_str(combined)
+
+        # Bootstrap Julia + invoke PolyOrigin
+        jl, po, tool_version = _rt.get_runtime(
+            julia_path=julia_path,
+            auto_install_julia=auto_install_julia,
+        )
+        cmd_str = (
+            f'polyOrigin("{genofile.name}", "{pedfile.name}", '
+            f'workdir="{workdir}", isphysmap=false, refinemap={str(refinemap).lower()}, '
+            f'nworkers={nworkers}, seed={seed}, outstem="out")'
+        )
+        try:
+            po.polyOrigin(
+                str(genofile),
+                str(pedfile),
+                workdir=str(workdir),
+                isphysmap=False,
+                refinemap=refinemap,
+                nworkers=nworkers,
+                seed=seed,
+                outstem="out",
+            )
+        except _JULIA_ERROR as e:
+            raise RuntimeError(f"PolyOrigin failed: {e}") from e
+
+        # Validate the full set of output CSVs exist
+        expected = [
+            "out_genoprob.csv",
+            "out_postdoseprob.csv",
+            "out_parentphased.csv",
+            "out_maprefined.csv",
+            "out_polyancestry.csv",
+        ]
+        for fname in expected:
+            p = workdir / fname
+            if not p.is_file():
+                raise RuntimeError(
+                    f"PolyOrigin returned but expected output file missing: {fname}. "
+                    f"Check the Julia log at {workdir / 'out.log'}."
+                )
+
+        # Identify offspring / parents from the constructed pedfile
+        ped_df = pd.read_csv(pedfile)
+        parents = ped_df[ped_df["population"] == 0]["individual"].astype(str).tolist()
+        offspring = ped_df[ped_df["population"] != 0]["individual"].astype(str).tolist()
+        max_ploidy = int(ped_df["ploidy"].max())
+        per_ind_ploidy = dict(
+            zip(ped_df["individual"].astype(str), ped_df["ploidy"].astype(int))
+        )
+
+        # Parse outputs
+        chrom_ref, var_ids_ref, pos_cm_ref = _parse_maprefined(
+            str(workdir / "out_maprefined.csv"),
+            expected_markers=variant_ids,
+        )
+        map_refined_flag = var_ids_ref != variant_ids
+        origin_probs, _ = _parse_genoprob(
+            str(workdir / "out_genoprob.csv"),
+            expected_offspring=offspring,
+            ploidy=max_ploidy,
+        )
+        postdose_probs, _ = _parse_postdose(
+            str(workdir / "out_postdoseprob.csv"),
+            expected_offspring=offspring,
+            max_ploidy=max_ploidy,
+        )
+        parent_phased, _ = _parse_parentphased(
+            str(workdir / "out_parentphased.csv"),
+            expected_parents=parents,
+            max_ploidy=max_ploidy,
+        )
+        valent_diag = _parse_polyancestry(str(workdir / "out_polyancestry.csv"))
+
+        # Derive haplotypes as argmax of origin_probs along last axis → int8
+        haplotypes = origin_probs.argmax(dim=-1).to(torch.int8)
+
+        # Build map-based tensors on the refined order
+        map_df_ref = map_df.set_index("marker").loc[var_ids_ref]
+        pos_bp = torch.tensor(map_df_ref["pos_bp"].to_numpy(), dtype=torch.int64)
+
+        result = PhasingResult(
+            haplotypes=haplotypes,
+            origin_probs=origin_probs,
+            parent_phased=parent_phased,
+            offspring_ids=offspring,
+            parent_ids=parents,
+            variant_ids=var_ids_ref,
+            chrom=chrom_ref,
+            pos_bp=pos_bp,
+            pos_cm=pos_cm_ref,
+            per_individual_ploidy=per_ind_ploidy,
+            map_refined=map_refined_flag,
+            valent_diag=valent_diag,
+            postdose_probs=postdose_probs,
+            tool="polyorigin",
+            tool_version=tool_version,
+            input_hash=input_hash,
+            cmd=cmd_str,
+            workdir=str(workdir) if keep_workdir else None,
+        )
+
+        # Atomic persistence — only after every parse succeeds
+        _persist_result(result, output_path)
+        return result
+
+
+def _persist_result(result: PhasingResult, output_path: str) -> None:
+    """Placeholder — implemented in Task 11."""
+    pass

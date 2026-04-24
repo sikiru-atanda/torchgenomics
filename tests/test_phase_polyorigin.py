@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import platform
+import shutil as _shutil
 import stat
 import sys
 from pathlib import Path
@@ -24,6 +25,8 @@ from torchgwas.preprocess.phase_polyorigin import (
     _parse_postdose,
     _validate_inputs,
 )
+
+# Task 10: run_polyorigin (imported later in test functions to allow ImportError detection)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "phase_polyorigin"
 
@@ -517,3 +520,176 @@ def test_parse_polyancestry_returns_dataframe():
     df = _parse_polyancestry(str(FIXTURES / "out_polyancestry.csv"))
     assert "marker" in df.columns
     assert "valent" in df.columns
+
+
+# ---------------------------------------------------------------------------
+# Task 10: run_polyorigin orchestration tests
+# ---------------------------------------------------------------------------
+
+def _stub_runtime(workdir_spy: dict):
+    """Return a fake PolyOrigin module that copies the canned fixtures
+    into the workdir so the parser path can run end-to-end.
+    """
+    class FakePO:
+        @staticmethod
+        def polyOrigin(genofile, pedfile, **kwargs):
+            workdir_spy["genofile"] = genofile
+            workdir_spy["pedfile"] = pedfile
+            wd = Path(kwargs["workdir"])
+            outstem = kwargs.get("outstem", "out")
+            for name in ("genoprob", "postdoseprob", "parentphased",
+                         "maprefined", "polyancestry"):
+                _shutil.copy(
+                    FIXTURES / f"out_{name}.csv",
+                    wd / f"{outstem}_{name}.csv",
+                )
+            return None
+
+    class FakeMain:  # juliacall Main proxy
+        PolyOrigin = FakePO
+
+    return FakeMain, FakePO, "1.0.3-fake"
+
+
+def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+
+    # Stub the runtime — no Julia touched
+    spy: dict = {}
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
+
+    # Minimal inputs: 1 parent, 1 offspring (edge case — but shape is what we're testing)
+    probs = torch.zeros(2, 2, 5, dtype=torch.float64)
+    probs[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text("offspring\tparent1\tparent2\no1\tp1\tp1\n")  # selfing
+    # NOTE: the parentphased fixture ships p1 + p2; for this test we align
+    # on a 2-parent setup — regenerate ped/map to match the fixture.
+    ped.write_text("offspring\tparent1\tparent2\no1\tp1\tp2\n")
+    probs3 = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs3[:, :, 2] = 1.0
+
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    result = run_polyorigin(
+        probs=probs3,
+        pedigree_tsv=str(ped),
+        map_tsv=str(mp),
+        output_path=str(out_prefix),
+        ploidy=4,
+        sample_ids=["p1", "p2", "o1"],
+        variant_ids=["v1", "v2"],
+        auto_install_julia=False,  # stubbed away
+    )
+
+    assert isinstance(result, PhasingResult)
+    assert result.tool == "polyorigin"
+    assert result.per_individual_ploidy["o1"] == 4
+    # Task 11: uncomment once _persist_result is implemented
+    # assert Path(f"{out_prefix}.haplotypes.pt").is_file()
+    # assert Path(f"{out_prefix}.origin_probs.pt").is_file()
+    # assert Path(f"{out_prefix}.parent_phased.pt").is_file()
+    # assert Path(f"{out_prefix}.postdose_probs.pt").is_file()
+    # assert Path(f"{out_prefix}.meta.json").is_file()
+    # meta = json.loads(Path(f"{out_prefix}.meta.json").read_text())
+    # assert meta["tool_version"] == "1.0.3-fake"
+    # assert "input_hash" in meta
+
+
+def test_run_polyorigin_partial_failure_no_persistent_output(tmp_path, monkeypatch):
+    """If the runtime 'succeeds' but emits fewer CSVs than expected, we
+    must raise AND leave no <output>.* artifacts."""
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+
+    def _bad_runtime():
+        class FakePO:
+            @staticmethod
+            def polyOrigin(genofile, pedfile, **kwargs):
+                wd = Path(kwargs["workdir"])
+                # Only write 2 of the 5 expected CSVs
+                _shutil.copy(FIXTURES / "out_genoprob.csv", wd / "out_genoprob.csv")
+                _shutil.copy(FIXTURES / "out_parentphased.csv", wd / "out_parentphased.csv")
+                return None
+
+        class FakeMain:
+            PolyOrigin = FakePO
+        return FakeMain, FakePO, "1.0.3-fake"
+
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: _bad_runtime())
+
+    probs3 = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs3[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text("offspring\tparent1\tparent2\no1\tp1\tp2\n")
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(RuntimeError, match="missing|parse"):
+        run_polyorigin(
+            probs=probs3,
+            pedigree_tsv=str(ped),
+            map_tsv=str(mp),
+            output_path=str(out_prefix),
+            ploidy=4,
+            sample_ids=["p1", "p2", "o1"],
+            variant_ids=["v1", "v2"],
+            auto_install_julia=False,
+        )
+
+    # No persistent artifacts
+    assert not Path(f"{out_prefix}.haplotypes.pt").exists()
+    assert not Path(f"{out_prefix}.meta.json").exists()
+
+
+def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
+    """juliacall.JuliaError raised by polyOrigin() → RuntimeError with __cause__."""
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+
+    class FakeJuliaError(Exception):
+        pass
+
+    class FakePO:
+        @staticmethod
+        def polyOrigin(*a, **kw):
+            raise FakeJuliaError("convergence failed")
+
+    class FakeMain:
+        PolyOrigin = FakePO
+
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: (FakeMain, FakePO, "1.0.3-fake"))
+    # Also patch juliacall.JuliaError to our fake class so our except clause matches
+    monkeypatch.setattr(
+        "torchgwas.preprocess.phase_polyorigin._JULIA_ERROR",
+        FakeJuliaError,
+    )
+
+    probs3 = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs3[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text("offspring\tparent1\tparent2\no1\tp1\tp2\n")
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(RuntimeError, match="PolyOrigin failed") as ei:
+        run_polyorigin(
+            probs=probs3,
+            pedigree_tsv=str(ped),
+            map_tsv=str(mp),
+            output_path=str(out_prefix),
+            ploidy=4,
+            sample_ids=["p1", "p2", "o1"],
+            variant_ids=["v1", "v2"],
+            auto_install_julia=False,
+        )
+    assert isinstance(ei.value.__cause__, FakeJuliaError)
