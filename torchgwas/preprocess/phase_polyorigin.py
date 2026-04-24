@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 from torch import Tensor
@@ -41,3 +42,92 @@ class PhasingResult:
     input_hash: str
     cmd: str
     workdir: str | None
+
+
+def _build_polyorigin_pedfile(
+    user_tsv: str,
+    ploidy_default: int,
+    sample_ids_in_probs: set[str],
+    workdir: str,
+) -> Path:
+    """Convert user 3-col pedigree TSV to PolyOrigin's native pedfile.
+
+    User TSV schema: ``offspring\\tparent1\\tparent2[\\tploidy]``.
+    Output CSV schema: ``individual,population,motherid,fatherid,ploidy``.
+
+    Founders: ``motherid=fatherid=0, population=0``. Offspring: integer
+    ``population`` grouped by unique ``(parent1, parent2)`` pair, starting
+    from 1. Per-individual ploidy from optional TSV column, else the
+    ``ploidy_default`` fallback.
+    """
+    df = pd.read_csv(user_tsv, sep="\t")
+    required = {"offspring", "parent1", "parent2"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"pedigree TSV missing required column(s): {sorted(missing)}. "
+            "Expected header: offspring, parent1, parent2 (optional: ploidy)."
+        )
+    has_ploidy_col = "ploidy" in df.columns
+
+    dups = df[df.duplicated("offspring", keep=False)]["offspring"].unique().tolist()
+    if dups:
+        raise ValueError(f"pedigree TSV has duplicate offspring IDs: {dups}")
+
+    offspring_set = set(df["offspring"])
+    parents_set = set(df["parent1"]) | set(df["parent2"])
+
+    multigen = parents_set & offspring_set
+    if multigen:
+        raise ValueError(
+            f"PolyOrigin models F1 + founder selfings only; multi-generation "
+            f"pedigrees not supported. Offending parent(s) also present as "
+            f"offspring: {sorted(multigen)}."
+        )
+
+    all_ped = offspring_set | parents_set
+    missing_in_probs = all_ped - sample_ids_in_probs
+    if missing_in_probs:
+        missing_list = sorted(missing_in_probs)[:10]
+        raise ValueError(
+            f"pedigree references {len(missing_in_probs)} individual(s) missing "
+            f"from the probs sample set (first 10: {missing_list})."
+        )
+
+    fam_keys = list(dict.fromkeys(zip(df["parent1"], df["parent2"])))
+    fam_pop = {pair: i + 1 for i, pair in enumerate(fam_keys)}
+
+    # Assign each founder a 1-based integer index; offspring motherid/fatherid
+    # reference these indices so the column is uniformly integer (PolyOrigin
+    # identifies families via population, not by name cross-reference).
+    sorted_parents = sorted(parents_set)
+    parent_idx = {name: i + 1 for i, name in enumerate(sorted_parents)}
+
+    rows: list[dict] = []
+    for parent_id in sorted_parents:
+        rows.append({
+            "individual": parent_id,
+            "population": 0,
+            "motherid": 0,
+            "fatherid": 0,
+            "ploidy": ploidy_default,
+        })
+    for _, r in df.iterrows():
+        ploidy = (
+            int(r["ploidy"])
+            if has_ploidy_col and pd.notna(r.get("ploidy"))
+            else ploidy_default
+        )
+        rows.append({
+            "individual": str(r["offspring"]),
+            "population": fam_pop[(r["parent1"], r["parent2"])],
+            "motherid": parent_idx[r["parent1"]],
+            "fatherid": parent_idx[r["parent2"]],
+            "ploidy": ploidy,
+        })
+
+    out = Path(workdir) / "pedfile.csv"
+    pd.DataFrame(
+        rows, columns=["individual", "population", "motherid", "fatherid", "ploidy"]
+    ).to_csv(out, index=False)
+    return out
