@@ -767,3 +767,82 @@ def test_cli_phase_poly_help():
         assert flag in res.stdout, (
             f"Flag {flag!r} missing from phase-poly --help output:\n{res.stdout}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 13: Tier 1 top-up tests
+# ---------------------------------------------------------------------------
+
+def test_meta_json_hash_matches_inputs(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+
+    spy: dict = {}
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
+
+    probs3 = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs3[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text("offspring\tparent1\tparent2\no1\tp1\tp2\n")
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    result = run_polyorigin(
+        probs=probs3,
+        pedigree_tsv=str(ped), map_tsv=str(mp),
+        output_path=str(out_prefix),
+        ploidy=4,
+        sample_ids=["p1", "p2", "o1"], variant_ids=["v1", "v2"],
+        auto_install_julia=False,
+    )
+
+    meta = json.loads(Path(f"{out_prefix}.meta.json").read_text())
+    assert meta["input_hash"] == result.input_hash
+    # Julia cmd captured for reproducibility
+    assert "polyOrigin" in meta["cmd"]
+
+
+def test_mixed_ploidy_per_row_honored(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+
+    spy: dict = {}
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
+
+    probs3 = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs3[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text(
+        "offspring\tparent1\tparent2\tploidy\n"
+        "o1\tp1\tp2\t4\n"
+    )
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    result = run_polyorigin(
+        probs=probs3,
+        pedigree_tsv=str(ped), map_tsv=str(mp),
+        output_path=str(out_prefix),
+        ploidy=4,
+        sample_ids=["p1", "p2", "o1"], variant_ids=["v1", "v2"],
+        auto_install_julia=False,
+    )
+    assert result.per_individual_ploidy["o1"] == 4
+    assert result.per_individual_ploidy["p1"] == 4
+
+
+def test_env_override_wins_over_path(tmp_path, monkeypatch):
+    from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia
+
+    path_bin = tmp_path / "path_bin"
+    env_bin = tmp_path / "env_bin"
+    _make_fake_julia(path_bin, "1.10.0")
+    env_julia = _make_fake_julia(env_bin, "1.10.2")
+    monkeypatch.setenv("PATH", str(path_bin))
+    monkeypatch.setenv("TORCHGWAS_JULIA", str(env_julia))
+    found = _find_existing_julia(override=None)
+    assert Path(found).resolve() == Path(env_julia).resolve()
