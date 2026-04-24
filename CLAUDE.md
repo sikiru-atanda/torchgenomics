@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TorchGWAS** is a modular Python library for GPU-accelerated Genome-Wide Association Studies (GWAS) using PyTorch. It replicates and extends functionality from established tools like GEMMA and GAPIT, targeting 4th-decimal-place agreement with their p-values. Supports both diploid and polyploid organisms.
 
-**Status**: Active development. Version 0.1.1 (Alpha). 2192 tests pass, 45 skipped. V1 core (Phases 0–13) complete with GEMMA/GAPIT reference equivalence; post-V1 extensions implemented through Phase 49b. See the **Phase Index** below for scope, and `git log --grep="Phase NN"` for per-phase details (every phase was shipped as a labeled commit).
+**Status**: Active development. Version 0.1.1 (Alpha). 2192 tests pass, 45 skipped. V1 core (Phases 0–13) complete with GEMMA/GAPIT reference equivalence; post-V1 extensions implemented through Phase 56. See the **Phase Index** below for scope, and `git log --grep="Phase NN"` for per-phase details (every phase was shipped as a labeled commit).
 
 ## Planned Architecture
 
@@ -53,7 +53,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 36 as of Phase 55 (adds `dosage-call`; see CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
+- **CLI subcommand count**: 37 as of Phase 56 (adds `phase-poly`; see CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
 
 ## Phase Index
 
@@ -89,6 +89,8 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Phase 47** — Multi-env / multi-trait / MT-MET haplotype GWAS (thin composition over Phase 25 / 39 / 46)
 - **Phase 48** — NCBI gene annotation (`torchgwas.annotate`); `annotate` CLI; `requests` runtime dep added
 - **Phases 49 + 49b** — GRM-corrected causal mediation (`torchgwas.multiomics`); multi-kernel h²; GPU-batched scan; gene-set Wald; eigenMT FDR; coloc prefilter; `mediate` / `mediate-scan` CLI
+- **Phase 55** — Polyploid allele dosage calling (`torchgwas.preprocess.dosage_call`); updog wrapper; `dosage-call` CLI; 28 Tier 1 + 4 Tier 2 tests
+- **Phase 56** — Polyploid F1 phasing (`torchgwas.preprocess.polyploid_phase`); PolyOrigin Julia wrapper; pedigree/map/probs pipeline; `phase-poly` CLI; 43 Tier 1 + 4 Tier 2 scaffolds
 
 ## Canonical Reference
 
@@ -126,6 +128,10 @@ torchgwas impute --genotype data.vcf.gz --method deep-learning --output imp.pt
 
 # --- Polyploid allele dosage calling (Phase 55) ---
 torchgwas dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4 --model norm
+
+# --- Polyploid F1 phasing (Phase 56) ---
+torchgwas phase-poly --probs out/dcall.probs.pt --pedigree ped.tsv \
+    --map markers.tsv --output out/phased --ploidy 4
 
 # --- GWAS scans ---
 torchgwas glm-scan --genotype data.bed --phenotype pheno.txt --output results

@@ -135,19 +135,6 @@ to any of these — each needs a brainstorming pass before execution.
   pitfalls. The R wrapper is installable but not on CRAN; a CRAN
   submission requires tests that don't touch the internet and a
   vignette that walks through a published dataset.
-- **Phase 56 — Polyploid phasing.** Scope pending a separate brainstorm
-  once Phase 55 lands. The current
-  `torchgwas.preprocess.phase.phase_beagle` wrapper is diploid-only
-  (BEAGLE 5.x does not phase polyploids, contrary to the old docstring —
-  fixed alongside this roadmap entry). Downstream haplotype scanners
-  (Phase 46/47) are already ploidy-generic, so the gap is strictly on
-  the *producer* side. Candidate tools to wrap: **PolyOrigin**
-  (pedigree-aware, autotetraploid — Zheng et al. 2021; de-facto reference
-  in potato/alfalfa breeding), **TetraOrigin** (F1 populations),
-  **hapCON**, and **PolyPhase** (unrelated / F2 / hexaploid cases).
-  Validation target: round-trip a published tetraploid potato dataset
-  (GWASpoly benchmark) through the new wrappers and confirm haplotype
-  scan results match the same data phased externally.
 
 Ongoing maintenance items (not phases, but worth listing so they don't
 get forgotten):

@@ -1,6 +1,6 @@
 # CLI Reference
 
-TorchGWAS ships a single entry point, `torchgwas`, with 35 subcommands. Every
+TorchGWAS ships a single entry point, `torchgwas`, with 37 subcommands. Every
 subcommand accepts `--help` for full argument listings.
 
 ```bash
@@ -57,6 +57,55 @@ options:
                         Fix sequencing error rate (default: estimate)
   --n-cores N_CORES     Parallelism passed to updog::multidog (default: 1)
   --keep-tmpdir         Skip tempdir cleanup (debug aid)
+```
+
+## Polyploid F1 phasing (Phase 56)
+
+Phase a polyploid F1 population using
+[PolyOrigin](https://github.com/chaozhi/PolyOrigin.jl) (Zheng et al. 2021).
+Reads posterior dosage probabilities from `dosage-call` and a pedigree TSV,
+runs PolyOrigin via Julia (auto-installed on first use if absent), and writes
+a haplotype tensor plus per-marker recombination estimates.
+
+```bash
+torchgwas phase-poly --probs out/dcall.probs.pt --pedigree ped.tsv \
+                     --map markers.tsv --output out/phased --ploidy 4
+```
+
+```text
+usage: torchgwas phase-poly [-h] --probs PROBS --pedigree PEDIGREE --map MAP
+                            --output OUTPUT --ploidy {2,4,6}
+                            [--parent-phased PARENT_PHASED] [--no-refinemap]
+                            [--recomrate RECOMRATE] [--julia-path JULIA_PATH]
+                            [--auto-install | --no-auto-install]
+                            [--keep-workdir]
+
+options:
+  -h, --help            show this help message and exit
+  --probs PROBS         Path to .probs.pt from 'dosage-call' (raw (n,m,k+1)
+                        tensor or dict). If a raw tensor, the sibling
+                        <prefix>.meta.json is read for sample/variant IDs.
+  --pedigree PEDIGREE   TSV with columns: offspring, parent1, parent2
+                        (optional: ploidy)
+  --map MAP             TSV with columns: marker, chrom, pos_bp (optional: cm)
+  --output OUTPUT       Output prefix; writes <prefix>.haplotypes.pt etc.
+  --ploidy {2,4,6}      Organism ploidy (2, 4, or 6)
+  --parent-phased PARENT_PHASED
+                        Optional CSV of pre-phased parent genotypes (escape
+                        hatch)
+  --no-refinemap        Disable PolyOrigin's map refinement (default: enabled)
+  --recomrate RECOMRATE
+                        cM/Mb to synthesize genetic positions when --map lacks
+                        a cm column (default: 1.0)
+  --julia-path JULIA_PATH
+                        Path to an existing Julia binary; else discovered or
+                        auto-installed
+  --auto-install        Auto-install Julia if not found (non-interactive; sets
+                        consent=True)
+  --no-auto-install     Refuse to auto-install Julia (non-interactive; sets
+                        consent=False)
+  --keep-workdir        Do not delete the temp work directory after success
+                        (debug aid)
 ```
 
 ## GWAS scans
