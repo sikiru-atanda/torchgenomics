@@ -251,7 +251,6 @@ workdir/out_parentphased.csv     (phased parent genotypes)      PolyOrigin
 workdir/out_maprefined.csv       (refined genetic map)          PolyOrigin
 workdir/out_polyancestry.csv     (valent configs, diagnostics)  PolyOrigin
 workdir/out.log                                                 PolyOrigin
-workdir/done.marker              (Python-written in try/finally after the jl call)
 │
 ▼ _parse_polyorigin_outputs (pandas; ID-keyed; no positional assumption)
 │   origin_probs   ← out_genoprob.csv
@@ -280,7 +279,7 @@ origin_probs → optional future haplotype-origin GWAS consumer (captured for fr
 
 **Workdir lifecycle**: `tempfile.TemporaryDirectory()` scoped to the call. Auto-cleanup on exit (incl. exceptions). `keep_workdir=True` suppresses cleanup and records the path on `PhasingResult.workdir` for debugging.
 
-**Atomicity**: persistent `<output>.*` artifacts are written only after `done.marker` is present and every expected output CSV parses. Partial Julia failure → workdir briefly exists (unless `keep_workdir=True`) but nothing user-visible appears at `<output>.*`.
+**Atomicity**: persistent `<output>.*` artifacts are written only after `jl.PolyOrigin.polyOrigin()` returns without raising AND every expected output CSV parses. Partial Julia failure → `juliacall.JuliaError` propagates, workdir briefly exists (unless `keep_workdir=True`), and nothing user-visible appears at `<output>.*`. No separate `done.marker` is used — under `juliacall` there is no ambiguous "exited 0 without finishing" state, so a successful return from `polyOrigin()` is itself the completion signal.
 
 **Ordering**: the merged genofile writes rows in map-TSV order and columns in (map cols 1–3, parents alphabetically, offspring alphabetically) order. PolyOrigin preserves marker and individual IDs in its output CSVs; Python parses with `index_col=0` — never positional.
 
@@ -304,7 +303,7 @@ Four failure classes, each with a deterministic response. Mirrors Phase 55's tax
 | `julia_path=` or `TORCHGWAS_JULIA` points to a nonexistent/non-executable file | `ValueError` |
 | Managed install network failure | Propagate juliacall's exception; point to `~/.julia/logs/juliapkg.log` |
 | PolyOrigin.jl install fails (transient network, Git host down) | `RuntimeError` with `Pkg.resolve()` recovery pointer |
-| First-call JIT cost (30–60 s) | `logger.info(...)` single line; not an error |
+| First-call startup cost (cold: ~30 s to ~2 min for Julia download + Pkg.instantiate + PolyOrigin precompile; warm same-process: seconds) | `logger.info(...)` single line; not an error |
 | Runtime cached | `get_runtime` is memoized on `(_jl, _polyorigin, _version)`; subsequent calls skip all of steps 1–6 |
 
 No silent fallback to a Python reimplementation. Always-external-or-error.
@@ -331,8 +330,8 @@ No silent fallback to a Python reimplementation. Always-external-or-error.
 ### 4.3 Julia exception mapping
 
 - `juliacall.JuliaError` raised inside `polyOrigin()` → `RuntimeError(f"PolyOrigin failed: {exc}")`, preserving the Julia stacktrace via `__cause__`.
-- Call completed but `done.marker` missing → `RuntimeError("PolyOrigin call returned but produced no done.marker — check the Julia log in the workdir.")`.
-- Call completed, `done.marker` present, but an expected output CSV missing → `RuntimeError` naming the file.
+- Call returned but an expected output CSV missing → `RuntimeError` naming the file (plus a pointer to the Julia log in the workdir).
+- Output CSV present but unparseable (corrupt, truncated) → `RuntimeError` naming the file + parse error.
 - No subprocess timeout path (no subprocess); long hangs surface as Python hangs, interruptible via Ctrl-C.
 
 ### 4.4 Output validation
@@ -398,8 +397,8 @@ File: `tests/test_phase_polyorigin.py`. No Julia involved. `_polyorigin_runtime.
 | | `julia_path=` to nonexistent file → `ValueError` |
 | Runtime stubbing | Monkeypatched runtime writes canned CSVs → correct `PhasingResult` shape, IDs, tensors parse |
 | | Monkeypatched runtime raises `JuliaError` → `RuntimeError` preserving `__cause__` |
-| | Runtime returns but no `done.marker` → `RuntimeError` |
-| | Missing output CSV post-run → `RuntimeError` naming file |
+| | Runtime returns but expected output CSV missing → `RuntimeError` naming file |
+| | Runtime returns output CSV that fails to parse → `RuntimeError` with parse error |
 | Output parsing | `*_genoprob.csv` → correct shape + row sums |
 | | argmax → valid haplotype int values |
 | | `*_parentphased.csv` → values in `{0,1}` |
@@ -489,14 +488,30 @@ torchgwas dosage-call  --vcf calls.vcf.gz              --output out/dcall  --plo
 torchgwas phase-poly   --probs out/dcall.probs.pt      --pedigree ped.tsv \
                        --map markers.tsv               --output out/phased --ploidy 4
 
-python -c "
+python <<'PY'
 import torch
 from torchgwas.models import HaplotypeGWAS
-haps = torch.load('out/phased.haplotypes.pt')
-scanner = HaplotypeGWAS(haplotypes=haps, ploidy=4)
-# ... feed phenotype + run
-"
+from torchgwas.preprocess.dosage_uncertainty import expected_dosage
+
+# Phase-56 phased haplotypes (refined-map order)
+haps = torch.load('out/phased.haplotypes.pt')            # (n_off, 4, m)
+
+# HaplotypeGWAS.scan() requires G (dosage) + Y + haplotypes on the *same*
+# variant ordering. Rebuild G from the postdose posteriors emitted by
+# phase-poly — these follow the refined map, matching `haps`.
+postdose = torch.load('out/phased.postdose_probs.pt')    # (n_off, m, 5)
+G = expected_dosage(postdose, ploidy=4)                  # (n_off, m)
+Y = torch.load('pheno.pt')                               # user-supplied (n_off,)
+
+scanner = HaplotypeGWAS(method="block", test="f_test", ploidy=4)
+result = scanner.scan(Y=Y, G=G, haplotypes=haps)
+PY
 ```
+
+The recipe assumes `pheno.pt` sample order matches the offspring order in
+`out/phased.haplotypes.pt` (same order as `<output>.meta.json`'s
+`offspring_ids`). The `docs/getting-started/` walkthrough covers the
+re-alignment step on realistic data.
 
 ### Deferred cleanup (not Phase 56)
 
@@ -552,7 +567,9 @@ Recorded so the implementation plan doesn't re-litigate:
 **Modified files**:
 - `torchgwas/cli.py` — one new subcommand (`phase-poly`) + argparse entry.
 - `torchgwas/preprocess/__init__.py` — re-export `run_polyorigin`, `PhasingResult`.
-- `pyproject.toml` — add `[project.optional-dependencies]` entry for `polyploid-phase = ["juliacall>=0.9"]`; include `juliapkg.json` as package data.
+- `pyproject.toml` — two edits:
+  - `[project.optional-dependencies]` gains `polyploid-phase = ["juliacall>=0.9"]`.
+  - `[tool.setuptools.package-data]` gains `"torchgwas.preprocess" = ["juliapkg.json"]` so the Julia dep manifest ships in the wheel (currently the block only declares `"torchgwas._native" = ["*.pyi"]`).
 - `docs/ROADMAP.md` — remove the Phase 56 entry on ship.
 - `docs/cli.md` — `torchgwas phase-poly --help` capture.
 - `CLAUDE.md` — add `phase-poly` to CLI commands; bump subcommand count from 36 to 37.
