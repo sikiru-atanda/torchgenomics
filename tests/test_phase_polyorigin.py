@@ -14,6 +14,7 @@ from torchgwas.preprocess.phase_polyorigin import (
     _build_polyorigin_genofile,
     _build_polyorigin_pedfile,
     _load_map_tsv,
+    _validate_inputs,
 )
 
 
@@ -264,3 +265,47 @@ def test_genofile_parent_in_both_sources_prefers_phased(tmp_path, caplog):
     df = pd.read_csv(out)
     assert df.loc[0, "p1"] == "1|0|1|0"
     assert any("pre-phased" in rec.message.lower() for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# _validate_inputs tests (Task 6)
+# ---------------------------------------------------------------------------
+
+def test_validate_rejects_bad_ploidy():
+    probs = torch.zeros(2, 2, 5, dtype=torch.float64)
+    probs[:, :, 0] = 1.0
+    with pytest.raises(ValueError, match=r"ploidy.*2.*4.*6"):
+        _validate_inputs(probs, ["s1", "s2"], ["v1", "v2"], ploidy=3)
+
+
+def test_validate_rejects_probs_shape_mismatch():
+    probs = torch.zeros(2, 2, 4, dtype=torch.float64)
+    probs[:, :, 0] = 1.0
+    with pytest.raises(ValueError, match="probs"):
+        _validate_inputs(probs, ["s1", "s2"], ["v1", "v2"], ploidy=4)
+
+
+def test_validate_rejects_length_mismatch_sample_ids():
+    probs = torch.zeros(2, 2, 5, dtype=torch.float64)
+    probs[:, :, 0] = 1.0
+    with pytest.raises(ValueError, match="sample_ids"):
+        _validate_inputs(probs, ["s1"], ["v1", "v2"], ploidy=4)
+
+
+def test_validate_renormalizes_slightly_off_rows():
+    probs = torch.zeros(2, 2, 5, dtype=torch.float64)
+    probs[:, :, 0] = 0.9995
+    out = _validate_inputs(probs, ["s1", "s2"], ["v1", "v2"], ploidy=4)
+    assert torch.allclose(
+        out.sum(dim=-1),
+        torch.ones_like(out.sum(dim=-1)),
+        atol=1e-6,
+    )
+
+
+def test_validate_warns_on_far_off_rows(caplog):
+    probs = torch.zeros(2, 2, 5, dtype=torch.float64)
+    probs[:, :, 0] = 0.9
+    with caplog.at_level("WARNING"):
+        _ = _validate_inputs(probs, ["s1", "s2"], ["v1", "v2"], ploidy=4)
+    assert any("renormaliz" in rec.message.lower() for rec in caplog.records)

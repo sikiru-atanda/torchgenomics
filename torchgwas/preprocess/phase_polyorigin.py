@@ -238,3 +238,46 @@ def _build_polyorigin_genofile(
     cols = ["marker", "chromosome", "pos"] + col_order
     pd.DataFrame(rows, columns=cols).to_csv(out, index=False)
     return out
+
+
+def _validate_inputs(
+    probs: Tensor,
+    sample_ids: list[str],
+    variant_ids: list[str],
+    ploidy: int,
+) -> Tensor:
+    """Raise on invalid input; return probs (possibly renormalized)."""
+    if ploidy not in _VALID_PLOIDIES:
+        raise ValueError(
+            f"PolyOrigin supports ploidy 2, 4, or 6 only; got {ploidy}."
+        )
+    if probs.ndim != 3:
+        raise ValueError(
+            f"probs must be 3D (n, m, k+1); got shape {tuple(probs.shape)}."
+        )
+    n, m, kp1 = probs.shape
+    if kp1 != ploidy + 1:
+        raise ValueError(
+            f"probs.shape[-1]={kp1} inconsistent with ploidy={ploidy} "
+            f"(expected {ploidy + 1})."
+        )
+    if len(sample_ids) != n:
+        raise ValueError(
+            f"sample_ids length {len(sample_ids)} != probs.shape[0] {n}."
+        )
+    if len(variant_ids) != m:
+        raise ValueError(
+            f"variant_ids length {len(variant_ids)} != probs.shape[1] {m}."
+        )
+
+    if probs.dtype != torch.float64:
+        probs = probs.to(torch.float64)
+    row_sums = probs.sum(dim=-1)
+    max_dev = float((row_sums - 1.0).abs().max())
+    if max_dev > 1e-3:
+        logger.warning(
+            "probs rows deviate from 1.0 by up to %.4f (tol=1e-3); renormalizing.",
+            max_dev,
+        )
+    probs = probs / row_sums.unsqueeze(-1).clamp(min=1e-12)
+    return probs
