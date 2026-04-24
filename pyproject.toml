@@ -62,6 +62,7 @@ docs = [
     "mkdocs-gen-files>=0.5",
     "mkdocs-literate-nav>=0.6",
 ]
+polyploid-phase = ["juliacall>=0.9"]
 
 [project.scripts]
 torchgwas = "torchgwas.cli:main"
@@ -76,6 +77,7 @@ include = ["torchgwas*"]
 
 [tool.setuptools.package-data]
 "torchgwas._native" = ["*.pyi"]
+"torchgwas.preprocess" = ["juliapkg.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
