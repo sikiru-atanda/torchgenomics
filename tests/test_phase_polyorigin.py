@@ -1,6 +1,7 @@
 """Phase 56: polyploid phasing via PolyOrigin (Tier 1, always-on)."""
 from __future__ import annotations
 
+import json
 import platform
 import shutil as _shutil
 import stat
@@ -590,15 +591,14 @@ def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
     assert isinstance(result, PhasingResult)
     assert result.tool == "polyorigin"
     assert result.per_individual_ploidy["o1"] == 4
-    # Task 11: uncomment once _persist_result is implemented
-    # assert Path(f"{out_prefix}.haplotypes.pt").is_file()
-    # assert Path(f"{out_prefix}.origin_probs.pt").is_file()
-    # assert Path(f"{out_prefix}.parent_phased.pt").is_file()
-    # assert Path(f"{out_prefix}.postdose_probs.pt").is_file()
-    # assert Path(f"{out_prefix}.meta.json").is_file()
-    # meta = json.loads(Path(f"{out_prefix}.meta.json").read_text())
-    # assert meta["tool_version"] == "1.0.3-fake"
-    # assert "input_hash" in meta
+    assert Path(f"{out_prefix}.haplotypes.pt").is_file()
+    assert Path(f"{out_prefix}.origin_probs.pt").is_file()
+    assert Path(f"{out_prefix}.parent_phased.pt").is_file()
+    assert Path(f"{out_prefix}.postdose_probs.pt").is_file()
+    assert Path(f"{out_prefix}.meta.json").is_file()
+    meta = json.loads(Path(f"{out_prefix}.meta.json").read_text())
+    assert meta["tool_version"] == "1.0.3-fake"
+    assert "input_hash" in meta
 
 
 def test_run_polyorigin_partial_failure_no_persistent_output(tmp_path, monkeypatch):
@@ -693,3 +693,55 @@ def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
             auto_install_julia=False,
         )
     assert isinstance(ei.value.__cause__, FakeJuliaError)
+
+
+# ---------------------------------------------------------------------------
+# Task 11: _persist_result atomicity — rollback on partial write
+# ---------------------------------------------------------------------------
+
+def test_persist_rolls_back_on_partial_write(tmp_path, monkeypatch):
+    from torchgwas.preprocess.phase_polyorigin import _persist_result
+
+    prefix = tmp_path / "out" / "phased"
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    # Build a minimal PhasingResult
+    r = PhasingResult(
+        haplotypes=torch.zeros(1, 4, 2, dtype=torch.int8),
+        origin_probs=torch.zeros(1, 4, 2, 4, dtype=torch.float64),
+        parent_phased=torch.zeros(2, 4, 2, dtype=torch.int8),
+        offspring_ids=["o1"],
+        parent_ids=["p1", "p2"],
+        variant_ids=["v1", "v2"],
+        chrom=["1", "1"],
+        pos_bp=torch.tensor([100, 200], dtype=torch.int64),
+        pos_cm=torch.tensor([0.0001, 0.0002], dtype=torch.float64),
+        per_individual_ploidy={"p1": 4, "p2": 4, "o1": 4},
+        map_refined=False,
+        valent_diag=pd.DataFrame({"marker": ["v1"], "valent": ["bivalent"]}),
+        postdose_probs=torch.zeros(1, 2, 5, dtype=torch.float64),
+        tool="polyorigin",
+        tool_version="1.0.3-fake",
+        input_hash="abc",
+        cmd="...",
+        workdir=None,
+    )
+
+    # Force meta.json write to fail
+    real_write_text = Path.write_text
+    call_count = {"n": 0}
+
+    def fake_write_text(self, content, *a, **kw):
+        call_count["n"] += 1
+        if self.name.startswith("phased.meta.json"):
+            raise OSError("simulated disk full")
+        return real_write_text(self, content, *a, **kw)
+
+    monkeypatch.setattr(Path, "write_text", fake_write_text)
+
+    with pytest.raises(OSError):
+        _persist_result(r, str(prefix))
+
+    # No persistent artifacts survived
+    leftovers = list(prefix.parent.glob("phased.*"))
+    assert leftovers == [], f"Unexpected leftover artifacts: {leftovers}"

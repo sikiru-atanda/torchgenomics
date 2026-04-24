@@ -9,10 +9,13 @@ for the full design.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import os
 import re
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -676,5 +679,60 @@ def run_polyorigin(
 
 
 def _persist_result(result: PhasingResult, output_path: str) -> None:
-    """Placeholder — implemented in Task 11."""
-    pass
+    """Atomically persist a PhasingResult to ``<output_path>.*``.
+
+    Uses a temp-sibling-then-rename scheme: each artifact is written to
+    ``<output_path>.<name>.tmp.<pid>`` then renamed. If any write fails,
+    previously-renamed siblings are removed so the filesystem ends up
+    with either all new artifacts or none.
+    """
+    prefix = Path(output_path)
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    tmpid = os.getpid()
+    renamed: list[Path] = []
+
+    def _persist(name: str, writer) -> None:
+        tmp = prefix.with_suffix(prefix.suffix + f".{name}.tmp.{tmpid}")
+        writer(str(tmp))
+        final = prefix.with_suffix(prefix.suffix + f".{name}")
+        os.replace(tmp, final)
+        renamed.append(final)
+
+    try:
+        _persist("haplotypes.pt", lambda p: torch.save(result.haplotypes, p))
+        _persist("origin_probs.pt", lambda p: torch.save(result.origin_probs, p))
+        _persist("parent_phased.pt", lambda p: torch.save(result.parent_phased, p))
+        _persist("postdose_probs.pt", lambda p: torch.save(result.postdose_probs, p))
+        _persist("map_refined.tsv", lambda p: pd.DataFrame({
+            "marker": result.variant_ids,
+            "chrom": result.chrom,
+            "pos_bp": result.pos_bp.tolist(),
+            "pos_cm": result.pos_cm.tolist(),
+        }).to_csv(p, index=False, sep="\t"))
+        _persist("valent_diag.tsv", lambda p: result.valent_diag.to_csv(p, index=False, sep="\t"))
+
+        meta = {
+            "tool": result.tool,
+            "tool_version": result.tool_version,
+            "ploidy_per_individual": result.per_individual_ploidy,
+            "offspring_ids": result.offspring_ids,
+            "parent_ids": result.parent_ids,
+            "variant_ids": result.variant_ids,
+            "chrom": result.chrom,
+            "pos_bp": result.pos_bp.tolist(),
+            "pos_cm": result.pos_cm.tolist(),
+            "map_refined": result.map_refined,
+            "input_hash": result.input_hash,
+            "cmd": result.cmd,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        _persist("meta.json", lambda p: Path(p).write_text(json.dumps(meta, indent=2)))
+    except Exception:
+        # Roll back any renamed artifacts so we leave no partial <output>.*
+        for p in renamed:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        raise
