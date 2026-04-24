@@ -8,17 +8,16 @@ for the full design.
 """
 from __future__ import annotations
 
-import hashlib
-import json
+import hashlib  # noqa: F401 — used by Tasks 5/10
+import json  # noqa: F401 — used by Tasks 10/11
 import logging
-import os
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
+import os  # noqa: F401 — used by Task 13
+from dataclasses import dataclass  # noqa: F401 — used by Task 2
+from pathlib import Path  # noqa: F401 — used by Tasks 3–11
 
-import pandas as pd
-import torch
-from torch import Tensor
+import pandas as pd  # noqa: F401 — used by Tasks 3–5
+import torch  # noqa: F401 — used by Tasks 2/10
+from torch import Tensor  # noqa: F401 — used by Task 2
 
 logger = logging.getLogger(__name__)
 
