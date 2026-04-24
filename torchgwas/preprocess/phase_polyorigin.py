@@ -9,6 +9,7 @@ for the full design.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -281,3 +282,165 @@ def _validate_inputs(
         )
     probs = probs / row_sums.unsqueeze(-1).clamp(min=1e-12)
     return probs
+
+
+# ---------------------------------------------------------------------------
+# Output CSV parsers (Task 9)
+# ---------------------------------------------------------------------------
+
+def _parse_genoprob(
+    path: str,
+    expected_offspring: list[str],
+    ploidy: int,
+) -> tuple[Tensor, list[str]]:
+    """Parse PolyOrigin's *_genoprob.csv.
+
+    Expected column scheme (best-guess; verified at Task 14 parity run):
+    ``marker, chromosome, pos`` followed by offspring × chromosome-copy ×
+    parent-haplotype probability columns named like
+    ``<offspring>_c<chromosome_copy>_h<parent_haplotype>``.
+
+    Returns (origin_probs (n_off, ploidy, m, n_parent_haps), offspring_ids).
+    """
+    df = pd.read_csv(path)
+    meta_cols = {"marker", "chromosome", "pos"}
+    prob_cols = [c for c in df.columns if c not in meta_cols]
+
+    pat = re.compile(r"^(?P<off>.+)_c(?P<c>\d+)_h(?P<h>\d+)$")
+    parsed: list[tuple[str, int, int, str]] = []
+    for c in prob_cols:
+        m = pat.match(c)
+        if m is None:
+            raise RuntimeError(
+                f"Unexpected column in genoprob file: {c!r}. "
+                "Parser expects '<offspring>_c<idx>_h<idx>' naming."
+            )
+        parsed.append((m["off"], int(m["c"]), int(m["h"]), c))
+
+    offsprings = sorted({x[0] for x in parsed})
+    c_vals = sorted({x[1] for x in parsed})
+    h_vals = sorted({x[2] for x in parsed})
+    if len(c_vals) != ploidy:
+        raise RuntimeError(
+            f"genoprob column copy-count {len(c_vals)} != ploidy {ploidy}."
+        )
+    n_parent_haps = len(h_vals)
+
+    if set(offsprings) != set(expected_offspring):
+        raise RuntimeError(
+            f"genoprob offspring set {sorted(offsprings)} != expected "
+            f"{sorted(expected_offspring)}."
+        )
+    off_order = list(expected_offspring)
+
+    n_off = len(off_order)
+    n_markers = len(df)
+    out = torch.zeros(n_off, ploidy, n_markers, n_parent_haps, dtype=torch.float64)
+    off_idx = {o: i for i, o in enumerate(off_order)}
+    c_idx = {c: i for i, c in enumerate(c_vals)}
+    h_idx = {h: i for i, h in enumerate(h_vals)}
+    for off, c, h, col in parsed:
+        out[off_idx[off], c_idx[c], :, h_idx[h]] = torch.tensor(
+            df[col].to_numpy(), dtype=torch.float64
+        )
+    return out, off_order
+
+
+def _parse_parentphased(
+    path: str,
+    expected_parents: list[str],
+    max_ploidy: int,
+) -> tuple[Tensor, list[str]]:
+    """Parse *_parentphased.csv — one column per parent, cell = ``a1|a2|...|ak``."""
+    df = pd.read_csv(path)
+    meta_cols = {"marker", "chromosome", "pos"}
+    parent_cols = [c for c in df.columns if c not in meta_cols]
+    if set(parent_cols) != set(expected_parents):
+        raise RuntimeError(
+            f"parentphased column set {sorted(parent_cols)} != expected "
+            f"{sorted(expected_parents)}."
+        )
+    n_markers = len(df)
+    out = torch.full(
+        (len(expected_parents), max_ploidy, n_markers), -1, dtype=torch.int8
+    )
+    for i, p in enumerate(expected_parents):
+        for j, cell in enumerate(df[p]):
+            alleles = str(cell).split("|")
+            for k, a in enumerate(alleles[:max_ploidy]):
+                try:
+                    out[i, k, j] = int(a)
+                except ValueError:
+                    raise RuntimeError(
+                        f"parentphased cell at parent={p} marker_idx={j}: "
+                        f"non-integer allele {a!r}."
+                    )
+    return out, list(expected_parents)
+
+
+def _parse_postdose(
+    path: str,
+    expected_offspring: list[str],
+    max_ploidy: int,
+) -> tuple[Tensor, list[str]]:
+    """Parse *_postdoseprob.csv — columns ``<offspring>_d<dosage>``."""
+    df = pd.read_csv(path)
+    meta_cols = {"marker", "chromosome", "pos"}
+    pat = re.compile(r"^(?P<off>.+)_d(?P<d>\d+)$")
+    parsed: list[tuple[str, int, str]] = []
+    for c in df.columns:
+        if c in meta_cols:
+            continue
+        m = pat.match(c)
+        if m is None:
+            raise RuntimeError(
+                f"Unexpected column in postdose file: {c!r}. "
+                "Parser expects '<offspring>_d<dosage>' naming."
+            )
+        parsed.append((m["off"], int(m["d"]), c))
+
+    offsprings = sorted({x[0] for x in parsed})
+    if set(offsprings) != set(expected_offspring):
+        raise RuntimeError(
+            f"postdose offspring set {sorted(offsprings)} != expected."
+        )
+    kmax = max(x[1] for x in parsed)
+    if kmax + 1 > max_ploidy + 1:
+        raise RuntimeError(
+            f"postdose dosage slots {kmax + 1} > max_ploidy+1 {max_ploidy + 1}."
+        )
+
+    off_order = list(expected_offspring)
+    n_off = len(off_order)
+    n_markers = len(df)
+    out = torch.zeros(n_off, n_markers, max_ploidy + 1, dtype=torch.float64)
+    off_idx = {o: i for i, o in enumerate(off_order)}
+    for off, d, col in parsed:
+        out[off_idx[off], :, d] = torch.tensor(
+            df[col].to_numpy(), dtype=torch.float64
+        )
+    return out, off_order
+
+
+def _parse_maprefined(
+    path: str,
+    expected_markers: list[str],
+) -> tuple[list[str], list[str], Tensor]:
+    """Return (chrom, variant_ids, pos_cm_tensor)."""
+    df = pd.read_csv(path)
+    got = set(df["marker"])
+    if got != set(expected_markers):
+        raise RuntimeError(
+            f"map_refined marker set differs from input "
+            f"(missing {set(expected_markers) - got}, extra {got - set(expected_markers)})."
+        )
+    return (
+        [str(c) for c in df["chromosome"]],
+        [str(v) for v in df["marker"]],
+        torch.tensor(df["pos"].to_numpy(), dtype=torch.float64),
+    )
+
+
+def _parse_polyancestry(path: str) -> pd.DataFrame:
+    """Return the raw DataFrame of the *_polyancestry.csv — diagnostic output."""
+    return pd.read_csv(path)

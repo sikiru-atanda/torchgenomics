@@ -17,8 +17,15 @@ from torchgwas.preprocess.phase_polyorigin import (
     _build_polyorigin_genofile,
     _build_polyorigin_pedfile,
     _load_map_tsv,
+    _parse_genoprob,
+    _parse_maprefined,
+    _parse_parentphased,
+    _parse_polyancestry,
+    _parse_postdose,
     _validate_inputs,
 )
+
+FIXTURES = Path(__file__).parent / "fixtures" / "phase_polyorigin"
 
 
 def test_module_imports_without_juliacall():
@@ -450,3 +457,63 @@ def test_get_runtime_cached_after_first_success():
     rt._jl = None
     rt._polyorigin = None
     rt._version = None
+
+
+# ---------------------------------------------------------------------------
+# Parser tests (Task 9)
+# ---------------------------------------------------------------------------
+
+def test_parse_genoprob_shape():
+    origin_probs, offspring_ids = _parse_genoprob(
+        str(FIXTURES / "out_genoprob.csv"),
+        expected_offspring=["o1"],
+        ploidy=4,
+    )
+    assert origin_probs.shape == (1, 4, 2, 4)
+    assert torch.allclose(
+        origin_probs.sum(dim=-1),
+        torch.ones((1, 4, 2), dtype=torch.float64),
+        atol=1e-3,
+    )
+    assert offspring_ids == ["o1"]
+
+
+def test_parse_parentphased_values():
+    parent_phased, parent_ids = _parse_parentphased(
+        str(FIXTURES / "out_parentphased.csv"),
+        expected_parents=["p1", "p2"],
+        max_ploidy=4,
+    )
+    assert parent_phased.shape == (2, 4, 2)
+    unique = set(parent_phased.unique().tolist())
+    assert unique <= {0, 1, -1}
+
+
+def test_parse_postdose_shape():
+    pd_t, offspring_ids = _parse_postdose(
+        str(FIXTURES / "out_postdoseprob.csv"),
+        expected_offspring=["o1"],
+        max_ploidy=4,
+    )
+    assert pd_t.shape == (1, 2, 5)
+    assert torch.allclose(
+        pd_t.sum(dim=-1),
+        torch.ones((1, 2), dtype=torch.float64),
+        atol=1e-3,
+    )
+
+
+def test_parse_maprefined_preserves_input_order():
+    chrom, variant_ids, pos_cm = _parse_maprefined(
+        str(FIXTURES / "out_maprefined.csv"),
+        expected_markers=["v1", "v2"],
+    )
+    assert variant_ids == ["v1", "v2"]
+    assert chrom == ["1", "1"]
+    assert pos_cm.shape == (2,)
+
+
+def test_parse_polyancestry_returns_dataframe():
+    df = _parse_polyancestry(str(FIXTURES / "out_polyancestry.csv"))
+    assert "marker" in df.columns
+    assert "valent" in df.columns
