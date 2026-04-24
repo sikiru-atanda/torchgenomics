@@ -572,7 +572,7 @@ Recorded so the implementation plan doesn't re-litigate:
   - `[tool.setuptools.package-data]` gains `"torchgwas.preprocess" = ["juliapkg.json"]` so the Julia dep manifest ships in the wheel (currently the block only declares `"torchgwas._native" = ["*.pyi"]`).
 - `docs/ROADMAP.md` — remove the Phase 56 entry on ship.
 - `docs/cli.md` — `torchgwas phase-poly --help` capture.
-- `CLAUDE.md` — add `phase-poly` to CLI commands; bump subcommand count from 36 to 37.
+- `CLAUDE.md` — add `phase-poly` to CLI commands; bump the subcommand count by 1 (the exact displayed number follows the convention CLAUDE.md uses for counting — docs-visible user-facing commands, not raw `add_parser(` calls — which the implementer confirms at integration time).
 
 **Unchanged**:
 - `torchgwas/preprocess/phase.py` (legacy BEAGLE diploid wrapper).
