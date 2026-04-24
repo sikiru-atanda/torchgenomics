@@ -372,3 +372,81 @@ def test_override_to_nonexistent_file_raises(tmp_path):
     bogus = tmp_path / "does-not-exist"
     with pytest.raises(ValueError, match="not.*exist|not a file"):
         _find_existing_julia(override=str(bogus))
+
+
+# ---------------------------------------------------------------------------
+# Task 8: get_runtime — consent gate, version guard, juliacall bootstrap
+# ---------------------------------------------------------------------------
+
+import types  # noqa: E402 — appended block; already imported at top via sys
+
+
+def test_get_runtime_raises_when_not_found_and_auto_install_false(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+
+    monkeypatch.delenv("TORCHGWAS_JULIA", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(rt, "_common_julia_paths", lambda: [])
+    monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(isatty=lambda: False))
+
+    rt._jl = None
+    rt._polyorigin = None
+    rt._version = None
+    with pytest.raises(RuntimeError, match="Julia not detected|auto_install_julia"):
+        rt.get_runtime(julia_path=None, auto_install_julia=False)
+
+
+def test_get_runtime_raises_when_found_julia_too_old(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+
+    fj = _make_fake_julia(tmp_path, "1.8.5")
+    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    rt._jl = None
+    rt._polyorigin = None
+    rt._version = None
+    with pytest.raises(RuntimeError, match=r"1\.8\.5|>= 1\.10"):
+        rt.get_runtime(julia_path=None, auto_install_julia=False)
+
+
+def test_get_runtime_raises_without_juliacall_installed(tmp_path, monkeypatch):
+    """Stub a valid Julia, then force juliacall import to fail."""
+    import builtins
+
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+
+    fj = _make_fake_julia(tmp_path, "1.10.2")
+    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    rt._jl = None
+    rt._polyorigin = None
+    rt._version = None
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "juliacall":
+            raise ImportError("stubbed absence of juliacall")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    with pytest.raises(RuntimeError, match="polyploid-phase|pip install"):
+        rt.get_runtime(julia_path=None, auto_install_julia=False)
+
+
+def test_get_runtime_cached_after_first_success():
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+
+    sentinel_jl = object()
+    sentinel_po = object()
+    rt._jl = sentinel_jl
+    rt._polyorigin = sentinel_po
+    rt._version = "9.9.9"
+
+    jl, po, ver = rt.get_runtime(julia_path=None, auto_install_julia=False)
+    assert jl is sentinel_jl
+    assert po is sentinel_po
+    assert ver == "9.9.9"
+
+    # Reset for subsequent tests
+    rt._jl = None
+    rt._polyorigin = None
+    rt._version = None
