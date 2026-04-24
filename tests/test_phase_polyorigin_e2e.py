@@ -6,6 +6,7 @@ Gated: (i) juliacall importable, (ii) Julia >= 1.10 discoverable,
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import os
 import urllib.request
 from pathlib import Path
@@ -15,9 +16,11 @@ import torch
 
 
 def _tier2_skipif_reason() -> str | None:
-    try:
-        import juliacall  # noqa: F401
-    except ImportError:
+    # find_spec (not `import juliacall`) — importing juliacall at test-collection
+    # time pollutes sys.modules and breaks the Tier 1 smoke-test invariant
+    # `"juliacall" not in sys.modules`. find_spec checks availability without
+    # loading the package.
+    if importlib.util.find_spec("juliacall") is None:
         return "juliacall not installed (pip install torchgwas[polyploid-phase])"
     from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
     jl = _find_existing_julia(override=None)
