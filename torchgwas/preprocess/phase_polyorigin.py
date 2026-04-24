@@ -97,14 +97,8 @@ def _build_polyorigin_pedfile(
     fam_keys = list(dict.fromkeys(zip(df["parent1"], df["parent2"])))
     fam_pop = {pair: i + 1 for i, pair in enumerate(fam_keys)}
 
-    # Assign each founder a 1-based integer index; offspring motherid/fatherid
-    # reference these indices so the column is uniformly integer (PolyOrigin
-    # identifies families via population, not by name cross-reference).
-    sorted_parents = sorted(parents_set)
-    parent_idx = {name: i + 1 for i, name in enumerate(sorted_parents)}
-
     rows: list[dict] = []
-    for parent_id in sorted_parents:
+    for parent_id in sorted(parents_set):
         rows.append({
             "individual": parent_id,
             "population": 0,
@@ -113,6 +107,9 @@ def _build_polyorigin_pedfile(
             "ploidy": ploidy_default,
         })
     for _, r in df.iterrows():
+        # motherid / fatherid are the parent's individual ID (string); founders use
+        # literal 0 sentinel (the only integer in these columns). PolyOrigin resolves
+        # parent haplotypes by looking up the row whose `individual` == motherid.
         ploidy = (
             int(r["ploidy"])
             if has_ploidy_col and pd.notna(r.get("ploidy"))
@@ -121,8 +118,8 @@ def _build_polyorigin_pedfile(
         rows.append({
             "individual": str(r["offspring"]),
             "population": fam_pop[(r["parent1"], r["parent2"])],
-            "motherid": parent_idx[r["parent1"]],
-            "fatherid": parent_idx[r["parent2"]],
+            "motherid": str(r["parent1"]),
+            "fatherid": str(r["parent2"]),
             "ploidy": ploidy,
         })
 

@@ -70,8 +70,8 @@ def test_pedfile_single_biparental(tmp_path):
     assert list(df.columns) == ["individual", "population", "motherid", "fatherid", "ploidy"]
     founders = df[df["population"] == 0]
     assert set(founders["individual"]) == {"p1", "p2"}
-    assert (founders["motherid"] == 0).all()
-    assert (founders["fatherid"] == 0).all()
+    assert (founders["motherid"].astype(str) == "0").all()
+    assert (founders["fatherid"].astype(str) == "0").all()
     offspring = df[df["population"] != 0]
     assert set(offspring["individual"]) == {"o1", "o2", "o3"}
     assert (offspring["population"] == 1).all()
