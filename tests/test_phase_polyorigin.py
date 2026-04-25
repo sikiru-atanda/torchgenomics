@@ -18,6 +18,7 @@ from torchgwas.preprocess.phase_polyorigin import (
     PhasingResult,
     _build_polyorigin_genofile,
     _build_polyorigin_pedfile,
+    _enumerate_state_table,
     _load_map_tsv,
     _parse_genoprob,
     _parse_maprefined,
@@ -858,3 +859,46 @@ def test_env_override_wins_over_path(tmp_path, monkeypatch):
     monkeypatch.setenv("TORCHGWAS_JULIA", str(env_julia))
     found = _find_existing_julia(override=None)
     assert Path(found).resolve() == Path(env_julia).resolve()
+
+
+# ---------------------------------------------------------------------------
+# _enumerate_state_table tests (Task 2)
+# ---------------------------------------------------------------------------
+
+def test_enumerate_state_table_count():
+    # ploidy=2 → C(2,1)² = 4 states
+    st2 = _enumerate_state_table(2)
+    assert st2.shape == (4, 2)
+    assert st2.dtype == torch.int8
+    # ploidy=4 → C(4,2)² = 36 states
+    st4 = _enumerate_state_table(4)
+    assert st4.shape == (36, 4)
+    assert st4.dtype == torch.int8
+    # ploidy=6 → C(6,3)² = 400 states
+    st6 = _enumerate_state_table(6)
+    assert st6.shape == (400, 6)
+    assert st6.dtype == torch.int8
+
+
+def test_enumerate_state_table_first_state_canonical():
+    # For ploidy=4, state 0 = (parent1 gamete (0,1), parent2 gamete (0,1))
+    # Encoding: v = parent_id * ploidy + copy_in_parent
+    # So state 0 = [0*4+0, 0*4+1, 1*4+0, 1*4+1] = [0, 1, 4, 5]
+    st4 = _enumerate_state_table(4)
+    assert st4[0].tolist() == [0, 1, 4, 5]
+
+
+def test_enumerate_state_table_lex_ordering():
+    # For ploidy=4, each parent's gametes are 2-subsets of {0,1,2,3} in lex
+    # order: (0,1), (0,2), (0,3), (1,2), (1,3), (2,3).
+    # State s = p1_gamete_idx * 6 + p2_gamete_idx.
+    st4 = _enumerate_state_table(4)
+    # State 1 = (p1 gamete 0 = (0,1), p2 gamete 1 = (0,2))
+    #         → [0*4+0, 0*4+1, 1*4+0, 1*4+2] = [0, 1, 4, 6]
+    assert st4[1].tolist() == [0, 1, 4, 6]
+    # State 6 = (p1 gamete 1 = (0,2), p2 gamete 0 = (0,1))
+    #         → [0*4+0, 0*4+2, 1*4+0, 1*4+1] = [0, 2, 4, 5]
+    assert st4[6].tolist() == [0, 2, 4, 5]
+    # State 35 = (p1 gamete 5 = (2,3), p2 gamete 5 = (2,3))
+    #         → [0*4+2, 0*4+3, 1*4+2, 1*4+3] = [2, 3, 6, 7]
+    assert st4[35].tolist() == [2, 3, 6, 7]

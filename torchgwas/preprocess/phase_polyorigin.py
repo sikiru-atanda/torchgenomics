@@ -15,6 +15,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from itertools import combinations
 from pathlib import Path
 from typing import Optional
 
@@ -176,6 +177,44 @@ def _load_map_tsv(path: str, recomrate: float) -> pd.DataFrame:
         df["cm"] = df["pos_bp"].astype(float) * recomrate / 1e6
 
     return df[["marker", "chrom", "pos_bp", "cm"]]
+
+
+def _enumerate_state_table(ploidy: int) -> Tensor:
+    """Build the joint-origin state table for a 2-parent F1 at given ploidy.
+
+    Bivalent meiosis only: each parent contributes ploidy/2 copies per
+    gamete. Gametes are sorted (ploidy/2)-subsets of ``{0..ploidy-1}`` in
+    lexicographic order. States are (parent1 gamete, parent2 gamete)
+    Cartesian-product, flat-indexed as
+    ``s = p1_gamete_idx * n_gametes + p2_gamete_idx``.
+
+    Parameters
+    ----------
+    ploidy : int
+        Must be even and in ``{2, 4, 6}``.
+
+    Returns
+    -------
+    Tensor, shape (n_states, ploidy), int8
+        Each row holds ``ploidy`` values ``v`` in ``[0, 2*ploidy)``:
+        ``v = parent_id * ploidy + copy_in_parent``. Parent1 copies
+        occupy the first ``ploidy/2`` slots, parent2 copies the last
+        ``ploidy/2`` slots.
+    """
+    if ploidy not in _VALID_PLOIDIES:
+        raise ValueError(
+            f"_enumerate_state_table: ploidy must be in {{2, 4, 6}}; got {ploidy}."
+        )
+    half = ploidy // 2
+    gametes = list(combinations(range(ploidy), half))
+
+    rows: list[list[int]] = []
+    for p1_gamete in gametes:
+        for p2_gamete in gametes:
+            row = [0 * ploidy + c for c in p1_gamete] + [1 * ploidy + c for c in p2_gamete]
+            rows.append(row)
+
+    return torch.tensor(rows, dtype=torch.int8)
 
 
 def _build_polyorigin_genofile(
