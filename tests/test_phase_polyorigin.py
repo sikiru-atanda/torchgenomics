@@ -18,6 +18,7 @@ from torchgwas.preprocess.phase_polyorigin import (
     PhasingResult,
     _build_polyorigin_genofile,
     _build_polyorigin_pedfile,
+    _decode_haplotypes_per_copy,
     _enumerate_state_table,
     _load_map_tsv,
     _parse_genoprob,
@@ -902,3 +903,39 @@ def test_enumerate_state_table_lex_ordering():
     # State 35 = (p1 gamete 5 = (2,3), p2 gamete 5 = (2,3))
     #         → [0*4+2, 0*4+3, 1*4+2, 1*4+3] = [2, 3, 6, 7]
     assert st4[35].tolist() == [2, 3, 6, 7]
+
+
+# ---------------------------------------------------------------------------
+# _decode_haplotypes_per_copy tests (Task 3)
+# ---------------------------------------------------------------------------
+
+def test_decode_known_inputs():
+    # Setup: ploidy=4, 2 parents, 1 offspring, 1 marker.
+    # parent_phased shape (2 parents, 1 marker, 4 copies):
+    #   parent1 alleles = [1, 0, 1, 0]
+    #   parent2 alleles = [0, 1, 0, 1]
+    parent_phased = torch.tensor([
+        [[1, 0, 1, 0]],  # parent1 at marker 0
+        [[0, 1, 0, 1]],  # parent2 at marker 0
+    ], dtype=torch.int8)
+
+    # haplotypes shape (1 offspring, 1 marker): offspring inherits state 0
+    haplotypes = torch.tensor([[0]], dtype=torch.int64)
+
+    # State table from our enumeration — state 0 row = [0, 1, 4, 5]
+    state_table = _enumerate_state_table(4)
+
+    out = _decode_haplotypes_per_copy(
+        haplotypes=haplotypes,
+        parent_phased=parent_phased,
+        state_table=state_table,
+        ploidy=4,
+    )
+    # Expected shape (1 offspring, 4 copies, 1 marker)
+    assert out.shape == (1, 4, 1)
+    assert out.dtype == torch.int8
+    # Copy 0 = parent1 copy 0 = 1
+    # Copy 1 = parent1 copy 1 = 0
+    # Copy 2 = parent2 copy 0 = 0
+    # Copy 3 = parent2 copy 1 = 1
+    assert out[0, :, 0].tolist() == [1, 0, 0, 1]

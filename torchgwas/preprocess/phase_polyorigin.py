@@ -217,6 +217,61 @@ def _enumerate_state_table(ploidy: int) -> Tensor:
     return torch.tensor(rows, dtype=torch.int8)
 
 
+def _decode_haplotypes_per_copy(
+    haplotypes: Tensor,
+    parent_phased: Tensor,
+    state_table: Tensor,
+    ploidy: int,
+) -> Tensor:
+    """Expand joint-origin state indices into per-chromosome-copy alleles.
+
+    For each ``(offspring i, marker j)`` with state ``s = haplotypes[i, j]``:
+    for each copy slot ``k`` in ``[0, ploidy)``::
+
+        v = state_table[s, k]
+        parent_id, copy_in_parent = divmod(int(v), ploidy)
+        output[i, k, j] = parent_phased[parent_id, j, copy_in_parent]
+
+    Vectorized via torch advanced indexing.
+
+    Parameters
+    ----------
+    haplotypes : Tensor, shape (n_off, m), int64
+        Joint-origin state index per offspring per marker.
+    parent_phased : Tensor, shape (n_parents, m, max_ploidy), int8
+        Per-copy parental alleles.
+    state_table : Tensor, shape (n_states, ploidy), int8
+        As produced by ``_enumerate_state_table``.
+    ploidy : int
+        Must match ``state_table.shape[1]``.
+
+    Returns
+    -------
+    Tensor, shape (n_off, ploidy, m), int8
+        Per-copy parental alleles. Drop-in for
+        ``HaplotypeGWAS.scan(haplotypes=...)``.
+    """
+    n_off, m = haplotypes.shape
+
+    # Look up state table rows for each offspring-marker cell.
+    # state_rows shape: (n_off, m, ploidy), values v = parent_id*ploidy + copy_in_parent
+    state_rows = state_table[haplotypes]  # advanced indexing
+
+    # Decode (parent_id, copy_in_parent) per cell
+    parent_id = (state_rows.to(torch.int64) // ploidy)       # (n_off, m, ploidy)
+    copy_in_parent = (state_rows.to(torch.int64) % ploidy)   # (n_off, m, ploidy)
+
+    # Gather alleles from parent_phased[parent_id, marker_j, copy_in_parent].
+    # Broadcast marker index j across the (n_off, m, ploidy) grid.
+    m_idx = torch.arange(m, dtype=torch.int64, device=haplotypes.device)
+    m_idx_b = m_idx.view(1, m, 1).expand(n_off, m, ploidy)  # (n_off, m, ploidy)
+
+    alleles = parent_phased[parent_id, m_idx_b, copy_in_parent]  # (n_off, m, ploidy) int8
+
+    # Reorder to (n_off, ploidy, m)
+    return alleles.permute(0, 2, 1).contiguous().to(torch.int8)
+
+
 def _build_polyorigin_genofile(
     probs: Tensor,
     sample_ids: list[str],
