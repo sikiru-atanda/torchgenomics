@@ -943,6 +943,8 @@ def _persist_result(result: PhasingResult, output_path: str) -> None:
         _persist("origin_probs.pt", lambda p: torch.save(result.origin_probs, p))
         _persist("parent_phased.pt", lambda p: torch.save(result.parent_phased, p))
         _persist("postdose_probs.pt", lambda p: torch.save(result.postdose_probs, p))
+        _persist("state_table.pt",         lambda p: torch.save(result.state_table, p))
+        _persist("haplotypes_per_copy.pt", lambda p: torch.save(result.haplotypes_per_copy, p))
         _persist("map_refined.tsv", lambda p: pd.DataFrame({
             "marker": result.variant_ids,
             "chrom": result.chrom,
