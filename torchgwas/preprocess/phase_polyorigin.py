@@ -272,6 +272,78 @@ def _decode_haplotypes_per_copy(
     return alleles.permute(0, 2, 1).contiguous().to(torch.int8)
 
 
+def _validate_state_table(
+    state_table: Tensor,
+    origin_probs: Tensor,
+    parent_phased: Tensor,
+    postdose_probs: Tensor,
+    ploidy: int,
+    atol: float = 1e-3,
+    tool_version: str = "unknown",
+) -> None:
+    """Round-trip check: state_table-derived expected dosage must match
+    PolyOrigin's emitted ``postdose_probs`` expected dosage.
+
+    For each state ``s`` and marker ``j``, compute
+    ``dose_at(j, s) = sum over the copies listed in state_table[s] of the
+    corresponding parent_phased allele``. Then::
+
+        E_state[i, j] = sum_s origin_probs[i, j, s] * dose_at(j, s)
+        E_post[i, j]  = sum_d d * postdose_probs[i, j, d]
+
+    Both should be equal (within ``atol``) iff our state enumeration's
+    per-state copy-SETS match PolyOrigin's. The check catches
+    dose-changing reorderings but is blind to within-parent gamete copy
+    permutations (which are downstream-equivalent; see spec Section 2.3).
+
+    Raises
+    ------
+    RuntimeError
+        If ``max |E_state - E_post| > atol``. Diagnostic names the
+        offending ``(offspring_idx, marker_idx)`` cell plus both computed
+        values.
+    """
+    n_off, m, n_states = origin_probs.shape
+
+    # Compute per-state per-marker dose: dose_per_state[s, j] = sum over
+    # copies in state_table[s] of parent_phased allele at (parent, j, copy_in_parent).
+    st64 = state_table.to(torch.int64)
+    parent_id = st64 // ploidy           # (n_states, ploidy)
+    copy_in_parent = st64 % ploidy       # (n_states, ploidy)
+
+    # Broadcast to (n_states, ploidy, m)
+    p_id_b = parent_id.unsqueeze(-1).expand(n_states, ploidy, m)
+    c_in_p_b = copy_in_parent.unsqueeze(-1).expand(n_states, ploidy, m)
+    m_idx = torch.arange(m, dtype=torch.int64, device=state_table.device)
+    m_idx_b = m_idx.view(1, 1, m).expand(n_states, ploidy, m)
+    alleles = parent_phased[p_id_b, m_idx_b, c_in_p_b].to(torch.float64)
+    dose_per_state = alleles.sum(dim=1)  # (n_states, m)
+
+    # E_state[i, j] = sum_s origin_probs[i, j, s] * dose_per_state[s, j]
+    e_state = torch.einsum("ijs,sj->ij", origin_probs, dose_per_state.to(torch.float64))
+
+    # E_post[i, j] = sum_d d * postdose_probs[i, j, d]
+    kp1 = postdose_probs.shape[-1]
+    d_vals = torch.arange(kp1, dtype=torch.float64, device=postdose_probs.device)
+    e_post = (postdose_probs * d_vals).sum(dim=-1)
+
+    # Compare
+    abs_dev = (e_state - e_post).abs()
+    max_dev = float(abs_dev.max())
+    if max_dev > atol:
+        flat_idx = int(abs_dev.argmax())
+        off_idx, mkr_idx = divmod(flat_idx, m)
+        raise RuntimeError(
+            f"State-table round-trip mismatch — our enumeration disagrees "
+            f"with PolyOrigin v{tool_version}. Max deviation {max_dev:.4f} at "
+            f"(offspring_idx={off_idx}, marker_idx={mkr_idx}); "
+            f"ours={float(e_state[off_idx, mkr_idx]):.4f}, "
+            f"PolyOrigin={float(e_post[off_idx, mkr_idx]):.4f}. "
+            f"Likely cause: PolyOrigin reordered states between releases. "
+            f"Open an issue with the offending phase-poly inputs."
+        )
+
+
 def _build_polyorigin_genofile(
     probs: Tensor,
     sample_ids: list[str],

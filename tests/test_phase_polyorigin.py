@@ -27,6 +27,7 @@ from torchgwas.preprocess.phase_polyorigin import (
     _parse_polyancestry,
     _parse_postdose,
     _validate_inputs,
+    _validate_state_table,
 )
 
 # Task 10: run_polyorigin (imported later in test functions to allow ImportError detection)
@@ -939,3 +940,60 @@ def test_decode_known_inputs():
     # Copy 2 = parent2 copy 0 = 0
     # Copy 3 = parent2 copy 1 = 1
     assert out[0, :, 0].tolist() == [1, 0, 0, 1]
+
+
+# ---------------------------------------------------------------------------
+# _validate_state_table tests (Task 4)
+# ---------------------------------------------------------------------------
+
+def _self_consistent_validate_inputs():
+    """Build (state_table, origin_probs, parent_phased, postdose_probs) that
+    are self-consistent under ploidy=4."""
+    ploidy = 4
+    state_table = _enumerate_state_table(ploidy)
+
+    parent_phased = torch.tensor([
+        [[1, 0, 1, 0]],  # parent1 at marker 0
+        [[0, 1, 0, 1]],  # parent2 at marker 0
+    ], dtype=torch.int8)  # (2, 1, 4)
+
+    # All probability mass on state 0 → dose 2 (per the decoded alleles 1,0,0,1)
+    n_states = state_table.shape[0]
+    origin_probs = torch.zeros(1, 1, n_states, dtype=torch.float64)
+    origin_probs[0, 0, 0] = 1.0
+
+    # Consistent postdose_probs: dose 2 with probability 1
+    postdose_probs = torch.zeros(1, 1, ploidy + 1, dtype=torch.float64)
+    postdose_probs[0, 0, 2] = 1.0
+
+    return state_table, origin_probs, parent_phased, postdose_probs, ploidy
+
+
+def test_validate_passes_on_self_consistent_input():
+    state_table, origin_probs, parent_phased, postdose_probs, ploidy = \
+        _self_consistent_validate_inputs()
+    # Should return None (pass silently)
+    _validate_state_table(
+        state_table, origin_probs, parent_phased, postdose_probs,
+        ploidy=ploidy,
+    )
+
+
+def test_validate_fails_on_reorder():
+    # Use parent_phased = [[1,0,1,0], [0,1,0,1]], ploidy=4.
+    # State 0 has decoded alleles [1,0,0,1] → dose 2.
+    # State 1 = (p1 gamete (0,1), p2 gamete (0,2)) → copies [0, 1, 4, 6] →
+    #   parent1[0]=1, parent1[1]=0, parent2[0]=0, parent2[2]=0 → dose 1.
+    # Swapping rows 0 and 1 changes per-state dose (2 ↔ 1), so the
+    # round-trip expected-dosage check must fail.
+    state_table, origin_probs, parent_phased, postdose_probs, ploidy = \
+        _self_consistent_validate_inputs()
+
+    swapped = state_table.clone()
+    swapped[[0, 1]] = swapped[[1, 0]]
+
+    with pytest.raises(RuntimeError, match="State-table round-trip mismatch"):
+        _validate_state_table(
+            swapped, origin_probs, parent_phased, postdose_probs,
+            ploidy=ploidy,
+        )
