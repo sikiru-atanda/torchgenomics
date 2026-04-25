@@ -326,7 +326,7 @@ File: append to `tests/test_phase_polyorigin.py`. Adds the three helpers to the 
 | | `test_enumerate_state_table_lex_ordering` — gametes within each parent appear in lex order: (0,1), (0,2), (0,3), (1,2), (1,3), (2,3). |
 | `_decode_haplotypes_per_copy` | `test_decode_known_inputs` — hand-crafted small state_table; parent_phased = `[[1,0,1,0], [0,1,0,1]]`; haplotypes = `[[0]]` (1 offspring, 1 marker, state 0) → expected output `[[1, 0, 0, 1]]` (parent1 copies 0,1 = alleles 1,0; parent2 copies 0,1 = alleles 0,1). |
 | `_validate_state_table` | `test_validate_passes_on_self_consistent_input` — synthesize origin_probs + matching postdose_probs from our own state_table → validation passes silently. |
-| | `test_validate_fails_on_reorder` — permute state_table rows after constructing the consistent inputs → `RuntimeError` matching the round-trip-mismatch diagnostic. |
+| | `test_validate_fails_on_reorder` — construct the consistent inputs, then swap two state_table rows whose copy-sets carry different doses (e.g. for ploidy=4 with `parent_phased = [[1,0,1,0], [0,1,0,1]]`, swap row 0 (dose 2) with row 35 (dose 2 also via different copies — pick rows whose alleles sum differently against this `parent_phased`). → `RuntimeError` matching the round-trip-mismatch diagnostic. The test must NOT use a within-parent gamete copy permutation, since those preserve dose and are deliberately not detected. |
 
 ### 5.2 Tier 1 — orchestration tests
 
