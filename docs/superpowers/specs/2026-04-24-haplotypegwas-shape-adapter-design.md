@@ -125,10 +125,18 @@ def _validate_state_table(
     - Via postdose_probs:
         E_post[i, j]   = sum_d d * postdose_probs[i, j, d]
 
-    Both arrive at the same per-cell expected dosage *only if* our
-    state_table rows correspond to PolyOrigin's state indices in the
-    same order. A row-permutation in our table changes E_state but
-    not E_post, so the comparison is sensitive to ordering bugs.
+    Both arrive at the same per-cell expected dosage iff our
+    state_table's per-state *copy-set* (as multiset) matches PolyOrigin's
+    at every state index. The check catches:
+      - Reorderings that swap states with different copy-sets (the
+        common version-drift scenario).
+      - Mis-encoded parent-id bits (parent1 vs parent2 confusions).
+    The check does NOT detect:
+      - Within-parent-gamete copy permutations (e.g. our state s =
+        [0, 1, 4, 5] vs PolyOrigin's = [1, 0, 5, 4] — same copy-set,
+        same dose). These are downstream-equivalent: Phase 46/47's
+        haplotype-frequency analysis is invariant to consistent
+        copy-slot relabeling across the population.
 
     Raises
     ------
@@ -365,7 +373,23 @@ Locked during this brainstorm so the implementation plan doesn't re-litigate:
 
 ---
 
-## 7. Open questions that do not block implementation
+## 7. Known limitations (acknowledged, not bugs)
+
+### 7.1 Phase coherence across markers is best-effort
+
+`PhasingResult.haplotypes` is the **per-marker marginal argmax** of `origin_probs`, not a Viterbi most-likely state path. PolyOrigin's `_genoprob.csv` output gives marginals (sparse `idx=>prob` cells), not the joint MAP state path across markers. We never had access to the latter without modifying upstream.
+
+**Implication**: at recombination breakpoints between markers, slot k of an offspring at marker j+1 may correspond to a different parental copy than slot k at marker j. The per-copy "haplotype" across markers is therefore best-effort, not phase-coherent.
+
+**When this matters in practice**:
+- For tightly-linked markers in high-LD blocks (the typical Phase 46 block analysis), marginal-argmax states largely agree across the block and the per-copy tensor reads as a coherent haplotype.
+- For long blocks crossing recombination sites, the per-copy tensor carries phase noise. Phase 46's haplotype-frequency analysis still works at the population level (the multiset of unique haplotypes is preserved), but per-individual phase across distant markers is unreliable.
+
+**Future improvement (not in scope)**: emit a Viterbi-decoded version of `haplotypes` alongside the marginal argmax, or sample from `origin_probs` along chromosomes with HMM-aware paths. Either would require a Julia-side change.
+
+---
+
+## 8. Open questions that do not block implementation
 
 - **Caching `_enumerate_state_table` results** — depends only on `ploidy ∈ {2, 4, 6}`. Trivial cache via `functools.lru_cache`; can be added if profiling shows it's worth the complexity. Not blocking.
 - **Per-state diagnostic in `_validate_state_table`** — the current diagnostic names the worst-deviation cell and both computed values. A future improvement could enumerate all states with non-zero posterior contributions and compare per-state — useful if a reorder affects only some states. Not blocking.
