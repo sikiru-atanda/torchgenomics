@@ -305,9 +305,10 @@ def _validate_state_table(
     """
     n_off, m, n_states = origin_probs.shape
 
-    # Compute per-state per-marker dose: dose_per_state[s, j] = sum over
-    # copies in state_table[s] of parent_phased allele at (parent, j, copy_in_parent).
-    st64 = state_table.to(torch.int64)
+    # PolyOrigin's sparse genoprob may reference fewer states than the full
+    # state table (it only emits states with nonzero probability). Slice the
+    # table to the first n_states rows so array dimensions stay consistent.
+    st64 = state_table[:n_states].to(torch.int64)
     parent_id = st64 // ploidy           # (n_states, ploidy)
     copy_in_parent = st64 % ploidy       # (n_states, ploidy)
 
@@ -753,6 +754,19 @@ def run_polyorigin(
             sample_ids_in_probs=set(sample_ids),
             workdir=str(workdir),
         )
+
+        # Early same-ploidy guard: fail fast before Julia is invoked so no
+        # partial workdir artifacts accumulate. Re-read the constructed pedfile
+        # (already written) to get the resolved per-individual ploidy.
+        _ped_early = pd.read_csv(pedfile)
+        _ploidy_values_early = set(_ped_early["ploidy"].astype(int).tolist())
+        if len(_ploidy_values_early) > 1:
+            raise ValueError(
+                f"haplotypes_per_copy decoding requires uniform ploidy across "
+                f"all individuals; got {sorted(_ploidy_values_early)}. Mixed-ploidy "
+                f"F1 is deferred."
+            )
+
         genofile = _build_polyorigin_genofile(
             probs=probs_t,
             sample_ids=sample_ids,
@@ -861,7 +875,25 @@ def run_polyorigin(
         map_df_ref = map_df.set_index("marker").loc[var_ids_ref]
         pos_bp = torch.tensor(map_df_ref["pos_bp"].to_numpy(), dtype=torch.int64)
 
-        n_states = int(origin_probs.shape[-1])
+        # --- Tier A #1: same-ploidy guard + state-table + validate + decode ---
+        ploidy_values = set(per_ind_ploidy.values())
+        if len(ploidy_values) > 1:
+            raise ValueError(
+                f"haplotypes_per_copy decoding requires uniform ploidy across "
+                f"all individuals; got {sorted(ploidy_values)}. Mixed-ploidy "
+                f"F1 is deferred."
+            )
+        decode_ploidy = next(iter(ploidy_values))
+
+        state_table = _enumerate_state_table(decode_ploidy)
+        _validate_state_table(
+            state_table, origin_probs, parent_phased, postdose_probs,
+            ploidy=decode_ploidy, tool_version=tool_version,
+        )
+        haplotypes_per_copy = _decode_haplotypes_per_copy(
+            haplotypes, parent_phased, state_table, ploidy=decode_ploidy,
+        )
+
         result = PhasingResult(
             haplotypes=haplotypes,
             origin_probs=origin_probs,
@@ -881,10 +913,8 @@ def run_polyorigin(
             input_hash=input_hash,
             cmd=cmd_str,
             workdir=str(workdir) if keep_workdir else None,
-            state_table=torch.zeros(n_states, max_ploidy, dtype=torch.int8),
-            haplotypes_per_copy=torch.zeros(
-                len(offspring), max_ploidy, len(var_ids_ref), dtype=torch.int8
-            ),
+            state_table=state_table,
+            haplotypes_per_copy=haplotypes_per_copy,
         )
 
         # Atomic persistence — only after every parse succeeds

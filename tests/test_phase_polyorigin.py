@@ -997,3 +997,104 @@ def test_validate_fails_on_reorder():
             swapped, origin_probs, parent_phased, postdose_probs,
             ploidy=ploidy,
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 5: run_polyorigin orchestration — state_table + decoder wired in
+# ---------------------------------------------------------------------------
+
+def test_run_polyorigin_haplotypes_per_copy_field_populated(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    spy: dict = {}
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
+
+    probs3 = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs3[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text("offspring\tparent1\tparent2\no1\tp1\tp2\n")
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    result = run_polyorigin(
+        probs=probs3,
+        pedigree_tsv=str(ped), map_tsv=str(mp),
+        output_path=str(out_prefix),
+        ploidy=4,
+        sample_ids=["p1", "p2", "o1"], variant_ids=["v1", "v2"],
+        auto_install_julia=False,
+    )
+    # 1 offspring, 4 copies, 2 markers
+    assert result.haplotypes_per_copy.shape == (1, 4, 2)
+    assert result.haplotypes_per_copy.dtype == torch.int8
+    assert set(result.haplotypes_per_copy.unique().tolist()) <= {0, 1}
+
+
+def test_run_polyorigin_state_table_field_populated(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    spy: dict = {}
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
+
+    probs3 = torch.zeros(3, 2, 5, dtype=torch.float64)
+    probs3[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text("offspring\tparent1\tparent2\no1\tp1\tp2\n")
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    result = run_polyorigin(
+        probs=probs3,
+        pedigree_tsv=str(ped), map_tsv=str(mp),
+        output_path=str(out_prefix),
+        ploidy=4,
+        sample_ids=["p1", "p2", "o1"], variant_ids=["v1", "v2"],
+        auto_install_julia=False,
+    )
+    # ploidy=4 → 36 states, 4 copies per state
+    assert result.state_table.shape == (36, 4)
+    assert result.state_table.dtype == torch.int8
+    # Values in [0, 2*ploidy) = [0, 8)
+    vmin = int(result.state_table.min())
+    vmax = int(result.state_table.max())
+    assert vmin >= 0
+    assert vmax < 8
+
+
+def test_run_polyorigin_mixed_ploidy_rejected(tmp_path, monkeypatch):
+    from torchgwas.preprocess import _polyorigin_runtime as rt
+    spy: dict = {}
+    monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
+
+    # probs shape must include 2 offspring + 2 parents = 4 samples
+    probs4 = torch.zeros(4, 2, 5, dtype=torch.float64)
+    probs4[:, :, 2] = 1.0
+    ped = tmp_path / "ped.tsv"
+    ped.write_text(
+        "offspring\tparent1\tparent2\tploidy\n"
+        "o1\tp1\tp2\t4\n"
+        "o2\tp1\tp2\t2\n"
+    )
+    mp = tmp_path / "map.tsv"
+    mp.write_text("marker\tchrom\tpos_bp\nv1\t1\t1000\nv2\t1\t2000\n")
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    with pytest.raises(ValueError, match="uniform ploidy"):
+        run_polyorigin(
+            probs=probs4,
+            pedigree_tsv=str(ped), map_tsv=str(mp),
+            output_path=str(out_prefix),
+            ploidy=4,
+            sample_ids=["p1", "p2", "o1", "o2"], variant_ids=["v1", "v2"],
+            auto_install_julia=False,
+        )
+
+    # Mixed-ploidy rejection happens before persistence — no artifacts
+    assert not (out_prefix.parent / "phased.haplotypes_per_copy.pt").exists()
+    assert not (out_prefix.parent / "phased.meta.json").exists()
