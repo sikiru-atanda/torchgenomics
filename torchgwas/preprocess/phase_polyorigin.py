@@ -875,15 +875,10 @@ def run_polyorigin(
         map_df_ref = map_df.set_index("marker").loc[var_ids_ref]
         pos_bp = torch.tensor(map_df_ref["pos_bp"].to_numpy(), dtype=torch.int64)
 
-        # --- Tier A #1: same-ploidy guard + state-table + validate + decode ---
-        ploidy_values = set(per_ind_ploidy.values())
-        if len(ploidy_values) > 1:
-            raise ValueError(
-                f"haplotypes_per_copy decoding requires uniform ploidy across "
-                f"all individuals; got {sorted(ploidy_values)}. Mixed-ploidy "
-                f"F1 is deferred."
-            )
-        decode_ploidy = next(iter(ploidy_values))
+        # --- Tier A #1: state-table + validate + decode ---
+        # Mixed-ploidy guard runs earlier (right after pedfile is built),
+        # so at this point per_ind_ploidy values are guaranteed uniform.
+        decode_ploidy = next(iter(set(per_ind_ploidy.values())))
 
         state_table = _enumerate_state_table(decode_ploidy)
         _validate_state_table(
