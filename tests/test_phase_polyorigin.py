@@ -369,9 +369,15 @@ def test_find_existing_julia_via_env_var(tmp_path, monkeypatch):
 def test_find_existing_julia_nothing_returns_none(tmp_path, monkeypatch):
     monkeypatch.delenv("TORCHGWAS_JULIA", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))
-    # Also neutralize the common-paths search for the test
+    # Neutralize the common-paths search and juliapkg discovery
     from torchgwas.preprocess import _polyorigin_runtime as rt
     monkeypatch.setattr(rt, "_common_julia_paths", lambda: [])
+    # Patch out juliapkg so its managed install is not found
+    import sys
+    import types
+    fake_juliapkg = types.ModuleType("juliapkg")
+    fake_juliapkg.executable = lambda: None
+    monkeypatch.setitem(sys.modules, "juliapkg", fake_juliapkg)
     found = _find_existing_julia(override=None)
     assert found is None
 
@@ -410,6 +416,10 @@ def test_get_runtime_raises_when_not_found_and_auto_install_false(tmp_path, monk
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setattr(rt, "_common_julia_paths", lambda: [])
     monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(isatty=lambda: False))
+    # Also patch juliapkg so its managed install is not found
+    fake_juliapkg = types.ModuleType("juliapkg")
+    fake_juliapkg.executable = lambda: None
+    monkeypatch.setitem(sys.modules, "juliapkg", fake_juliapkg)
 
     rt._jl = None
     rt._polyorigin = None
@@ -479,13 +489,15 @@ def test_get_runtime_cached_after_first_success():
 # ---------------------------------------------------------------------------
 
 def test_parse_genoprob_shape():
-    # Fixture: 1 offspring (o1), 2 markers, sparse max index=2 → n_states=3
+    # Fixture: 1 offspring (o1), 2 markers.
+    # Raw CSV has state index 1 (1-based) → 0-based index 0 → n_states=1.
+    # PolyOrigin uses 1-based state indices; we convert to 0-based on parse.
     origin_probs, offspring_ids = _parse_genoprob(
         str(FIXTURES / "out_genoprob.csv"),
         expected_offspring=["o1"],
         ploidy=4,
     )
-    assert origin_probs.shape == (1, 2, 3)  # (n_off, m, n_states)
+    assert origin_probs.shape == (1, 2, 1)  # (n_off, m, n_states=1)
     assert torch.allclose(
         origin_probs.sum(dim=-1),
         torch.ones((1, 2), dtype=torch.float64),
@@ -502,8 +514,9 @@ def test_parse_parentphased_values():
         max_ploidy=4,
     )
     assert parent_phased.shape == (2, 2, 4)  # (n_parents, m, max_ploidy)
+    # PolyOrigin uses allele coding 1=ref, 2=alt.
     unique = set(parent_phased.unique().tolist())
-    assert unique <= {0, 1, -1}
+    assert unique <= {1, 2, -1}
 
 
 def test_parse_postdose_shape():
@@ -868,42 +881,50 @@ def test_env_override_wins_over_path(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_enumerate_state_table_count():
-    # ploidy=2 → C(2,1)² = 4 states
+    # PolyOrigin allows double reduction (multisets with replacement):
+    # ploidy=2 → C_wr(2,1)² = 2² = 4 states
     st2 = _enumerate_state_table(2)
     assert st2.shape == (4, 2)
     assert st2.dtype == torch.int8
-    # ploidy=4 → C(4,2)² = 36 states
+    # ploidy=4 → C_wr(4,2)² = 10² = 100 states
     st4 = _enumerate_state_table(4)
-    assert st4.shape == (36, 4)
+    assert st4.shape == (100, 4)
     assert st4.dtype == torch.int8
-    # ploidy=6 → C(6,3)² = 400 states
+    # ploidy=6 → C_wr(6,3)² = 56² = 3136 states
     st6 = _enumerate_state_table(6)
-    assert st6.shape == (400, 6)
+    assert st6.shape == (3136, 6)
     assert st6.dtype == torch.int8
 
 
 def test_enumerate_state_table_first_state_canonical():
-    # For ploidy=4, state 0 = (parent1 gamete (0,1), parent2 gamete (0,1))
-    # Encoding: v = parent_id * ploidy + copy_in_parent
-    # So state 0 = [0*4+0, 0*4+1, 1*4+0, 1*4+1] = [0, 1, 4, 5]
+    # For ploidy=4, state 0 = (parent1 gamete (1,1) in 1-based, parent2 gamete (5,5))
+    # PolyOrigin double-reduction: first gamete is the repeated-copy (1,1).
+    # Encoding: v = parent_id * ploidy + copy_in_parent (0-based)
+    # copy 1 (1-based) → parent1, copy 0 → v = 0*4+0 = 0
+    # copy 1 (1-based) → parent1, copy 0 → v = 0*4+0 = 0  (double reduction)
+    # copy 5 (1-based) → parent2, copy 0 → v = 1*4+0 = 4
+    # copy 5 (1-based) → parent2, copy 0 → v = 1*4+0 = 4  (double reduction)
+    # So state 0 = [0, 0, 4, 4]
     st4 = _enumerate_state_table(4)
-    assert st4[0].tolist() == [0, 1, 4, 5]
+    assert st4[0].tolist() == [0, 0, 4, 4]
 
 
 def test_enumerate_state_table_lex_ordering():
-    # For ploidy=4, each parent's gametes are 2-subsets of {0,1,2,3} in lex
-    # order: (0,1), (0,2), (0,3), (1,2), (1,3), (2,3).
-    # State s = p1_gamete_idx * 6 + p2_gamete_idx.
+    # For ploidy=4, parent1 gametes are 2-multisets of {1,2,3,4} (1-based) in lex
+    # order: (1,1), (1,2), (1,3), (1,4), (2,2), (2,3), (2,4), (3,3), (3,4), (4,4).
+    # Parent2 gametes are 2-multisets of {5,6,7,8} in lex order:
+    # (5,5), (5,6), (5,7), (5,8), (6,6), (6,7), (6,8), (7,7), (7,8), (8,8).
+    # State s = p1_gamete_idx * 10 + p2_gamete_idx.
     st4 = _enumerate_state_table(4)
-    # State 1 = (p1 gamete 0 = (0,1), p2 gamete 1 = (0,2))
-    #         → [0*4+0, 0*4+1, 1*4+0, 1*4+2] = [0, 1, 4, 6]
-    assert st4[1].tolist() == [0, 1, 4, 6]
-    # State 6 = (p1 gamete 1 = (0,2), p2 gamete 0 = (0,1))
-    #         → [0*4+0, 0*4+2, 1*4+0, 1*4+1] = [0, 2, 4, 5]
-    assert st4[6].tolist() == [0, 2, 4, 5]
-    # State 35 = (p1 gamete 5 = (2,3), p2 gamete 5 = (2,3))
-    #         → [0*4+2, 0*4+3, 1*4+2, 1*4+3] = [2, 3, 6, 7]
-    assert st4[35].tolist() == [2, 3, 6, 7]
+    # State 1 = (p1 gamete 0 = (1,1), p2 gamete 1 = (5,6))
+    #         → copies: 1→0, 1→0, 5→4, 6→5  → [0, 0, 4, 5]
+    assert st4[1].tolist() == [0, 0, 4, 5]
+    # State 10 = (p1 gamete 1 = (1,2), p2 gamete 0 = (5,5))
+    #         → copies: 1→0, 2→1, 5→4, 5→4  → [0, 1, 4, 4]
+    assert st4[10].tolist() == [0, 1, 4, 4]
+    # State 99 = (p1 gamete 9 = (4,4), p2 gamete 9 = (8,8))
+    #         → copies: 4→3, 4→3, 8→7, 8→7  → [3, 3, 7, 7]
+    assert st4[99].tolist() == [3, 3, 7, 7]
 
 
 # ---------------------------------------------------------------------------
@@ -912,18 +933,22 @@ def test_enumerate_state_table_lex_ordering():
 
 def test_decode_known_inputs():
     # Setup: ploidy=4, 2 parents, 1 offspring, 1 marker.
+    # PolyOrigin allele coding: 1=ref, 2=alt.
     # parent_phased shape (2 parents, 1 marker, 4 copies):
-    #   parent1 alleles = [1, 0, 1, 0]
-    #   parent2 alleles = [0, 1, 0, 1]
+    #   parent1 alleles (1-based) = [2, 1, 2, 1]  → 0-based output: [1, 0, 1, 0]
+    #   parent2 alleles (1-based) = [1, 2, 1, 2]  → 0-based output: [0, 1, 0, 1]
     parent_phased = torch.tensor([
-        [[1, 0, 1, 0]],  # parent1 at marker 0
-        [[0, 1, 0, 1]],  # parent2 at marker 0
+        [[2, 1, 2, 1]],  # parent1 at marker 0 (PolyOrigin 1/2 coding)
+        [[1, 2, 1, 2]],  # parent2 at marker 0
     ], dtype=torch.int8)
 
     # haplotypes shape (1 offspring, 1 marker): offspring inherits state 0
-    haplotypes = torch.tensor([[0]], dtype=torch.int64)
+    # State 0 in corrected table = (1,1)+(5,5) double-reduction → [0, 0, 4, 4]
+    # Use state 1 instead: (1,1)+(5,6) → [0, 0, 4, 5]
+    # parent1 copy 0 = 2, copy 0 = 2; parent2 copy 0 = 1, copy 1 = 2
+    # output (allele-1): [1, 1, 0, 1]
+    haplotypes = torch.tensor([[1]], dtype=torch.int64)
 
-    # State table from our enumeration — state 0 row = [0, 1, 4, 5]
     state_table = _enumerate_state_table(4)
 
     out = _decode_haplotypes_per_copy(
@@ -935,11 +960,12 @@ def test_decode_known_inputs():
     # Expected shape (1 offspring, 4 copies, 1 marker)
     assert out.shape == (1, 4, 1)
     assert out.dtype == torch.int8
-    # Copy 0 = parent1 copy 0 = 1
-    # Copy 1 = parent1 copy 1 = 0
-    # Copy 2 = parent2 copy 0 = 0
-    # Copy 3 = parent2 copy 1 = 1
-    assert out[0, :, 0].tolist() == [1, 0, 0, 1]
+    # State 1 = [0, 0, 4, 5]:
+    # Copy 0: parent_id=0, copy_in_parent=0 → allele=2 → 0-based=1
+    # Copy 1: parent_id=0, copy_in_parent=0 → allele=2 → 0-based=1
+    # Copy 2: parent_id=1, copy_in_parent=0 → allele=1 → 0-based=0
+    # Copy 3: parent_id=1, copy_in_parent=1 → allele=2 → 0-based=1
+    assert out[0, :, 0].tolist() == [1, 1, 0, 1]
 
 
 # ---------------------------------------------------------------------------
@@ -948,16 +974,30 @@ def test_decode_known_inputs():
 
 def _self_consistent_validate_inputs():
     """Build (state_table, origin_probs, parent_phased, postdose_probs) that
-    are self-consistent under ploidy=4."""
+    are self-consistent under ploidy=4.
+
+    Uses PolyOrigin's real allele coding (1=ref, 2=alt).
+    State 0 = (1,1)+(5,5) double reduction:
+      copies 1,1 from parent1 → both copy 0 → alleles [2, 2] (alt, alt) → dose 2
+      copies 5,5 from parent2 → both copy 0 → alleles [1, 1] (ref, ref) → dose 0
+      Total dose at state 0 = 2 (sum of (allele-1) over 4 copies = 1+1+0+0 = 2).
+    """
     ploidy = 4
     state_table = _enumerate_state_table(ploidy)
 
+    # PolyOrigin 1/2 allele coding: parent1 copy 0 = alt(2), copy 1 = ref(1), etc.
+    # parent2 copy 0 = ref(1), copy 1 = alt(2), etc.
     parent_phased = torch.tensor([
-        [[1, 0, 1, 0]],  # parent1 at marker 0
-        [[0, 1, 0, 1]],  # parent2 at marker 0
+        [[2, 1, 2, 1]],  # parent1 at marker 0: copy0=2(alt), copy1=1(ref), copy2=2, copy3=1
+        [[1, 2, 1, 2]],  # parent2 at marker 0: copy0=1(ref), copy1=2(alt), copy2=1, copy3=2
     ], dtype=torch.int8)  # (2, 1, 4)
 
-    # All probability mass on state 0 → dose 2 (per the decoded alleles 1,0,0,1)
+    # State 0 = [0, 0, 4, 4]:
+    # copy0 = parent_id=0, copy_in_parent=0 → allele=2 → (allele-1)=1
+    # copy0 = parent_id=0, copy_in_parent=0 → allele=2 → (allele-1)=1  [double reduction]
+    # copy4 = parent_id=1, copy_in_parent=0 → allele=1 → (allele-1)=0
+    # copy4 = parent_id=1, copy_in_parent=0 → allele=1 → (allele-1)=0  [double reduction]
+    # dose = 1+1+0+0 = 2
     n_states = state_table.shape[0]
     origin_probs = torch.zeros(1, 1, n_states, dtype=torch.float64)
     origin_probs[0, 0, 0] = 1.0
@@ -980,12 +1020,13 @@ def test_validate_passes_on_self_consistent_input():
 
 
 def test_validate_fails_on_reorder():
-    # Use parent_phased = [[1,0,1,0], [0,1,0,1]], ploidy=4.
-    # State 0 has decoded alleles [1,0,0,1] → dose 2.
-    # State 1 = (p1 gamete (0,1), p2 gamete (0,2)) → copies [0, 1, 4, 6] →
-    #   parent1[0]=1, parent1[1]=0, parent2[0]=0, parent2[2]=0 → dose 1.
-    # Swapping rows 0 and 1 changes per-state dose (2 ↔ 1), so the
-    # round-trip expected-dosage check must fail.
+    # Use state_table with rows 0 and 1 swapped.
+    # State 0 = [0,0,4,4] → dose = 1+1+0+0 = 2 (with parent_phased above)
+    # State 1 = [0,0,4,5]:
+    #   copies: parent1[0]=2, parent1[0]=2, parent2[0]=1, parent2[1]=2
+    #   dose = 1+1+0+1 = 3
+    # Swapping changes dose at position 0 (which has full prob on state 0)
+    # from 2 to 3, breaking the round-trip.
     state_table, origin_probs, parent_phased, postdose_probs, ploidy = \
         _self_consistent_validate_inputs()
 
@@ -1055,8 +1096,8 @@ def test_run_polyorigin_state_table_field_populated(tmp_path, monkeypatch):
         sample_ids=["p1", "p2", "o1"], variant_ids=["v1", "v2"],
         auto_install_julia=False,
     )
-    # ploidy=4 → 36 states, 4 copies per state
-    assert result.state_table.shape == (36, 4)
+    # ploidy=4 → 100 states (CwR), 4 copies per state
+    assert result.state_table.shape == (100, 4)
     assert result.state_table.dtype == torch.int8
     # Values in [0, 2*ploidy) = [0, 8)
     vmin = int(result.state_table.min())

@@ -83,6 +83,16 @@ def _find_existing_julia(override: str | None) -> str | None:
         if os.path.isfile(cand):
             return cand
 
+    # juliapkg (juliacall's companion) manages its own Julia install.
+    # Try it without importing juliacall itself (which would start Julia).
+    try:
+        import juliapkg  # lightweight — does NOT start Julia
+        jl_exe = juliapkg.executable()
+        if jl_exe and os.path.isfile(jl_exe):
+            return os.path.abspath(jl_exe)
+    except Exception:
+        pass
+
     return None
 
 

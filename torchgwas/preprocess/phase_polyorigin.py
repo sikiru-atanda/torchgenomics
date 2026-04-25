@@ -15,7 +15,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from itertools import combinations
+from itertools import combinations, combinations_with_replacement
 from pathlib import Path
 from typing import Optional
 
@@ -182,11 +182,18 @@ def _load_map_tsv(path: str, recomrate: float) -> pd.DataFrame:
 def _enumerate_state_table(ploidy: int) -> Tensor:
     """Build the joint-origin state table for a 2-parent F1 at given ploidy.
 
-    Bivalent meiosis only: each parent contributes ploidy/2 copies per
-    gamete. Gametes are sorted (ploidy/2)-subsets of ``{0..ploidy-1}`` in
-    lexicographic order. States are (parent1 gamete, parent2 gamete)
-    Cartesian-product, flat-indexed as
-    ``s = p1_gamete_idx * n_gametes + p2_gamete_idx``.
+    PolyOrigin models both bivalent and multivalent (tetrasomic) inheritance
+    by allowing double reduction: a single chromosome copy in one parent may
+    appear twice in the gamete.  Gametes are therefore **multisets** of
+    ``ploidy/2`` copies drawn **with replacement** from ``{1..ploidy}`` for
+    parent1 and ``{ploidy+1..2*ploidy}`` for parent2, enumerated in
+    lexicographic order (matching PolyOrigin's ``ancestralgenotype`` section).
+    States are the Cartesian product (parent1 gamete, parent2 gamete),
+    flat-indexed as ``s = p1_gamete_idx * n_p2_gametes + p2_gamete_idx``.
+
+    State indices are **0-based** internally; PolyOrigin emits 1-based
+    indices in the genoprob CSV.  ``_parse_genoprob`` converts to 0-based
+    before filling the dense tensor.
 
     Parameters
     ----------
@@ -197,21 +204,25 @@ def _enumerate_state_table(ploidy: int) -> Tensor:
     -------
     Tensor, shape (n_states, ploidy), int8
         Each row holds ``ploidy`` values ``v`` in ``[0, 2*ploidy)``:
-        ``v = parent_id * ploidy + copy_in_parent``. Parent1 copies
-        occupy the first ``ploidy/2`` slots, parent2 copies the last
-        ``ploidy/2`` slots.
+        ``v = parent_id * ploidy + copy_in_parent`` (0-based). Parent1
+        copies occupy the first ``ploidy/2`` slots, parent2 copies the last
+        ``ploidy/2`` slots.  Double-reduction states have repeated entries.
     """
     if ploidy not in _VALID_PLOIDIES:
         raise ValueError(
             f"_enumerate_state_table: ploidy must be in {{2, 4, 6}}; got {ploidy}."
         )
     half = ploidy // 2
-    gametes = list(combinations(range(ploidy), half))
+    # 1-based copy indices matching PolyOrigin's ancestralgenotype encoding
+    p1_gametes = list(combinations_with_replacement(range(1, ploidy + 1), half))
+    p2_gametes = list(combinations_with_replacement(range(ploidy + 1, 2 * ploidy + 1), half))
 
     rows: list[list[int]] = []
-    for p1_gamete in gametes:
-        for p2_gamete in gametes:
-            row = [0 * ploidy + c for c in p1_gamete] + [1 * ploidy + c for c in p2_gamete]
+    for p1_gamete in p1_gametes:
+        for p2_gamete in p2_gametes:
+            # Convert 1-based PolyOrigin copy indices to 0-based v = parent_id*ploidy+copy
+            row = [0 * ploidy + (c - 1) for c in p1_gamete] + \
+                  [1 * ploidy + (c - ploidy - 1) for c in p2_gamete]
             rows.append(row)
 
     return torch.tensor(rows, dtype=torch.int8)
@@ -268,8 +279,12 @@ def _decode_haplotypes_per_copy(
 
     alleles = parent_phased[parent_id, m_idx_b, copy_in_parent]  # (n_off, m, ploidy) int8
 
+    # PolyOrigin allele coding: 1 = ref, 2 = alt.  Convert to standard 0/1
+    # so that HaplotypeGWAS and dosage calculations see binary alleles.
+    alleles_01 = (alleles.to(torch.int8) - 1).to(torch.int8)  # {1,2} → {0,1}
+
     # Reorder to (n_off, ploidy, m)
-    return alleles.permute(0, 2, 1).contiguous().to(torch.int8)
+    return alleles_01.permute(0, 2, 1).contiguous().to(torch.int8)
 
 
 def _validate_state_table(
@@ -318,7 +333,9 @@ def _validate_state_table(
     m_idx = torch.arange(m, dtype=torch.int64, device=state_table.device)
     m_idx_b = m_idx.view(1, 1, m).expand(n_states, ploidy, m)
     alleles = parent_phased[p_id_b, m_idx_b, c_in_p_b].to(torch.float64)
-    dose_per_state = alleles.sum(dim=1)  # (n_states, m)
+    # PolyOrigin allele coding: 1 = ref allele, 2 = alt allele.
+    # Dosage = number of alt (i.e. '2') alleles = sum(allele - 1).
+    dose_per_state = (alleles - 1.0).sum(dim=1)  # (n_states, m)
 
     # E_state[i, j] = sum_s origin_probs[i, j, s] * dose_per_state[s, j]
     e_state = torch.einsum("ijs,sj->ij", origin_probs, dose_per_state.to(torch.float64))
@@ -495,7 +512,9 @@ def _parse_genoprob(
     n_off = len(off_order)
     n_markers = len(df)
 
-    # First pass: determine maximum state index across all cells
+    # First pass: determine maximum state index across all cells.
+    # PolyOrigin emits 1-based state indices in the genoprob CSV;
+    # we convert to 0-based so that state_table[k] == PolyOrigin state k+1.
     max_state = 0
     for col in off_cols:
         for cell in df[col]:
@@ -503,11 +522,12 @@ def _parse_genoprob(
             if "=>" in cell_s:
                 idx_part = cell_s.split("=>")[0]
                 for idx in idx_part.split("|"):
-                    idx_i = int(idx)
+                    idx_i = int(idx) - 1  # 1-based → 0-based
                     if idx_i > max_state:
                         max_state = idx_i
             else:
-                # Pipe-sep prob vector (fallback for unusual formats)
+                # Pipe-sep prob vector (fallback for unusual formats);
+                # treat as already 0-based (dense vector of length k+1).
                 n_vals = len(cell_s.split("|"))
                 if n_vals - 1 > max_state:
                     max_state = n_vals - 1
@@ -522,12 +542,12 @@ def _parse_genoprob(
             cell_s = str(cell)
             if "=>" in cell_s:
                 idx_part, prob_part = cell_s.split("=>", 1)
-                indices = [int(x) for x in idx_part.split("|")]
+                indices = [int(x) - 1 for x in idx_part.split("|")]  # 1-based → 0-based
                 probs = [float(x) for x in prob_part.split("|")]
                 for idx_i, p in zip(indices, probs):
                     out[oi, j, idx_i] = p
             else:
-                # Fallback: treat as dense pipe-sep probs
+                # Fallback: treat as dense pipe-sep probs (0-based)
                 vals = [float(x) for x in cell_s.split("|")]
                 for k, v in enumerate(vals):
                     out[oi, j, k] = v
@@ -860,8 +880,16 @@ def run_polyorigin(
             expected_offspring=offspring,
             max_ploidy=max_ploidy,
         )
+        # PolyOrigin writes out_parentphased_corrected.csv when it corrects
+        # parental genotypes during reconstruction.  The corrected file is
+        # the one whose alleles are consistent with out_postdoseprob.csv; we
+        # must use it (when present) for _validate_state_table and
+        # _decode_haplotypes_per_copy to produce correct results.
+        _corrected_phased = workdir / "out_parentphased_corrected.csv"
+        _phased_path = str(_corrected_phased) if _corrected_phased.exists() \
+            else str(workdir / "out_parentphased.csv")
         parent_phased, _ = _parse_parentphased(
-            str(workdir / "out_parentphased.csv"),
+            _phased_path,
             expected_parents=parents,
             max_ploidy=max_ploidy,
         )

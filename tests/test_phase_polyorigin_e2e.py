@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import math
 import os
 import urllib.request
 from pathlib import Path
@@ -185,3 +186,79 @@ def test_gwaspoly_potato_roundtrip(tmp_path):
     # Unpack and pipe through the full chain
     # ... implementer fills in based on dataset structure ...
     pytest.skip("Implementer: fill once potato dataset URL/SHA are pinned")
+
+
+def test_haplotypegwas_scan_consumes_per_copy(tmp_path):
+    """Tier 2 smoke test: Phase 56 → HaplotypeGWAS end-to-end.
+
+    Runs the full chain (simulated probs) → run_polyorigin (real Julia)
+    → HaplotypeGWAS.scan() with haplotypes=result.haplotypes_per_copy.
+    Asserts scan returns a valid result — not a calibrated power gate,
+    just verifies the per-copy tensor is shape-compatible with Phase 46.
+    """
+    import numpy as np
+
+    from torchgwas.models import HaplotypeGWAS
+    from torchgwas.preprocess.dosage_uncertainty import expected_dosage
+    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+
+    rng = np.random.default_rng(42)
+    n_off, m, ploidy = 6, 10, 4
+    probs, sample_ids, variant_ids = _make_toy_tetraploid_f1_probs(rng, n_off, m)
+
+    ped = tmp_path / "ped.tsv"
+    ped.write_text(
+        "offspring\tparent1\tparent2\n"
+        + "\n".join(f"o{k+1}\tp1\tp2" for k in range(n_off))
+        + "\n"
+    )
+    mp = tmp_path / "map.tsv"
+    mp.write_text(
+        "marker\tchrom\tpos_bp\n"
+        + "\n".join(f"v{j+1}\t1\t{(j+1)*1000}" for j in range(m))
+        + "\n"
+    )
+    out_prefix = tmp_path / "out" / "phased"
+    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+
+    auto = bool(os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"))
+    result = run_polyorigin(
+        probs=probs,
+        pedigree_tsv=str(ped),
+        map_tsv=str(mp),
+        output_path=str(out_prefix),
+        ploidy=ploidy,
+        sample_ids=sample_ids,
+        variant_ids=variant_ids,
+        auto_install_julia=auto,
+        delmarker=False,
+        refinemap=False,
+    )
+
+    # haplotypes_per_copy must be shape (n_off, ploidy, m)
+    assert result.haplotypes_per_copy.shape == (n_off, ploidy, m)
+
+    # Build G from the offspring postdose_probs (refined-map order)
+    G = expected_dosage(result.postdose_probs, ploidy=ploidy)  # (n_off, m)
+
+    # Synthetic phenotype: mean dosage per offspring + small noise
+    rng_t = torch.Generator()
+    rng_t.manual_seed(42)
+    Y = G.mean(dim=1) + 0.1 * torch.randn(n_off, generator=rng_t, dtype=torch.float64)
+
+    # With only 10 markers, the Gabriel block method may produce zero blocks;
+    # use the sliding-window method which always produces at least m windows.
+    scanner = HaplotypeGWAS(method="window", test="f_test", ploidy=ploidy)
+    scan_result = scanner.scan(
+        Y=Y,
+        G=G.to(torch.float64),
+        haplotypes=result.haplotypes_per_copy,
+    )
+
+    # Sanity checks on the scan output
+    assert len(scan_result.start) > 0, "expected at least one block"
+    # All global p-values are valid floats in [0, 1]
+    for pv in scan_result.p_global.tolist():
+        assert isinstance(pv, float)
+        assert not math.isnan(pv)
+        assert 0.0 <= pv <= 1.0
