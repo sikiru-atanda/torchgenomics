@@ -65,12 +65,16 @@ def test_phasing_result_dataclass_fields():
         input_hash="abc",
         cmd="polyOrigin(...)",
         workdir=None,
+        state_table=torch.zeros(36, 4, dtype=torch.int8),
+        haplotypes_per_copy=torch.zeros(3, 4, 2, dtype=torch.int8),
     )
     assert r.haplotypes.shape == (3, 2)
     assert r.origin_probs.shape == (3, 2, 10)
     assert r.parent_phased.shape == (2, 2, 4)
     assert r.tool == "polyorigin"
     assert r.map_refined is False
+    assert r.state_table.shape == (36, 4)
+    assert r.haplotypes_per_copy.shape == (3, 4, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -731,6 +735,8 @@ def test_persist_rolls_back_on_partial_write(tmp_path, monkeypatch):
         input_hash="abc",
         cmd="...",
         workdir=None,
+        state_table=torch.zeros(36, 4, dtype=torch.int8),
+        haplotypes_per_copy=torch.zeros(1, 4, 2, dtype=torch.int8),
     )
 
     # Force meta.json write to fail

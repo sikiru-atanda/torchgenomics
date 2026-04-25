@@ -49,6 +49,8 @@ class PhasingResult:
     input_hash: str
     cmd: str
     workdir: str | None
+    state_table: Tensor              # (n_states, ploidy) int8 — joint-origin state → per-copy parental source; v = parent_id*ploidy + copy_in_parent
+    haplotypes_per_copy: Tensor      # (n_off, ploidy, m) int8 — decoded per-copy parental alleles, drop-in for HaplotypeGWAS.scan
 
 
 def _build_polyorigin_pedfile(
@@ -693,6 +695,7 @@ def run_polyorigin(
         map_df_ref = map_df.set_index("marker").loc[var_ids_ref]
         pos_bp = torch.tensor(map_df_ref["pos_bp"].to_numpy(), dtype=torch.int64)
 
+        n_states = int(origin_probs.shape[-1])
         result = PhasingResult(
             haplotypes=haplotypes,
             origin_probs=origin_probs,
@@ -712,6 +715,10 @@ def run_polyorigin(
             input_hash=input_hash,
             cmd=cmd_str,
             workdir=str(workdir) if keep_workdir else None,
+            state_table=torch.zeros(n_states, max_ploidy, dtype=torch.int8),
+            haplotypes_per_copy=torch.zeros(
+                len(offspring), max_ploidy, len(var_ids_ref), dtype=torch.int8
+            ),
         )
 
         # Atomic persistence — only after every parse succeeds
