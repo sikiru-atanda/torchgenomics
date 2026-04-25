@@ -126,20 +126,32 @@ def test_parity_tetraploid_f1(tmp_path):
 # ---------------------------------------------------------------------------
 # Recovery tests — haplotype-origin accuracy against simulator ground truth
 # ---------------------------------------------------------------------------
-# Calibrated by bench/calibrate_polyorigin_recovery.py on <DATE>; see
-# docs/superpowers/specs/2026-04-23-phase-56-polyploid-phasing-design.md
-# Section 5.3 for why 2% slack.
-RECOVERY_30X = 0.95  # placeholder — replace after calibration
-RECOVERY_8X = 0.80   # placeholder — replace after calibration
+# Calibrated by bench/calibrate_polyorigin_recovery.py on 2026-04-25.
+# Metric: dosage recovery rate (postdose_probs argmax vs truth dosage).
+# Dosage is used instead of state-index comparison because parent phasing
+# is globally ambiguous: PolyOrigin's copy-label assignment may differ from
+# the simulator's even when the genomic origin is correct. See the module
+# docstring of bench/calibrate_polyorigin_recovery.py for full details.
+# For why 2% slack: Section 5.3 of the Phase 56 design spec.
+RECOVERY_30X = 0.998  # Calibrated: 0.9985 at seed=30 (50 off, 200 markers)
+RECOVERY_8X = 0.990   # Calibrated: 0.9923 at seed=8 (50 off, 200 markers)
 SAFETY_FLOOR = 0.02
 
 
 def test_simulated_f1_haplotype_recovery_30x(tmp_path):
-    pytest.skip("Calibration numbers placeholder — fill after running bench/calibrate_polyorigin_recovery.py")
+    from bench.calibrate_polyorigin_recovery import _run_recovery
+    acc = _run_recovery(depth=30, seed=30)
+    assert acc >= RECOVERY_30X - SAFETY_FLOOR, (
+        f"30x recovery {acc:.4f} below floor {RECOVERY_30X - SAFETY_FLOOR:.4f}"
+    )
 
 
 def test_simulated_f1_haplotype_recovery_8x(tmp_path):
-    pytest.skip("Calibration numbers placeholder — fill after running bench/calibrate_polyorigin_recovery.py")
+    from bench.calibrate_polyorigin_recovery import _run_recovery
+    acc = _run_recovery(depth=8, seed=8)
+    assert acc >= RECOVERY_8X - SAFETY_FLOOR, (
+        f"8x recovery {acc:.4f} below floor {RECOVERY_8X - SAFETY_FLOOR:.4f}"
+    )
 
 
 # ---------------------------------------------------------------------------
