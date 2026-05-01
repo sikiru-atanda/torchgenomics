@@ -38,9 +38,23 @@ from torchgwas.linalg import (
     woodbury_inverse,
     woodbury_logdet,
 )
+from torchgwas.linalg.basis import (
+    bspline_basis,
+    difference_penalty,
+    evaluate_basis_at,
+    legendre_basis,
+    place_knots,
+    pspline_2d,
+    standardize_time,
+)
 from torchgwas.linalg.batched import batched_cholesky, batched_cholesky_solve
 from torchgwas.linalg.eigh import EigenDecomp
 from torchgwas.linalg.safe import symmetrize
+from torchgwas.linalg.truncated_mvn import (
+    bivariate_truncated_moments,
+    mvn_truncated_moments,
+    truncated_normal_moments,
+)
 
 
 pytestmark = pytest.mark.timeout(30)
@@ -1253,3 +1267,528 @@ class TestGrmPolyploidGeneAction:
         assert isinstance(meta, GRMMetadata)
         # Underlying grm_vanraden was called with ploidy=2 (effective).
         assert meta.ploidy == 2
+
+
+# ===================================================================
+# torchgwas.linalg.basis
+# ===================================================================
+
+
+class TestStandardizeTime:
+    """``standardize_time`` maps raw time values to [-1, 1].
+
+    Reference: closed-form  t_std = 2 (t - t_min)/(t_max - t_min) - 1.
+    """
+
+    def test_maps_to_unit_interval(self):
+        """Input [0, 5, 10] should map exactly to [-1, 0, 1]."""
+        t = torch.tensor([0.0, 5.0, 10.0])
+        t_std, t_min, t_max = standardize_time(t)
+        np.testing.assert_allclose(
+            t_std.cpu().numpy(),
+            np.array([-1.0, 0.0, 1.0]),
+            rtol=1e-12, atol=1e-12,
+        )
+        assert t_min == 0.0
+        assert t_max == 10.0
+
+    def test_uses_provided_bounds(self):
+        """Explicit ``t_min`` / ``t_max`` override the data-derived bounds."""
+        t = torch.tensor([2.0, 5.0, 8.0])
+        t_std, t_min, t_max = standardize_time(t, t_min=0.0, t_max=10.0)
+        # 2 -> -0.6, 5 -> 0.0, 8 -> 0.6
+        np.testing.assert_allclose(
+            t_std.cpu().numpy(),
+            np.array([-0.6, 0.0, 0.6]),
+            rtol=1e-12, atol=1e-12,
+        )
+        assert t_min == 0.0
+        assert t_max == 10.0
+
+    def test_constant_input_raises(self):
+        """All-identical times → ValueError (would divide by zero)."""
+        t = torch.tensor([5.0, 5.0, 5.0])
+        with pytest.raises(ValueError):
+            standardize_time(t)
+
+
+class TestLegendreBasis:
+    """``legendre_basis`` evaluates normalized Legendre polynomials.
+
+    Normalization convention (per docstring): ``sqrt((2k+1)/2) * P_k(t)`` so
+    that ``∫_{-1}^{1} P_k^2 dt = 1``.
+    """
+
+    def test_shape(self):
+        """Output is ``(len(t), order + 1)``."""
+        t = torch.linspace(-1, 1, 30)
+        for order in [0, 1, 3, 5]:
+            phi = legendre_basis(t, order=order)
+            assert phi.shape == (30, order + 1)
+
+    def test_first_basis_is_constant(self):
+        """``order=0`` returns a single constant column = sqrt(1/2)."""
+        t = torch.linspace(-1, 1, 20)
+        phi = legendre_basis(t, order=0)
+        # Normalization sqrt((2*0+1)/2) = sqrt(1/2)
+        expected = (1.0 / 2.0) ** 0.5
+        np.testing.assert_allclose(
+            phi.cpu().numpy(),
+            np.full((20, 1), expected),
+            rtol=1e-12, atol=1e-12,
+        )
+
+    def test_matches_scipy_legendre(self):
+        """Each column matches ``scipy.special.legendre`` * sqrt((2k+1)/2)."""
+        from scipy.special import legendre as sp_legendre
+
+        t = torch.linspace(-1, 1, 50, dtype=torch.float64)
+        order = 5
+        phi = legendre_basis(t, order=order)
+        t_np = t.cpu().numpy()
+        for k in range(order + 1):
+            P_k = sp_legendre(k)(t_np)
+            norm = ((2 * k + 1) / 2.0) ** 0.5
+            ref = P_k * norm
+            np.testing.assert_allclose(
+                phi[:, k].cpu().numpy(), ref,
+                rtol=1e-10, atol=1e-10,
+            )
+
+    def test_orthonormal_under_integral(self):
+        """∫_{-1}^{1} P_i P_j dt ≈ δ_{ij} via Gauss-Legendre quadrature."""
+        from numpy.polynomial.legendre import leggauss
+
+        # 64-point Gauss-Legendre exactly integrates polynomials of order ≤ 127.
+        nodes, weights = leggauss(64)
+        t = torch.tensor(nodes, dtype=torch.float64)
+        order = 5
+        phi = legendre_basis(t, order=order).cpu().numpy()
+        gram = phi.T @ np.diag(weights) @ phi
+        np.testing.assert_allclose(
+            gram, np.eye(order + 1),
+            rtol=1e-10, atol=1e-10,
+        )
+
+
+class TestBsplineBasis:
+    """``bspline_basis`` evaluates B-splines via Cox-de Boor recursion.
+
+    Knot convention: implementation auto-pads ``degree`` repeats of the
+    first/last knot, so ``len(knots)+degree-1`` basis functions are returned.
+    """
+
+    def test_shape(self):
+        """Output column count is ``len(knots) + degree - 1``."""
+        t = torch.linspace(0, 10, 30)
+        knots = place_knots(t, n_interior=4, kind="quantile", degree=3)
+        for degree in [2, 3, 4]:
+            B = bspline_basis(t, knots, degree=degree)
+            assert B.shape == (30, len(knots) + degree - 1)
+
+    def test_partition_of_unity(self):
+        """Row sums equal 1 within the spline support (B-spline property)."""
+        t = torch.linspace(0, 10, 50)
+        knots = place_knots(t, n_interior=4, kind="quantile", degree=3)
+        B = bspline_basis(t, knots, degree=3)
+        row_sums = B.sum(dim=1).cpu().numpy()
+        np.testing.assert_allclose(
+            row_sums, np.ones(len(t)),
+            rtol=1e-10, atol=1e-10,
+        )
+
+    def test_local_support(self):
+        """At any single t, only ``degree + 1`` basis columns are nonzero."""
+        knots = place_knots(torch.linspace(0, 10, 50), n_interior=8,
+                            kind="quantile", degree=3)
+        # Sample five interior points
+        for t_val in [1.5, 3.5, 5.0, 7.2, 9.1]:
+            B = bspline_basis(torch.tensor([t_val]), knots, degree=3)
+            n_nonzero = int((B.abs() > 1e-12).sum().item())
+            assert n_nonzero <= 4, (
+                f"At t={t_val} got {n_nonzero} nonzero basis fns "
+                "(expected <= degree+1=4)"
+            )
+
+    def test_matches_scipy_bspline(self):
+        """Bit-level agreement with ``scipy.interpolate.BSpline`` evaluation."""
+        from scipy.interpolate import BSpline
+
+        t = torch.linspace(0, 10, 20, dtype=torch.float64)
+        knots = place_knots(t, n_interior=4, kind="quantile", degree=3)
+        degree = 3
+        B = bspline_basis(t, knots, degree=degree).cpu().numpy()
+
+        # Build the augmented knot vector that scipy expects: degree repeats
+        # at each boundary plus the interior+boundary knots.
+        ext = np.concatenate([
+            np.full(degree, float(knots[0].item())),
+            knots.cpu().numpy(),
+            np.full(degree, float(knots[-1].item())),
+        ])
+        n_basis = len(ext) - degree - 1
+        B_scipy = np.zeros((len(t), n_basis))
+        for i in range(n_basis):
+            coef = np.zeros(n_basis)
+            coef[i] = 1.0
+            bs = BSpline(ext, coef, degree, extrapolate=False)
+            B_scipy[:, i] = bs(t.cpu().numpy())
+
+        # Skip rows where scipy returns NaN (right-boundary outside support).
+        mask = ~np.isnan(B_scipy).any(axis=1)
+        np.testing.assert_allclose(
+            B[mask], B_scipy[mask], rtol=1e-10, atol=1e-10,
+        )
+
+
+class TestDifferencePenalty:
+    """``difference_penalty`` returns ``D'D`` where ``D`` is the order-th
+    finite-difference operator."""
+
+    def test_2nd_order_explicit_form(self):
+        """For ``b=4, order=2``: D = [[1,-2,1,0],[0,1,-2,1]]; verify D'D."""
+        P = difference_penalty(4, order=2).cpu().numpy()
+        D = np.array([[1.0, -2.0, 1.0, 0.0],
+                      [0.0, 1.0, -2.0, 1.0]])
+        np.testing.assert_allclose(P, D.T @ D, rtol=1e-12, atol=1e-12)
+
+    def test_1st_order_explicit_form(self):
+        """For ``b=4, order=1``: D = [[-1,1,0,0],[0,-1,1,0],[0,0,-1,1]]."""
+        P = difference_penalty(4, order=1).cpu().numpy()
+        D = np.array([[-1.0, 1.0, 0.0, 0.0],
+                      [0.0, -1.0, 1.0, 0.0],
+                      [0.0, 0.0, -1.0, 1.0]])
+        np.testing.assert_allclose(P, D.T @ D, rtol=1e-12, atol=1e-12)
+
+    def test_zero_order_identity(self):
+        """``order=0`` ⇒ D is identity ⇒ penalty is identity."""
+        P = difference_penalty(5, order=0).cpu().numpy()
+        np.testing.assert_allclose(P, np.eye(5), rtol=1e-12, atol=1e-12)
+
+    def test_psd(self):
+        """Penalty is symmetric PSD by construction (D'D)."""
+        P = difference_penalty(8, order=2).cpu().numpy()
+        np.testing.assert_allclose(P, P.T, rtol=1e-12, atol=1e-12)
+        eigvals = np.linalg.eigvalsh(P)
+        assert eigvals.min() >= -1e-12
+
+    def test_b_le_order_raises(self):
+        """``b <= order`` is undefined and should raise."""
+        with pytest.raises(ValueError):
+            difference_penalty(2, order=2)
+
+
+class TestPlaceKnots:
+    """``place_knots`` returns knot positions for B-spline construction."""
+
+    def test_quantile_kind(self):
+        """Interior knots match data quantiles."""
+        t = torch.linspace(0, 10, 100)
+        knots = place_knots(t, n_interior=4, kind="quantile", degree=3)
+        # Format: [t_min, q20, q40, q60, q80, t_max]
+        assert len(knots) == 6
+        ref_interior = np.quantile(t.cpu().numpy(), [0.2, 0.4, 0.6, 0.8])
+        np.testing.assert_allclose(
+            knots[1:-1].cpu().numpy(), ref_interior,
+            rtol=1e-10, atol=1e-10,
+        )
+        assert float(knots[0].item()) == 0.0
+        assert float(knots[-1].item()) == 10.0
+
+    def test_uniform_kind(self):
+        """``kind='uniform'`` gives equally-spaced knots from min to max."""
+        t = torch.tensor([0.0, 1.5, 3.7, 5.2, 9.0, 10.0])
+        knots = place_knots(t, n_interior=4, kind="uniform", degree=3)
+        # 6 equally-spaced points between 0 and 10
+        np.testing.assert_allclose(
+            knots.cpu().numpy(), np.linspace(0.0, 10.0, 6),
+            rtol=1e-12, atol=1e-12,
+        )
+
+    def test_returns_tensor(self):
+        """Return type is ``torch.Tensor`` regardless of kind."""
+        t = torch.linspace(0, 1, 10)
+        for kind in ("quantile", "uniform", "extended"):
+            knots = place_knots(t, n_interior=3, kind=kind, degree=3)
+            assert isinstance(knots, torch.Tensor)
+            assert knots.dim() == 1
+
+
+class TestEvaluateBasisAt:
+    """``evaluate_basis_at`` rebuilds a basis at new query points using
+    fit-time parameters (round-trip fidelity)."""
+
+    def test_legendre_round_trip(self):
+        """Calling with fit-time ``t_min``/``t_max`` reproduces ``legendre_basis``."""
+        t = torch.linspace(0, 10, 25)
+        t_std, t_min, t_max = standardize_time(t)
+        order = 4
+        phi_direct = legendre_basis(t_std, order=order)
+        phi_eval = evaluate_basis_at(
+            t, "legendre",
+            {"order": order, "t_min": t_min, "t_max": t_max},
+        )
+        np.testing.assert_allclose(
+            phi_direct.cpu().numpy(), phi_eval.cpu().numpy(),
+            rtol=1e-12, atol=1e-12,
+        )
+
+    def test_bspline_round_trip(self):
+        """Reproduces ``bspline_basis`` with stored knots."""
+        t = torch.linspace(0, 10, 25)
+        knots = place_knots(t, n_interior=4, kind="quantile", degree=3)
+        phi_direct = bspline_basis(t, knots, degree=3)
+        phi_eval = evaluate_basis_at(
+            t, "bspline",
+            {"knots": knots, "degree": 3},
+        )
+        np.testing.assert_allclose(
+            phi_direct.cpu().numpy(), phi_eval.cpu().numpy(),
+            rtol=1e-12, atol=1e-12,
+        )
+
+    def test_unknown_kind_raises(self):
+        """Unknown ``basis_kind`` ⇒ ValueError."""
+        t = torch.linspace(0, 1, 10)
+        with pytest.raises(ValueError):
+            evaluate_basis_at(t, "fourier", {})
+
+
+class TestPspline2d:
+    """``pspline_2d`` returns (design, P_row, P_col) for a tensor-product
+    P-spline. Marginal partition-of-unity ⇒ design row sums equal 1."""
+
+    def test_returns_three_tensors(self):
+        """Output is a 3-tuple with documented shapes."""
+        torch.manual_seed(0)
+        n = 40
+        row = torch.rand(n) * 10.0
+        col = torch.rand(n) * 8.0
+        Phi, P_row, P_col = pspline_2d(
+            row, col,
+            n_knots_row=4, n_knots_col=4, degree=3, penalty_order=2,
+        )
+        # b_row = n_interior + degree + 1 = 4 + 3 + 1 = 8 ... wait,
+        # actually len(knots)+degree-1 = (n_interior+2)+degree-1 = n_interior+degree+1
+        # n_interior=4 + degree=3 + 1 = 8
+        b_row = 4 + 3 + 1
+        b_col = 4 + 3 + 1
+        assert Phi.shape == (n, b_row * b_col)
+        assert P_row.shape == (b_row * b_col, b_row * b_col)
+        assert P_col.shape == (b_row * b_col, b_row * b_col)
+
+    def test_design_partition_of_unity(self):
+        """2D row sums equal 1 (product of two marginal partitions of unity)."""
+        torch.manual_seed(0)
+        n = 60
+        row = torch.rand(n) * 10.0
+        col = torch.rand(n) * 8.0
+        Phi, _, _ = pspline_2d(
+            row, col,
+            n_knots_row=4, n_knots_col=4, degree=3, penalty_order=2,
+        )
+        np.testing.assert_allclose(
+            Phi.sum(dim=1).cpu().numpy(), np.ones(n),
+            rtol=1e-10, atol=1e-10,
+        )
+
+    def test_penalty_psd(self):
+        """Both penalty matrices are symmetric PSD."""
+        torch.manual_seed(0)
+        n = 40
+        row = torch.rand(n) * 10.0
+        col = torch.rand(n) * 8.0
+        _, P_row, P_col = pspline_2d(
+            row, col,
+            n_knots_row=4, n_knots_col=4, degree=3, penalty_order=2,
+        )
+        for P in (P_row.cpu().numpy(), P_col.cpu().numpy()):
+            np.testing.assert_allclose(P, P.T, rtol=1e-10, atol=1e-10)
+            eigvals = np.linalg.eigvalsh(P)
+            # Numerical noise can yield O(1e-15) negative eigenvalues.
+            assert eigvals.min() >= -1e-10
+
+
+# ===================================================================
+# torchgwas.linalg.truncated_mvn
+# ===================================================================
+
+
+class TestTruncatedNormalMoments:
+    """``truncated_normal_moments`` returns ``(E[X], Var(X))`` for
+    ``X ~ TN(mu, sigma^2, a, b)``. Reference: closed-form via Mills ratio."""
+
+    def test_full_normal_recovers_mu_sigma(self):
+        """Bounds ``[-inf, +inf]`` ⇒ untruncated moments ``(mu, sigma^2)``.
+
+        The implementation clamps standardized bounds to ±8.2, so the recovery
+        is to ~1e-8 (the missing tail mass beyond ±8.2 is ~1e-15).
+        """
+        mu = torch.tensor([0.5, -1.2, 2.0], dtype=torch.float64)
+        sigma = torch.tensor([1.5, 0.8, 2.5], dtype=torch.float64)
+        a = torch.full_like(mu, -float("inf"))
+        b = torch.full_like(mu, float("inf"))
+        m, v = truncated_normal_moments(mu, sigma, a, b)
+        np.testing.assert_allclose(
+            m.cpu().numpy(), mu.cpu().numpy(),
+            rtol=1e-8, atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            v.cpu().numpy(), (sigma ** 2).cpu().numpy(),
+            rtol=1e-8, atol=1e-8,
+        )
+
+    def test_left_truncated_at_mu(self):
+        """Left-truncated half-normal: ``E[X | X > mu] = mu + sigma * sqrt(2/pi)``."""
+        mu_v, sigma_v = 0.5, 1.5
+        mu = torch.tensor([mu_v], dtype=torch.float64)
+        sigma = torch.tensor([sigma_v], dtype=torch.float64)
+        a = torch.tensor([mu_v], dtype=torch.float64)
+        b = torch.tensor([float("inf")], dtype=torch.float64)
+        m, _ = truncated_normal_moments(mu, sigma, a, b)
+        ref = mu_v + sigma_v * (2.0 / np.pi) ** 0.5
+        np.testing.assert_allclose(
+            m.cpu().numpy(), np.array([ref]),
+            rtol=1e-6, atol=1e-6,
+        )
+
+    def test_matches_scipy_truncnorm(self):
+        """Mean/var match ``scipy.stats.truncnorm`` to 1e-6 over a sweep."""
+        from scipy.stats import truncnorm
+
+        cases = [
+            (0.5, 1.5, -1.0, 3.0),
+            (-1.0, 2.0, -3.0, 0.5),
+            (0.0, 1.0, -1.0, 1.0),
+            (2.0, 0.5, 1.0, 4.0),
+        ]
+        for mu_v, sigma_v, a_v, b_v in cases:
+            mu = torch.tensor([mu_v], dtype=torch.float64)
+            sigma = torch.tensor([sigma_v], dtype=torch.float64)
+            a = torch.tensor([a_v], dtype=torch.float64)
+            b = torch.tensor([b_v], dtype=torch.float64)
+            m, v = truncated_normal_moments(mu, sigma, a, b)
+
+            a_s = (a_v - mu_v) / sigma_v
+            b_s = (b_v - mu_v) / sigma_v
+            ref_m = truncnorm.mean(a_s, b_s, loc=mu_v, scale=sigma_v)
+            ref_v = truncnorm.var(a_s, b_s, loc=mu_v, scale=sigma_v)
+            np.testing.assert_allclose(
+                m.item(), ref_m, rtol=1e-6, atol=1e-6,
+            )
+            np.testing.assert_allclose(
+                v.item(), ref_v, rtol=1e-6, atol=1e-6,
+            )
+
+
+class TestBivariateTruncatedMoments:
+    """``bivariate_truncated_moments`` returns the first two moments of a
+    bivariate truncated normal via Drezner-Wesolowsky + Tallis (1961)."""
+
+    def test_returns_correct_shapes(self):
+        """``mean`` has shape ``(batch, 2)``, ``var`` has shape ``(batch, 2, 2)``."""
+        mu = torch.tensor([[0.5, -0.3]], dtype=torch.float64)
+        Sigma = torch.tensor([[[1.5, 0.2], [0.2, 2.0]]], dtype=torch.float64)
+        a = torch.tensor([[-1.0, -2.0]], dtype=torch.float64)
+        b = torch.tensor([[3.0, 1.5]], dtype=torch.float64)
+        m, v = bivariate_truncated_moments(mu, Sigma, a, b)
+        assert m.shape == (1, 2)
+        assert v.shape == (1, 2, 2)
+
+    def test_independence_recovers_marginals(self):
+        """Diagonal Sigma ⇒ marginal moments factor.
+
+        Tolerance 1e-6: the bivariate marginal-mean formula uses the same
+        Mills-ratio kernel as the univariate path, so diagonal entries should
+        agree to FP precision modulo CDF clamping.
+        """
+        mu = torch.tensor([[0.5, -0.3]], dtype=torch.float64)
+        Sigma = torch.tensor([[[1.5, 0.0], [0.0, 2.0]]], dtype=torch.float64)
+        a = torch.tensor([[-1.0, -2.0]], dtype=torch.float64)
+        b = torch.tensor([[3.0, 1.5]], dtype=torch.float64)
+        m, v = bivariate_truncated_moments(mu, Sigma, a, b)
+
+        # Univariate marginals.
+        m1, v1 = truncated_normal_moments(
+            mu[:, 0], Sigma[:, 0, 0].sqrt(), a[:, 0], b[:, 0],
+        )
+        m2, v2 = truncated_normal_moments(
+            mu[:, 1], Sigma[:, 1, 1].sqrt(), a[:, 1], b[:, 1],
+        )
+
+        np.testing.assert_allclose(m[0, 0].item(), m1.item(),
+                                   rtol=1e-6, atol=1e-6)
+        np.testing.assert_allclose(m[0, 1].item(), m2.item(),
+                                   rtol=1e-6, atol=1e-6)
+        np.testing.assert_allclose(v[0, 0, 0].item(), v1.item(),
+                                   rtol=1e-6, atol=1e-6)
+        np.testing.assert_allclose(v[0, 1, 1].item(), v2.item(),
+                                   rtol=1e-6, atol=1e-6)
+        # Cross-covariance ≈ 0 under independence (Tallis formula collapses).
+        assert abs(v[0, 0, 1].item()) < 1e-6
+
+
+class TestMvnTruncatedMoments:
+    """``mvn_truncated_moments`` returns truncated-MVN moments via QMC for
+    ``c >= 3`` (Genz & Bretz 2009). Tolerances calibrated to ``n_qmc=10000``."""
+
+    def test_full_normal_recovers_mu_sigma(self):
+        """Wide bounds ⇒ untruncated moments to within QMC noise.
+
+        Tolerance: 5e-2 absolute on mean entries, 1e-1 relative on covariance
+        entries. Calibrated to ``n_qmc=10000`` Sobol draws — empirically the
+        max abs error on means is ~1e-3 and on covariances ~5e-3 in this
+        regime, but the slack is documented to absorb seed variance.
+        """
+        torch.manual_seed(0)
+        c = 3
+        mu = torch.zeros(1, c, dtype=torch.float64)
+        Sigma = torch.eye(c, dtype=torch.float64).unsqueeze(0)
+        big = 8.0  # within BOUND_CLIP (8.2)
+        a = torch.full((1, c), -big, dtype=torch.float64)
+        b = torch.full((1, c), big, dtype=torch.float64)
+        m, v = mvn_truncated_moments(mu, Sigma, a, b, n_qmc=10000, seed=42)
+        np.testing.assert_allclose(
+            m.cpu().numpy(), mu.cpu().numpy(),
+            atol=5e-2,
+        )
+        np.testing.assert_allclose(
+            v.cpu().numpy(), Sigma.cpu().numpy(),
+            atol=1e-1,
+        )
+
+    def test_seed_reproducibility(self):
+        """Same ``seed`` ⇒ identical output (deterministic QMC)."""
+        c = 3
+        mu = torch.tensor([[0.5, -0.3, 0.2]], dtype=torch.float64)
+        Sigma = torch.diag(torch.tensor([1.5, 2.0, 0.8],
+                                         dtype=torch.float64)).unsqueeze(0)
+        a = torch.tensor([[-1.0, -2.0, -1.5]], dtype=torch.float64)
+        b = torch.tensor([[3.0, 1.5, 2.0]], dtype=torch.float64)
+
+        m1, v1 = mvn_truncated_moments(mu, Sigma, a, b, n_qmc=2000, seed=42)
+        m2, v2 = mvn_truncated_moments(mu, Sigma, a, b, n_qmc=2000, seed=42)
+        np.testing.assert_array_equal(m1.cpu().numpy(), m2.cpu().numpy())
+        np.testing.assert_array_equal(v1.cpu().numpy(), v2.cpu().numpy())
+
+    def test_independence_factorizes(self):
+        """Diagonal Sigma ⇒ off-diagonal covariances near zero.
+
+        Tolerance: 5e-2 absolute. With n_qmc=10000 the empirical
+        off-diagonals are O(1e-3) but we leave headroom for QMC seed
+        variance.
+        """
+        c = 3
+        mu = torch.tensor([[0.5, -0.3, 0.2]], dtype=torch.float64)
+        Sigma = torch.diag(torch.tensor([1.5, 2.0, 0.8],
+                                         dtype=torch.float64)).unsqueeze(0)
+        a = torch.tensor([[-1.0, -2.0, -1.5]], dtype=torch.float64)
+        b = torch.tensor([[3.0, 1.5, 2.0]], dtype=torch.float64)
+        _, v = mvn_truncated_moments(mu, Sigma, a, b, n_qmc=10000, seed=42)
+        v_np = v[0].cpu().numpy()
+        for i in range(c):
+            for j in range(c):
+                if i != j:
+                    assert abs(v_np[i, j]) < 5e-2, (
+                        f"Off-diag ({i},{j})={v_np[i, j]} too large"
+                    )
