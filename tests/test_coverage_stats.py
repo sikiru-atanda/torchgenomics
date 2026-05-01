@@ -22,27 +22,45 @@ from statsmodels.stats.multitest import multipletests
 
 from torchgwas.stats import (
     AdaPTResult,
+    BestModelResult,
     IHWResult,
+    PVEResult,
+    QTLPeak,
     adapt,
+    adaptive_permutation_maxT,
     benjamini_hochberg,
     benjamini_yekutieli,
     bonferroni,
+    cauchy_combination,
     chi2_sf,
+    compute_pve,
+    davies_pvalue,
+    diagnose_inflation,
     effective_test_count,
     effective_test_count_moskvina,
     hierarchical_fdr,
     holm,
     ihw,
+    lambda_gc,
     ld_correlation_eigenvalues,
+    liu_pvalue,
     local_fdr,
     lrt_test,
+    mixture_chi2_pvalue,
+    permutation_maxT,
+    prune_peaks,
+    saddlepoint_pvalue,
     score_test,
     score_test_multi_df,
+    select_best_model,
     sidak,
     storey_qvalue,
     wald_test,
     weighted_bh,
 )
+from torchgwas.models.base import ScanResult
+from torchgwas.stats.calibrate import compare_pvalues
+from torchgwas.stats.genomic_control import CHI2_1_MEDIAN
 from torchgwas.stats.multipletesting import eigenmt_adjust
 from torchgwas.stats.tests import apply_contrast
 
@@ -822,3 +840,701 @@ class TestLdCorrelationEigenvalues:
         assert (evals >= -1e-10).all(), (
             f"Min eigenvalue {evals.min().item()} below -1e-10"
         )
+
+
+# ---------------------------------------------------------------------------
+# mixture
+# ---------------------------------------------------------------------------
+
+
+class TestDaviesPvalue:
+    """``davies_pvalue`` for Q ~ sum_k lambda_k * chi2_1."""
+
+    def test_single_lambda_recovers_chi2(self, stat_dtype):
+        """Single-component lambda=[1.0] reduces Q to chi2(1).
+
+        The impl special-cases all-equal lambdas via scipy.stats.chi2.sf,
+        so this should match exactly. Tolerance 1e-10 (closed-form)."""
+        lambdas = torch.tensor([1.0], dtype=stat_dtype)
+        for q in (0.5, 1.0, 2.0, 3.84, 10.0):
+            out = davies_pvalue(q, lambdas)
+            ref = sp_stats.chi2.sf(q, df=1)
+            assert abs(out - ref) < 1e-10, (
+                f"q={q}: davies={out}, chi2.sf={ref}, diff={abs(out - ref)}"
+            )
+
+    def test_returns_float_in_unit_interval(self, stat_dtype):
+        """Output is a plain Python float in [0, 1]."""
+        lambdas = torch.tensor([1.0, 0.5, 0.25], dtype=stat_dtype)
+        out = davies_pvalue(2.0, lambdas)
+        assert isinstance(out, float)
+        assert 0.0 <= out <= 1.0
+
+
+class TestLiuPvalue:
+    """``liu_pvalue`` (Liu 2009 / Satterthwaite moment-matching)."""
+
+    def test_single_lambda_approximates_chi2(self, stat_dtype):
+        """For lambdas=[1.0], q=2.0, Liu agrees with chi2.sf(2, 1) ~ 0.157.
+        Loose tolerance (Liu is moment-matched, not exact)."""
+        lambdas = torch.tensor([1.0], dtype=stat_dtype)
+        out = liu_pvalue(2.0, lambdas)
+        ref = sp_stats.chi2.sf(2.0, df=1)
+        # Documented loose tolerance: Liu within 0.05 of exact chi2.
+        assert abs(out - ref) < 0.05, (
+            f"liu={out}, chi2.sf={ref}, diff={abs(out - ref)}"
+        )
+
+    def test_matches_davies_in_easy_regime(self, stat_dtype):
+        """Liu and Davies agree to within 50% relative error for a
+        balanced 3-component mixture in the bulk (q near E[Q])."""
+        lambdas = torch.tensor([1.0, 0.5, 0.25], dtype=stat_dtype)
+        d = davies_pvalue(3.0, lambdas)
+        l = liu_pvalue(3.0, lambdas)
+        # Loose tolerance (50% relative): Liu can diverge in tails
+        assert abs(d - l) / max(d, l, 1e-12) < 0.5, (
+            f"liu={l}, davies={d}, rel diff={abs(d - l) / max(d, l, 1e-12)}"
+        )
+
+
+class TestMixtureChi2Pvalue:
+    """``mixture_chi2_pvalue`` dispatch wrapper."""
+
+    def test_dispatches_to_davies(self, stat_dtype):
+        """method='davies' returns the same as davies_pvalue."""
+        lambdas = torch.tensor([1.0], dtype=stat_dtype)
+        a = mixture_chi2_pvalue(2.0, lambdas, method="davies")
+        b = davies_pvalue(2.0, lambdas)
+        assert abs(a - b) < 1e-12, f"dispatch={a}, direct={b}"
+
+    def test_dispatches_to_liu(self, stat_dtype):
+        """method='liu' returns the same as liu_pvalue."""
+        lambdas = torch.tensor([1.0], dtype=stat_dtype)
+        a = mixture_chi2_pvalue(2.0, lambdas, method="liu")
+        b = liu_pvalue(2.0, lambdas)
+        assert abs(a - b) < 1e-12, f"dispatch={a}, direct={b}"
+
+
+# ---------------------------------------------------------------------------
+# permutation
+# ---------------------------------------------------------------------------
+
+
+def _tiny_perm_inputs(n=50, m=10, seed=0):
+    """Build a small (n, m) permutation-test problem deterministically."""
+    gen = torch.Generator().manual_seed(seed)
+    G = torch.randn(n, m, generator=gen, dtype=torch.float64)
+    Y = torch.randn(n, generator=gen, dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    return G, Y, X0
+
+
+class TestPermutationMaxT:
+    """``permutation_maxT`` Westfall-Young maxT FWER."""
+
+    def test_seed_reproducibility(self, stat_dtype):
+        """Identical seed -> identical adjusted p-values."""
+        G, Y, X0 = _tiny_perm_inputs(n=50, m=10, seed=0)
+        p1 = permutation_maxT(G, Y, X0, n_perms=100, seed=42)
+        p2 = permutation_maxT(G, Y, X0, n_perms=100, seed=42)
+        torch.testing.assert_close(p1, p2, rtol=0, atol=0)
+
+    def test_returns_tensor_of_correct_shape(self, stat_dtype):
+        """Output shape (n_snps,)."""
+        G, Y, X0 = _tiny_perm_inputs(n=50, m=10, seed=1)
+        out = permutation_maxT(G, Y, X0, n_perms=100, seed=7)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (10,)
+
+    def test_no_signal_pvalues_uniform(self, stat_dtype):
+        """Independent (G, Y) -> empirical p-values roughly uniform on (0,1).
+        With n_snps=10, expect 2-9 of them below 0.5 (loose bound)."""
+        G, Y, X0 = _tiny_perm_inputs(n=50, m=10, seed=0)
+        p = permutation_maxT(G, Y, X0, n_perms=200, seed=0)
+        n_low = int((p < 0.5).sum().item())
+        assert 2 <= n_low <= 9, (
+            f"n_low={n_low} out of 10 SNPs; expected uniform in [2, 9]"
+        )
+
+
+class TestAdaptivePermutationMaxT:
+    """``adaptive_permutation_maxT`` two-phase adaptive FWER."""
+
+    def test_seed_reproducibility(self, stat_dtype):
+        """Identical seed -> identical output."""
+        G, Y, X0 = _tiny_perm_inputs(n=50, m=10, seed=0)
+        p1 = adaptive_permutation_maxT(
+            G, Y, X0, n_perms_min=200, n_perms_max=500, seed=42, batch_size=100
+        )
+        p2 = adaptive_permutation_maxT(
+            G, Y, X0, n_perms_min=200, n_perms_max=500, seed=42, batch_size=100
+        )
+        torch.testing.assert_close(p1, p2, rtol=0, atol=0)
+
+    def test_returns_tensor_of_correct_shape(self, stat_dtype):
+        """Output shape (n_snps,)."""
+        G, Y, X0 = _tiny_perm_inputs(n=50, m=10, seed=1)
+        out = adaptive_permutation_maxT(
+            G, Y, X0, n_perms_min=200, n_perms_max=500, seed=7, batch_size=100
+        )
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (10,)
+
+    def test_runs_quickly_in_null_setting(self, stat_dtype):
+        """Null setting: function should complete quickly (< 10 s) for
+        n_snps=20, n_perms_max=10000 because most SNPs are pruned in
+        Phase 1. We bound run time as a proxy for early-stop behavior."""
+        import time
+
+        G, Y, X0 = _tiny_perm_inputs(n=50, m=20, seed=2)
+        t0 = time.time()
+        out = adaptive_permutation_maxT(
+            G, Y, X0, n_perms_min=1000, n_perms_max=10000, seed=3,
+            batch_size=500,
+        )
+        elapsed = time.time() - t0
+        assert out.shape == (20,)
+        assert elapsed < 10.0, f"adaptive_permutation_maxT took {elapsed:.1f}s"
+
+
+# ---------------------------------------------------------------------------
+# spa
+# ---------------------------------------------------------------------------
+
+
+class TestSaddlepointPvalue:
+    """``saddlepoint_pvalue`` SAIGE-style SPA correction."""
+
+    def test_returns_tensor_in_unit_interval(self, stat_dtype):
+        """Output is a tensor with all values in [0, 1]."""
+        torch.manual_seed(0)
+        n, m = 100, 5
+        mu = torch.full((n,), 0.3, dtype=torch.float64)
+        G = torch.randn(n, m, dtype=torch.float64)
+        # Build a small score: sum_i (Y_i - mu_i) * g_ij with random Y
+        Y = torch.bernoulli(mu)
+        scores = (G * (Y - mu).unsqueeze(1)).sum(dim=0)
+        out = saddlepoint_pvalue(scores, mu, G, threshold=2.0)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (m,)
+        assert (out >= 0.0).all() and (out <= 1.0).all()
+
+    def test_below_threshold_falls_back_to_chi2(self, stat_dtype):
+        """When chi2_stat < threshold, the impl skips SPA correction
+        and the output equals the simple chi2_sf(score^2 / V, 1)."""
+        torch.manual_seed(0)
+        n, m = 100, 1
+        mu = torch.full((n,), 0.5, dtype=torch.float64)
+        G = torch.randn(n, m, dtype=torch.float64)
+        # Tiny score -> chi2_stat << 2.0
+        scores = torch.tensor([0.05], dtype=torch.float64)
+        # Compute reference chi2 p-value directly.
+        W = mu * (1.0 - mu)
+        V = (G * (W.unsqueeze(1) * G)).sum(dim=0)
+        ref_chi2 = scores ** 2 / V
+        ref_p = sp_stats.chi2.sf(ref_chi2.cpu().numpy(), df=1)
+
+        out = saddlepoint_pvalue(scores, mu, G, threshold=2.0)
+        np.testing.assert_allclose(
+            out.cpu().numpy(), ref_p, rtol=1e-6, atol=1e-6,
+        )
+
+
+# ---------------------------------------------------------------------------
+# cauchy
+# ---------------------------------------------------------------------------
+
+
+class TestCauchyCombination:
+    """``cauchy_combination`` (ACAT / CCT, Liu et al. 2019)."""
+
+    def test_uniform_pvals_returns_uniform_in_distribution(self, stat_dtype):
+        """1000 trials of m=5 uniform p-values: combined p has mean ~0.5
+        and KS distance from uniform < 0.1."""
+        torch.manual_seed(0)
+        n_trials, m = 1000, 5
+        p_matrix = torch.rand(n_trials, m, dtype=torch.float64)
+        combined = cauchy_combination(p_matrix)
+        assert combined.shape == (n_trials,)
+        # Mean of a uniform in (0,1) is 0.5; tolerance 0.1.
+        mean_p = float(combined.mean().item())
+        assert abs(mean_p - 0.5) < 0.1, f"mean combined p={mean_p}"
+        # KS distance from uniform: tolerance 0.1 (loose).
+        ks_stat, _ = sp_stats.kstest(combined.cpu().numpy(), "uniform")
+        assert ks_stat < 0.1, f"KS distance from uniform = {ks_stat}"
+
+    def test_strong_signal_recovers_low_pvalue(self, stat_dtype):
+        """One p=1e-10 + the rest uniform should give combined p < 1e-3.
+        ACAT inherits from the smallest input p in the heavy-tail regime."""
+        gen = torch.Generator().manual_seed(0)
+        m = 5
+        p_row = torch.rand(m, generator=gen, dtype=torch.float64)
+        p_row[0] = 1e-10
+        out = cauchy_combination(p_row.unsqueeze(0))
+        assert out.shape == (1,)
+        assert out.item() < 1e-3, f"combined p = {out.item()}"
+
+    def test_returns_tensor_same_shape_as_p_axis_0(self, stat_dtype):
+        """For (n, m) input, output is (n,)."""
+        p = torch.rand(7, 4, dtype=torch.float64)
+        out = cauchy_combination(p)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (7,)
+
+
+# ---------------------------------------------------------------------------
+# genomic_control
+# ---------------------------------------------------------------------------
+
+
+class TestLambdaGc:
+    """``lambda_gc`` Devlin & Roeder 1999 inflation factor."""
+
+    def test_uniform_pvalues_lambda_one(self, stat_dtype):
+        """Pure-null U(0,1) p-values: lambda_GC ~ 1.0 ± 0.1 with 10k draws."""
+        gen = torch.Generator().manual_seed(0)
+        p = torch.rand(10000, generator=gen, dtype=torch.float64)
+        lam = lambda_gc(p)
+        assert isinstance(lam, float)
+        assert abs(lam - 1.0) < 0.1, f"lambda_GC under uniform = {lam}"
+
+    def test_inflated_pvalues_lambda_above_one(self, stat_dtype):
+        """Multiply chi2 statistics by 1.5 (artificial inflation):
+        lambda_GC clearly > 1.2."""
+        gen = np.random.default_rng(0)
+        # Sample chi2(1) statistics, inflate, convert back to p.
+        chi2s = sp_stats.chi2.rvs(df=1, size=10000, random_state=gen) * 1.5
+        p_inflated = sp_stats.chi2.sf(chi2s, df=1)
+        p_t = torch.tensor(p_inflated, dtype=torch.float64)
+        lam = lambda_gc(p_t)
+        assert lam > 1.2, f"lambda_GC under 1.5x inflation = {lam}"
+
+    def test_uses_chi2_1_median_constant(self, stat_dtype):
+        """Hand-checked formula: median chi2 for p=0.5 across all markers
+        is chi2.ppf(0.5, 1); divided by CHI2_1_MEDIAN gives 1.0."""
+        # All p-values are 0.5 -> all chi2_isf(0.5, 1) = chi2.ppf(0.5, 1)
+        # = CHI2_1_MEDIAN, so lambda = CHI2_1_MEDIAN / CHI2_1_MEDIAN = 1.0.
+        p = torch.full((100,), 0.5, dtype=torch.float64)
+        lam = lambda_gc(p)
+        assert abs(lam - 1.0) < 1e-10, (
+            f"lambda_gc(p=0.5 const) = {lam}, expected 1.0 from CHI2_1_MEDIAN identity"
+        )
+
+
+class TestDiagnoseInflation:
+    """``diagnose_inflation`` returns a status string for a lambda_GC."""
+
+    def test_low_lambda_is_deflated(self, stat_dtype):
+        """lambda < 0.9 -> 'deflated'."""
+        s = diagnose_inflation(0.85)
+        assert isinstance(s, str)
+        assert "deflat" in s.lower()
+
+    def test_normal_lambda_is_well_calibrated(self, stat_dtype):
+        """lambda ~ 1.0 -> 'well-calibrated'."""
+        s = diagnose_inflation(1.0)
+        assert isinstance(s, str)
+        assert "well" in s.lower() or "calibrat" in s.lower()
+
+    def test_high_lambda_is_inflated(self, stat_dtype):
+        """lambda > 1.1 -> 'mildly inflated' or 'severely inflated'."""
+        s = diagnose_inflation(1.5)
+        assert isinstance(s, str)
+        assert "inflat" in s.lower()
+
+    def test_returns_string(self, stat_dtype):
+        """Always returns a Python str."""
+        for lam in (0.5, 0.95, 1.0, 1.2, 2.0, 5.0):
+            assert isinstance(diagnose_inflation(lam), str)
+
+
+class TestChi21Median:
+    """``CHI2_1_MEDIAN`` constant matches scipy."""
+
+    def test_value_matches_scipy(self, stat_dtype):
+        """CHI2_1_MEDIAN == scipy.stats.chi2.ppf(0.5, df=1) to 1e-12."""
+        ref = sp_stats.chi2.ppf(0.5, df=1)
+        assert abs(CHI2_1_MEDIAN - ref) < 1e-12, (
+            f"CHI2_1_MEDIAN={CHI2_1_MEDIAN}, scipy={ref}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# pve
+# ---------------------------------------------------------------------------
+
+
+def _make_scan_result(m, p_values, dtype=torch.float64):
+    """Build a single-trait ScanResult with m markers and given p-values.
+
+    All other fields filled with placeholder values appropriate for a
+    one-chromosome diploid scan."""
+    return ScanResult(
+        chr=["1"] * m,
+        pos=list(range(1, m + 1)),
+        snp=[f"snp{i}" for i in range(m)],
+        a1=["A"] * m,
+        a2=["G"] * m,
+        af=torch.full((m,), 0.3, dtype=dtype),
+        beta=torch.zeros(m, dtype=dtype),
+        se=torch.ones(m, dtype=dtype),
+        stat=torch.zeros(m, dtype=dtype),
+        p=torch.as_tensor(p_values, dtype=dtype),
+        test="wald",
+    )
+
+
+class TestPVEResult:
+    """``PVEResult`` dataclass round-trip + repr."""
+
+    def test_construct_and_round_trip(self, stat_dtype):
+        """Instantiate, attribute round-trip exactly."""
+        beta = torch.tensor([0.1, 0.2], dtype=stat_dtype)
+        pve = torch.tensor([0.01, 0.02], dtype=stat_dtype)
+        res = PVEResult(
+            snp=["s1", "s2"], chr=["1", "2"], pos=[100, 200],
+            beta=beta, pve=pve,
+            pve_total=0.03, phenotypic_variance=1.5,
+            method="marginal", n_significant=2,
+            capped=False, rank_deficient=False,
+        )
+        assert res.snp == ["s1", "s2"]
+        assert res.chr == ["1", "2"]
+        assert res.pos == [100, 200]
+        torch.testing.assert_close(res.beta, beta, rtol=0, atol=0)
+        torch.testing.assert_close(res.pve, pve, rtol=0, atol=0)
+        assert res.pve_total == 0.03
+        assert res.phenotypic_variance == 1.5
+        assert res.method == "marginal"
+        assert res.n_significant == 2
+        assert res.capped is False
+        assert res.rank_deficient is False
+
+    def test_repr_does_not_crash(self, stat_dtype):
+        """``repr(...)`` returns a string."""
+        res = PVEResult(
+            snp=[], chr=[], pos=[],
+            beta=torch.zeros(0, dtype=stat_dtype),
+            pve=torch.zeros(0, dtype=stat_dtype),
+            pve_total=0.0, phenotypic_variance=0.0,
+            method="marginal", n_significant=0, capped=False,
+        )
+        s = repr(res)
+        assert isinstance(s, str)
+        assert "PVEResult" in s
+
+
+class TestComputePve:
+    """``compute_pve`` per-marker phenotypic variance explained."""
+
+    def test_returns_pveresult(self, stat_dtype):
+        """Output is a PVEResult instance."""
+        torch.manual_seed(0)
+        n, m = 100, 20
+        result = _make_scan_result(m, [0.5] * m, dtype=stat_dtype)
+        y = torch.randn(n, dtype=stat_dtype,
+                        generator=torch.Generator().manual_seed(0))
+        out = compute_pve(result, y, significance_threshold=5e-8)
+        assert isinstance(out, PVEResult)
+
+    def test_pve_total_in_unit_interval(self, stat_dtype):
+        """``result.pve_total`` is a finite number in [0, 1]."""
+        torch.manual_seed(0)
+        n, m = 100, 20
+        # Two markers significant, with non-trivial beta + af.
+        p_vals = [0.5] * m
+        p_vals[0] = 1e-12
+        p_vals[1] = 1e-10
+        result = _make_scan_result(m, p_vals, dtype=stat_dtype)
+        # Set realistic beta for the two significant markers.
+        result.beta = torch.zeros(m, dtype=stat_dtype)
+        result.beta[0] = 0.1
+        result.beta[1] = 0.05
+        y = torch.randn(n, dtype=stat_dtype,
+                        generator=torch.Generator().manual_seed(0))
+        out = compute_pve(result, y, significance_threshold=5e-8)
+        assert 0.0 <= out.pve_total <= 1.0, f"pve_total = {out.pve_total}"
+
+    def test_no_significant_markers_pve_zero(self, stat_dtype):
+        """When all p > threshold, returns pve_total=0 and n_significant=0."""
+        n, m = 100, 20
+        result = _make_scan_result(m, [0.5] * m, dtype=stat_dtype)
+        y = torch.randn(n, dtype=stat_dtype,
+                        generator=torch.Generator().manual_seed(0))
+        out = compute_pve(result, y, significance_threshold=5e-8)
+        assert out.n_significant == 0
+        assert out.pve_total == 0.0
+
+
+# ---------------------------------------------------------------------------
+# peak_pruning
+# ---------------------------------------------------------------------------
+
+
+class TestQTLPeak:
+    """``QTLPeak`` dataclass round-trip + repr."""
+
+    def test_construct_and_round_trip(self, stat_dtype):
+        """Instantiate, attribute round-trip exactly."""
+        peak = QTLPeak(
+            snp="rs123", chr="1", pos=1_500_000,
+            neglog10p=8.5, best_model="additive",
+            window_start=1_000_000, window_end=2_000_000,
+            n_markers_in_window=5,
+        )
+        assert peak.snp == "rs123"
+        assert peak.chr == "1"
+        assert peak.pos == 1_500_000
+        assert peak.neglog10p == 8.5
+        assert peak.best_model == "additive"
+        assert peak.window_start == 1_000_000
+        assert peak.window_end == 2_000_000
+        assert peak.n_markers_in_window == 5
+
+    def test_repr_does_not_crash(self, stat_dtype):
+        """``repr(...)`` returns a string."""
+        peak = QTLPeak(
+            snp="rs1", chr="1", pos=100,
+            neglog10p=1.0, best_model="NA",
+            window_start=0, window_end=200, n_markers_in_window=1,
+        )
+        s = repr(peak)
+        assert isinstance(s, str)
+        assert "QTLPeak" in s
+
+
+class TestPrunePeaks:
+    """``prune_peaks`` LD-window peak merging."""
+
+    def test_no_significant_peaks(self, stat_dtype):
+        """All p > threshold -> empty peak list."""
+        result = _make_scan_result(10, [0.5] * 10, dtype=stat_dtype)
+        peaks = prune_peaks(result, p_threshold=1e-4)
+        assert peaks == []
+
+    def test_window_merges_nearby(self, stat_dtype):
+        """3 markers at pos=1000/1001/2_000_000 with bp_window=1_000_000:
+        the first two merge into one peak; the third stands alone."""
+        m = 3
+        result = ScanResult(
+            chr=["1"] * m,
+            pos=[1000, 1001, 2_000_000],
+            snp=[f"snp{i}" for i in range(m)],
+            a1=["A"] * m, a2=["G"] * m,
+            af=torch.full((m,), 0.3, dtype=stat_dtype),
+            beta=torch.zeros(m, dtype=stat_dtype),
+            se=torch.ones(m, dtype=stat_dtype),
+            stat=torch.zeros(m, dtype=stat_dtype),
+            p=torch.tensor([1e-10, 1e-9, 1e-8], dtype=stat_dtype),
+            test="wald",
+        )
+        peaks = prune_peaks(result, bp_window=1_000_000, p_threshold=1e-4)
+        assert len(peaks) == 2, (
+            f"got {len(peaks)} peaks; expected 2 (merged 1000+1001, plus 2M)"
+        )
+        # Best peak (lowest p) should be at pos=1000.
+        peaks_sorted = sorted(peaks, key=lambda p: -p.neglog10p)
+        assert peaks_sorted[0].pos == 1000
+
+    def test_returns_list_of_QTLPeak(self, stat_dtype):
+        """Output is a list of QTLPeak instances."""
+        m = 3
+        result = ScanResult(
+            chr=["1"] * m,
+            pos=[100, 1_500_000, 3_000_000],
+            snp=[f"snp{i}" for i in range(m)],
+            a1=["A"] * m, a2=["G"] * m,
+            af=torch.full((m,), 0.3, dtype=stat_dtype),
+            beta=torch.zeros(m, dtype=stat_dtype),
+            se=torch.ones(m, dtype=stat_dtype),
+            stat=torch.zeros(m, dtype=stat_dtype),
+            p=torch.tensor([1e-10, 1e-8, 1e-6], dtype=stat_dtype),
+            test="wald",
+        )
+        out = prune_peaks(result, bp_window=1_000_000, p_threshold=1e-4)
+        assert isinstance(out, list)
+        for p in out:
+            assert isinstance(p, QTLPeak)
+
+
+# ---------------------------------------------------------------------------
+# best_model
+# ---------------------------------------------------------------------------
+
+
+class TestBestModelResult:
+    """``BestModelResult`` dataclass round-trip + repr."""
+
+    def test_construct_and_round_trip(self, stat_dtype):
+        """Instantiate, attribute round-trip exactly."""
+        best_p = torch.tensor([1e-10, 0.5], dtype=stat_dtype)
+        nl = torch.tensor([10.0, 0.30103], dtype=stat_dtype)
+        res = BestModelResult(
+            snp=["s1", "s2"], chr=["1", "1"], pos=[100, 200],
+            best_model=["additive", "additive"],
+            best_neglog10p=nl, best_p=best_p,
+            bic_penalty_applied=True,
+            all_model_p={"additive": best_p},
+        )
+        assert res.snp == ["s1", "s2"]
+        assert res.best_model == ["additive", "additive"]
+        torch.testing.assert_close(res.best_p, best_p, rtol=0, atol=0)
+        torch.testing.assert_close(res.best_neglog10p, nl, rtol=0, atol=0)
+        assert res.bic_penalty_applied is True
+        assert "additive" in res.all_model_p
+
+    def test_repr_does_not_crash(self, stat_dtype):
+        """``repr(...)`` returns a string."""
+        res = BestModelResult(
+            snp=[], chr=[], pos=[],
+            best_model=[],
+            best_neglog10p=torch.zeros(0, dtype=stat_dtype),
+            best_p=torch.zeros(0, dtype=stat_dtype),
+            bic_penalty_applied=False,
+        )
+        s = repr(res)
+        assert isinstance(s, str)
+        assert "BestModelResult" in s
+
+
+class TestSelectBestModel:
+    """``select_best_model`` per-marker gene-action selection."""
+
+    def test_returns_BestModelResult(self, stat_dtype):
+        """Output is a BestModelResult instance."""
+        m = 5
+        scan_a = _make_scan_result(m, [0.1] * m, dtype=stat_dtype)
+        scan_b = _make_scan_result(m, [0.5] * m, dtype=stat_dtype)
+        out = select_best_model(
+            {"additive": scan_a, "1-dom": scan_b},
+            n_samples=100, bic_penalty=True, ploidy=4,
+        )
+        assert isinstance(out, BestModelResult)
+
+    def test_no_bic_penalty_picks_minimum_p(self, stat_dtype):
+        """With bic_penalty=False, best_model[j] = argmin(p[j])."""
+        m = 4
+        # additive has lowest p at marker 0, 2; '1-dom' at 1, 3.
+        p_a = torch.tensor([1e-10, 0.5, 1e-12, 0.3], dtype=stat_dtype)
+        p_b = torch.tensor([0.5, 1e-10, 0.3, 1e-12], dtype=stat_dtype)
+        scan_a = _make_scan_result(m, p_a, dtype=stat_dtype)
+        scan_b = _make_scan_result(m, p_b, dtype=stat_dtype)
+        out = select_best_model(
+            {"additive": scan_a, "1-dom": scan_b},
+            n_samples=100, bic_penalty=False, ploidy=4,
+        )
+        assert out.best_model == ["additive", "1-dom", "additive", "1-dom"]
+
+    def test_picks_lowest_p_per_marker(self, stat_dtype):
+        """With BIC penalty for >1 parameter models: when all candidate
+        models have 1 parameter (additive vs 1-dom), the penalty is 0
+        and the choice reduces to argmin(p) per marker."""
+        m = 3
+        p_a = torch.tensor([1e-12, 0.5, 1e-5], dtype=stat_dtype)
+        p_b = torch.tensor([0.5, 1e-12, 1e-3], dtype=stat_dtype)
+        scan_a = _make_scan_result(m, p_a, dtype=stat_dtype)
+        scan_b = _make_scan_result(m, p_b, dtype=stat_dtype)
+        out = select_best_model(
+            {"additive": scan_a, "1-dom": scan_b},
+            n_samples=100, bic_penalty=True, ploidy=4,
+        )
+        # Both models have 1 param -> no penalty -> argmin(p)
+        assert out.best_model == ["additive", "1-dom", "additive"]
+
+
+# ---------------------------------------------------------------------------
+# calibrate
+# ---------------------------------------------------------------------------
+
+
+class TestComparePvalues:
+    """``compare_pvalues`` against a reference p-value vector."""
+
+    def test_perfect_match_high_concordance(self, stat_dtype):
+        """compare_pvalues(p, p) -> frac_within_tolerance=1.0,
+        mean_abs_diff=0, corr_neglog10=1.0."""
+        gen = torch.Generator().manual_seed(0)
+        p = torch.rand(100, generator=gen, dtype=torch.float64)
+        out = compare_pvalues(p, p, tolerance=1e-4)
+        assert isinstance(out, dict)
+        assert out["frac_within_tolerance"] == 1.0
+        assert out["mean_abs_diff"] == 0.0
+        assert out["max_abs_diff"] == 0.0
+        assert abs(out["corr_neglog10"] - 1.0) < 1e-10
+
+    def test_returns_dict_with_documented_keys(self, stat_dtype):
+        """Output dict contains the documented keys."""
+        gen = torch.Generator().manual_seed(0)
+        p1 = torch.rand(50, generator=gen, dtype=torch.float64)
+        p2 = torch.rand(50, generator=gen, dtype=torch.float64)
+        out = compare_pvalues(p1, p2, tolerance=1e-4)
+        for key in (
+            "n", "mean_abs_diff", "max_abs_diff",
+            "frac_within_tolerance", "corr_neglog10",
+            "mean_abs_diff_neglog10", "tolerance",
+        ):
+            assert key in out, f"missing key {key!r} in compare_pvalues output"
+        assert out["n"] == 50
+        assert out["tolerance"] == 1e-4
+
+
+# ---------------------------------------------------------------------------
+# models.base
+# ---------------------------------------------------------------------------
+
+
+class TestScanResult:
+    """``ScanResult`` dataclass round-trip + repr."""
+
+    def test_construct_and_round_trip(self, stat_dtype):
+        """Instantiate, attribute round-trip exactly."""
+        m = 3
+        af = torch.tensor([0.1, 0.2, 0.3], dtype=stat_dtype)
+        beta = torch.tensor([0.5, 0.6, 0.7], dtype=stat_dtype)
+        se = torch.tensor([0.05, 0.06, 0.07], dtype=stat_dtype)
+        stat = torch.tensor([100.0, 100.0, 100.0], dtype=stat_dtype)
+        p = torch.tensor([1e-10, 1e-9, 1e-8], dtype=stat_dtype)
+        n_obs = torch.tensor([100, 100, 100], dtype=torch.long)
+        res = ScanResult(
+            chr=["1", "2", "3"],
+            pos=[100, 200, 300],
+            snp=["rs1", "rs2", "rs3"],
+            a1=["A", "C", "G"],
+            a2=["T", "G", "C"],
+            af=af, beta=beta, se=se, stat=stat, p=p,
+            test="wald",
+            n_obs=n_obs,
+        )
+        assert res.chr == ["1", "2", "3"]
+        assert res.pos == [100, 200, 300]
+        assert res.snp == ["rs1", "rs2", "rs3"]
+        assert res.a1 == ["A", "C", "G"]
+        assert res.a2 == ["T", "G", "C"]
+        torch.testing.assert_close(res.af, af, rtol=0, atol=0)
+        torch.testing.assert_close(res.beta, beta, rtol=0, atol=0)
+        torch.testing.assert_close(res.se, se, rtol=0, atol=0)
+        torch.testing.assert_close(res.stat, stat, rtol=0, atol=0)
+        torch.testing.assert_close(res.p, p, rtol=0, atol=0)
+        torch.testing.assert_close(res.n_obs, n_obs, rtol=0, atol=0)
+        assert res.test == "wald"
+        # Default inference_type
+        assert res.inference_type == "marginal"
+        assert len(res) == m
+
+    def test_repr_does_not_crash(self, stat_dtype):
+        """``repr(...)`` returns a string."""
+        m = 3
+        res = ScanResult(
+            chr=["1"] * m, pos=[1, 2, 3],
+            snp=[f"s{i}" for i in range(m)],
+            a1=["A"] * m, a2=["G"] * m,
+            af=torch.zeros(m, dtype=stat_dtype),
+            beta=torch.zeros(m, dtype=stat_dtype),
+            se=torch.ones(m, dtype=stat_dtype),
+            stat=torch.zeros(m, dtype=stat_dtype),
+            p=torch.full((m,), 1.0, dtype=stat_dtype),
+            test="wald",
+        )
+        s = repr(res)
+        assert isinstance(s, str)
+        assert "ScanResult" in s
