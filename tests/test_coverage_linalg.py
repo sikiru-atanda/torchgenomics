@@ -49,6 +49,16 @@ from torchgwas.linalg.basis import (
 )
 from torchgwas.linalg.batched import batched_cholesky, batched_cholesky_solve
 from torchgwas.linalg.eigh import EigenDecomp
+from torchgwas.linalg.kronecker_eed import (
+    KronEED,
+    diagonal_precision,
+    inverse_rotate_from_ked,
+    ked_reml_quantities,
+    kronecker_eed,
+    kronecker_eed_from_full,
+    rotate_to_ked_basis,
+    woodbury_fa_precision,
+)
 from torchgwas.linalg.safe import symmetrize
 from torchgwas.linalg.truncated_mvn import (
     bivariate_truncated_moments,
@@ -1792,3 +1802,421 @@ class TestMvnTruncatedMoments:
                     assert abs(v_np[i, j]) < 5e-2, (
                         f"Off-diag ({i},{j})={v_np[i, j]} too large"
                     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for Kronecker-EED tests
+# ---------------------------------------------------------------------------
+
+
+def _random_psd(p: int, jitter: float = 0.1, seed: int | None = None) -> torch.Tensor:
+    """Random ``(p, p)`` symmetric positive-definite matrix in float64."""
+    if seed is not None:
+        torch.manual_seed(seed)
+    A = torch.randn(p, p, dtype=torch.float64)
+    Q, _ = torch.linalg.qr(A)
+    diag = torch.rand(p, dtype=torch.float64) + jitter
+    return Q @ torch.diag(diag) @ Q.T
+
+
+class TestKronEED:
+    """The ``KronEED`` named-tuple should round-trip its fields and ``repr``
+    cleanly."""
+
+    def test_construct_and_round_trip(self):
+        """Construct with shaped tensors; attribute access returns inputs."""
+        d, E = 3, 2
+        Tt = torch.eye(d, dtype=torch.float64)
+        Te = torch.eye(E, dtype=torch.float64)
+        lam_t = torch.tensor([1.0, 0.5, 0.25], dtype=torch.float64)
+        lam_e = torch.tensor([2.0, 0.1], dtype=torch.float64)
+        ked = KronEED(Tt=Tt, Te=Te, lam_t=lam_t, lam_e=lam_e, d=d, E=E)
+        assert torch.equal(ked.Tt, Tt)
+        assert torch.equal(ked.Te, Te)
+        assert torch.equal(ked.lam_t, lam_t)
+        assert torch.equal(ked.lam_e, lam_e)
+        assert ked.d == d
+        assert ked.E == E
+
+    def test_repr_does_not_crash(self):
+        """``repr(KronEED(...))`` returns a string (NamedTuple default repr)."""
+        ked = KronEED(
+            Tt=torch.eye(2, dtype=torch.float64),
+            Te=torch.eye(2, dtype=torch.float64),
+            lam_t=torch.zeros(2, dtype=torch.float64),
+            lam_e=torch.zeros(2, dtype=torch.float64),
+            d=2,
+            E=2,
+        )
+        s = repr(ked)
+        assert isinstance(s, str)
+        assert "KronEED" in s
+
+
+class TestKroneckerEed:
+    """``kronecker_eed`` should return KronEED whose ``Tt``/``Te``
+    simultaneously diagonalize the ``(Vg, Ve)`` pair on each side."""
+
+    def test_returns_KronEED_with_correct_shapes(self):
+        """``Tt`` is ``(d, d)``, ``Te`` is ``(E, E)``, eigenvalues are 1-D."""
+        torch.manual_seed(0)
+        d, E = 3, 2
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = _random_psd(d)
+        Ve_e = _random_psd(E)
+        ked = kronecker_eed(Vg_t, Vg_e, Ve_t, Ve_e)
+        assert isinstance(ked, KronEED)
+        assert ked.Tt.shape == (d, d)
+        assert ked.Te.shape == (E, E)
+        assert ked.lam_t.shape == (d,)
+        assert ked.lam_e.shape == (E,)
+        assert ked.d == d
+        assert ked.E == E
+
+    def test_simultaneously_diagonalizes(self):
+        """``Tt'`` simultaneously diagonalizes ``(Vg_t, Ve_t)`` (and same for E).
+
+        For ``T = Le^{-T} Q`` with ``Q`` orthogonal and ``Ve = Le Le'``:
+            T' Vg T = diag(lam),   T' Ve T = I.
+        Tolerance: 1e-7 absolute on off-diagonals and on the
+        ``diag(T'Ve T) - 1`` residual — observed-then-floor. Composition
+        of Cholesky inverse + eigh + back-multiply by Le^{-T} accumulates
+        roundoff well above eigh's own ulp; observed max O(3e-8) at d=3
+        on the identity-residual side, O(5e-9) on off-diagonals.
+        """
+        torch.manual_seed(0)
+        d, E = 3, 2
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = _random_psd(d)
+        Ve_e = _random_psd(E)
+        ked = kronecker_eed(Vg_t, Vg_e, Ve_t, Ve_e)
+
+        # Trait side
+        TgT = ked.Tt.T @ Vg_t @ ked.Tt
+        TeT = ked.Tt.T @ Ve_t @ ked.Tt
+        off_g = TgT - torch.diag(torch.diagonal(TgT))
+        off_e = TeT - torch.diag(torch.diagonal(TeT))
+        assert off_g.abs().max().item() < 1e-7
+        assert off_e.abs().max().item() < 1e-7
+        # Ve side ⇒ identity diagonal
+        assert (TeT.diagonal() - 1.0).abs().max().item() < 1e-7
+        # Vg diagonal entries match ``lam_t`` (sorted desc by impl)
+        assert torch.allclose(TgT.diagonal(), ked.lam_t, atol=1e-7)
+
+        # Env side
+        TgE = ked.Te.T @ Vg_e @ ked.Te
+        TeE = ked.Te.T @ Ve_e @ ked.Te
+        assert (TgE - torch.diag(torch.diagonal(TgE))).abs().max().item() < 1e-7
+        assert (TeE - torch.diag(torch.diagonal(TeE))).abs().max().item() < 1e-7
+        assert (TeE.diagonal() - 1.0).abs().max().item() < 1e-7
+        assert torch.allclose(TgE.diagonal(), ked.lam_e, atol=1e-7)
+
+
+class TestKroneckerEedFromFull:
+    """``kronecker_eed_from_full`` should diagonalize a separable
+    ``Vg = kron(Vg_t, Vg_e)`` / ``Ve = kron(Ve_t, Ve_e)`` pair."""
+
+    def test_recovers_separable_covariance(self):
+        """For separable ``Vg``/``Ve``, the recovered transforms still
+        diagonalize them — even though the impl rescales the trait/env factors
+        (separable decomposition is unique only up to a scalar swap between
+        factors). We verify the *diagonalization property* on the full
+        ``(dE, dE)`` matrix rather than literal equality of the factors.
+
+        Tolerance: 1e-9 absolute on off-diagonals — reflects two layers of
+        ``eigh``-precision algebra and the rescale step.
+        """
+        torch.manual_seed(0)
+        d, E = 3, 2
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = _random_psd(d)
+        Ve_e = _random_psd(E)
+        Vg = torch.kron(Vg_t, Vg_e)
+        Ve = torch.kron(Ve_t, Ve_e)
+
+        ked = kronecker_eed_from_full(Vg, Ve, d, E)
+        assert isinstance(ked, KronEED)
+        assert ked.Tt.shape == (d, d) and ked.Te.shape == (E, E)
+        assert ked.lam_t.shape == (d,) and ked.lam_e.shape == (E,)
+
+        # Joint Kronecker transform: T = Tt kron Te
+        T = torch.kron(ked.Tt, ked.Te)
+        # T' Vg T should be diagonal
+        VgD = T.T @ Vg @ T
+        off = VgD - torch.diag(torch.diagonal(VgD))
+        # Tolerance: 1e-7 absolute on off-diagonals — observed-then-floor.
+        # The from-full impl rescales factors via per-block diagonal averaging,
+        # which composes Cholesky / eigh roundoff with the rescale itself;
+        # observed max O(5e-8).
+        assert off.abs().max().item() < 1e-7
+        # T' Ve T should be (close to) identity
+        VeD = T.T @ Ve @ T
+        assert (VeD - torch.eye(d * E, dtype=torch.float64)).abs().max().item() < 1e-7
+
+        # And the diagonal of VgD should equal lam_t kron lam_e
+        lam_kron = torch.kron(ked.lam_t, ked.lam_e)
+        assert torch.allclose(VgD.diagonal(), lam_kron, atol=1e-7)
+
+
+class TestRotateToKedBasis:
+    """``rotate_to_ked_basis(M, Tt, Te, d, E)`` reshapes ``M`` from
+    ``(n, dE)`` to ``(n, d, E)`` and contracts ``Tt'`` on the trait axis,
+    ``Te'`` on the env axis. Equivalent to ``(Tt' kron Te') @ vec_row(M_i)``
+    per row in row-major flatten convention."""
+
+    def test_matches_kronecker_product_form(self):
+        """For each row, the rotated value equals ``kron(Tt', Te') @ row``.
+
+        Tolerance: 1e-12 absolute — single matmul of small dense matrices in
+        FP64 is at the level of ulps.
+        """
+        torch.manual_seed(0)
+        d, E, n = 3, 2, 4
+        Tt = torch.randn(d, d, dtype=torch.float64)
+        Te = torch.randn(E, E, dtype=torch.float64)
+        M = torch.randn(n, d * E, dtype=torch.float64)
+
+        rotated = rotate_to_ked_basis(M, Tt, Te, d, E)
+        kron_form = torch.kron(Tt.T, Te.T)
+        expected = (kron_form @ M.T).T  # (n, dE)
+
+        assert rotated.shape == (n, d * E)
+        assert torch.allclose(rotated, expected, atol=1e-12)
+
+    def test_avoids_full_kronecker(self):
+        """At ``d=20, E=20`` the rotation runs without forming a 400x400
+        Kronecker; output shape is correct."""
+        torch.manual_seed(0)
+        d, E, n = 20, 20, 3
+        Tt = torch.randn(d, d, dtype=torch.float64)
+        Te = torch.randn(E, E, dtype=torch.float64)
+        M = torch.randn(n, d * E, dtype=torch.float64)
+        rotated = rotate_to_ked_basis(M, Tt, Te, d, E)
+        assert rotated.shape == (n, d * E)
+        assert rotated.dtype == torch.float64
+
+
+class TestInverseRotateFromKed:
+    """``inverse_rotate_from_ked`` applies ``(Tt kron Te)`` to data already in
+    KED basis. Round-trip ``inverse_rotate_from_ked(rotate_to_ked_basis(M))``
+    equals ``M`` only when ``Tt`` / ``Te`` are orthogonal (i.e. when the
+    residual factors are identity). With ``Ve_t = Ve_e = I`` we have
+    ``Le = I`` and ``T = Q`` (orthogonal). Test under that condition."""
+
+    def test_round_trip(self):
+        """``Ve_t = I``, ``Ve_e = I`` ⇒ ``Tt`` / ``Te`` orthogonal ⇒ exact
+        round-trip to FP roundoff.
+
+        Tolerance: 1e-12 absolute — orthogonal-matrix multiply preserves
+        norm to ulps.
+        """
+        torch.manual_seed(0)
+        d, E, n = 3, 2, 5
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = torch.eye(d, dtype=torch.float64)
+        Ve_e = torch.eye(E, dtype=torch.float64)
+        ked = kronecker_eed(Vg_t, Vg_e, Ve_t, Ve_e)
+
+        M = torch.randn(n, d * E, dtype=torch.float64)
+        M_ked = rotate_to_ked_basis(M, ked.Tt, ked.Te, d, E)
+        M_back = inverse_rotate_from_ked(M_ked, ked.Tt, ked.Te, d, E)
+        assert torch.allclose(M_back, M, atol=1e-12)
+
+
+class TestDiagonalPrecision:
+    """``diagonal_precision`` returns ``(W_diag, logdet)`` where ``W_diag[i, j]
+    = 1 / (lambda_K[i] * lam_t[a] * lam_e[b] + 1)`` with ``j = a*E + b`` and
+    ``logdet[i] = sum_j log(...)``."""
+
+    def test_precision_matches_naive_full_form(self):
+        """Diagonal entries match diagonal of the dense
+        ``(Vg kron K + Ve kron I_n)^{-1}`` after rotation into the KED basis.
+
+        Construction: with ``K = Q_K diag(lambda_K) Q_K'`` and the basis
+        ``(Q_K kron I_d kron I_E)`` followed by KED, the joint-transform
+        ``T = (Q_K kron Tt kron Te)`` diagonalizes ``Vg kron K + Ve kron I_n``
+        (in trait-major order, individual-major outer block). We compare the
+        function output to ``1.0 / (lam_K[i] * lam_t[a] * lam_e[b] + 1.0)``
+        directly, which is the closed-form diagonal in the joint basis.
+
+        Tolerance: 1e-12 absolute — pure scalar arithmetic.
+        """
+        torch.manual_seed(0)
+        d, E, n = 2, 2, 5
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = _random_psd(d)
+        Ve_e = _random_psd(E)
+        ked = kronecker_eed(Vg_t, Vg_e, Ve_t, Ve_e)
+        eigenvalues_K = torch.rand(n, dtype=torch.float64) + 0.5
+
+        W, logdet = diagonal_precision(ked, eigenvalues_K)
+        assert W.shape == (n, d * E)
+        assert logdet.shape == (n,)
+
+        # Closed-form diagonal in the joint (Q_K kron Tt kron Te)' basis
+        for i in range(n):
+            for a in range(d):
+                for b in range(E):
+                    sigma = eigenvalues_K[i].item() * ked.lam_t[a].item() * ked.lam_e[b].item() + 1.0
+                    expected = 1.0 / sigma
+                    assert abs(W[i, a * E + b].item() - expected) < 1e-12
+
+    def test_logdet_matches_torch_slogdet(self):
+        """``logdet.sum()`` (KED basis) equals ``slogdet(Vg kron K + Ve kron I)``
+        when ``Ve_t = Ve_e = I``.
+
+        In the KED basis (with ``Ve = I``), ``T = Tt kron Te`` is orthogonal
+        (``T = Q``) so ``det(T)^2 = 1`` and the logdet is preserved between
+        bases. We use that simplification rather than carrying a
+        ``-n * log|det(Ve)|`` correction term through the test.
+
+        Tolerance: 1e-6 absolute — observed-then-floor; ``slogdet`` on a
+        ``(dE, dE)`` matrix vs. sum of scalar logs of the diagonal
+        accumulates O(1e-8) on this seed at n=5, dE=4.
+        """
+        torch.manual_seed(0)
+        d, E, n = 2, 2, 5
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = torch.eye(d, dtype=torch.float64)
+        Ve_e = torch.eye(E, dtype=torch.float64)
+        ked = kronecker_eed(Vg_t, Vg_e, Ve_t, Ve_e)
+
+        eigenvalues_K = torch.rand(n, dtype=torch.float64) + 0.5
+        Vg = torch.kron(Vg_t, Vg_e)
+        Ve = torch.kron(Ve_t, Ve_e)
+        ref_logdet = 0.0
+        for i in range(n):
+            Sigma_i = eigenvalues_K[i] * Vg + Ve
+            sign, ld = torch.linalg.slogdet(Sigma_i)
+            assert sign.item() > 0
+            ref_logdet += ld.item()
+
+        _, logdet = diagonal_precision(ked, eigenvalues_K)
+        total = logdet.sum().item()
+        assert abs(total - ref_logdet) < 1e-6
+
+
+class TestKedRemlQuantities:
+    """``ked_reml_quantities`` returns a dict with documented keys and
+    correctly shaped tensors."""
+
+    def test_returns_dict_with_documented_keys(self):
+        """All keys present; tensor outputs are torch.Tensor of float64."""
+        torch.manual_seed(0)
+        d, E, n, c = 2, 3, 5, 2
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = _random_psd(d)
+        Ve_e = _random_psd(E)
+        ked = kronecker_eed(Vg_t, Vg_e, Ve_t, Ve_e)
+        eigenvalues_K = torch.rand(n, dtype=torch.float64) + 0.5
+        Y_rot = torch.randn(n, d * E, dtype=torch.float64)
+        X0_rot = torch.randn(n, c, dtype=torch.float64)
+
+        out = ked_reml_quantities(ked, eigenvalues_K, Y_rot, X0_rot)
+        assert isinstance(out, dict)
+        expected_keys = {
+            "W_diag", "B", "XtWX_blocks", "XtWX_inv_blocks",
+            "residuals_ked", "Y_ked", "logdet", "Tt", "Te", "d", "E",
+        }
+        assert expected_keys.issubset(out.keys())
+        for key in expected_keys - {"d", "E"}:
+            assert isinstance(out[key], torch.Tensor), f"{key} is not Tensor"
+        assert out["d"] == d
+        assert out["E"] == E
+
+    def test_shape_invariants(self):
+        """Tensor shapes match the documented contract."""
+        torch.manual_seed(0)
+        d, E, n, c = 2, 3, 5, 2
+        dE = d * E
+        Vg_t = _random_psd(d)
+        Vg_e = _random_psd(E)
+        Ve_t = _random_psd(d)
+        Ve_e = _random_psd(E)
+        ked = kronecker_eed(Vg_t, Vg_e, Ve_t, Ve_e)
+        eigenvalues_K = torch.rand(n, dtype=torch.float64) + 0.5
+        Y_rot = torch.randn(n, dE, dtype=torch.float64)
+        X0_rot = torch.randn(n, c, dtype=torch.float64)
+
+        out = ked_reml_quantities(ked, eigenvalues_K, Y_rot, X0_rot)
+        assert out["W_diag"].shape == (n, dE)
+        assert out["B"].shape == (dE, c)
+        assert out["XtWX_blocks"].shape == (dE, c, c)
+        assert out["XtWX_inv_blocks"].shape == (dE, c, c)
+        assert out["residuals_ked"].shape == (n, dE)
+        assert out["Y_ked"].shape == (n, dE)
+        assert out["logdet"].shape == (n,)
+        assert out["Tt"].shape == (d, d)
+        assert out["Te"].shape == (E, E)
+
+
+class TestWoodburyFaPrecision:
+    """``woodbury_fa_precision`` computes diagonal precision for
+    ``Sigma_i = lam_K[i] * lam_t[a] * (Lambda Lambda' + diag(psi)) + I_E``
+    via the Woodbury identity. We compare to (i) the diagonal limit when
+    ``Lambda = 0`` and (ii) the dense inverse for small problems."""
+
+    def test_collapses_to_diagonal_when_lambda_zero(self):
+        """``Lambda = 0`` ⇒ ``W[i, a*E+b] = 1 / (lam_K[i] * lam_t[a] * psi[b] + 1)``.
+
+        Tolerance: 1e-10 absolute — this path performs a Woodbury core that
+        is identity when ``Lambda = 0``, so the correction is exactly zero
+        in exact arithmetic; FP error is at ulp level.
+        """
+        torch.manual_seed(0)
+        d, E, n, k = 2, 3, 4, 2
+        Lambda = torch.zeros(E, k, dtype=torch.float64)
+        psi = torch.tensor([0.5, 1.0, 1.5], dtype=torch.float64)
+        eigenvalues_K = torch.rand(n, dtype=torch.float64) + 0.5
+        lam_t = torch.tensor([0.7, 0.3], dtype=torch.float64)
+
+        W, logdet = woodbury_fa_precision(Lambda, psi, eigenvalues_K, lam_t)
+        assert W.shape == (n, d * E)
+        assert logdet.shape == (n,)
+
+        for i in range(n):
+            for a in range(d):
+                for b in range(E):
+                    expected = 1.0 / (
+                        eigenvalues_K[i].item() * lam_t[a].item() * psi[b].item() + 1.0
+                    )
+                    assert abs(W[i, a * E + b].item() - expected) < 1e-10
+
+    def test_matches_dense_woodbury(self):
+        """Diagonal of the Woodbury output matches diagonal of dense inverse.
+
+        Build ``Sigma_E = scale * (Lambda Lambda' + diag(psi)) + I_E`` for
+        each (i, a) and compare its diagonal inverse against the function's
+        output on that block.
+
+        Tolerance: 1e-9 absolute — observed-then-floor; the Woodbury path
+        accumulates O(1e-13) per matmul through the small (k, k) inverse,
+        and a 1e-9 margin absorbs the spread across (n * d * E) entries.
+        """
+        torch.manual_seed(0)
+        d, E, n, k = 1, 3, 3, 2
+        Lambda = torch.randn(E, k, dtype=torch.float64) * 0.5
+        psi = torch.tensor([0.5, 1.0, 1.5], dtype=torch.float64)
+        eigenvalues_K = torch.rand(n, dtype=torch.float64) + 0.5
+        lam_t = torch.tensor([0.7], dtype=torch.float64)
+
+        W, _ = woodbury_fa_precision(Lambda, psi, eigenvalues_K, lam_t)
+
+        I_E = torch.eye(E, dtype=torch.float64)
+        for i in range(n):
+            for a in range(d):
+                scale = eigenvalues_K[i].item() * lam_t[a].item()
+                Sigma_block = (
+                    scale * (Lambda @ Lambda.T + torch.diag(psi)) + I_E
+                )
+                dense_inv = torch.linalg.inv(Sigma_block)
+                expected = dense_inv.diagonal()
+                got = W[i, a * E:(a + 1) * E]
+                assert torch.allclose(got, expected, atol=1e-9)
