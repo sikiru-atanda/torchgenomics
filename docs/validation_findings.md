@@ -12,4 +12,4 @@ Classifications per F3:
 
 | Date | Pillar | Tier | Module / Function | Reference | Dataset | Δ observed | Tolerance | F3 class | Resolution |
 |------|--------|------|-------------------|-----------|---------|------------|-----------|----------|------------|
-| _no entries yet_ | | | | | | | | | |
+| 2026-04-30 | A | 1 | `torchgwas.stats.calibrate.compare_pvalues` | self-paired p-vector | synthetic | function raised `NotImplementedError` (Phase 4 stub) | impl required for Tier 1 coverage | V1-core / fix-now | implemented compare_pvalues with `n / mean_abs_diff / max_abs_diff / frac_within_tolerance / corr_neglog10 / mean_abs_diff_neglog10 / tolerance` keys; -log10 corr is NaN-safe; commit on this branch |
