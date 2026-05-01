@@ -53,16 +53,24 @@ def main():
     data = json.loads(audit_path.read_text())
     pkg_prefix = f"torchgwas.{args.package}"
 
-    # Filter to (tier, package, untested).
+    # Two-pass: first compute canonical key + OR'd has_direct_test across
+    # ALL audit rows (any path), then filter to (tier, package, untested).
+    # This avoids treating a namespace re-export as untested when the
+    # canonical defining module has a direct test.
+    canonical_tested: dict[tuple, bool] = {}
+    for r in data["rows"]:
+        key = canonical_key(r["module"], r["symbol"]) or (r["module"], r["symbol"])
+        canonical_tested[key] = canonical_tested.get(key, False) or r["has_direct_test"]
+
     candidates = [
         r for r in data["rows"]
         if r["tier"] == args.tier
-        and not r["has_direct_test"]
         and (r["module"] == pkg_prefix or r["module"].startswith(pkg_prefix + "."))
     ]
 
     # Dedup by canonical (module, qualname). Keep the row with the SHORTEST
-    # module path as the "public" import location.
+    # module path as the "public" import location. Override has_direct_test
+    # with the OR'd value across all re-export paths.
     by_key: dict[tuple, dict] = {}
     for r in candidates:
         key = canonical_key(r["module"], r["symbol"])
@@ -72,9 +80,14 @@ def main():
             r2 = dict(r)
             r2["canonical_module"] = key[0]
             r2["canonical_qualname"] = key[1]
+            r2["has_direct_test"] = canonical_tested.get(key, r["has_direct_test"])
             by_key[key] = r2
 
-    deduped = sorted(by_key.values(), key=lambda r: (r["module"], r["symbol"]))
+    # Drop tested-via-any-path rows now that we have the OR'd flag.
+    deduped = sorted(
+        (r for r in by_key.values() if not r["has_direct_test"]),
+        key=lambda r: (r["module"], r["symbol"]),
+    )
 
     out = {
         "tier": args.tier,
