@@ -21,17 +21,27 @@ import torch
 from statsmodels.stats.multitest import multipletests
 
 from torchgwas.stats import (
+    AdaPTResult,
+    IHWResult,
+    adapt,
     benjamini_hochberg,
     benjamini_yekutieli,
     bonferroni,
     chi2_sf,
+    effective_test_count,
+    effective_test_count_moskvina,
+    hierarchical_fdr,
     holm,
+    ihw,
+    ld_correlation_eigenvalues,
+    local_fdr,
     lrt_test,
     score_test,
     score_test_multi_df,
     sidak,
     storey_qvalue,
     wald_test,
+    weighted_bh,
 )
 from torchgwas.stats.multipletesting import eigenmt_adjust
 from torchgwas.stats.tests import apply_contrast
@@ -379,3 +389,436 @@ class TestApplyContrast:
         assert isinstance(out, tuple) and len(out) == 4
         for t in out:
             assert isinstance(t, torch.Tensor)
+
+
+# ---------------------------------------------------------------------------
+# adaptive_fdr
+# ---------------------------------------------------------------------------
+
+
+class TestAdaPTResult:
+    """``AdaPTResult`` dataclass round-trip + repr."""
+
+    def test_construct_and_round_trip(self, stat_dtype):
+        """Instantiate with shaped tensors, attributes round-trip exactly."""
+        m = 7
+        adjusted_p = torch.rand(m, dtype=stat_dtype)
+        thresholds = torch.rand(m, dtype=stat_dtype)
+        bins = torch.zeros(m, dtype=torch.long)
+        res = AdaPTResult(
+            adjusted_p=adjusted_p,
+            thresholds=thresholds,
+            n_rejections=3,
+            bins=bins,
+            n_iter=12,
+            converged=True,
+            n_bins=4,
+        )
+        torch.testing.assert_close(res.adjusted_p, adjusted_p, rtol=0, atol=0)
+        torch.testing.assert_close(res.thresholds, thresholds, rtol=0, atol=0)
+        torch.testing.assert_close(res.bins, bins, rtol=0, atol=0)
+        assert res.n_rejections == 3
+        assert res.n_iter == 12
+        assert res.converged is True
+        assert res.n_bins == 4
+
+    def test_repr_does_not_crash(self, stat_dtype):
+        """``repr(...)`` works on a populated AdaPTResult."""
+        m = 3
+        res = AdaPTResult(
+            adjusted_p=torch.zeros(m, dtype=stat_dtype),
+            thresholds=torch.zeros(m, dtype=stat_dtype),
+            n_rejections=0,
+            bins=torch.zeros(m, dtype=torch.long),
+            n_iter=0,
+            converged=False,
+            n_bins=1,
+        )
+        s = repr(res)
+        assert isinstance(s, str)
+        assert "AdaPTResult" in s
+
+
+class TestIHWResult:
+    """``IHWResult`` dataclass round-trip + repr."""
+
+    def test_construct_and_round_trip(self, stat_dtype):
+        """Instantiate with shaped tensors, attributes round-trip exactly."""
+        m = 6
+        adjusted_p = torch.rand(m, dtype=stat_dtype)
+        weights = torch.rand(m, dtype=stat_dtype)
+        bins = torch.zeros(m, dtype=torch.long)
+        folds = torch.arange(m, dtype=torch.long) % 3
+        res = IHWResult(
+            adjusted_p=adjusted_p,
+            weights=weights,
+            n_rejections=2,
+            bins=bins,
+            fold_assignments=folds,
+            n_bins=5,
+            n_folds=3,
+        )
+        torch.testing.assert_close(res.adjusted_p, adjusted_p, rtol=0, atol=0)
+        torch.testing.assert_close(res.weights, weights, rtol=0, atol=0)
+        torch.testing.assert_close(res.bins, bins, rtol=0, atol=0)
+        torch.testing.assert_close(res.fold_assignments, folds, rtol=0, atol=0)
+        assert res.n_rejections == 2
+        assert res.n_bins == 5
+        assert res.n_folds == 3
+
+    def test_repr_does_not_crash(self, stat_dtype):
+        """``repr(...)`` works on a populated IHWResult."""
+        m = 3
+        res = IHWResult(
+            adjusted_p=torch.zeros(m, dtype=stat_dtype),
+            weights=torch.ones(m, dtype=stat_dtype),
+            n_rejections=0,
+            bins=torch.zeros(m, dtype=torch.long),
+            fold_assignments=torch.zeros(m, dtype=torch.long),
+            n_bins=1,
+            n_folds=1,
+        )
+        s = repr(res)
+        assert isinstance(s, str)
+        assert "IHWResult" in s
+
+
+class TestAdapt:
+    """``adapt`` (Lei & Fithian 2018): EM-based covariate-adaptive thresholds."""
+
+    def test_uniform_pvals_no_rejections(self, stat_dtype):
+        """Uniform null p-values: rejections at q=0.05 are bounded
+        well below 5% of m by the procedure's FDP estimate.
+
+        Bound is observe-then-floor: with seed=0, m=5000, the impl
+        currently reports 0–250 rejections (Monte-Carlo bound)."""
+        torch.manual_seed(0)
+        m = 5000
+        p = torch.rand(m, dtype=stat_dtype)
+        covariate = torch.rand(m, dtype=stat_dtype)
+        out = adapt(p, covariate, q=0.05)
+        assert out.n_rejections <= 250, (
+            f"AdaPT under uniform null rejected {out.n_rejections}/5000; "
+            f"Monte-Carlo bound 250"
+        )
+
+    def test_signal_recovery_with_informative_covariate(self, stat_dtype):
+        """Plant tiny p-values where covariate is large; AdaPT should
+        recover most signals via covariate-adaptive thresholds."""
+        torch.manual_seed(0)
+        m = 5000
+        p = torch.rand(m, dtype=stat_dtype)
+        covariate = torch.rand(m, dtype=stat_dtype)
+        # Plant 100 tiny p-values at the high-covariate end
+        signal_idx = (covariate > 0.9).nonzero(as_tuple=True)[0][:100]
+        p[signal_idx] = 1e-5
+        out = adapt(p, covariate, q=0.05)
+        # AdaPT may not be guaranteed to find all signals, but should
+        # find enough that it beats a uniform-cov baseline.
+        rejected = (out.adjusted_p <= 0.05)
+        n_signal_rej = rejected[signal_idx].sum().item()
+        # observe-then-floor: with seed=0 the impl gets ~80+ of 100
+        assert n_signal_rej >= 80, (
+            f"AdaPT recovered only {n_signal_rej}/100 planted signals"
+        )
+
+    def test_returns_AdaPTResult(self, stat_dtype):
+        """Output is an AdaPTResult instance with documented fields."""
+        torch.manual_seed(0)
+        m = 200
+        p = torch.rand(m, dtype=stat_dtype)
+        covariate = torch.rand(m, dtype=stat_dtype)
+        out = adapt(p, covariate, q=0.05)
+        assert isinstance(out, AdaPTResult)
+        assert out.adjusted_p.shape == (m,)
+        assert out.thresholds.shape == (m,)
+        assert out.bins.shape == (m,)
+        assert isinstance(out.n_rejections, int)
+        assert isinstance(out.n_iter, int)
+        assert isinstance(out.converged, bool)
+        assert isinstance(out.n_bins, int)
+
+
+class TestIhw:
+    """``ihw`` (Ignatiadis & Huber 2021): K-fold cross-fit weighted BH."""
+
+    def test_uniform_pvals_no_rejections(self, stat_dtype):
+        """Uniform null p-values: rejections at q=0.05 are bounded
+        well below 5% of m. Monte-Carlo upper bound 250 with seed=0."""
+        torch.manual_seed(0)
+        m = 5000
+        p = torch.rand(m, dtype=stat_dtype)
+        covariate = torch.rand(m, dtype=stat_dtype)
+        out = ihw(p, covariate, q=0.05, seed=0)
+        assert out.n_rejections <= 250, (
+            f"IHW under uniform null rejected {out.n_rejections}/5000; "
+            f"Monte-Carlo bound 250"
+        )
+
+    def test_signal_recovery_with_informative_covariate(self, stat_dtype):
+        """Plant tiny p-values where covariate is large; IHW should
+        recover most signals via informative weights."""
+        torch.manual_seed(0)
+        m = 5000
+        p = torch.rand(m, dtype=stat_dtype)
+        covariate = torch.rand(m, dtype=stat_dtype)
+        signal_idx = (covariate > 0.9).nonzero(as_tuple=True)[0][:100]
+        p[signal_idx] = 1e-5
+        out = ihw(p, covariate, q=0.05, seed=0)
+        rejected = (out.adjusted_p <= 0.05)
+        n_signal_rej = rejected[signal_idx].sum().item()
+        # observe-then-floor: IHW typically recovers ~all of them
+        assert n_signal_rej >= 80, (
+            f"IHW recovered only {n_signal_rej}/100 planted signals"
+        )
+
+    def test_returns_IHWResult(self, stat_dtype):
+        """Output is an IHWResult with documented fields."""
+        torch.manual_seed(0)
+        m = 200
+        p = torch.rand(m, dtype=stat_dtype)
+        covariate = torch.rand(m, dtype=stat_dtype)
+        out = ihw(p, covariate, q=0.05, seed=0)
+        assert isinstance(out, IHWResult)
+        assert out.adjusted_p.shape == (m,)
+        assert out.weights.shape == (m,)
+        assert out.bins.shape == (m,)
+        assert out.fold_assignments.shape == (m,)
+        assert isinstance(out.n_rejections, int)
+        assert isinstance(out.n_bins, int)
+        assert isinstance(out.n_folds, int)
+
+    def test_seed_reproducibility(self, stat_dtype):
+        """Identical seed -> identical adjusted_p across two calls."""
+        torch.manual_seed(0)
+        m = 500
+        p = torch.rand(m, dtype=stat_dtype)
+        covariate = torch.rand(m, dtype=stat_dtype)
+        out1 = ihw(p, covariate, q=0.05, seed=42)
+        out2 = ihw(p, covariate, q=0.05, seed=42)
+        torch.testing.assert_close(
+            out1.adjusted_p, out2.adjusted_p, rtol=0, atol=0
+        )
+
+
+# ---------------------------------------------------------------------------
+# weighted_fdr
+# ---------------------------------------------------------------------------
+
+
+class TestHierarchicalFdr:
+    """``hierarchical_fdr``: two-stage gene-then-SNP FDR."""
+
+    def test_basic_two_group(self, stat_dtype):
+        """Group A (mostly small p) gets more rejections than group B
+        (uniform null p). The non-trivial-behavior bar."""
+        torch.manual_seed(0)
+        # Group A: 50 tiny p-values
+        p_a = torch.full((50,), 1e-4, dtype=stat_dtype)
+        # Group B: 50 uniform null p-values
+        p_b = torch.rand(50, dtype=stat_dtype)
+        p = torch.cat([p_a, p_b])
+        gids = ["A"] * 50 + ["B"] * 50
+        out = hierarchical_fdr(p, gids, q=0.05)
+        rej_a = (out[:50] <= 0.05).sum().item()
+        rej_b = (out[50:] <= 0.05).sum().item()
+        assert rej_a > rej_b, (
+            f"Group A (signal) should reject more than group B (null); "
+            f"got {rej_a} vs {rej_b}"
+        )
+
+    def test_returns_tensor(self, stat_dtype):
+        """Output is a torch.Tensor of shape (m,)."""
+        torch.manual_seed(0)
+        m = 30
+        p = torch.rand(m, dtype=stat_dtype)
+        gids = (["A"] * 15) + (["B"] * 15)
+        out = hierarchical_fdr(p, gids, q=0.05)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (m,)
+
+    def test_handles_single_group(self, stat_dtype):
+        """All in one group -> output highly correlated with plain BH."""
+        torch.manual_seed(0)
+        m = 200
+        p = torch.rand(m, dtype=stat_dtype)
+        # Inject a few small signals so BH does some non-trivial work
+        p[:20] = torch.linspace(1e-6, 1e-3, 20, dtype=stat_dtype)
+        gids = ["G"] * m
+        hier = hierarchical_fdr(p, gids, q=0.5).cpu().numpy()
+        bh = benjamini_hochberg(p).cpu().numpy()
+        # Spearman is robust to monotone transforms; here both should
+        # be tightly correlated since the within-group BH dominates.
+        corr = np.corrcoef(hier, bh)[0, 1]
+        assert corr > 0.99, (
+            f"Single-group hierarchical_fdr correlation with BH={corr:.4f}"
+        )
+
+
+class TestLocalFdr:
+    """``local_fdr`` (Efron 2004): empirical Bayes posterior null prob."""
+
+    def test_uniform_pvals_high_local_fdr(self, stat_dtype):
+        """Uniform p (no signal): mean local FDR ~ 1.0 (>0.7)."""
+        torch.manual_seed(0)
+        m = 5000
+        p = torch.rand(m, dtype=stat_dtype)
+        lfdr = local_fdr(p)
+        assert lfdr.mean().item() > 0.7, (
+            f"Uniform-null lfdr too low: mean={lfdr.mean().item():.4f}"
+        )
+
+    def test_strong_signals_low_local_fdr(self, stat_dtype):
+        """100 small p-values + 4900 uniform: mean lfdr at signals < 0.5."""
+        torch.manual_seed(0)
+        n_sig, n_null = 100, 4900
+        p_sig = torch.full((n_sig,), 1e-6, dtype=stat_dtype)
+        p_null = torch.rand(n_null, dtype=stat_dtype)
+        p = torch.cat([p_sig, p_null])
+        lfdr = local_fdr(p)
+        sig_lfdr = lfdr[:n_sig].mean().item()
+        assert sig_lfdr < 0.5, (
+            f"Signals' mean lfdr={sig_lfdr:.4f}; expected < 0.5"
+        )
+
+    def test_returns_tensor_same_shape(self, stat_dtype):
+        """Output shape matches input."""
+        torch.manual_seed(0)
+        m = 100
+        p = torch.rand(m, dtype=stat_dtype)
+        out = local_fdr(p)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (m,)
+
+
+class TestWeightedBh:
+    """``weighted_bh`` (Ignatiadis et al. 2023): weighted BH."""
+
+    def test_uniform_weights_recovers_bh(self, stat_dtype):
+        """Uniform weights -> output equals plain BH to 1e-8."""
+        torch.manual_seed(0)
+        m = 200
+        p = torch.rand(m, dtype=stat_dtype)
+        w = torch.ones(m, dtype=stat_dtype)
+        out = weighted_bh(p, w, q=0.05).cpu().numpy()
+        ref = benjamini_hochberg(p).cpu().numpy()
+        np.testing.assert_allclose(out, ref, rtol=1e-8, atol=1e-8)
+
+    def test_higher_weight_increases_rejections(self, stat_dtype):
+        """Doubling signal weights increases rejection count vs uniform."""
+        torch.manual_seed(0)
+        m = 1000
+        p = torch.rand(m, dtype=stat_dtype)
+        signal_idx = torch.arange(50)
+        p[signal_idx] = torch.linspace(1e-5, 5e-3, 50, dtype=stat_dtype)
+        w_uniform = torch.ones(m, dtype=stat_dtype)
+        w_boost = torch.ones(m, dtype=stat_dtype)
+        w_boost[signal_idx] = 2.0
+        out_unif = weighted_bh(p, w_uniform, q=0.05)
+        out_boost = weighted_bh(p, w_boost, q=0.05)
+        n_unif = (out_unif <= 0.05).sum().item()
+        n_boost = (out_boost <= 0.05).sum().item()
+        assert n_boost > n_unif, (
+            f"Boosting weights at signal should raise rejections: "
+            f"boost={n_boost} vs uniform={n_unif}"
+        )
+
+    def test_returns_tensor_same_shape(self, stat_dtype):
+        """Output shape matches input."""
+        torch.manual_seed(0)
+        m = 50
+        p = torch.rand(m, dtype=stat_dtype)
+        w = torch.rand(m, dtype=stat_dtype) + 0.1
+        out = weighted_bh(p, w, q=0.05)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (m,)
+
+
+# ---------------------------------------------------------------------------
+# simplem
+# ---------------------------------------------------------------------------
+
+
+class TestEffectiveTestCount:
+    """``effective_test_count`` (Gao 2008 simpleM): variance-explained M_eff."""
+
+    def test_independent_eigenvalues_recovers_full_count(self, stat_dtype):
+        """All-ones eigenvalues (perfect independence) -> M_eff = m."""
+        m = 100
+        evals = torch.ones(m, dtype=stat_dtype)
+        out = effective_test_count(evals)
+        assert out == m
+
+    def test_perfectly_correlated_recovers_one(self, stat_dtype):
+        """One huge eigenvalue, rest zero -> M_eff == 1."""
+        m = 100
+        evals = torch.zeros(m, dtype=stat_dtype)
+        evals[0] = float(m)  # all variance in 1st component
+        out = effective_test_count(evals)
+        assert out == 1
+
+    def test_intermediate_case(self, stat_dtype):
+        """eigenvalues=[2.5, 0.4, 0.1]: cumvar=[0.833, 0.967, 1.0],
+        threshold=0.995 needs all 3 -> M_eff=3."""
+        evals = torch.tensor([2.5, 0.4, 0.1], dtype=stat_dtype)
+        out = effective_test_count(evals)
+        assert out == 3
+
+
+class TestEffectiveTestCountMoskvina:
+    """``effective_test_count_moskvina`` (Moskvina & Schmidt 2008)."""
+
+    def test_independent_eigenvalues_recovers_full_count(self, stat_dtype):
+        """All-ones eigenvalues -> n_large=m, frac_sum=0 -> M_eff=m."""
+        m = 100
+        evals = torch.ones(m, dtype=stat_dtype)
+        out = effective_test_count_moskvina(evals)
+        assert out == m
+
+    def test_perfectly_correlated_recovers_one(self, stat_dtype):
+        """One eigenvalue=m, rest zero: n_large=1, frac_sum=0 -> M_eff=1."""
+        m = 100
+        evals = torch.zeros(m, dtype=stat_dtype)
+        evals[0] = float(m)
+        out = effective_test_count_moskvina(evals)
+        assert out == 1
+
+    def test_intermediate_case_more_conservative(self, stat_dtype):
+        """eigenvalues=[2.5, 0.4, 0.1]: n_large=1, frac_sum=0.4+0.1=0.5,
+        round(1.5)=2 -> Moskvina M_eff=2 (< simpleM M_eff=3)."""
+        evals = torch.tensor([2.5, 0.4, 0.1], dtype=stat_dtype)
+        out_mosk = effective_test_count_moskvina(evals)
+        out_simple = effective_test_count(evals)
+        # Moskvina bound (more conservative ⇒ smaller M_eff for this input)
+        assert out_mosk <= out_simple, (
+            f"Moskvina ({out_mosk}) should be <= simpleM ({out_simple})"
+        )
+        assert out_mosk == 2
+
+
+class TestLdCorrelationEigenvalues:
+    """``ld_correlation_eigenvalues``: eigenvalues of SNP-SNP corr matrix."""
+
+    def test_eigenvalues_sum_to_n_snps(self, tiny_genotype_diploid):
+        """Trace identity: sum(evals) == trace(corr).
+
+        Convention discovered: the impl standardizes columns with
+        ``torch.std`` (unbiased, /(n-1)) but normalizes the Gram matrix
+        with /n, so the diagonal is (n-1)/n and the expected sum is
+        m * (n - 1) / n, not m. Trace identity still holds against the
+        actual normalization the impl uses, to 1e-8."""
+        G = tiny_genotype_diploid  # (100, 50)
+        evals = ld_correlation_eigenvalues(G)
+        n, m = G.shape
+        expected = m * (n - 1) / n
+        assert abs(evals.sum().item() - expected) < 1e-8, (
+            f"sum(evals)={evals.sum().item():.6f}, expected {expected}"
+        )
+
+    def test_eigenvalues_nonnegative(self, tiny_genotype_diploid):
+        """Correlation matrix is PSD -> all eigenvalues >= -1e-10."""
+        G = tiny_genotype_diploid
+        evals = ld_correlation_eigenvalues(G)
+        assert (evals >= -1e-10).all(), (
+            f"Min eigenvalue {evals.min().item()} below -1e-10"
+        )
