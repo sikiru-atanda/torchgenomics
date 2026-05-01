@@ -2220,3 +2220,68 @@ class TestWoodburyFaPrecision:
                 expected = dense_inv.diagonal()
                 got = W[i, a * E:(a + 1) * E]
                 assert torch.allclose(got, expected, atol=1e-9)
+
+
+class TestSparseGrmMatvec:
+    """`sparse_grm_matvec` should equal a dense K @ x to FP precision."""
+
+    def _make_sparse_psd(self, n: int, density: float = 0.2):
+        """Symmetric sparse PSD matrix with controlled density."""
+        torch.manual_seed(0)
+        K_dense = torch.rand(n, n, dtype=torch.float64)
+        K_dense = (K_dense + K_dense.T) / 2
+        K_dense = K_dense + n * torch.eye(n, dtype=torch.float64)
+        mask = torch.rand(n, n) < density
+        mask = mask | mask.T | torch.eye(n).bool()
+        K_dense = K_dense * mask
+        return K_dense.to_sparse_coo(), K_dense
+
+    def test_matches_dense_matvec_1d(self):
+        from torchgwas.linalg.sparse_grm import sparse_grm_matvec
+
+        K_sparse, K_dense = self._make_sparse_psd(20)
+        x = torch.randn(20, dtype=torch.float64)
+        got = sparse_grm_matvec(K_sparse, x)
+        expected = K_dense @ x
+        assert torch.allclose(got, expected, atol=1e-12)
+
+    def test_matches_dense_matvec_2d(self):
+        from torchgwas.linalg.sparse_grm import sparse_grm_matvec
+
+        K_sparse, K_dense = self._make_sparse_psd(20)
+        X = torch.randn(20, 3, dtype=torch.float64)
+        got = sparse_grm_matvec(K_sparse, X)
+        expected = K_dense @ X
+        assert torch.allclose(got, expected, atol=1e-12)
+
+
+class TestMakeSparseMatvec:
+    """`make_sparse_matvec` returns a callable computing V @ x where
+    V = sig2_g * K + sig2_e * I."""
+
+    def test_callable_matches_explicit_form(self):
+        from torchgwas.linalg.sparse_grm import make_sparse_matvec
+
+        torch.manual_seed(0)
+        n = 15
+        K_dense = torch.rand(n, n, dtype=torch.float64)
+        K_dense = (K_dense + K_dense.T) / 2 + n * torch.eye(n, dtype=torch.float64)
+        K_sparse = K_dense.to_sparse_coo()
+
+        sig2_g, sig2_e = 0.7, 0.3
+        matvec = make_sparse_matvec(K_sparse, sig2_g, sig2_e)
+
+        x = torch.randn(n, dtype=torch.float64)
+        got = matvec(x)
+        expected = sig2_g * (K_dense @ x) + sig2_e * x
+        assert torch.allclose(got, expected, atol=1e-12)
+
+    def test_zero_sig2_g_collapses_to_identity_scale(self):
+        from torchgwas.linalg.sparse_grm import make_sparse_matvec
+
+        n = 10
+        K_dense = torch.eye(n, dtype=torch.float64)
+        K_sparse = K_dense.to_sparse_coo()
+        matvec = make_sparse_matvec(K_sparse, sig2_g=0.0, sig2_e=2.5)
+        x = torch.arange(n, dtype=torch.float64)
+        assert torch.allclose(matvec(x), 2.5 * x, atol=1e-12)
