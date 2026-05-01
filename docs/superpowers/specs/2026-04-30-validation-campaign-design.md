@@ -211,8 +211,11 @@ Every entry has a populated Resolution column at C2 checkpoint time.
 | GIANT 2018 height sumstats | ~50 MB | LDSC h² / TwoSampleMR | open access (CC0) |
 | UK Biobank LD scores (precomputed) | ~5 GB | LDSC | open (Bulik-Sullivan) |
 | OpenGWAS sumstats subset | varies | TwoSampleMR | open (MR-Base) |
+| SoyNAM (soybean NAM) | ~500 MB–1 GB | Within-family LMM (Phase 23, Young et al. 2022), conditional LMM, multi-trait LMM, BLINK / FarmCPU on real ag data with explicit family structure | public; install via R `install.packages("SoyNAM")` or upstream website. Diploid (2n=40), ~5000 RILs across multiple families crossed to a common parent, ~5000 SNPs, multiple phenotypes (yield, plant height, days to flower, etc.) |
 
 Memory budget verified at spec time: 62 GB RAM (54 free), 1.6 TB free on /home, 16 GB VRAM. Headroom for all of the above resident simultaneously, but the §5.3 pre-flight check is run before each download/run regardless.
+
+**SoyNAM access plan (Pillar B execution-time detail):** the R package is the simplest entry point — extract genotype + phenotype to TSV/CSV via a small `validation/external/soynam/fetch_data.R` script, then load into the per-tool harnesses. Memory: phenotype ~5 MB, genotypes ~500 MB in the dense torch.float64 case but well under the 8 GB pre-flight floor. Family ID column is the natural fixture for `family-scan` (within-family LMM) regression equivalence vs. the SoyNAM authors' published QTL hits.
 
 ## 13. Exit criteria for the whole campaign
 
