@@ -15,11 +15,21 @@ import torch
 
 from torchgwas.linalg import (
     GRMMetadata,
+    auto_n_components,
+    compute_weights,
     eigendecompose,
     grm_vanraden,
     grm_vanraden_streaming,
     grm_zhang,
+    rotate,
+    safe_cholesky,
+    safe_logdet,
+    woodbury_inverse,
+    woodbury_logdet,
 )
+from torchgwas.linalg.batched import batched_cholesky, batched_cholesky_solve
+from torchgwas.linalg.eigh import EigenDecomp
+from torchgwas.linalg.safe import symmetrize
 
 
 pytestmark = pytest.mark.timeout(30)
@@ -274,3 +284,368 @@ class TestGrmZhang:
         assert K_raw_ref.shape == (n, n)
         assert meta.method == "zhang"
         assert meta.standardization == "center_only"
+
+
+# ============================================================================
+# Tier-1 coverage for the four linalg primitive submodules
+# (eigh / safe / batched / woodbury).
+# ============================================================================
+
+
+class TestAutoNComponents:
+    """``auto_n_components`` selects the smallest k whose cumulative
+    eigenvalue sum reaches ``variance_explained * total``."""
+
+    def test_full_explanation_returns_full_count(self):
+        """variance_explained=1.0 must retain every component."""
+        eigvals = torch.tensor([1.0, 1.0, 1.0, 1.0], dtype=torch.float64)
+        assert auto_n_components(eigvals, variance_explained=1.0) == 4
+
+    def test_partial_explanation_truncates(self):
+        """Hand-computed truncation point: cumsum/total must reach 0.95.
+
+        eigvals = [10, 1, 0.1, 0.01, 0.001], total = 11.111
+        cumsum  = [10, 11, 11.1, 11.11, 11.111]
+        target  = 0.95 * 11.111 = 10.55545
+        First index where cumsum >= target is 1 (cumsum[1] = 11.0).
+        k = 1 + 1 = 2 (1-based component count).
+        """
+        eigvals = torch.tensor([10.0, 1.0, 0.1, 0.01, 0.001], dtype=torch.float64)
+        assert auto_n_components(eigvals, variance_explained=0.95) == 2
+
+    def test_zero_eigenvalues_handled(self):
+        """All-zero eigenvalues short-circuits to len(eigenvalues).
+
+        Per impl: ``if total <= 0: return len(eigenvalues)``. Documented
+        guard against division-by-zero in the cumulative-fraction logic.
+        """
+        eigvals = torch.zeros(3, dtype=torch.float64)
+        assert auto_n_components(eigvals) == 3
+
+
+class TestComputeWeights:
+    """``compute_weights`` returns 1 / (sig2_g * lambda + sig2_e), the
+    diagonal of V^{-1} in the rotated eigenspace."""
+
+    def test_matches_closed_form(self):
+        """Hand-computed weights agree to machine precision (1e-12)."""
+        eigvals = torch.tensor([2.0, 1.0, 0.5], dtype=torch.float64)
+        sig2_g, sig2_e = 0.5, 1.0
+        # V_diag = [0.5*2 + 1, 0.5*1 + 1, 0.5*0.5 + 1] = [2, 1.5, 1.25]
+        # weights = [1/2, 1/1.5, 1/1.25] = [0.5, 0.6666..., 0.8]
+        expected = torch.tensor([0.5, 1.0 / 1.5, 0.8], dtype=torch.float64)
+        out = compute_weights(eigvals, sig2_g, sig2_e)
+        torch.testing.assert_close(out, expected, atol=1e-12, rtol=1e-12)
+
+    def test_positive(self):
+        """All weights are strictly positive given non-negative inputs."""
+        eigvals = torch.tensor([0.0, 0.5, 2.0, 10.0], dtype=torch.float64)
+        out = compute_weights(eigvals, sig2_g=0.3, sig2_e=0.7)
+        assert (out > 0).all()
+
+
+class TestRotate:
+    """``rotate(M, U)`` returns U^T @ M (eigenspace projection)."""
+
+    def test_orthogonal_rotation_preserves_norm(self):
+        """For orthogonal U, ||U^T M||_F == ||M||_F to 1e-12."""
+        torch.manual_seed(0)
+        M = torch.randn(8, 4, dtype=torch.float64)
+        # Build orthogonal U via QR.
+        A = torch.randn(8, 8, dtype=torch.float64)
+        U, _ = torch.linalg.qr(A)
+
+        rotated = rotate(M, U)
+        norm_in = torch.linalg.norm(M)
+        norm_out = torch.linalg.norm(rotated)
+        torch.testing.assert_close(norm_out, norm_in, atol=1e-12, rtol=1e-12)
+
+    def test_matches_uT_M(self):
+        """For arbitrary M and U, output equals U.T @ M to 1e-12."""
+        torch.manual_seed(1)
+        M = torch.randn(6, 5, dtype=torch.float64)
+        U = torch.randn(6, 4, dtype=torch.float64)
+
+        out = rotate(M, U)
+        ref = U.T @ M
+        torch.testing.assert_close(out, ref, atol=1e-12, rtol=1e-12)
+
+
+class TestEigenDecomp:
+    """``EigenDecomp`` is a dataclass holder for (eigenvalues, eigenvectors).
+
+    Tier 1 bar for transparent dataclasses: instantiate + attribute round-trip
+    + repr smoke.
+    """
+
+    def test_construct_and_round_trip(self):
+        """Constructing with documented fields preserves both tensors."""
+        evals = torch.tensor([3.0, 2.0, 1.0], dtype=torch.float64)
+        evecs = torch.eye(3, dtype=torch.float64)
+        ed = EigenDecomp(eigenvalues=evals, eigenvectors=evecs)
+        torch.testing.assert_close(ed.eigenvalues, evals, atol=0.0, rtol=0.0)
+        torch.testing.assert_close(ed.eigenvectors, evecs, atol=0.0, rtol=0.0)
+
+    def test_repr_does_not_crash(self):
+        """repr() works on the dataclass — useful for debug prints."""
+        ed = EigenDecomp(
+            eigenvalues=torch.tensor([1.0, 0.5], dtype=torch.float64),
+            eigenvectors=torch.eye(2, dtype=torch.float64),
+        )
+        s = repr(ed)
+        assert isinstance(s, str)
+        assert "EigenDecomp" in s
+
+
+class TestSafeCholesky:
+    """``safe_cholesky`` matches torch.linalg.cholesky on well-conditioned
+    SPD inputs and recovers via adaptive jitter on near-singular ones."""
+
+    def test_matches_torch_cholesky_on_well_conditioned(self, tiny_kinship):
+        """Well-conditioned PSD: jitter does not fire, output == direct chol."""
+        L = safe_cholesky(tiny_kinship)
+        L_ref = torch.linalg.cholesky(tiny_kinship)
+        torch.testing.assert_close(L, L_ref, atol=1e-10, rtol=1e-10)
+
+    def test_handles_singular_via_jitter(self):
+        """Rank-deficient K succeeds where plain Cholesky fails.
+
+        K = U diag([1, 1, 1e-15]) U.T is essentially rank-2 in FP64;
+        plain cholesky raises. The adaptive jitter inflates the diagonal
+        by jitter_factor * trace/n until decomposition succeeds.
+
+        Tolerance floor is 1e-3 because the jitter perturbs K by an
+        amount on the order of jitter_factor * trace(K) / n. For
+        trace ~ 2 and n = 3, eps ~ 6.7e-7; on retry growth (10x) the
+        effective floor is closer to 1e-6, but we use 1e-3 as a loose
+        observe-then-floor to avoid thrash if jitter retries multiple
+        times. The math correctness here is "decomposition succeeds and
+        L L^T is roughly K" — not bit-exact equality.
+        """
+        torch.manual_seed(7)
+        A = torch.randn(3, 3, dtype=torch.float64)
+        U, _ = torch.linalg.qr(A)
+        D = torch.diag(torch.tensor([1.0, 1.0, 1e-15], dtype=torch.float64))
+        K = U @ D @ U.T
+        K = (K + K.T) / 2.0  # ensure symmetric
+
+        L = safe_cholesky(K)
+        recon = L @ L.T
+        # Loose floor: jitter introduces O(1e-6) perturbation to K.
+        torch.testing.assert_close(recon, K, atol=1e-3, rtol=1e-3)
+
+    def test_returns_lower_triangular(self, tiny_kinship):
+        """Output L has zero strict-upper-triangle to machine precision."""
+        L = safe_cholesky(tiny_kinship)
+        upper = torch.triu(L, diagonal=1)
+        assert upper.abs().max().item() < 1e-10
+
+
+class TestSafeLogdet:
+    """``safe_logdet(K) = 2 * sum(log(diag(L)))`` where L is the safe
+    Cholesky factor."""
+
+    def test_matches_torch_slogdet(self, tiny_kinship):
+        """Agrees with torch.linalg.slogdet on well-conditioned SPD K."""
+        out = safe_logdet(tiny_kinship)
+        ref = torch.linalg.slogdet(tiny_kinship).logabsdet
+        torch.testing.assert_close(out, ref, atol=1e-8, rtol=1e-8)
+
+    def test_relates_to_safe_cholesky(self, tiny_kinship):
+        """Identity: log|K| = 2 * sum(log(diag(safe_cholesky(K))))."""
+        L = safe_cholesky(tiny_kinship)
+        ref = 2.0 * torch.log(torch.diagonal(L)).sum()
+        out = safe_logdet(tiny_kinship)
+        torch.testing.assert_close(out, ref, atol=1e-10, rtol=1e-10)
+
+
+class TestSymmetrize:
+    """``symmetrize(K) = (K + K^T) / 2`` — pure linear algebra."""
+
+    def test_idempotent_on_symmetric(self):
+        """Already-symmetric input is returned unchanged to FP64 precision."""
+        torch.manual_seed(2)
+        A = torch.randn(5, 5, dtype=torch.float64)
+        K = (A + A.T) / 2.0
+        out = symmetrize(K)
+        torch.testing.assert_close(out, K, atol=1e-15, rtol=1e-15)
+
+    def test_correct_on_asymmetric(self):
+        """For arbitrary M, output equals (M + M.T) / 2 exactly."""
+        torch.manual_seed(3)
+        M = torch.randn(4, 4, dtype=torch.float64)
+        out = symmetrize(M)
+        ref = (M + M.T) / 2.0
+        torch.testing.assert_close(out, ref, atol=1e-15, rtol=1e-15)
+
+
+class TestBatchedCholesky:
+    """``batched_cholesky`` factors batched (*, d, d) SPD matrices."""
+
+    def test_matches_torch_linalg_cholesky_per_batch(self):
+        """Each slice of the batch matches the unbatched factor."""
+        torch.manual_seed(4)
+        d = 5
+        # Build 3 different SPD 5x5 matrices.
+        mats = []
+        for _ in range(3):
+            A = torch.randn(d, d, dtype=torch.float64)
+            mats.append(A @ A.T + torch.eye(d, dtype=torch.float64))
+        batch = torch.stack(mats, dim=0)  # (3, 5, 5)
+
+        L_batch = batched_cholesky(batch)
+        for i in range(3):
+            L_ref = torch.linalg.cholesky(batch[i])
+            torch.testing.assert_close(L_batch[i], L_ref, atol=1e-10, rtol=1e-10)
+
+    def test_preserves_batch_dims(self):
+        """Input shape (2, 3, 4, 4) yields output shape (2, 3, 4, 4)."""
+        torch.manual_seed(5)
+        d = 4
+        A = torch.randn(2, 3, d, d, dtype=torch.float64)
+        spd = A @ A.transpose(-1, -2) + torch.eye(d, dtype=torch.float64)
+        L = batched_cholesky(spd)
+        assert L.shape == (2, 3, d, d)
+
+
+class TestBatchedCholeskySolve:
+    """``batched_cholesky_solve(L, B)`` solves L L^T X = B."""
+
+    def test_solves_correctly(self):
+        """A X = B via Cholesky agrees with torch.linalg.solve."""
+        torch.manual_seed(6)
+        d, k = 5, 3
+        # Build batch of 2 SPD matrices.
+        A_list = []
+        for _ in range(2):
+            M = torch.randn(d, d, dtype=torch.float64)
+            A_list.append(M @ M.T + torch.eye(d, dtype=torch.float64))
+        A = torch.stack(A_list, dim=0)
+        B = torch.randn(2, d, k, dtype=torch.float64)
+
+        L = batched_cholesky(A)
+        X = batched_cholesky_solve(L, B)
+        X_ref = torch.linalg.solve(A, B)
+        torch.testing.assert_close(X, X_ref, atol=1e-8, rtol=1e-8)
+
+    def test_batched_consistency_with_unbatched(self):
+        """Batch-of-1 result equals the unbatched call after squeeze."""
+        torch.manual_seed(8)
+        d, k = 4, 2
+        M = torch.randn(d, d, dtype=torch.float64)
+        A = M @ M.T + torch.eye(d, dtype=torch.float64)
+        B = torch.randn(d, k, dtype=torch.float64)
+
+        # Unbatched: solve via cholesky_solve directly.
+        L_unbatched = torch.linalg.cholesky(A)
+        X_unbatched = torch.cholesky_solve(B, L_unbatched)
+
+        # Batched-of-1.
+        L_batched = batched_cholesky(A.unsqueeze(0))
+        X_batched = batched_cholesky_solve(L_batched, B.unsqueeze(0))
+
+        torch.testing.assert_close(
+            X_batched.squeeze(0), X_unbatched, atol=1e-10, rtol=1e-10,
+        )
+
+
+class TestWoodburyInverse:
+    """``woodbury_inverse(A_inv, U, C, V) = (A + U C V)^{-1}``."""
+
+    def test_matches_dense_inverse(self):
+        """Identity holds against direct inv(A + U C V).
+
+        Tolerance 1e-8: Woodbury accumulates roundoff from multiple
+        matmul + inverse operations (A_inv, C_inv, inner_inv, then
+        outer products). Observed-then-floored: empirically the worst
+        residual is ~1e-10, but 1e-8 is the documented absolute floor.
+        """
+        torch.manual_seed(9)
+        n, k = 6, 2
+        # Build SPD A so it is invertible.
+        M = torch.randn(n, n, dtype=torch.float64)
+        A = M @ M.T + torch.eye(n, dtype=torch.float64)
+        A_inv = torch.linalg.inv(A)
+
+        U = torch.randn(n, k, dtype=torch.float64)
+        # Build SPD C (so C^{-1} exists).
+        Mc = torch.randn(k, k, dtype=torch.float64)
+        C = Mc @ Mc.T + torch.eye(k, dtype=torch.float64)
+        V = torch.randn(k, n, dtype=torch.float64)
+
+        out = woodbury_inverse(A_inv, U, C, V)
+        ref = torch.linalg.inv(A + U @ C @ V)
+        torch.testing.assert_close(out, ref, atol=1e-8, rtol=1e-8)
+
+    def test_zero_correction_collapses_to_a_inv(self):
+        """When C = 0, (A + U 0 V)^{-1} = A^{-1}.
+
+        The impl computes C^{-1} explicitly, so we use a tiny C
+        (epsilon * I) instead of strict zero — strictly C=0 would raise
+        on the inv. This is a documented limitation of this impl: the
+        Woodbury identity *as written here* requires invertible C. The
+        tiny-C limit is the operational equivalent of "no correction".
+        Tolerance 1e-6 reflects the perturbation magnitude.
+        """
+        torch.manual_seed(10)
+        n, k = 5, 2
+        M = torch.randn(n, n, dtype=torch.float64)
+        A = M @ M.T + torch.eye(n, dtype=torch.float64)
+        A_inv = torch.linalg.inv(A)
+
+        U = torch.randn(n, k, dtype=torch.float64)
+        C = 1e-12 * torch.eye(k, dtype=torch.float64)
+        V = torch.randn(k, n, dtype=torch.float64)
+
+        out = woodbury_inverse(A_inv, U, C, V)
+        torch.testing.assert_close(out, A_inv, atol=1e-6, rtol=1e-6)
+
+
+class TestWoodburyLogdet:
+    """``woodbury_logdet(A_logdet, A_inv, U, C, V) = log|A + U C V|``."""
+
+    def test_matches_torch_slogdet(self):
+        """Identity vs torch.linalg.slogdet on the dense (A + U C V).
+
+        Tolerance 1e-6 (observed floor): the matrix determinant lemma
+        chains together log|A| + log|C| + log|C^{-1} + V A^{-1} U|,
+        each computed via slogdet — three independent FP roundoff
+        contributions. Empirical residual ~1e-10 in this small test, but
+        1e-6 is the documented floor that absorbs less-conditioned cases.
+        """
+        torch.manual_seed(11)
+        n, k = 6, 2
+        M = torch.randn(n, n, dtype=torch.float64)
+        A = M @ M.T + torch.eye(n, dtype=torch.float64)
+        A_inv = torch.linalg.inv(A)
+        A_logdet = torch.linalg.slogdet(A).logabsdet
+
+        U = torch.randn(n, k, dtype=torch.float64)
+        Mc = torch.randn(k, k, dtype=torch.float64)
+        C = Mc @ Mc.T + torch.eye(k, dtype=torch.float64)
+        V = torch.randn(k, n, dtype=torch.float64)
+
+        out = woodbury_logdet(A_logdet, A_inv, U, C, V)
+        ref = torch.linalg.slogdet(A + U @ C @ V).logabsdet
+        torch.testing.assert_close(out, ref, atol=1e-6, rtol=1e-6)
+
+    def test_zero_correction_returns_a_logdet(self):
+        """When C is near-zero (eps * I), log|A + UCV| ~ log|A|.
+
+        Same caveat as TestWoodburyInverse.test_zero_correction:
+        strict C=0 is undefined for this impl (requires C^{-1}). Tiny
+        eps approximates the no-correction limit. Tolerance 1e-6.
+        """
+        torch.manual_seed(12)
+        n, k = 5, 2
+        M = torch.randn(n, n, dtype=torch.float64)
+        A = M @ M.T + torch.eye(n, dtype=torch.float64)
+        A_inv = torch.linalg.inv(A)
+        A_logdet = torch.linalg.slogdet(A).logabsdet
+
+        U = torch.randn(n, k, dtype=torch.float64)
+        C = 1e-12 * torch.eye(k, dtype=torch.float64)
+        V = torch.randn(k, n, dtype=torch.float64)
+
+        out = woodbury_logdet(A_logdet, A_inv, U, C, V)
+        torch.testing.assert_close(out, A_logdet, atol=1e-6, rtol=1e-6)
