@@ -1,23 +1,22 @@
-"""Single-trait LMM: AI-REML variance components, score/wald/lrt scan."""
+"""Canonical-path re-export for SingleTraitLMM.
+
+Phase 4 originally landed the implementation under
+:mod:`torchgwas.models.single_trait_lmm`; this module preserves the
+``torchgwas.models.lmm_single`` import path used by the validation
+auditor and external callers. It re-exports the real class so the
+defining module of ``SingleTraitLMM`` continues to be
+``single_trait_lmm`` (preserving ``__module__`` for downstream
+introspection and golden tests).
+"""
 
 from __future__ import annotations
 
-from typing import Any
+from .base import NullFit, ScanResult, VariantMeta  # noqa: F401
+from .single_trait_lmm import SingleTraitLMM  # noqa: F401
 
-from torch import Tensor
-
-from .base import NullFit, ScanResult, VariantMeta
-
-
-class SingleTraitLMM:
-    """Single-trait linear mixed model: y = Xb + Zg + e, g ~ N(0, K*sig2_g).
-
-    Implements :class:`BaseModel`.  GEMMA-equivalent eigendecomposition
-    trick: fit null in O(n) per REML iteration after one-time O(n^3) eigh.
-    """
-
-    def fit_null(self, Y: Tensor, X0: Tensor, K: Tensor | None = None, **kwargs: Any) -> NullFit:
-        raise NotImplementedError  # Phase 4
-
-    def score_chunk(self, G_chunk: Tensor, null_fit: NullFit, variant_meta: VariantMeta, test: str = "wald") -> ScanResult:
-        raise NotImplementedError  # Phase 4
+__all__ = [
+    "SingleTraitLMM",
+    "NullFit",
+    "ScanResult",
+    "VariantMeta",
+]
