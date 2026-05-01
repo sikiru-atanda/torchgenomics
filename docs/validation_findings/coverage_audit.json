@@ -217,7 +217,8 @@
       "module": "torchgwas._native",
       "symbol": "HAS_NATIVE_CAVI",
       "test_files": [
-        "tests/test_native_cavi.py"
+        "tests/test_native_cavi.py",
+        "tests/test_coverage_models.py"
       ],
       "tier": null
     },
@@ -482,7 +483,8 @@
       "module": "torchgwas._native",
       "symbol": "_cavi_native",
       "test_files": [
-        "tests/test_native_cavi.py"
+        "tests/test_native_cavi.py",
+        "tests/test_coverage_models.py"
       ],
       "tier": null
     },
@@ -711,7 +713,8 @@
       "module": "torchgwas.config",
       "symbol": "AMPConfig",
       "test_files": [
-        "tests/test_config.py"
+        "tests/test_config.py",
+        "tests/test_coverage_models_base.py"
       ],
       "tier": null
     },
@@ -739,17 +742,20 @@
         "tests/test_met_fa_reml.py",
         "tests/test_multi_env_lmm.py",
         "tests/test_ocf_lmm.py",
-        "tests/test_update_null.py"
+        "tests/test_update_null.py",
+        "tests/test_coverage_models_base.py"
       ],
       "tier": null
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 150,
       "module": "torchgwas.config",
       "symbol": "PloidyConfig",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models_base.py"
+      ],
       "tier": null
     },
     {
@@ -761,7 +767,8 @@
       "test_files": [
         "tests/test_config.py",
         "tests/test_scan.py",
-        "tests/test_scan_unified.py"
+        "tests/test_scan_unified.py",
+        "tests/test_coverage_models_base.py"
       ],
       "tier": null
     },
@@ -1525,12 +1532,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 17,
       "module": "torchgwas.linalg",
       "symbol": "GRMMetadata",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1543,12 +1552,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 78,
       "module": "torchgwas.linalg",
       "symbol": "auto_n_components",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1570,12 +1581,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 121,
       "module": "torchgwas.linalg",
       "symbol": "compute_weights",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1597,12 +1610,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 22,
       "module": "torchgwas.linalg",
       "symbol": "eigendecompose",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1615,129 +1630,157 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 122,
       "module": "torchgwas.linalg",
       "symbol": "grm_asv_transform",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 72,
       "module": "torchgwas.linalg",
       "symbol": "grm_endelman_digenic",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 152,
       "module": "torchgwas.linalg",
       "symbol": "grm_epistatic_hadamard",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 63,
       "module": "torchgwas.linalg",
       "symbol": "grm_loco",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 16,
       "module": "torchgwas.linalg",
       "symbol": "grm_polyploid_gene_action",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 320,
       "module": "torchgwas.linalg",
       "symbol": "grm_pseudo_diploid",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 24,
       "module": "torchgwas.linalg",
       "symbol": "grm_slater",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 199,
       "module": "torchgwas.linalg",
       "symbol": "grm_su_dominance",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 35,
       "module": "torchgwas.linalg",
       "symbol": "grm_vanraden",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 202,
       "module": "torchgwas.linalg",
       "symbol": "grm_vanraden_streaming",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 131,
       "module": "torchgwas.linalg",
       "symbol": "grm_vitezica_dominance",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 349,
       "module": "torchgwas.linalg",
       "symbol": "grm_weighted",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 257,
       "module": "torchgwas.linalg",
       "symbol": "grm_yang_gcta",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 97,
       "module": "torchgwas.linalg",
       "symbol": "grm_zhang",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1813,12 +1856,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 103,
       "module": "torchgwas.linalg",
       "symbol": "rotate",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1831,21 +1876,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 16,
       "module": "torchgwas.linalg",
       "symbol": "safe_cholesky",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 73,
       "module": "torchgwas.linalg",
       "symbol": "safe_logdet",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1876,21 +1925,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 9,
       "module": "torchgwas.linalg",
       "symbol": "woodbury_inverse",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 49,
       "module": "torchgwas.linalg",
       "symbol": "woodbury_logdet",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -1900,7 +1953,8 @@
       "module": "torchgwas.linalg.basis",
       "symbol": "bspline_basis",
       "test_files": [
-        "tests/test_basis.py"
+        "tests/test_basis.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -1911,7 +1965,8 @@
       "module": "torchgwas.linalg.basis",
       "symbol": "difference_penalty",
       "test_files": [
-        "tests/test_basis.py"
+        "tests/test_basis.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -1923,7 +1978,8 @@
       "symbol": "evaluate_basis_at",
       "test_files": [
         "tests/test_basis.py",
-        "tests/test_rr_eval_times.py"
+        "tests/test_rr_eval_times.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -1939,7 +1995,8 @@
         "tests/test_rr_lmm_scan.py",
         "tests/test_rr_met_lmm.py",
         "tests/test_rr_projection.py",
-        "tests/test_rr_spatial.py"
+        "tests/test_rr_spatial.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -1950,7 +2007,8 @@
       "module": "torchgwas.linalg.basis",
       "symbol": "place_knots",
       "test_files": [
-        "tests/test_basis.py"
+        "tests/test_basis.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -1961,7 +2019,8 @@
       "module": "torchgwas.linalg.basis",
       "symbol": "pspline_2d",
       "test_files": [
-        "tests/test_basis.py"
+        "tests/test_basis.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -1977,26 +2036,31 @@
         "tests/test_rr_lmm_scan.py",
         "tests/test_rr_met_lmm.py",
         "tests/test_rr_projection.py",
-        "tests/test_rr_spatial.py"
+        "tests/test_rr_spatial.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 9,
       "module": "torchgwas.linalg.batched",
       "symbol": "batched_cholesky",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 25,
       "module": "torchgwas.linalg.batched",
       "symbol": "batched_cholesky_solve",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -2007,7 +2071,8 @@
       "symbol": "EigenDecomp",
       "test_files": [
         "tests/test_approximate.py",
-        "tests/test_contracts.py"
+        "tests/test_contracts.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2322,12 +2387,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 32,
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "KronEED",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -2337,7 +2404,9 @@
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "diagonal_precision",
       "test_files": [
-        "tests/test_scaling.py"
+        "tests/test_scaling.py",
+        "tests/test_coverage_linalg.py",
+        "tests/test_coverage_optim.py"
       ],
       "tier": 1
     },
@@ -2348,7 +2417,8 @@
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "inverse_rotate_from_ked",
       "test_files": [
-        "tests/test_scaling.py"
+        "tests/test_scaling.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2359,7 +2429,8 @@
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "ked_reml_quantities",
       "test_files": [
-        "tests/test_scaling.py"
+        "tests/test_scaling.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2370,7 +2441,9 @@
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "kronecker_eed",
       "test_files": [
-        "tests/test_scaling.py"
+        "tests/test_scaling.py",
+        "tests/test_coverage_linalg.py",
+        "tests/test_coverage_optim.py"
       ],
       "tier": 1
     },
@@ -2381,7 +2454,8 @@
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "kronecker_eed_from_full",
       "test_files": [
-        "tests/test_scaling.py"
+        "tests/test_scaling.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2392,7 +2466,8 @@
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "rotate_to_ked_basis",
       "test_files": [
-        "tests/test_scaling.py"
+        "tests/test_scaling.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2403,7 +2478,8 @@
       "module": "torchgwas.linalg.kronecker_eed",
       "symbol": "woodbury_fa_precision",
       "test_files": [
-        "tests/test_scaling.py"
+        "tests/test_scaling.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2490,12 +2566,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 90,
       "module": "torchgwas.linalg.safe",
       "symbol": "symmetrize",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -2508,21 +2586,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 131,
       "module": "torchgwas.linalg.sparse_grm",
       "symbol": "make_sparse_matvec",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 114,
       "module": "torchgwas.linalg.sparse_grm",
       "symbol": "sparse_grm_matvec",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_linalg.py"
+      ],
       "tier": 1
     },
     {
@@ -2543,7 +2625,8 @@
       "module": "torchgwas.linalg.truncated_mvn",
       "symbol": "bivariate_truncated_moments",
       "test_files": [
-        "tests/test_threshold_linear.py"
+        "tests/test_threshold_linear.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2554,7 +2637,8 @@
       "module": "torchgwas.linalg.truncated_mvn",
       "symbol": "mvn_truncated_moments",
       "test_files": [
-        "tests/test_threshold_linear.py"
+        "tests/test_threshold_linear.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -2565,7 +2649,8 @@
       "module": "torchgwas.linalg.truncated_mvn",
       "symbol": "truncated_normal_moments",
       "test_files": [
-        "tests/test_threshold_linear.py"
+        "tests/test_threshold_linear.py",
+        "tests/test_coverage_linalg.py"
       ],
       "tier": 1
     },
@@ -3358,7 +3443,8 @@
         "tests/test_contracts.py",
         "tests/test_gxe_lmm.py",
         "tests/test_multi_kernel_lmm.py",
-        "tests/test_threshold_linear.py"
+        "tests/test_threshold_linear.py",
+        "tests/test_coverage_models_base.py"
       ],
       "tier": 1
     },
@@ -3381,7 +3467,11 @@
         "tests/test_multi_trait_lmm.py",
         "tests/test_scan.py",
         "tests/test_scan_unified.py",
-        "tests/test_single_trait_lmm.py"
+        "tests/test_single_trait_lmm.py",
+        "tests/test_coverage_scan.py",
+        "tests/test_coverage_models_base.py",
+        "tests/test_coverage_models.py",
+        "tests/test_coverage_optim.py"
       ],
       "tier": 1
     },
@@ -3408,7 +3498,8 @@
         "tests/test_scan.py",
         "tests/test_scan_unified.py",
         "tests/test_single_trait_lmm.py",
-        "tests/test_within_family_lmm.py"
+        "tests/test_within_family_lmm.py",
+        "tests/test_coverage_stats.py"
       ],
       "tier": 1
     },
@@ -3466,7 +3557,9 @@
         "tests/test_survival_glmm.py",
         "tests/test_survival_reference.py",
         "tests/test_threshold_linear.py",
-        "tests/test_within_family_lmm.py"
+        "tests/test_within_family_lmm.py",
+        "tests/test_coverage_scan.py",
+        "tests/test_coverage_models_base.py"
       ],
       "tier": 1
     },
@@ -3497,21 +3590,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 43,
       "module": "torchgwas.models.bayesian_vs",
       "symbol": "BayesianVSResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.models.bayesian_vs",
       "symbol": "HAS_NATIVE_CAVI",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -3878,21 +3975,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 52,
       "module": "torchgwas.models.glm_link",
       "symbol": "IdentityLink",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 26,
       "module": "torchgwas.models.glm_link",
       "symbol": "LinkFunction",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -4164,12 +4265,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 63,
       "module": "torchgwas.models.haplotype_novel",
       "symbol": "HHCTNode",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -4319,12 +4422,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 22,
       "module": "torchgwas.models.joint_qtl",
       "symbol": "JointQTLResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -4450,12 +4555,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
-      "lineno": 12,
+      "lineno": 31,
       "module": "torchgwas.models.lmm_multi",
       "symbol": "MultiTraitLMM",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -4486,30 +4593,36 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
-      "kind": "class",
-      "lineno": 41,
-      "module": "torchgwas.models.lmm_multi_fit",
-      "symbol": "NullFit",
-      "test_files": [],
-      "tier": 1
-    },
-    {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
-      "lineno": 15,
+      "lineno": 135,
       "module": "torchgwas.models.lmm_multi_fit",
       "symbol": "fit_mvlmm_null_ai_reml",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
-      "lineno": 10,
+      "lineno": 84,
       "module": "torchgwas.models.lmm_multi_fit",
       "symbol": "fit_mvlmm_null_lbfgs",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
+      "tier": 1
+    },
+    {
+      "has_direct_test": true,
+      "kind": "class",
+      "lineno": 29,
+      "module": "torchgwas.models.lmm_single",
+      "symbol": "SingleTraitLMM",
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -4527,15 +4640,6 @@
       "lineno": 92,
       "module": "torchgwas.models.lmm_single",
       "symbol": "ScanResult",
-      "test_files": [],
-      "tier": 1
-    },
-    {
-      "has_direct_test": false,
-      "kind": "class",
-      "lineno": 12,
-      "module": "torchgwas.models.lmm_single",
-      "symbol": "SingleTraitLMM",
       "test_files": [],
       "tier": 1
     },
@@ -5012,12 +5116,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 42,
       "module": "torchgwas.models.ocf_lmm",
       "symbol": "FoldResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -5729,12 +5835,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 30,
       "module": "torchgwas.models.sparse_lmm",
       "symbol": "SparseLMM",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -5841,12 +5949,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 49,
       "module": "torchgwas.models.threshold_linear",
       "symbol": "ThresholdConfig",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -5861,12 +5971,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 69,
       "module": "torchgwas.models.threshold_linear",
       "symbol": "ThresholdNullFit",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_models.py"
+      ],
       "tier": 1
     },
     {
@@ -6395,12 +6507,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 258,
       "module": "torchgwas.optim.cox_pql",
       "symbol": "cox_pql_fit",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6416,21 +6530,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 209,
       "module": "torchgwas.optim.emma_reml",
       "symbol": "emma_reml_single",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 26,
       "module": "torchgwas.optim.emma_reml",
       "symbol": "gapit_emma_remle",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6452,20 +6570,33 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 148,
       "module": "torchgwas.optim.fa_lbfgs_reml",
       "symbol": "fa_lbfgs_reml",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
+      "tier": 1
+    },
+    {
+      "has_direct_test": true,
+      "kind": "function",
+      "lineno": 41,
+      "module": "torchgwas.optim.fisher_scoring",
+      "symbol": "fisher_scoring_reml",
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
       "has_direct_test": false,
       "kind": "function",
-      "lineno": 8,
+      "lineno": 86,
       "module": "torchgwas.optim.fisher_scoring",
-      "symbol": "fisher_scoring_reml",
+      "symbol": "reml_loglikelihood",
       "test_files": [],
       "tier": 1
     },
@@ -6512,21 +6643,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 32,
       "module": "torchgwas.optim.multi_env_pql",
       "symbol": "multi_env_pql_fit",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 26,
       "module": "torchgwas.optim.multi_kernel_met_reml",
       "symbol": "multi_kernel_met_reml",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6552,21 +6687,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 54,
       "module": "torchgwas.optim.mvlmm_reml",
       "symbol": "compute_sigma_inv_diag",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 145,
       "module": "torchgwas.optim.mvlmm_reml",
       "symbol": "mvlmm_null_quantities",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6582,12 +6721,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 25,
       "module": "torchgwas.optim.pcg_solver",
       "symbol": "PCGResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6633,21 +6774,25 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 467,
       "module": "torchgwas.optim.pxem_nr_mvreml",
       "symbol": "pxem_nr_mvreml",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 22,
       "module": "torchgwas.optim.reml_math",
       "symbol": "REMLResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6711,39 +6856,47 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 86,
       "module": "torchgwas.optim.rr_reml",
       "symbol": "rr_reml_diagonal",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 156,
       "module": "torchgwas.optim.rr_reml",
       "symbol": "rr_reml_fa",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 60,
       "module": "torchgwas.optim.rr_reml",
       "symbol": "rr_reml_unstructured",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 41,
       "module": "torchgwas.optim.separable_kron_reml",
       "symbol": "separable_kron_reml",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6794,12 +6947,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 34,
       "module": "torchgwas.optim.sparse_reml",
       "symbol": "sparse_reml_fit",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -6845,12 +7000,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 286,
       "module": "torchgwas.optim.triad_reml",
       "symbol": "triad_reml",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_optim.py"
+      ],
       "tier": 1
     },
     {
@@ -8879,7 +9036,8 @@
       "symbol": "PrefetchIterator",
       "test_files": [
         "tests/test_gpu.py",
-        "tests/test_streaming.py"
+        "tests/test_streaming.py",
+        "tests/test_coverage_scan.py"
       ],
       "tier": 1
     },
@@ -8899,26 +9057,31 @@
       "module": "torchgwas.scan.prefetch",
       "symbol": "move_nullfit_to_device",
       "test_files": [
-        "tests/test_gpu.py"
+        "tests/test_gpu.py",
+        "tests/test_coverage_scan.py"
       ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 6,
       "module": "torchgwas.scan.strategies",
       "symbol": "FixedNullStrategy",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_scan.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 11,
       "module": "torchgwas.scan.strategies",
       "symbol": "PerSNPRefitStrategy",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_scan.py"
+      ],
       "tier": 1
     },
     {
@@ -9045,30 +9208,36 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 61,
       "module": "torchgwas.stats",
       "symbol": "AdaPTResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 18,
       "module": "torchgwas.stats",
       "symbol": "BestModelResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 37,
       "module": "torchgwas.stats",
       "symbol": "IHWResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
@@ -9078,80 +9247,97 @@
       "module": "torchgwas.stats",
       "symbol": "PVEResult",
       "test_files": [
-        "tests/test_pve.py"
+        "tests/test_pve.py",
+        "tests/test_coverage_stats.py"
       ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 17,
       "module": "torchgwas.stats",
       "symbol": "QTLPeak",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 370,
       "module": "torchgwas.stats",
       "symbol": "adapt",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 83,
       "module": "torchgwas.stats",
       "symbol": "adaptive_permutation_maxT",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 50,
       "module": "torchgwas.stats",
       "symbol": "benjamini_hochberg",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 75,
       "module": "torchgwas.stats",
       "symbol": "benjamini_yekutieli",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 13,
       "module": "torchgwas.stats",
       "symbol": "bonferroni",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 16,
       "module": "torchgwas.stats",
       "symbol": "cauchy_combination",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 14,
       "module": "torchgwas.stats",
       "symbol": "chi2_sf",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
@@ -9161,215 +9347,262 @@
       "module": "torchgwas.stats",
       "symbol": "compute_pve",
       "test_files": [
-        "tests/test_pve.py"
+        "tests/test_pve.py",
+        "tests/test_coverage_stats.py"
       ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 32,
       "module": "torchgwas.stats",
       "symbol": "davies_pvalue",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 40,
       "module": "torchgwas.stats",
       "symbol": "diagnose_inflation",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 17,
       "module": "torchgwas.stats",
       "symbol": "effective_test_count",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 53,
       "module": "torchgwas.stats",
       "symbol": "effective_test_count_moskvina",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 87,
       "module": "torchgwas.stats",
       "symbol": "hierarchical_fdr",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 28,
       "module": "torchgwas.stats",
       "symbol": "holm",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 177,
       "module": "torchgwas.stats",
       "symbol": "ihw",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 21,
       "module": "torchgwas.stats",
       "symbol": "lambda_gc",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 87,
       "module": "torchgwas.stats",
       "symbol": "ld_correlation_eigenvalues",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 117,
       "module": "torchgwas.stats",
       "symbol": "liu_pvalue",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 181,
       "module": "torchgwas.stats",
       "symbol": "local_fdr",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 53,
       "module": "torchgwas.stats",
       "symbol": "lrt_test",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 180,
       "module": "torchgwas.stats",
       "symbol": "mixture_chi2_pvalue",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 15,
       "module": "torchgwas.stats",
       "symbol": "permutation_maxT",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 31,
       "module": "torchgwas.stats",
       "symbol": "prune_peaks",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 107,
       "module": "torchgwas.stats",
       "symbol": "saddlepoint_pvalue",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 72,
       "module": "torchgwas.stats",
       "symbol": "score_test",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 135,
       "module": "torchgwas.stats",
       "symbol": "score_test_multi_df",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 56,
       "module": "torchgwas.stats",
       "symbol": "select_best_model",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 19,
       "module": "torchgwas.stats",
       "symbol": "sidak",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 98,
       "module": "torchgwas.stats",
       "symbol": "storey_qvalue",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 34,
       "module": "torchgwas.stats",
       "symbol": "wald_test",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 23,
       "module": "torchgwas.stats",
       "symbol": "weighted_bh",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
@@ -9464,12 +9697,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
-      "lineno": 8,
+      "lineno": 11,
       "module": "torchgwas.stats.calibrate",
       "symbol": "compare_pvalues",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
@@ -9484,12 +9719,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.stats.genomic_control",
       "symbol": "CHI2_1_MEDIAN",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
@@ -9582,12 +9819,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 143,
       "module": "torchgwas.stats.multipletesting",
       "symbol": "eigenmt_adjust",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
@@ -9810,12 +10049,14 @@
       "tier": 1
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 90,
       "module": "torchgwas.stats.tests",
       "symbol": "apply_contrast",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_stats.py"
+      ],
       "tier": 1
     },
     {
@@ -9991,10 +10232,10 @@
     },
     "total_symbols": 993,
     "untested_by_tier": {
-      "1": 429,
+      "1": 328,
       "2": 196,
       "3": 4
     },
-    "untested_no_tier": 3
+    "untested_no_tier": 2
   }
 }
