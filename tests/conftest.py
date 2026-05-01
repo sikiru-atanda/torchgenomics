@@ -58,3 +58,69 @@ def tiny_data(rng: torch.Generator, device: torch.device) -> dict:
         torch.randn(n, c, generator=rng, dtype=torch.float64, device=device),
     ], dim=1)
     return {"G": G, "Y": Y, "X0": X0, "n": n, "m": m}
+
+
+# ============================================================================
+# Pillar A coverage-test fixtures (added 2026-04-30, see
+# docs/superpowers/specs/2026-04-30-validation-campaign-design.md)
+#
+# These fixtures are the LIVE source consumed by tests/test_coverage_*.py via
+# pytest's auto-discovery. A documented reference copy is kept at
+# tests/conftest_coverage.py so future readers can find them in one place.
+#
+# Naming: prefixed with neither `coverage_` nor anything else because no
+# collision with the existing fixtures above (device / gpu_device / rng /
+# tiny_data) was detected as of this commit. If a future fixture name
+# collision appears, rename the new fixture with a `coverage_` prefix and
+# document the rename here.
+# ============================================================================
+
+import numpy as np  # noqa: E402  (intentional: keeps pillar-A block self-contained)
+
+
+@pytest.fixture(scope="module")
+def tiny_genotype_diploid():
+    """100 samples x 50 SNPs, MAF ~0.3, no missing."""
+    _rng = np.random.default_rng(42)
+    G = _rng.binomial(2, 0.3, size=(100, 50)).astype(np.float64)
+    return torch.from_numpy(G)
+
+
+@pytest.fixture(scope="module")
+def tiny_genotype_tetraploid():
+    """100 samples x 50 SNPs, ploidy=4, no missing."""
+    _rng = np.random.default_rng(43)
+    G = _rng.binomial(4, 0.3, size=(100, 50)).astype(np.float64)
+    return torch.from_numpy(G)
+
+
+@pytest.fixture(scope="module")
+def tiny_phenotype():
+    """Single quantitative trait, n=100, normal."""
+    _rng = np.random.default_rng(44)
+    return torch.from_numpy(_rng.normal(0, 1, size=(100, 1)).astype(np.float64))
+
+
+@pytest.fixture(scope="module")
+def tiny_kinship():
+    """Symmetric PSD kinship from tiny diploid genotype."""
+    _rng = np.random.default_rng(42)
+    G = _rng.binomial(2, 0.3, size=(100, 50)).astype(np.float64)
+    Gc = G - G.mean(axis=0, keepdims=True)
+    K = Gc @ Gc.T / 50.0
+    K = K + np.eye(100) * 1e-6
+    return torch.from_numpy(K)
+
+
+@pytest.fixture(scope="module")
+def tiny_covariates():
+    """Intercept + one continuous covariate, n=100."""
+    _rng = np.random.default_rng(45)
+    X = np.column_stack([np.ones(100), _rng.normal(0, 1, 100)]).astype(np.float64)
+    return torch.from_numpy(X)
+
+
+@pytest.fixture(scope="module")
+def stat_dtype():
+    """The statistical-inference dtype TorchGWAS uses."""
+    return torch.float64
