@@ -17,10 +17,10 @@ Tier mapping (from spec §4.1):
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib
 import inspect
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -101,18 +101,147 @@ def lineno_of(obj):
         return None
 
 
-def find_test_files_for_symbol(symbol: str) -> list[str]:
-    """Conservative match: explicit `<symbol>` token in tests/."""
-    pattern = re.compile(rf"\b{re.escape(symbol)}\b")
-    matches: list[str] = []
+class _TestFileIndex:
+    """Pre-parsed index of a single test file's imports and attribute accesses.
+
+    Built once per file (in `_build_test_index`) and queried per symbol
+    via `covers(module, symbol)`. The naive approach of re-parsing every
+    test file for every public symbol scales as O(symbols * files) AST
+    walks (~6 minutes on this repo); caching brings it to O(files).
+    """
+
+    __slots__ = (
+        "from_imports",   # dict[module_str, set[real_symbol_name]]
+        "module_aliases", # dict[module_str, set[local_binding_name]]
+        "parent_aliases", # dict[(parent, short), set[local_binding_name]]
+        "attr_accesses",  # dict[attr_name, set[base_local_name]]
+        "dotted_attrs",   # set[tuple[str, ...]] of full attribute chains
+    )
+
+    def __init__(self):
+        self.from_imports: dict[str, set[str]] = {}
+        self.module_aliases: dict[str, set[str]] = {}
+        self.parent_aliases: dict[tuple[str, str], set[str]] = {}
+        self.attr_accesses: dict[str, set[str]] = {}
+        self.dotted_attrs: set[tuple[str, ...]] = set()
+
+    def covers(self, module: str, symbol: str) -> bool:
+        # Case 1: `from <module> import ... <symbol> ...`
+        if symbol in self.from_imports.get(module, ()):
+            return True
+
+        # Build the set of local names through which <module> is reachable.
+        module_local_names = set(self.module_aliases.get(module, ()))
+        if "." in module:
+            parent, short = module.rsplit(".", 1)
+            module_local_names |= self.parent_aliases.get((parent, short), set())
+
+        # Case 2 / 3: `<local_name>.<symbol>` access.
+        if module_local_names:
+            base_names = self.attr_accesses.get(symbol, set())
+            if base_names & module_local_names:
+                return True
+
+        # Case 2 (dotted): `import torchgwas.linalg` (no alias) + a dotted
+        # `torchgwas.linalg.<symbol>` access — recorded as a chain.
+        target = tuple(module.split(".") + [symbol])
+        if target in self.dotted_attrs:
+            return True
+
+        return False
+
+
+def _build_test_index(tree: ast.AST) -> _TestFileIndex:
+    """Walk the AST once and record everything we'll need for symbol lookup."""
+    idx = _TestFileIndex()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            mod = node.module
+            if mod is None:
+                continue
+            for alias in node.names:
+                # `from <mod> import <name>` — store the real name (alias.name);
+                # an `as` rename does not change which symbol is being imported.
+                idx.from_imports.setdefault(mod, set()).add(alias.name)
+                # Also track `from <parent> import <short> [as alias]` so we
+                # can resolve `<short>.symbol` accesses against module
+                # `<parent>.<short>`.
+                idx.parent_aliases.setdefault(
+                    (mod, alias.name), set()
+                ).add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                # `import <fullmod> [as alias]`: the full dotted path resolves
+                # via the local binding (alias.asname when present, else the
+                # top-level package name; we store both the full module path
+                # and a dotted-chain entry below).
+                full = alias.name
+                bind = alias.asname or alias.name
+                idx.module_aliases.setdefault(full, set()).add(bind)
+        elif isinstance(node, ast.Attribute):
+            # Record `<base>.<attr>` for fast attribute-access lookup.
+            value = node.value
+            if isinstance(value, ast.Name):
+                idx.attr_accesses.setdefault(node.attr, set()).add(value.id)
+            # Also record full dotted chains rooted in a Name, so that
+            # `import torchgwas.linalg` + `torchgwas.linalg.eig(...)` works
+            # even though the local binding is only `torchgwas`.
+            parts: list[str] = [node.attr]
+            cur: ast.AST = value
+            while isinstance(cur, ast.Attribute):
+                parts.append(cur.attr)
+                cur = cur.value
+            if isinstance(cur, ast.Name):
+                parts.append(cur.id)
+                parts.reverse()
+                idx.dotted_attrs.add(tuple(parts))
+    return idx
+
+
+def _build_all_test_indices() -> list[tuple[str, _TestFileIndex]]:
+    """Parse every test file once and return (rel_path, index) pairs."""
+    out: list[tuple[str, _TestFileIndex]] = []
     for p in TESTS_ROOT.rglob("test_*.py"):
         try:
             text = p.read_text(errors="replace")
         except OSError:
             continue
-        if pattern.search(text):
-            matches.append(str(p.relative_to(REPO)))
-    return matches
+        try:
+            tree = ast.parse(text, filename=str(p))
+        except SyntaxError:
+            # A test file with a syntax error can't reliably be analyzed; skip.
+            continue
+        out.append((str(p.relative_to(REPO)), _build_test_index(tree)))
+    return out
+
+
+# Lazily populated; built once per process.
+_TEST_INDICES: list[tuple[str, _TestFileIndex]] | None = None
+
+
+def find_test_files_for_symbol(module: str, symbol: str) -> list[str]:
+    """Return tests/ files that genuinely import or invoke `module.symbol`.
+
+    A test file is counted as covering `module.symbol` only if at least one of:
+
+      1. `from <module> import ... <symbol> ...` — exact ImportFrom match,
+         where the symbol appears among the imported aliases (under its real
+         name, not an `as` alias's local name).
+      2. `import <module>` (or `import <module> as <alias>`) AND a separate
+         `<module>.<symbol>` (or `<alias>.<symbol>`) attribute access.
+      3. `from <module_parent> import ... <module_short_name> ...` AND
+         `<module_short_name>.<symbol>` (or aliased) attribute access
+         (e.g. `from torchgwas import linalg` + `linalg.eigendecompose(...)`).
+
+    Uses AST analysis (built once per file and cached) instead of substring
+    or word-boundary regex matching, to avoid false positives on common
+    names like ``Result`` / ``fit`` / ``score`` that may appear in
+    docstrings or be imported from an unrelated module.
+    """
+    global _TEST_INDICES
+    if _TEST_INDICES is None:
+        _TEST_INDICES = _build_all_test_indices()
+    return [rel for rel, idx in _TEST_INDICES if idx.covers(module, symbol)]
 
 
 def walk_package(root: Path):
@@ -129,8 +258,8 @@ def walk_package(root: Path):
             continue
         try:
             mod = importlib.import_module(modname)
-        except Exception as exc:
-            print(f"WARN: skipping {modname}: {exc}", file=sys.stderr)
+        except (ImportError, ModuleNotFoundError, OSError, AttributeError) as exc:
+            print(f"WARN: skipping {modname}: {type(exc).__name__}: {exc}", file=sys.stderr)
             continue
         yield modname, mod
 
@@ -145,7 +274,7 @@ def build_rows():
             if key in seen:
                 continue
             seen.add(key)
-            test_files = find_test_files_for_symbol(symname)
+            test_files = find_test_files_for_symbol(modname, symname)
             rows.append({
                 "module": modname,
                 "symbol": symname,
