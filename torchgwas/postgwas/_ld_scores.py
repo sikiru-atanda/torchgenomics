@@ -55,6 +55,14 @@ def compute_ld_scores(
         pos_arr = list(pos)
 
     chr_arr = [str(c) for c in chr_labels]
+    if len(pos_arr) != m:
+        raise ValueError(
+            f"pos length ({len(pos_arr)}) must equal the number of SNPs in G ({m})"
+        )
+    if len(chr_arr) != m:
+        raise ValueError(
+            f"chr_labels length ({len(chr_arr)}) must equal the number of SNPs in G ({m})"
+        )
     window_bp = window_kb * 1000.0
 
     ld_scores = torch.ones(m, dtype=torch.float64, device=device)
