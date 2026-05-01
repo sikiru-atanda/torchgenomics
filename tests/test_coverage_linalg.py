@@ -18,8 +18,19 @@ from torchgwas.linalg import (
     auto_n_components,
     compute_weights,
     eigendecompose,
+    grm_asv_transform,
+    grm_endelman_digenic,
+    grm_epistatic_hadamard,
+    grm_loco,
+    grm_polyploid_gene_action,
+    grm_pseudo_diploid,
+    grm_slater,
+    grm_su_dominance,
     grm_vanraden,
     grm_vanraden_streaming,
+    grm_vitezica_dominance,
+    grm_weighted,
+    grm_yang_gcta,
     grm_zhang,
     rotate,
     safe_cholesky,
@@ -649,3 +660,596 @@ class TestWoodburyLogdet:
 
         out = woodbury_logdet(A_logdet, A_inv, U, C, V)
         torch.testing.assert_close(out, A_logdet, atol=1e-6, rtol=1e-6)
+
+
+# ============================================================================
+# Tier-1 coverage for the GRM variants in
+# torchgwas.linalg.kinship_advanced and torchgwas.linalg.kinship_polyploid.
+# Bar (spec section 4.3 Tier 1):
+# - Symmetric to FP64 precision (1e-12).
+# - PSD up to floating-point noise unless documented otherwise.
+# - Closed-form match where the math admits a numpy reference.
+# - Metadata return contract.
+# ============================================================================
+
+
+class TestGrmEndelmanDigenic:
+    """``grm_endelman_digenic`` — Endelman & Jannink (2012) digenic
+    interaction GRM for tetraploids.
+
+    Recodes X[i,j] = 6 p_j^2 - 3 p_j d[i,j] + 0.5 d[i,j](d[i,j]-1) and
+    normalizes by sum(6 p_j^2 q_j^2). Tetraploid-only (raises on higher
+    max dosage).
+    """
+
+    def test_symmetric(self, tiny_genotype_tetraploid):
+        """Output K is symmetric to FP64 precision."""
+        K, _ = grm_endelman_digenic(tiny_genotype_tetraploid)
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+
+    def test_psd(self, tiny_genotype_tetraploid):
+        """Endelman is X X^T / scalar with positive scalar — strictly PSD
+        up to FP roundoff.
+        """
+        K, _ = grm_endelman_digenic(tiny_genotype_tetraploid)
+        eigvals = np.linalg.eigvalsh(K.cpu().numpy())
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+
+    def test_metadata(self, tiny_genotype_tetraploid):
+        """Second return is a populated GRMMetadata; method='endelman_digenic'."""
+        K, meta = grm_endelman_digenic(tiny_genotype_tetraploid)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.method == "endelman_digenic"
+        assert meta.ploidy == 4
+        assert meta.n_samples == tiny_genotype_tetraploid.shape[0]
+        assert meta.n_snps_used == tiny_genotype_tetraploid.shape[1]
+        assert meta.normalizer > 0.0
+
+    def test_specific_to_tetraploid(self, tiny_genotype_tetraploid):
+        """Output is well-defined for tetraploid input — no NaN / Inf."""
+        K, _ = grm_endelman_digenic(tiny_genotype_tetraploid)
+        K_np = K.cpu().numpy()
+        n = tiny_genotype_tetraploid.shape[0]
+        assert K_np.shape == (n, n)
+        assert np.isfinite(K_np).all()
+
+
+class TestGrmPseudoDiploid:
+    """``grm_pseudo_diploid`` — convert dosage [0, k] to [0, 2] via
+    round(d * 2 / k), then run VanRaden on the recoded matrix.
+    """
+
+    def test_symmetric(self, tiny_genotype_tetraploid):
+        """Output K is symmetric to FP64 precision."""
+        K, _ = grm_pseudo_diploid(tiny_genotype_tetraploid, ploidy=4)
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+
+    def test_psd(self, tiny_genotype_tetraploid):
+        """VanRaden of a real matrix → PSD up to FP roundoff."""
+        K, _ = grm_pseudo_diploid(tiny_genotype_tetraploid, ploidy=4)
+        eigvals = np.linalg.eigvalsh(K.cpu().numpy())
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+
+    def test_metadata(self, tiny_genotype_tetraploid):
+        """Metadata is GRMMetadata; method overwritten to 'pseudo_diploid'."""
+        K, meta = grm_pseudo_diploid(tiny_genotype_tetraploid, ploidy=4)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.method == "pseudo_diploid"
+        assert meta.ploidy == 4
+
+    def test_recovers_diploid_when_ploidy_2(self, tiny_genotype_diploid):
+        """ploidy=2 → round(d * 2 / 2) = round(d) = d (since d already
+        integer), so the result equals grm_vanraden(G, ploidy=2).
+        """
+        K_pd, _ = grm_pseudo_diploid(tiny_genotype_diploid, ploidy=2)
+        K_van, _ = grm_vanraden(tiny_genotype_diploid, ploidy=2)
+
+        # Same upper-triangle correlation > 0.9999 (and identical, since
+        # round(d * 2/2) is the identity on integer dosages in [0, 2]).
+        triu = np.triu_indices(K_pd.shape[0])
+        a = K_pd.cpu().numpy()[triu]
+        b = K_van.cpu().numpy()[triu]
+        corr = np.corrcoef(a, b)[0, 1]
+        assert corr > 0.9999, f"correlation {corr} too low"
+
+
+class TestGrmSlater:
+    """``grm_slater`` — Slater et al. (2016) polyploid GRM.
+
+    K = (G - col_means)(G - col_means)^T / sum(mean_j (k - mean_j)).
+    """
+
+    def test_symmetric(self, tiny_genotype_tetraploid):
+        """Output K is symmetric to FP64 precision."""
+        K, _ = grm_slater(tiny_genotype_tetraploid, ploidy=4)
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+
+    def test_psd(self, tiny_genotype_tetraploid):
+        """Slater is X_centered X_centered^T / positive-scalar → PSD."""
+        K, _ = grm_slater(tiny_genotype_tetraploid, ploidy=4)
+        eigvals = np.linalg.eigvalsh(K.cpu().numpy())
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+
+    def test_metadata(self, tiny_genotype_tetraploid):
+        """Returns GRMMetadata with method='slater'."""
+        K, meta = grm_slater(tiny_genotype_tetraploid, ploidy=4)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.method == "slater"
+        assert meta.ploidy == 4
+        assert meta.normalizer > 0.0
+
+    def test_matches_closed_form(self, tiny_genotype_tetraploid):
+        """Numpy reference of the Slater formula matches to 1e-10."""
+        G = tiny_genotype_tetraploid
+        ploidy = 4
+
+        G_np = G.cpu().numpy()
+        col_means = G_np.mean(axis=0)
+        Xc = G_np - col_means[None, :]
+        normalizer = float((col_means * (ploidy - col_means)).sum())
+        K_ref = Xc @ Xc.T / normalizer
+
+        K, _ = grm_slater(G, ploidy=ploidy)
+        np.testing.assert_allclose(K.cpu().numpy(), K_ref, rtol=1e-10, atol=1e-10)
+
+
+class TestGrmSuDominance:
+    """``grm_su_dominance`` — Su et al. (2012) dominance GRM.
+
+    For diploid:
+      H[i,j] = 1 - 2 p q   if dose=1 (het)
+             = -2 p q      otherwise (hom)
+      K = H H^T / sum(p q (1 - p q))
+    """
+
+    def test_symmetric(self, tiny_genotype_diploid):
+        """Output K is symmetric to FP64 precision."""
+        K, _ = grm_su_dominance(tiny_genotype_diploid, ploidy=2)
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+
+    def test_psd(self, tiny_genotype_diploid):
+        """K = H H^T / positive-scalar → PSD up to FP roundoff."""
+        K, _ = grm_su_dominance(tiny_genotype_diploid, ploidy=2)
+        eigvals = np.linalg.eigvalsh(K.cpu().numpy())
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+
+    def test_metadata(self, tiny_genotype_diploid):
+        """Returns GRMMetadata with method='su_dominance'."""
+        K, meta = grm_su_dominance(tiny_genotype_diploid, ploidy=2)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.method == "su_dominance"
+        assert meta.ploidy == 2
+        assert meta.normalizer > 0.0
+
+    def test_matches_closed_form(self, tiny_genotype_diploid):
+        """Numpy reference of Su 2012 diploid coding matches to 1e-10."""
+        G = tiny_genotype_diploid
+        G_np = G.cpu().numpy()
+        af = G_np.mean(axis=0) / 2.0  # (m,)
+        p = np.broadcast_to(af, G_np.shape)
+        q = 1.0 - p
+        two_pq = 2.0 * p * q
+
+        is_het = (G_np == 1)
+        H = np.where(is_het, 1.0 - two_pq, -two_pq)
+
+        pq = af * (1.0 - af)
+        normalizer = float((pq * (1.0 - pq)).sum())
+        K_ref = H @ H.T / normalizer
+
+        K, _ = grm_su_dominance(G, ploidy=2)
+        np.testing.assert_allclose(K.cpu().numpy(), K_ref, rtol=1e-10, atol=1e-10)
+
+
+class TestGrmVitezicaDominance:
+    """``grm_vitezica_dominance`` — Vitezica et al. (2013) orthogonal
+    additive/dominance partition.
+
+    For diploid:
+      D[i,j] = -2 p^2  if dose=0
+             =  2 p q  if dose=1
+             = -2 q^2  if dose=2
+      K = D D^T / sum(2 p^2 q^2)
+    """
+
+    def test_symmetric(self, tiny_genotype_diploid):
+        """Output K is symmetric to FP64 precision."""
+        K, _ = grm_vitezica_dominance(tiny_genotype_diploid, ploidy=2)
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+
+    def test_psd(self, tiny_genotype_diploid):
+        """K = D D^T / positive-scalar → PSD up to FP roundoff."""
+        K, _ = grm_vitezica_dominance(tiny_genotype_diploid, ploidy=2)
+        eigvals = np.linalg.eigvalsh(K.cpu().numpy())
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+
+    def test_metadata(self, tiny_genotype_diploid):
+        """Returns GRMMetadata with method='vitezica_dominance'."""
+        K, meta = grm_vitezica_dominance(tiny_genotype_diploid, ploidy=2)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.method == "vitezica_dominance"
+        assert meta.ploidy == 2
+        assert meta.normalizer > 0.0
+
+    def test_matches_closed_form(self, tiny_genotype_diploid):
+        """Vitezica diploid closed-form (Eq. 7 in Vitezica 2013) — 1e-10."""
+        G = tiny_genotype_diploid
+        G_np = G.cpu().numpy()
+        af = G_np.mean(axis=0) / 2.0
+        p = np.broadcast_to(af, G_np.shape)
+        q = 1.0 - p
+
+        D = np.zeros_like(G_np)
+        D[G_np == 0] = -(2.0 * p[G_np == 0] ** 2)
+        D[G_np == 1] = 2.0 * p[G_np == 1] * q[G_np == 1]
+        D[G_np == 2] = -(2.0 * q[G_np == 2] ** 2)
+
+        normalizer = float((2.0 * af**2 * (1.0 - af) ** 2).sum())
+        K_ref = D @ D.T / normalizer
+
+        K, _ = grm_vitezica_dominance(G, ploidy=2)
+        np.testing.assert_allclose(K.cpu().numpy(), K_ref, rtol=1e-10, atol=1e-10)
+
+
+class TestGrmWeighted:
+    """``grm_weighted`` — K = X diag(w) X^T / sum(w * k * p * (1-p))
+    with X = G - k * p (centered).
+    """
+
+    def test_symmetric(self, tiny_genotype_diploid):
+        """Output K is symmetric to FP64 precision."""
+        m = tiny_genotype_diploid.shape[1]
+        weights = torch.ones(m, dtype=torch.float64)
+        K, _ = grm_weighted(tiny_genotype_diploid, weights, ploidy=2)
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+
+    def test_psd(self, tiny_genotype_diploid):
+        """Non-negative weights → PSD up to FP roundoff."""
+        torch.manual_seed(13)
+        m = tiny_genotype_diploid.shape[1]
+        weights = torch.rand(m, dtype=torch.float64) + 0.1  # in [0.1, 1.1]
+        K, _ = grm_weighted(tiny_genotype_diploid, weights, ploidy=2)
+        eigvals = np.linalg.eigvalsh(K.cpu().numpy())
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+
+    def test_metadata(self, tiny_genotype_diploid):
+        """Returns GRMMetadata with method='weighted'."""
+        m = tiny_genotype_diploid.shape[1]
+        weights = torch.ones(m, dtype=torch.float64)
+        K, meta = grm_weighted(tiny_genotype_diploid, weights, ploidy=2)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.method == "weighted"
+        assert meta.ploidy == 2
+        assert meta.normalizer > 0.0
+
+    def test_matches_vanraden_with_uniform_weights(self, tiny_genotype_diploid):
+        """Uniform weights (all ones) should reduce to grm_vanraden to 1e-10."""
+        G = tiny_genotype_diploid
+        m = G.shape[1]
+        weights = torch.ones(m, dtype=torch.float64)
+        K_w, _ = grm_weighted(G, weights, ploidy=2)
+        K_van, _ = grm_vanraden(G, ploidy=2)
+        np.testing.assert_allclose(
+            K_w.cpu().numpy(), K_van.cpu().numpy(), rtol=1e-10, atol=1e-10,
+        )
+
+    def test_matches_closed_form_random_weights(self, tiny_genotype_diploid):
+        """Random positive weights match the numpy formula to 1e-10."""
+        torch.manual_seed(14)
+        G = tiny_genotype_diploid
+        G_np = G.cpu().numpy()
+        m = G.shape[1]
+        weights = torch.rand(m, dtype=torch.float64) + 0.1
+        w_np = weights.cpu().numpy()
+
+        af = G_np.mean(axis=0) / 2.0
+        means = af * 2.0
+        Xc = G_np - means[None, :]
+        normalizer = float((w_np * 2.0 * af * (1.0 - af)).sum())
+        K_ref = (Xc * w_np[None, :]) @ Xc.T / normalizer
+
+        K, _ = grm_weighted(G, weights, ploidy=2)
+        np.testing.assert_allclose(K.cpu().numpy(), K_ref, rtol=1e-10, atol=1e-10)
+
+    def test_zero_weights_drop_those_snps(self, tiny_genotype_diploid):
+        """Half the weights set to 0 → result equals grm_vanraden on the
+        kept-SNP subset to 1e-10.
+
+        This exercises the contract that w=0 SNPs contribute nothing to
+        either the numerator (X diag(w) X^T) or the denominator
+        (sum w k p(1-p)).
+        """
+        G = tiny_genotype_diploid
+        m = G.shape[1]
+        # Half ones, half zeros (deterministic: first m/2 kept).
+        weights = torch.zeros(m, dtype=torch.float64)
+        keep = m // 2
+        weights[:keep] = 1.0
+
+        K_w, _ = grm_weighted(G, weights, ploidy=2)
+        K_kept, _ = grm_vanraden(G[:, :keep], ploidy=2)
+
+        np.testing.assert_allclose(
+            K_w.cpu().numpy(), K_kept.cpu().numpy(), rtol=1e-10, atol=1e-10,
+        )
+
+
+class TestGrmYangGcta:
+    """``grm_yang_gcta`` — Yang et al. (2010) per-SNP normalization.
+
+    K[i,j] = (1/m_poly) sum_l (x_il - 2p_l)(x_jl - 2p_l) / (2 p_l (1 - p_l))
+
+    Monomorphic SNPs (variance ≤ 1e-10) are excluded; m_poly is the
+    count of polymorphic SNPs used.
+    """
+
+    def test_symmetric(self, tiny_genotype_diploid):
+        """Output K is symmetric to FP64 precision."""
+        K, _ = grm_yang_gcta(tiny_genotype_diploid, ploidy=2)
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+
+    def test_psd(self, tiny_genotype_diploid):
+        """Z Z^T / m_poly with finite Z is PSD up to FP roundoff."""
+        K, _ = grm_yang_gcta(tiny_genotype_diploid, ploidy=2)
+        eigvals = np.linalg.eigvalsh(K.cpu().numpy())
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+
+    def test_metadata(self, tiny_genotype_diploid):
+        """Returns GRMMetadata with method='yang_gcta'."""
+        K, meta = grm_yang_gcta(tiny_genotype_diploid, ploidy=2)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.method == "yang_gcta"
+        assert meta.ploidy == 2
+        assert meta.standardization == "per_snp_scale"
+        assert meta.n_snps_used > 0
+
+    def test_matches_closed_form(self, tiny_genotype_diploid):
+        """Numpy reference of Yang 2010 formula matches to 1e-10."""
+        G = tiny_genotype_diploid
+        G_np = G.cpu().numpy()
+        af = G_np.mean(axis=0) / 2.0
+        per_snp_var = 2.0 * af * (1.0 - af)
+        polymorphic = per_snp_var > 1e-10
+        n_poly = int(polymorphic.sum())
+
+        G_p = G_np[:, polymorphic]
+        af_p = af[polymorphic]
+        var_p = per_snp_var[polymorphic]
+        means = af_p * 2.0
+        Z = (G_p - means[None, :]) / np.sqrt(var_p)[None, :]
+        K_ref = Z @ Z.T / n_poly
+
+        K, _ = grm_yang_gcta(G, ploidy=2)
+        np.testing.assert_allclose(K.cpu().numpy(), K_ref, rtol=1e-10, atol=1e-10)
+
+
+class TestGrmAsvTransform:
+    """``grm_asv_transform(K)`` — divides K by trace(K) / (n - 1).
+
+    Result has average diagonal ≈ 1 (Feldmann et al. 2022).
+    """
+
+    def test_returns_tensor_same_shape(self, tiny_kinship):
+        """Input/output shapes match."""
+        out = grm_asv_transform(tiny_kinship)
+        assert out.shape == tiny_kinship.shape
+
+    def test_diagonal_average_is_one(self, tiny_kinship):
+        """Post-transform: mean(diag(K_asv)) * (n - 1) / n == 1.
+
+        Per impl: K_asv = K / (trace(K) / (n - 1)). Therefore
+            sum(diag(K_asv)) = trace(K) * (n - 1) / trace(K) = n - 1
+            mean(diag(K_asv)) = (n - 1) / n
+        Closed-form to 1e-12.
+        """
+        K_asv = grm_asv_transform(tiny_kinship)
+        n = K_asv.shape[0]
+        diag_mean = float(K_asv.diag().mean())
+        expected = (n - 1) / n
+        assert abs(diag_mean - expected) < 1e-12, (
+            f"diag mean {diag_mean} != expected {expected}"
+        )
+
+    def test_idempotent_after_first_call(self, tiny_kinship):
+        """Calling grm_asv_transform twice scales by trace(K_asv)/(n-1)
+        the second time. After the first call, trace(K_asv) = n - 1
+        exactly, so the second-call scale is 1 → output equals input.
+        Closed-form to 1e-12.
+        """
+        K1 = grm_asv_transform(tiny_kinship)
+        K2 = grm_asv_transform(K1)
+        torch.testing.assert_close(K2, K1, atol=1e-12, rtol=1e-12)
+
+    def test_n_one_returns_clone(self):
+        """Edge case n=1: impl returns a clone (no scaling) since
+        denominator (n-1)=0 is undefined.
+        """
+        K = torch.tensor([[2.5]], dtype=torch.float64)
+        out = grm_asv_transform(K)
+        torch.testing.assert_close(out, K, atol=0.0, rtol=0.0)
+        # Also verify it's a clone, not a view (mutating out doesn't touch K).
+        out[0, 0] = 99.0
+        assert K[0, 0].item() == 2.5
+
+
+class TestGrmEpistaticHadamard:
+    """``grm_epistatic_hadamard(K_add, K_dom=None)`` — Hadamard
+    (element-wise) products for AxA, DxD, and AxD epistasis (Munoz 2014,
+    Su 2012).
+    """
+
+    def test_returns_dict_of_tensors(self, tiny_kinship):
+        """Output is a dict of str → Tensor."""
+        out = grm_epistatic_hadamard(tiny_kinship)
+        assert isinstance(out, dict)
+        for k, v in out.items():
+            assert isinstance(k, str)
+            assert isinstance(v, torch.Tensor)
+
+    def test_with_only_add(self, tiny_kinship):
+        """K_dom=None → result has only K_aa = K_add ⊙ K_add (1e-12)."""
+        out = grm_epistatic_hadamard(tiny_kinship)
+        assert "K_aa" in out
+        assert "K_dd" not in out
+        assert "K_ad" not in out
+        ref = tiny_kinship * tiny_kinship
+        torch.testing.assert_close(out["K_aa"], ref, atol=1e-12, rtol=1e-12)
+
+    def test_with_dom(self, tiny_kinship):
+        """K_dom provided → adds K_dd (D⊙D) and K_ad (A⊙D) keys to 1e-12."""
+        # Build a synthetic K_dom with the same shape — any symmetric
+        # tensor suffices for the Hadamard contract.
+        torch.manual_seed(15)
+        n = tiny_kinship.shape[0]
+        A = torch.randn(n, n, dtype=torch.float64)
+        K_dom = (A + A.T) / 2.0
+
+        out = grm_epistatic_hadamard(tiny_kinship, K_dom=K_dom)
+        assert set(out.keys()) == {"K_aa", "K_dd", "K_ad"}
+        torch.testing.assert_close(
+            out["K_aa"], tiny_kinship * tiny_kinship, atol=1e-12, rtol=1e-12,
+        )
+        torch.testing.assert_close(
+            out["K_dd"], K_dom * K_dom, atol=1e-12, rtol=1e-12,
+        )
+        torch.testing.assert_close(
+            out["K_ad"], tiny_kinship * K_dom, atol=1e-12, rtol=1e-12,
+        )
+
+    def test_shape_mismatch_raises(self, tiny_kinship):
+        """K_dom of incompatible shape must raise ValueError."""
+        bad = torch.eye(tiny_kinship.shape[0] + 1, dtype=torch.float64)
+        with pytest.raises(ValueError):
+            grm_epistatic_hadamard(tiny_kinship, K_dom=bad)
+
+
+class TestGrmLoco:
+    """``grm_loco(G, chr_labels, exclude_chr, ploidy=2)`` — VanRaden GRM
+    on the column subset where chr_labels != exclude_chr.
+    """
+
+    def test_excludes_correct_chromosome(self):
+        """G with 6 SNPs on chrs ['1','1','2','2','3','3']; exclude '2'.
+
+        Result must equal grm_vanraden(G[:, [0,1,4,5]], ploidy=2) to 1e-10.
+        """
+        torch.manual_seed(16)
+        n = 20
+        # Diploid dosages (0..2) drawn from binomial.
+        rng_np = np.random.default_rng(42)
+        G_np = rng_np.binomial(2, 0.3, size=(n, 6)).astype(np.float64)
+        G = torch.from_numpy(G_np)
+        chr_labels = ["1", "1", "2", "2", "3", "3"]
+
+        K_loco, _ = grm_loco(G, chr_labels, exclude_chr="2", ploidy=2)
+        keep_idx = [0, 1, 4, 5]
+        K_ref, _ = grm_vanraden(G[:, keep_idx], ploidy=2)
+        np.testing.assert_allclose(
+            K_loco.cpu().numpy(), K_ref.cpu().numpy(),
+            rtol=1e-10, atol=1e-10,
+        )
+
+    def test_metadata(self, tiny_genotype_diploid):
+        """Second return is GRMMetadata with loco_chr set."""
+        m = tiny_genotype_diploid.shape[1]
+        # Half on chr '1', half on chr '2'.
+        chr_labels = ["1"] * (m // 2) + ["2"] * (m - m // 2)
+        K, meta = grm_loco(tiny_genotype_diploid, chr_labels, exclude_chr="1", ploidy=2)
+        assert isinstance(meta, GRMMetadata)
+        assert meta.loco_chr == "1"
+        assert meta.ploidy == 2
+
+    def test_invalid_chromosome_returns_full_grm(self, tiny_genotype_diploid):
+        """exclude_chr that matches no SNPs leaves all SNPs in → result
+        equals grm_vanraden on the full matrix to 1e-10. Per impl, only
+        the all-empty case raises; partial / no-match keeps SNPs.
+        """
+        m = tiny_genotype_diploid.shape[1]
+        chr_labels = ["1"] * m
+        K_loco, _ = grm_loco(
+            tiny_genotype_diploid, chr_labels, exclude_chr="99", ploidy=2,
+        )
+        K_full, _ = grm_vanraden(tiny_genotype_diploid, ploidy=2)
+        np.testing.assert_allclose(
+            K_loco.cpu().numpy(), K_full.cpu().numpy(),
+            rtol=1e-10, atol=1e-10,
+        )
+
+    def test_excluding_all_chromosomes_raises(self, tiny_genotype_diploid):
+        """When every SNP is on the excluded chromosome, no variants
+        remain — impl raises ValueError.
+        """
+        m = tiny_genotype_diploid.shape[1]
+        chr_labels = ["1"] * m
+        with pytest.raises(ValueError):
+            grm_loco(tiny_genotype_diploid, chr_labels, exclude_chr="1", ploidy=2)
+
+
+class TestGrmPolyploidGeneAction:
+    """``grm_polyploid_gene_action(G, model, ploidy)`` — recode under
+    a gene-action model, then call grm_vanraden with the appropriate
+    effective ploidy.
+    """
+
+    def test_additive_recovers_vanraden(self, tiny_genotype_tetraploid):
+        """model='additive' → recode is identity → grm_vanraden(G, k=4)
+        to 1e-10.
+        """
+        K_ga, _ = grm_polyploid_gene_action(
+            tiny_genotype_tetraploid, model="additive", ploidy=4,
+        )
+        K_van, _ = grm_vanraden(tiny_genotype_tetraploid, ploidy=4)
+        np.testing.assert_allclose(
+            K_ga.cpu().numpy(), K_van.cpu().numpy(),
+            rtol=1e-10, atol=1e-10,
+        )
+
+    def test_dominance_returns_psd(self, tiny_genotype_tetraploid):
+        """model='1-dom' on tetraploid → symmetric and PSD."""
+        K, meta = grm_polyploid_gene_action(
+            tiny_genotype_tetraploid, model="1-dom", ploidy=4,
+        )
+        K_np = K.cpu().numpy()
+        np.testing.assert_allclose(K_np, K_np.T, rtol=1e-12, atol=1e-12)
+        eigvals = np.linalg.eigvalsh(K_np)
+        assert eigvals.min() >= -1e-8, (
+            f"min eigenvalue {eigvals.min()} below tolerance"
+        )
+        assert isinstance(meta, GRMMetadata)
+
+    def test_invalid_model_raises(self, tiny_genotype_tetraploid):
+        """Unknown model name → ValueError from recode_gene_action."""
+        with pytest.raises(ValueError):
+            grm_polyploid_gene_action(
+                tiny_genotype_tetraploid, model="nonexistent_model", ploidy=4,
+            )
+
+    def test_diplo_additive_returns_metadata(self, tiny_genotype_tetraploid):
+        """model='diplo-additive' → effective ploidy = k/2 = 2."""
+        K, meta = grm_polyploid_gene_action(
+            tiny_genotype_tetraploid, model="diplo-additive", ploidy=4,
+        )
+        assert isinstance(meta, GRMMetadata)
+        # Underlying grm_vanraden was called with ploidy=2 (effective).
+        assert meta.ploidy == 2
