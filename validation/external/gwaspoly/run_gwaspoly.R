@@ -15,7 +15,14 @@ suppressPackageStartupMessages({
   local_lib <- Sys.getenv("RLIB", unset = NA)
   if (!is.na(local_lib) && nzchar(local_lib) && dir.exists(local_lib)) {
     .libPaths(c(local_lib, .libPaths()))
-    # Propagate to forked parallel workers via R_LIBS_USER
+    # Propagate the per-harness library to forked PSOCK parallel workers.
+    # GWASpoly internally calls makeCluster() and parLapply() with worker
+    # functions that reference rrBLUP::mixed.solve directly. The PSOCK
+    # workers spawn a fresh Rscript that does NOT inherit .libPaths from
+    # the parent, so we set R_LIBS (highest-priority library path env var
+    # consulted by R at startup) — this is required for n.core > 1 to work
+    # on a per-harness Rlib install.
+    Sys.setenv(R_LIBS = local_lib)
     Sys.setenv(R_LIBS_USER = local_lib)
   }
   library(GWASpoly)
