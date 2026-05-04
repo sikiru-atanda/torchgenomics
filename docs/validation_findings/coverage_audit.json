@@ -564,12 +564,14 @@
       "tier": 3
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 24,
       "module": "torchgwas.annotate",
       "symbol": "NCBIError",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_tier3.py"
+      ],
       "tier": 3
     },
     {
@@ -661,21 +663,25 @@
       "tier": 3
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 14,
       "module": "torchgwas.annotate",
       "symbol": "AnnotatedGene",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_tier3.py"
+      ],
       "tier": 3
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 40,
       "module": "torchgwas.annotate",
       "symbol": "AnnotatedHit",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_tier3.py"
+      ],
       "tier": 3
     },
     {
@@ -690,12 +696,14 @@
       "tier": 3
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.cli",
       "symbol": "TYPE_CHECKING",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_tier3.py"
+      ],
       "tier": 3
     },
     {
@@ -10446,7 +10454,7 @@
     "untested_by_tier": {
       "1": 328,
       "2": 97,
-      "3": 4
+      "3": 0
     },
     "untested_no_tier": 2
   }
