@@ -114,33 +114,45 @@ Optional: zarr, h5py, pyarrow, seaborn
 
 ## Validation campaign
 
-A function-by-function validation campaign runs out of `docs/superpowers/` against `validation/pillar-{A,B,C,D}-coverage` branches. Pillar A (coverage audit + tiered fill) is complete on `validation/pillar-A-coverage`.
+A function-by-function validation campaign runs out of `docs/superpowers/` against `validation/pillar-{A,B,C,D}` branches. Pillars A (coverage audit + tiered fill) and B (external reference-tool comparisons) are complete; C (CLI smoke matrix) and D (reproducibility audit) are pending.
 
 - **Spec:** `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`
 - **Per-pillar plans:** `docs/superpowers/plans/2026-04-30-pillar-{A,B,C,D}-plan.md`
 - **Findings ledger:** `docs/validation_findings.md` — every divergence with F3 classification + resolution.
 - **Reviewer prompt templates:** `docs/superpowers/reviewer_prompts/{code_review,rerun_verification}.md`
+- **Session handoff:** `docs/superpowers/SESSION_HANDOFF.md` — comprehensive resume document for next agent.
+- **External-tool harnesses:** `validation/external/<tool>/` for each of 11 reference tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, SoyMD).
 
-Re-run a coverage audit (which symbols have direct tests):
+### Re-run paths
 
 ```bash
+# Coverage audit — which torchgwas symbols have direct tests:
 python3 scripts/audit_public_coverage.py
-# Output: docs/validation_findings/coverage_audit.json with per-symbol rows + summary.
-```
 
-Generate the per-package worklist for a given tier (consumed by Pillar B/C/D fill subagents):
-
-```bash
+# Per-package, per-tier untested worklist:
 python3 scripts/build_tier_worklist.py --tier 1 --package linalg --output /tmp/worklist.json
-```
 
-When Pillar B is wired, run external-reference comparisons:
-
-```bash
+# All Pillar B external-reference comparisons (skipped by default; opt-in):
 pytest -m external
+
+# A single tool's harness end-to-end:
+bash validation/external/plink2/install.sh
+bash validation/external/plink2/fetch_data.sh
+bash validation/external/plink2/run_plink2.sh
+python3 validation/external/plink2/compare.py
 ```
 
-Pillar A delivered 5 V1-core fix-now production fixes surfaced from validation work (3 unimplemented model stubs, 1 unimplemented stats helper, 1 unimplemented optim solver) plus 3 V1-platform fix-now fixes (zarr v3 API compat, 2 silent shape-truncation guards in postgwas LD scoring + clumping). All 8 are recorded in the findings ledger.
+### Memory pre-flight (mandatory)
+
+Every external-tool harness shell script sources `validation/external/_lib/preflight.sh` and asserts disk + RAM headroom before any download / install / run. This is the user's hard rule (spec §5.3) — no partial executions on insufficient resources.
+
+### Cumulative campaign findings: 9 V1 fix-now production fixes
+
+**Pillar A (8):** 3 unimplemented model stubs (`models.lmm_single`, `lmm_multi`, `lmm_multi_fit`), 1 unimplemented stats helper (`stats.calibrate.compare_pvalues`), 1 unimplemented optim solver (`optim.fisher_scoring.fisher_scoring_reml`), 1 zarr v3 API compat (`io.convert._write_zarr`), 2 silent shape-truncation guards in postgwas (`_ld_scores.compute_ld_scores`, `_clump.ld_clump`).
+
+**Pillar B (1):** `mr_egger` Bowden-2015 alignment (3 deviations: missing orientation flip, wrong overdispersion direction, normal vs Student's t for p-value). Post-fix agreement with TwoSampleMR R package: 5 sig figs.
+
+All 9 findings have separate fix commits + regression tests + ledger rows.
 
 ## CLI Commands
 

@@ -122,17 +122,31 @@ This is the user's hard rule — encoded as a contract, not a comment.
 
 ### 5.4 Pillar B execution order (post Pillar A close)
 
-Pillar A surfaced 8 V1-core / V1-platform fix-now findings (5 unimplemented stubs + 3 silent-truncation guards). With those production paths now correct, Pillar B comparisons are unblocked for the model classes that depended on them. Recommended execution order:
+Pillar A surfaced 8 V1-core / V1-platform fix-now findings (5 unimplemented stubs + 3 silent-truncation guards). With those production paths now correct, Pillar B comparisons are unblocked for the model classes that depended on them.
 
-1. **GEMMA / GAPIT / GWASpoly** — already-wired comparisons (pre-Pillar-A). Re-run on the `validation/external/<tool>/` harness layout. Confirms no regression from the 8 Pillar-A fixes.
-2. **PLINK 2.0** — `BinaryGLM`, `linalg.kinship` (`--make-rel`), `ld.r2_pairwise` (`--r2`), `ld_blocks` (`--blocks`). 1000G chr22.
-3. **LDSC** — `postgwas.ldsc_h2`, `ldsc_rg`, `s_ldsc`. GIANT 2018 height + UKB LD scores. **Highest-leverage Pillar B test** because LDSC is the most numerically subtle reference.
-4. **regenie** — `lmm-scan`, `BinaryGLMM` (Step 1 + Step 2 SPA). UK Biobank-format synthetic + 1000G chr22.
-5. **SAIGE** — `BinaryGLMM`, `OrdinalGLMM`, `survival-scan`. Heavy install; preflight check critical.
-6. **TwoSampleMR (R)** — `postgwas.mr.{ivw,egger,weighted_median,mr_presso}`. OpenGWAS sumstats.
-7. **BOLT-LMM** — `lmm-scan` (LOCO), `linalg.kinship`. Closed binary; install via upstream prebuilt.
-8. **SoyNAM** — within-family LMM (Phase 23) regression equivalence vs. published QTL hits. Diploid soybean ag panel via R `install.packages("SoyNAM")`.
-9. **SoyMD** — multi-omics platform for `multiomics.{mediate_lmm,scan_mediation,mkernel_h2,build_expression_kernel,eigenmt_adjust}` Phase-49 mediation/eQTL/heritability tests. **Currently no external comparison wired for the multiomics module — SoyMD fills that gap.**
+**Pillar B status: COMPLETE (2026-05-04).** All 11 tools wired, both R4 reviewer tracks approved. 1 V1-core fix-now production finding (mr_egger Bowden-2015 alignment, commit `9d9c114`).
+
+| # | Tool | Commit(s) | Headline result | F3 |
+|---|---|---|---|---|
+| 1 | GEMMA / GAPIT / GWASpoly | `8ac3181`, `b067911`, `03c1571` | Re-housed; zero regression on goldens after Pillar A's 9 fixes | 0 |
+| 2 | PLINK 2.0 | `74878f9` | β corr=1.000, GRM corr=0.99995, r² corr=1.000 | 0 |
+| 3 | LDSC | `28a6340` | h² Δ<5e-3 ✓; rg Δ<5e-3 ✓; **intercept needs IRWLS port** (Phase 37 follow-up) | 0 |
+| 4 | regenie | `d8bc172` | β corr 0.82–0.88 (LOCO + Y-standardize structural difference) | 0 |
+| 5 | SAIGE | `d352aff` | docker (podman); β corr 0.973, -log10p 0.943 | 0 |
+| 6 | TwoSampleMR (R) | `9d9c114` (F3) + `0c75070` | IVW/Egger/median agree to 5 sig figs **post-F3 fix** | **1** |
+| 7 | BOLT-LMM | `4c9c372` | β corr 0.984, -log10p 0.982 (tightest LMM Pillar-B agreement) | 0 |
+| 8 | SoyNAM | `dc1df1d` | STLMM vs rrBLUP corr 0.99991, kinship bit-equal, WFLMM dual-scan validates Young 2022 | 0 |
+| 9 | SoyMD | `a7c0ffa` | TG `mediate_lmm` ≈ R `mediation::mediate` near-bit-equal point estimates | 0 |
+
+**Cumulative campaign F3 fix-now findings: 9** (8 from Pillar A + 1 from Pillar B B3 mr_egger).
+
+**Documented post-V1 divergences (NOT F3, ledgered):**
+- LDSC intercept — TG single-pass WLS vs LDSC IRWLS (Phase 37 follow-up).
+- regenie β corr 0.82 — regenie internally standardizes Y; TG doesn't (post-V1 design choice).
+- BOLT-LMM β max |Δ|=3.79 single-SNP outlier on small N — BOLT's documented "ratio of medians" calibration weakness.
+- MR-PRESSO null distribution — TwoSampleMR uses parametric LOO bootstrap; TG uses permutation null.
+- MR weighted-median SE — parametric bootstrap (TG) vs non-parametric (TwoSampleMR).
+- SAIGE β corr 0.973 / -log10p 0.943 — PCG (SAIGE) vs PQL (TG) for null model fit.
 
 ## 6. Pillar C — End-to-end CLI smoke matrix (outline)
 

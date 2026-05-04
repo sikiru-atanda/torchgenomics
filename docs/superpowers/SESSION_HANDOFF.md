@@ -1,8 +1,13 @@
 # Validation Campaign — Session Handoff
 
-**Date this handoff was written:** 2026-05-04
+**Date this handoff was written:** 2026-05-04 (Pillar B close revision)
 **Worktree:** `/home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/validation-pillar-A-coverage`
-**Active branch:** `validation/pillar-B-references` (48 commits ahead of master)
+**Active branch:** `validation/pillar-B-references`
+
+> **Status update 2026-05-04 (Pillar B close):**
+> Pillar B is now COMPLETE. All 11 external reference tools wired (GEMMA / GAPIT / GWASpoly rehoused + PLINK 2.0 + LDSC + TwoSampleMR + regenie + SAIGE + BOLT-LMM + SoyNAM + SoyMD). 1 V1-core F3 fix-now finding (mr_egger Bowden-2015 alignment). Both R4 reviewer tracks approved. Cumulative campaign F3 findings: 9 (Pillar A: 8 + Pillar B: 1). Full suite: 2738 passed, 419 skipped, 0 failed.
+>
+> **Next pillar: C — End-to-end CLI smoke matrix.** Branch `validation/pillar-B-references` is ready for push + PR. Pillar C should branch off latest master after Pillars A and B are merged (or off Pillar B's tip if not yet merged).
 
 ---
 
@@ -87,7 +92,7 @@ Tier 1 (math correctness) + Tier 2 (behavioral) + Tier 3 (smoke) all complete wi
 
 ---
 
-## Pillar B — STATUS: IN PROGRESS (5 of 11 tools)
+## Pillar B — STATUS: COMPLETE
 
 **Active branch:** `validation/pillar-B-references` branched off Pillar A's tip (`d91de43`) since Pillar A's 9 fixes aren't merged to master yet. When the user merges Pillar A, this branch should be rebased onto the merged master.
 
@@ -100,12 +105,12 @@ Tier 1 (math correctness) + Tier 2 (behavioral) + Tier 3 (smoke) all complete wi
 | **LDSC (B2)** | ✅ | `28a6340` | h² Δ<5e-3 ✓; rg Δ<5e-3 ✓; **intercept Δ=0.1–0.3 — Phase 37 follow-up needed (TG single-pass WLS vs LDSC IRWLS).** Tolerance widened to gate against further drift but not fail today. |
 | **TwoSampleMR (B3)** | ✅ | `9d9c114` (F3) + `0c75070` | IVW/Egger/median agree to 5 sig figs **post F3 fix**. **9th cumulative F3 fix:** `mr_egger` was missing Bowden-2015 orientation flip + had wrong overdispersion direction + used normal instead of Student's t. MR-PRESSO has algorithmic mismatch (permutation vs parametric LOO bootstrap) — documented, not F3. |
 | **regenie (B4)** | ✅ | `d8bc172` | β corr 0.82 (quant) / 0.88 (binary) on N=281 (MDP). Structural LOOSE tolerance — regenie internally standardizes Y; TG doesn't. Documented; would tighten on synthetic large-N fixture. 0 F3. |
-| **B5 SAIGE** | ⏸ pending | — | Heavy install (binary/ordinal GLMM + survival). |
-| **B6 BOLT-LMM** | ⏸ pending | — | Closed binary (LMM with LOCO + kinship). |
+| **SAIGE (B5)** | ✅ | `d352aff` | docker (podman) install on RHEL 9.6; β corr 0.973, -log10p 0.943, SPA subset 0.885. PCG (SAIGE) vs PQL (TG) parameterization difference documented. 0 F3. |
+| **BOLT-LMM (B6)** | ✅ | `4c9c372` | BOLT v2.5 prebuilt binary loaded clean on RHEL 9.6. β corr 0.984, -log10p 0.982 (tightest LMM-with-LOCO Pillar-B agreement). 0 F3. |
 | **GEMMA / GAPIT / GWASpoly rehouse (B7)** | ✅ | `8ac3181`, `b067911`, `03c1571` | Re-housed into the new `validation/external/<tool>/` layout. **Re-verified ZERO regression on goldens after Pillar A's 9 fixes.** GEMMA β corr=0.99993; GAPIT GLM/MLM corr=1.0 to 1e-14 (FarmCPU/BLINK Top-10 overlap=1.0); GWASpoly all 5 gene-action models within §16 floor. |
-| **B8 SoyNAM** | ⏸ pending | — | R `install.packages("SoyNAM")`. Within-family LMM (Phase 23) regression equivalence. User explicitly added on 2026-04-30. |
-| **B9 SoyMD** | ⏸ pending | — | Multi-omics platform (Phase 49 mediation/eQTL/h²). User explicitly added on 2026-05-04. **No external comparison currently exists for the multiomics module — SoyMD fills that gap.** |
-| **B10 Pillar B close** | ⏸ pending | — | PR + spec update + CLAUDE.md status table refresh. |
+| **SoyNAM (B8)** | ✅ | `dc1df1d` | R `install.packages("SoyNAM")` + rrBLUP. STLMM vs rrBLUP::GWAS Pearson 0.99991, kinship bit-equal (1e-6 Frobenius). WithinFamilyLMM dual-scan validates Young 2022 contract (h² 0.28→0.16). 0 F3. |
+| **SoyMD (B9)** | ✅ | `a7c0ffa` | R `mediation::mediate` reference + simulated known-truth multi-omics. TG `mediate_lmm` ≈ R near-bit-equal on point estimates; both recover planted ACME within sampling noise. 0 F3. |
+| **Pillar B close (B10)** | ✅ this commit | TBD | spec §5.4 + CLAUDE.md + this handoff updated. Final pytest: 2738 passed, 419 skipped, 0 failed. Ready for PR. |
 
 **Cumulative campaign F3 fix-now findings: 9** (Pillar A: 8; Pillar B: 1 mr_egger).
 
