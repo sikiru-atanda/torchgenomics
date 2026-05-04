@@ -310,6 +310,13 @@ def _cmd_glm_scan_single(args: argparse.Namespace) -> int:
         logger.error("Unknown family: %s", family)
         return 1
 
+    # Push Y/X0 to the requested device so --device cuda actually uses CUDA
+    # (the model has no internal device routing; it operates on whatever
+    # device the inputs come from). Mirrors the lmm-scan device-alignment
+    # fix in commit `adc7b04` (Pillar C F3).
+    Y = Y.to(device)
+    X0 = X0.to(device)
+
     null_fit = model.fit_null(Y, X0)
 
     from .scan.unified import UnifiedScanner
