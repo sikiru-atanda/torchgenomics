@@ -183,9 +183,11 @@ Pillar A surfaced 8 V1-core / V1-platform fix-now findings (5 unimplemented stub
 
 | Fixture | Source | Verdict | Detail |
 |---|---|---|---|
-| GEMMA 0.98.5 reference (`gemma_demo/output/`) | `cXX`, LMM single, mvLMM | **fixture-authoritative** | Fresh re-run reproduces every committed file **bit-exactly** (\|Δ\| = 0 across 19 checks). Static AMD64 binary is deterministic; BIMBAM input is byte-identical. Do NOT regenerate. |
-| GAPIT3 reference (`benchmark/gapit_results/`) | GLM, MLM, FarmCPU, BLINK | **infra-blocker** | Bioconductor `mirrors.ustc.edu.cn` unreachable in this env (single transitive dep `snpStats` blocked). Re-run on a host with reachable Bioconductor or override `BiocManager::repositories()`. Committed fixture remains canonical until verified. |
-| GWASpoly 2.12 reference (`benchmark/gwaspoly_results/`) | 5 gene-action models | **deferred** | Fresh GWASpoly 2.14 re-run was in-flight at ~47 min wall when the autonomous-loop session wrapped; outputs ended empty. Committed fixture (v2.12) remains canonical pending a long-wall-time re-run. |
+| GEMMA 0.98.5 reference (`gemma_demo/output/`) | `cXX`, LMM single, mvLMM | **fixture-authoritative** | Fresh re-run reproduces every committed file **bit-exactly** (\|Δ\| = 0 across 19 checks). Static AMD64 binary is deterministic; BIMBAM input is byte-identical. |
+| GAPIT3 reference (`benchmark/gapit_results/`) | GLM, MLM, FarmCPU, BLINK | **fixture-authoritative** (D3) | Bioconductor `BiocManager::repositories()` override + transitive-dep install resolved the prior infra-blocker. Fresh re-run agrees to ~1e-13 absolute on GLM/MLM/-log10p/effect across 10 checks. |
+| GWASpoly 2.12 reference (`benchmark/gwaspoly_results/`) | 5 gene-action models | **fixture-authoritative** (D3) | Fresh GWASpoly 2.14 re-run reproduces committed v2.12 fixture: max \|Δ\| ≤ 8.07e-11 across all 25 checks (8 models × 3 metrics + GRM \|Δ\| = 1.02e-14). The prior 47-min stall traced to PSOCK workers' missing R_LIBS env var (fixed in `75da474`) + ggplot2 transitive dep. |
+
+**All three fixtures are authoritative — no regeneration needed.**
 
 **No new V1-platform F3 fix-now findings from Pillar D.** Cumulative campaign F3 stays at 13.
 

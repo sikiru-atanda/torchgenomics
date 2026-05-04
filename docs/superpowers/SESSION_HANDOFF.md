@@ -8,10 +8,10 @@
 >
 > All four pillars done. **13 V1 fix-now production fixes** shipped from validation work + 698 new coverage tests + 11 external reference-tool harnesses + 122-cell CLI smoke matrix + 3-fixture reproducibility audit. Cumulative campaign F3: 13 (Pillar A: 8 + Pillar B: 1 + Pillar C: 4 + Pillar D: 0). Full suite: 2738 passed, 541 skipped (external + cli_matrix + reproducibility opt-in), 0 failed.
 >
-> **Pillar D fixture verdicts:**
-> - GEMMA 0.98.5: **fixture-authoritative** (bit-exact reproduction across 19 checks).
-> - GAPIT3: **infra-blocker** (Bioconductor mirror unreachable in this env).
-> - GWASpoly 2.12 vs 2.14: **deferred** (long-wall re-run did not complete in autonomous session).
+> **Pillar D fixture verdicts (all THREE authoritative as of D3 close):**
+> - GEMMA 0.98.5: **fixture-authoritative** (bit-exact, |Δ|=0 across 19 checks).
+> - GAPIT3: **fixture-authoritative** (D3 — Bioconductor override resolved the prior infra-blocker; ~1e-13 across 10 checks).
+> - GWASpoly 2.12 → 2.14: **fixture-authoritative** (D3 — fresh v2.14 reproduces committed v2.12: max |Δ| ≤ 8.07e-11 across 25 checks; PSOCK-worker R_LIBS fix in `75da474`).
 >
 > **Branches ready for human-driven push + PR (gh CLI not installed; auth required):**
 > ```
