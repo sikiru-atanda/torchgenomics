@@ -46,23 +46,27 @@ Each shell script sources `validation/external/_lib/preflight.sh` and asserts di
 
 Spec §16 anchors: `|Δ h²| < 0.01`, `|Δ intercept| < 0.005`, `|Δ rg| < 0.02`.
 
-Observed values from first successful run (2026-05-04, 17 489 chr22 SNPs):
+Observed values from the IRWLS-port run (2026-04-30, 17 489 chr22 SNPs;
+TorchGWAS now matches LDSC's IRWLS with both `--ref-ld` and `--w-ld`
+LD-score inputs):
 
 | Comparison | Metric | Observed | Floor (asserted) | Status |
 |---|---|---|---|---|
-| h² (trait 1) | \|Δ h²\| | 4.17e-3 | 1e-2 | within spec |
-| h² (trait 1) | \|Δ intercept\| | **9.55e-2** | 3.5e-1 | KNOWN PARAMETERIZATION MISMATCH |
+| h² (trait 1) | \|Δ h²\| | 1.02e-5 | 1e-2 | bit-equal |
+| h² (trait 1) | \|Δ intercept\| | **2.60e-5** | 5e-3 | bit-equal (post-IRWLS) |
 | h² (trait 1) | \|Δ mean χ²\| | 4.64e-5 | 1e-3 | bit-equal sum |
-| h² (trait 1) | \|Δ h² SE\| | 2.34e-3 | 5e-3 | jackknife block boundaries differ |
-| h² (trait 2) | \|Δ h²\| | 2.40e-3 | 1e-2 | within spec |
-| h² (trait 2) | \|Δ intercept\| | **2.79e-1** | 3.5e-1 | KNOWN PARAMETERIZATION MISMATCH |
+| h² (trait 1) | \|Δ h² SE\| | 1.55e-4 | 5e-3 | jackknife block boundaries differ |
+| h² (trait 2) | \|Δ h²\| | 1.58e-5 | 1e-2 | bit-equal |
+| h² (trait 2) | \|Δ intercept\| | **3.91e-5** | 5e-3 | bit-equal (post-IRWLS) |
 | h² (trait 2) | \|Δ mean χ²\| | 3.64e-5 | 1e-3 | bit-equal sum |
-| h² (trait 2) | \|Δ h² SE\| | 1.32e-3 | 5e-3 | as above |
-| rg | \|Δ rg\| | 3.48e-3 | 2e-2 | within spec |
-| rg | \|Δ h² (T1)\| | 4.17e-3 | 1e-2 | within spec |
-| rg | \|Δ h² (T2)\| | 2.40e-3 | 1e-2 | within spec |
+| h² (trait 2) | \|Δ h² SE\| | 3.34e-4 | 5e-3 | as above |
+| rg | \|Δ rg\| | 1.15e-5 | 2e-2 | bit-equal |
+| rg | \|Δ h² (T1)\| | 1.02e-5 | 1e-2 | bit-equal |
+| rg | \|Δ h² (T2)\| | 1.58e-5 | 1e-2 | bit-equal |
+| rg | \|Δ intercept (h² T1)\| | 2.60e-5 | 5e-3 | bit-equal |
+| rg | \|Δ intercept (h² T2)\| | 3.91e-5 | 5e-3 | bit-equal |
 
-### KNOWN DIVERGENCE: LDSC IRWLS vs TorchGWAS single-pass WLS
+### RESOLVED: LDSC IRWLS port (Phase 37 follow-up)
 
 LDSC's regression uses **iteratively reweighted least squares** with heteroscedastic weights:
 
@@ -73,28 +77,38 @@ w_j = 1 / ( 2 · (intercept + (h²·N/M)·l_j)² · w_ld_j )
 where:
   - `l_j` is the **reference** LD score (passed via `--ref-ld`)
   - `w_ld_j` is the **regression** LD score (passed via `--w-ld`; computed only over SNPs in the regression set — distinct file from the reference scores)
-  - `intercept`, `h²` are the *current iterate's* parameters; LDSC iterates until they stabilize (~4 iterations).
+  - `intercept`, `h²` are the *current iterate's* parameters; LDSC iterates exactly 2 times (`for i in xrange(2)` in `ldsc/irwls.py`).
 
-TorchGWAS' `ldsc_h2` (in `torchgwas/postgwas/_ldsc.py`) uses a single-pass WLS with simpler weights:
+TorchGWAS' `ldsc_h2` previously used a single-pass WLS with the simpler heuristic
+``w = 1.0 / torch.clamp(ld_scores ** 2, min=1.0)`` — no `w_ld` input, no
+iteration. Empirically this preserved h² (slope-driven) but mis-estimated
+the intercept by 0.10–0.28 absolute on inflated mean-χ² regimes.
 
-```python
-w = 1.0 / torch.clamp(ld_scores ** 2, min=1.0)
-```
+**Resolution.** The Phase 37 IRWLS port in
+`torchgwas/postgwas/_ldsc.py` adds:
 
-— no regression-LD-score input, no iteration. This is a deliberate simplification.
+1. The full LDSC `Hsq.weights` heteroscedastic weight formula
+   (`_hsq_weights`).
+2. A 2-iteration IRWLS loop (matching LDSC's fixed `for i in xrange(2)`
+   loop in `ldsc/irwls.py`).
+3. An optional `w_ld=` keyword on `ldsc_h2` / `ldsc_intercept` /
+   `ldsc_rg` / `ldsc_rg_from_z` for the regression-weight LD scores.
+   When `None`, defaults to `ld_scores` (LDSC's standard fallback when
+   only one set of LD scores is available).
+4. An optional `n_iter=2` (default) and `two_step=False` (default) for
+   compatibility with LDSC's two-step parameterization (currently only
+   exposed; `two_step=True` runs LDSC's free→constrained intercept fit).
+5. Support for a per-SNP `n` tensor (LDSC's per-SNP N column).
 
-**Empirical impact** (chi̅² ≈ 40 regime, simulated):
-- h² agreement: 4.2e-3 absolute (well within spec §16's 1e-2 anchor)
-- intercept divergence: 0.10 to 0.28 absolute (vs spec's 5e-3 anchor)
+The legacy single-pass behavior is reachable via `n_iter=0`. With proper
+`w_ld=...` + `n_iter=2`, TorchGWAS reproduces LDSC's intercept to
+~3e-5 absolute (well below the spec §16 anchor of 5e-3) on the
+simulated chr22 fixture.
 
-We verified offline that a TorchGWAS-side IRWLS implementation matching LDSC's weights formula recovers LDSC's intercept bit-for-bit (4-iteration convergence: TG → 0.9787 vs LDSC 0.9788). The fix is non-trivial — it requires ingesting a second LD-score file (`w_ld`) and adding the IRWLS loop — and is **deferred** because:
-
-1. h² (the headline statistic per spec §16) agrees within 4e-3 ≪ 1e-2.
-2. rg agrees within 3.5e-3 ≪ 2e-2.
-3. LDSC intercept is an *inflation diagnostic*, not a primary GWAS output; users typically read it as "close to 1?" rather than as an exact value.
-4. Implementing IRWLS in TorchGWAS' core path is a Phase 37 / 49 follow-up, not a Pillar B prerequisite.
-
-**Tolerance choice**: we floor `|Δ intercept|` at 3.5e-1 to accept the observed gap (2.8e-1 worst case) plus a 25% safety margin. The test still signals if any further drift appears, but does not gate-fail today. The README + `compare.py` docstring explicitly call this out.
+**Tolerance choice (post-fix)**: we floor `|Δ intercept|` at 5e-3
+(spec §16 anchor); observed maximum is 3.91e-5, leaving generous
+headroom for future stat-numeric drift while still gating the IRWLS
+contract.
 
 ### Why LDSC's two-step is disabled (`--two-step 99999`)
 
@@ -147,5 +161,6 @@ The pytest module dynamically imports `compare.py` from outside the package tree
 
 ## Next steps (post-Pillar B)
 
-- IRWLS in `torchgwas.postgwas.ldsc_h2` to close the intercept gap (Phase 37 follow-up; would tighten `TOL_INTERCEPT_ABSDIFF` from 3.5e-1 to ~5e-3).
+- ~~IRWLS in `torchgwas.postgwas.ldsc_h2` to close the intercept gap (Phase 37 follow-up; would tighten `TOL_INTERCEPT_ABSDIFF` from 3.5e-1 to ~5e-3).~~ — **DONE (2026-04-30)**: IRWLS port resolved B2; intercept agreement now ~3e-5 absolute, gated at 5e-3.
+- Promote `sldsc_h2_partitioned` from single-pass WLS to full IRWLS (mirrors the fix applied to `ldsc_h2`); currently calls `_hsq_weights` once on the aggregate-derived initial weights.
 - Wire `sldsc_h2_partitioned` against an S-LDSC `--h2 --overlap-annot` reference (deferred — needs the partitioned annotation files, ~1 GB, which we judged out-of-scope for B2).

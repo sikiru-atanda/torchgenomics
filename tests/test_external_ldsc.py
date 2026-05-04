@@ -73,12 +73,13 @@ def compare_mod():
 
 
 def test_h2_trait1(compare_mod) -> None:
-    """LDSC --h2 (single-pass) vs TorchGWAS ldsc_h2 on simulated trait 1."""
+    """LDSC --h2 (single-pass IRWLS) vs TorchGWAS ldsc_h2 on simulated trait 1."""
     _require_env()
     _require_artifacts(
         DATA / "sim_trait1.sumstats.gz",
         DATA / "sim_truth.json",
         DATA / "ld_scores" / "LDscore.22.l2.ldscore.gz",
+        DATA / "weights" / "weights.hm3_noMHC.22.l2.ldscore.gz",
         OUT / "h2_trait1.log",
     )
     rep = compare_mod.compare_h2_trait1(DATA, OUT)
@@ -88,12 +89,13 @@ def test_h2_trait1(compare_mod) -> None:
 
 
 def test_h2_trait2(compare_mod) -> None:
-    """LDSC --h2 (single-pass) vs TorchGWAS ldsc_h2 on simulated trait 2."""
+    """LDSC --h2 (single-pass IRWLS) vs TorchGWAS ldsc_h2 on simulated trait 2."""
     _require_env()
     _require_artifacts(
         DATA / "sim_trait2.sumstats.gz",
         DATA / "sim_truth.json",
         DATA / "ld_scores" / "LDscore.22.l2.ldscore.gz",
+        DATA / "weights" / "weights.hm3_noMHC.22.l2.ldscore.gz",
         OUT / "h2_trait2.log",
     )
     rep = compare_mod.compare_h2_trait2(DATA, OUT)
@@ -109,6 +111,7 @@ def test_rg(compare_mod) -> None:
         DATA / "sim_trait1.sumstats.gz",
         DATA / "sim_trait2.sumstats.gz",
         DATA / "sim_truth.json",
+        DATA / "weights" / "weights.hm3_noMHC.22.l2.ldscore.gz",
         OUT / "rg.log",
     )
     rep = compare_mod.compare_rg(DATA, OUT)
