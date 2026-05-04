@@ -64,7 +64,7 @@ pytest tests/test_external_plink2.py -v -m external
 | GEMMA | already wired (pre-Pillar-A); rehouse pending | yes (golden marker) | — |
 | GAPIT | already wired; rehouse pending | yes (golden marker) | — |
 | GWASpoly | already wired; rehouse pending | yes (golden marker) | — |
-| PLINK 2.0 | pending | pending | — |
+| PLINK 2.0 | **done (B1)** — install/fetch/run/compare scripts + 3-comparison harness on MDP | yes (`tests/test_external_plink2.py`, marker=`external`) | β corr = 1.000, GRM off-diag corr = 0.99995, r² corr = 1.000; all pass observed-then-floored tolerances. Documented PLINK-vs-TG SE parameterization mismatch (n−c−1 vs n−c) and the cov-vs-VanRaden normalizer scalar. No F3 fixes required. |
 | LDSC | pending | pending | — |
 | TwoSampleMR | pending | pending | — |
 | regenie | pending | pending | — |

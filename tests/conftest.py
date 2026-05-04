@@ -124,3 +124,22 @@ def tiny_covariates():
 def stat_dtype():
     """The statistical-inference dtype TorchGWAS uses."""
     return torch.float64
+
+
+# ============================================================================
+# Pillar B: skip `external`-marked tests by default. They require external
+# binaries (PLINK 2, LDSC, regenie, etc.) and are explicitly opt-in. Run with:
+#     pytest -m external
+# Per-tool harness instructions live in validation/external/<tool>/README.md.
+# ============================================================================
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip `external`-marked tests unless `-m external` (or a marker
+    expression containing "external") is passed on the command line."""
+    marker_expr = config.getoption("-m") or ""
+    if "external" in marker_expr:
+        return  # user explicitly opted in
+    skip_external = pytest.mark.skip(reason="external-tool harness; run with `pytest -m external`")
+    for item in items:
+        if "external" in item.keywords:
+            item.add_marker(skip_external)
