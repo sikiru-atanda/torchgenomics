@@ -505,8 +505,13 @@ class TestBenchSLDSCSingleAnnotation:
         chi2_t = torch.tensor(chi2_np, dtype=torch.float64)
         ld_t = torch.tensor(ld_scores, dtype=torch.float64)
 
-        # Univariate LDSC
-        uni = ldsc_h2(chi2_t, ld_t, n=n_sample, m_total=m)
+        # Univariate LDSC. S-LDSC runs single-pass WLS internally
+        # (Phase 42), so we compare against ``ldsc_h2(n_iter=0)``: the new
+        # IRWLS default (Phase 37 follow-up) would produce a slightly
+        # different fit and break this single-annotation equivalence
+        # check. Promoting S-LDSC to full IRWLS is filed as a deferred
+        # follow-up.
+        uni = ldsc_h2(chi2_t, ld_t, n=n_sample, m_total=m, n_iter=0)
 
         # S-LDSC with single annotation
         sldsc = sldsc_h2_partitioned(

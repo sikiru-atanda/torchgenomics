@@ -754,6 +754,100 @@ class TestLdscH2:
         # The inflated fit reports a larger lambda_gc.
         assert res_inf.lambda_gc > res_null.lambda_gc
 
+    def test_irwls_default_converges_in_two_iterations(self):
+        """Per the validation findings ledger (Pillar B / B2), the LDSC
+        IRWLS port in ``_ldsc.py`` converges at LDSC's fixed iteration
+        count (2). With a deterministic fixture that mimics LDSC's
+        inflated-chi² regime (distinct reference + regression-weight LD
+        scores, h² = 0.4, intercept = 1.05), increasing ``n_iter`` past
+        2 must not change the IRWLS estimate to FP precision — this is
+        the bit-equality contract that closes the original B2 intercept
+        divergence (TG → 0.9787 vs LDSC 0.9788, |Δ| 2.6e-5; verified via
+        ``validation/external/ldsc/compare.py``).
+        """
+        torch.manual_seed(2026)
+        m = 1000
+        ld_ref = torch.rand(m, dtype=torch.float64) * 8.0 + 2.0
+        w_ld = torch.rand(m, dtype=torch.float64) * 5.0 + 1.5
+        n = 50_000
+        M = m
+        h2_true = 0.4
+        intercept_true = 1.05
+        sigma = ((n / M) * h2_true * ld_ref + intercept_true).sqrt()
+        chi2 = sigma ** 2 * (1.0 + 0.1 * torch.randn(m, dtype=torch.float64))
+
+        res_2 = ldsc_h2(chi2, ld_ref, n=n, m_total=M, w_ld=w_ld, n_iter=2)
+        res_5 = ldsc_h2(chi2, ld_ref, n=n, m_total=M, w_ld=w_ld, n_iter=5)
+        res_10 = ldsc_h2(chi2, ld_ref, n=n, m_total=M, w_ld=w_ld, n_iter=10)
+
+        # IRWLS converges to FP precision after LDSC's fixed 2 iterations.
+        assert abs(res_5.h2 - res_2.h2) < 1e-12
+        assert abs(res_5.intercept - res_2.intercept) < 1e-12
+        assert abs(res_10.h2 - res_2.h2) < 1e-12
+        assert abs(res_10.intercept - res_2.intercept) < 1e-12
+
+    def test_irwls_matches_hand_rolled_reference(self):
+        """Per the validation findings ledger (Pillar B / B2 follow-up):
+        the IRWLS port in ``_ldsc.py`` reproduces a hand-rolled reference
+        implementation of LDSC's IRWLS algorithm (LDSC ``Hsq.weights`` +
+        2-iteration loop + Nbar-scaled design matrix) to FP precision on
+        a deterministic LDSC-regime fixture.
+
+        The full bit-equality check against the upstream LDSC binary runs
+        against the simulated chr22 sumstats in
+        ``validation/external/ldsc/`` (out of tree for the default
+        suite). That harness gates ``|Δ intercept| ≤ 5e-3`` and observes
+        ~3e-5 — see the harness README for the full numbers. Here we
+        gate the *algorithmic invariants* of the IRWLS implementation
+        itself.
+        """
+        torch.manual_seed(7777)
+        m = 2000
+        ld_ref = torch.rand(m, dtype=torch.float64) * 10.0 + 2.0
+        w_ld = torch.rand(m, dtype=torch.float64) * 6.0 + 1.5
+        n = 100_000
+        M = m
+        h2_true = 0.4
+        intercept_true = 1.05
+        mean_chi2 = (n / M) * h2_true * ld_ref + intercept_true
+        chi2 = mean_chi2 * (1.0 + 0.05 * torch.randn(m, dtype=torch.float64))
+        chi2 = chi2.clamp(min=0.01)
+
+        # Hand-rolled reference IRWLS following ldsc/regressions.py + ldsc/irwls.py.
+        ld_c = torch.clamp(ld_ref, min=1.0).to(torch.float64)
+        wld_c = torch.clamp(w_ld, min=1.0).to(torch.float64)
+        n_per_snp = torch.full((m,), float(n), dtype=torch.float64)
+        nbar = n_per_snp.mean()
+        # Aggregate initial estimate.
+        denom_agg = torch.mean(ld_c * n_per_snp)
+        hsq = float(M * (chi2.mean() - 1.0) / denom_agg)
+        intercept = 1.0
+        # Initial weights.
+        c = max(min(hsq, 1.0), 0.0) * n_per_snp / float(M)
+        het_w = 1.0 / (2.0 * (intercept + c * ld_c) ** 2)
+        w = (het_w / wld_c).clamp(min=torch.finfo(torch.float64).tiny)
+        # Design matrix (Nbar-scaled, intercept column).
+        x_col = n_per_snp * ld_c / nbar
+        X = torch.stack([x_col, torch.ones(m, dtype=torch.float64)], dim=1)
+        # 2-iteration IRWLS loop (LDSC default).
+        sqrt_w = w.sqrt().unsqueeze(1)
+        coef_ref = torch.linalg.lstsq(X * sqrt_w, chi2 * w.sqrt()).solution
+        for _ in range(2):
+            slope = coef_ref[0].item()
+            intercept_iter = max(coef_ref[1].item(), 0.0)
+            hsq_iter = slope * float(M) / float(nbar.item())
+            c_iter = max(min(hsq_iter, 1.0), 0.0) * n_per_snp / float(M)
+            het_w_iter = 1.0 / (2.0 * (intercept_iter + c_iter * ld_c) ** 2)
+            w_iter = (het_w_iter / wld_c).clamp(min=torch.finfo(torch.float64).tiny)
+            sqrt_w_iter = w_iter.sqrt().unsqueeze(1)
+            coef_ref = torch.linalg.lstsq(X * sqrt_w_iter, chi2 * w_iter.sqrt()).solution
+        h2_ref = coef_ref[0].item() * float(M) / float(nbar.item())
+        intercept_ref = coef_ref[1].item()
+
+        res = ldsc_h2(chi2, ld_ref, n=n, m_total=M, w_ld=w_ld, n_iter=2)
+        assert abs(res.h2 - h2_ref) < 1e-12
+        assert abs(res.intercept - intercept_ref) < 1e-12
+
 
 # ---------------------------------------------------------------------------
 # ldsc_intercept
@@ -838,13 +932,31 @@ class TestLdscRgFromZ:
         assert isinstance(res.h2_2, LDSCResult)
 
     def test_correlated_traits_positive_cov_g(self):
-        """With z2 = 0.8 z1 + small noise the cov_g slope is positive."""
-        ld_scores, z1, z2 = self._build_correlated(500, 0.8, seed=31)
-        # Use moderately inflated z's to make the slope clear.
-        z1 = z1 * 2.0
-        z2 = 0.8 * z1 + torch.randn_like(z1) * 0.5
+        """With z's drawn so ``E[z1·z2 | l] ∝ l`` the cov_g slope is positive.
+
+        After the IRWLS port (Phase 37 follow-up), the LDSC regression
+        only recovers a non-zero slope when the SNP-level z1*z2 product
+        actually scales with the LD score (the model assumption). The
+        previous incarnation of this test relied on a flat z1*z2 product
+        being mis-attributed to the slope by the simple
+        ``w = 1/max(l², 1)`` weights — the IRWLS heteroscedastic weights
+        no longer permit that, so we generate z's with a genuine
+        LD-coupled covariance signal here.
+        """
+        torch.manual_seed(31)
+        m = 500
+        ld_scores = torch.rand(m, dtype=torch.float64) * 50.0 + 5.0
+        # Variance of z1*z2 grows with l (the LDSC model): construct
+        # z_shared,j ~ N(0, sqrt(l_j)/sqrt(M)) and add per-trait noise.
+        scale = (ld_scores / float(m)).sqrt()
+        n1 = 10_000
+        z_shared = torch.randn(m, dtype=torch.float64) * scale * (n1 ** 0.5)
+        eps1 = torch.randn(m, dtype=torch.float64) * 0.5
+        eps2 = torch.randn(m, dtype=torch.float64) * 0.5
+        z1 = z_shared + eps1
+        z2 = z_shared + eps2
         res = ldsc_rg_from_z(z1, z2, ld_scores,
-                             n1=10_000, n2=10_000, m_total=500, n_blocks=20)
+                             n1=n1, n2=n1, m_total=m, n_blocks=20)
         assert res.cov_g > 0.0
 
     def test_independent_traits_cov_g_small(self):
@@ -894,13 +1006,18 @@ class TestSldscH2Partitioned:
         m_total = ld_scores.shape[0]
         annot = ld_scores.unsqueeze(1)  # (m, 1)
         m_c = torch.tensor([float(m_total)], dtype=torch.float64)
-        plain = ldsc_h2(chi2, ld_scores, n=10_000, m_total=m_total, n_blocks=20)
+        # S-LDSC still uses single-pass WLS internally (Phase 42). The
+        # default ``ldsc_h2`` runs IRWLS (Phase 37 follow-up); pass
+        # ``n_iter=0`` so the comparison stays on the single-pass path.
+        plain = ldsc_h2(
+            chi2, ld_scores, n=10_000, m_total=m_total, n_blocks=20, n_iter=0,
+        )
         partitioned = sldsc_h2_partitioned(
             chi2, annot, m_c, n=10_000, m_total=m_total, n_blocks=20,
         )
         # tau_c * M_c == (slope) * M_total / N when N is folded into design;
         # the S-LDSC design matrix uses N*L, so tau is in per-N units. Final
-        # h2 from S-LDSC is tau * M_c, which equals the LDSC h2.
+        # h2 from S-LDSC is tau * M_c, which equals the legacy LDSC h2.
         assert partitioned.h2_total == pytest.approx(plain.h2, abs=1e-6)
 
     def test_invalid_annot_dim_raises(self):
