@@ -405,7 +405,10 @@ def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
             device=device,
         )
         model = SparseLMM()
-        null_fit = model.fit_null(Y, X0, K=K_sparse)
+        # Same device-alignment fix as the dense path below.
+        Y_sparse_dev = Y.to(device)
+        X0_sparse_dev = X0.to(device)
+        null_fit = model.fit_null(Y_sparse_dev, X0_sparse_dev, K=K_sparse)
         test_type = "score"  # Only score test for sparse path
     else:
         approx_config = {}
@@ -420,8 +423,15 @@ def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
 
         p3d = getattr(args, "p3d", True)
         model = SingleTraitLMM(p3d=p3d)
+        # Move Y / X0 to the same device as K so the eigenspace rotation
+        # in `single_trait_lmm.fit_null` doesn't mix CPU + CUDA tensors.
+        # K already lives on `device` from `grm_vanraden_streaming(device=...)`;
+        # the parallel mvlmm-scan path (line ~499) does the same `.to(device)`.
+        Y_dev = Y.to(device)
+        X0_dev = X0.to(device)
+        K_dev = K.to(device) if hasattr(K, "to") else K
         null_fit = model.fit_null(
-            Y, X0, K=K,
+            Y_dev, X0_dev, K=K_dev,
             approx_method=approx_method,
             approx_config=approx_config if approx_method else None,
         )
@@ -2809,7 +2819,13 @@ def _cmd_pgs_score(args: argparse.Namespace) -> int:
 
 
 def _load_genotype_matrix(genotype_path: str) -> torch.Tensor:
-    """Load full genotype matrix from any supported format."""
+    """Load full genotype matrix from any supported format.
+
+    All TorchGWAS readers in :mod:`torchgwas.io` yield ``(G_chunk, vmeta)``
+    tuples from ``iter_chunks()`` (not a chunk object with a ``.dosage``
+    attribute). This helper accepts the canonical tuple shape used by
+    every other call-site in the module.
+    """
     import torch
 
     from .io.detect import detect_format
@@ -2819,7 +2835,12 @@ def _load_genotype_matrix(genotype_path: str) -> torch.Tensor:
     reader = _open_reader(genotype_path, fmt)
     chunks = []
     for chunk in reader.iter_chunks():
-        chunks.append(chunk.dosage)
+        # Readers may yield (G, vmeta) tuples, or for legacy paths a chunk
+        # object with a `.dosage` attribute. Accept either.
+        if isinstance(chunk, tuple):
+            chunks.append(chunk[0])
+        else:
+            chunks.append(chunk.dosage)
     return torch.cat(chunks, dim=1)
 
 
