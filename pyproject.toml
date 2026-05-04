@@ -89,6 +89,7 @@ markers = [
     "external: tests that install + run external reference tools (Pillar B)",
     "timeout: per-test or per-module timeout (requires pytest-timeout)",
     "cli_matrix: end-to-end CLI smoke matrix (Pillar C; opt-in via -m cli_matrix)",
+    "reproducibility: Pillar D fixture-drift audit (opt-in via -m reproducibility)",
 ]
 
 [tool.ruff]

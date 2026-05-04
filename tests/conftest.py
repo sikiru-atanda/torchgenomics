@@ -137,14 +137,22 @@ def stat_dtype():
 # slow on every-test-run cadence. Opt in with:
 #     pytest -m cli_matrix
 # Harness lives at tests/test_cli_matrix.py + tests/cli_matrix_spec.py.
+#
+# Pillar D: skip `reproducibility`-marked tests by default. They install +
+# run upstream tools (GEMMA / GAPIT / GWASpoly) and diff fresh output vs
+# the committed reference fixtures. Slow + needs network for GAPIT install.
+# Opt in with:
+#     pytest -m reproducibility
+# Harness lives at validation/reproducibility/{rerun_goldens,compare_fixtures}.py
+# plus tests/test_reproducibility.py.
 # ============================================================================
 
 def pytest_collection_modifyitems(config, items):
     """Auto-skip opt-in markers unless explicitly requested.
 
-    `external` and `cli_matrix` are both opt-in. The user picks them on the
-    pytest command line via `-m external`, `-m cli_matrix`, or a boolean
-    expression that mentions either name.
+    `external`, `cli_matrix`, and `reproducibility` are all opt-in. The user
+    picks them on the pytest command line via `-m <name>` or a boolean
+    expression that mentions the marker name.
     """
     marker_expr = config.getoption("-m") or ""
     skip_external = pytest.mark.skip(
@@ -153,8 +161,13 @@ def pytest_collection_modifyitems(config, items):
     skip_cli_matrix = pytest.mark.skip(
         reason="end-to-end CLI smoke matrix; run with `pytest -m cli_matrix`"
     )
+    skip_reproducibility = pytest.mark.skip(
+        reason="Pillar D fixture-drift audit; run with `pytest -m reproducibility`"
+    )
     for item in items:
         if "external" in item.keywords and "external" not in marker_expr:
             item.add_marker(skip_external)
         if "cli_matrix" in item.keywords and "cli_matrix" not in marker_expr:
             item.add_marker(skip_cli_matrix)
+        if "reproducibility" in item.keywords and "reproducibility" not in marker_expr:
+            item.add_marker(skip_reproducibility)
