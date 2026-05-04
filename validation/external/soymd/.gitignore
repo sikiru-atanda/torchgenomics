@@ -1,1 +1,6 @@
 data/
+outputs/
+.install_marker
+__pycache__/
+*.Rout
+.Rhistory
