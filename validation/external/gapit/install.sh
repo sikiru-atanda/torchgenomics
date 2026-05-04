@@ -87,32 +87,58 @@ if (!requireNamespace("BiocManager", quietly = TRUE)) {
                     lib = local_lib, quiet = TRUE)
 }
 
-# multtest is a Bioconductor dep of GAPIT3
-if (!requireNamespace("multtest", quietly = TRUE)) {
-  tryCatch({
-    BiocManager::install("multtest", update = FALSE, ask = FALSE,
-                         lib = local_lib, quiet = TRUE)
-  }, error = function(e) cat("[install] multtest failed:", conditionMessage(e), "\n"))
-}
+# Pillar D D3 fix: explicitly point at https://bioconductor.org/ for the
+# Bioconductor repos. On some hosts the default `BiocManager::repositories()`
+# path is intercepted by a system-level config (e.g. mirrors.ustc.edu.cn) that
+# may not be reachable. Resolving the current Bioconductor release for our
+# R version and overriding `options(repos = ...)` upfront makes the install
+# deterministic across environments.
+bioc_ver <- as.character(BiocManager::version())
+options(repos = c(
+  BioCsoft = sprintf("https://bioconductor.org/packages/%s/bioc", bioc_ver),
+  BioCann  = sprintf("https://bioconductor.org/packages/%s/data/annotation", bioc_ver),
+  BioCexp  = sprintf("https://bioconductor.org/packages/%s/data/experiment", bioc_ver),
+  CRAN     = "https://cloud.r-project.org"
+))
+options(BioC_mirror = "https://bioconductor.org")
+options(BiocManager.check_repositories = FALSE)
+cat(sprintf("[install] Bioconductor %s repos pinned at https://bioconductor.org/\n", bioc_ver))
 
-# CRAN deps
-for (pkg in c("scatterplot3d", "gplots", "ape", "data.table", "remotes",
-              "EMMREML", "lme4", "compiler")) {
+# Bioconductor deps of GAPIT (multtest used directly; snpStats is a hard
+# transitive dependency that previously caused install to fail).
+for (pkg in c("multtest", "snpStats")) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     tryCatch({
-      install.packages(pkg, repos = "https://cloud.r-project.org",
-                       lib = local_lib, quiet = TRUE)
+      install.packages(pkg, lib = local_lib, quiet = FALSE,
+                       type = "source")
     }, error = function(e) cat("[install]", pkg, "failed:", conditionMessage(e), "\n"))
   }
 }
 
-# GAPIT3 from GitHub
-tryCatch({
-  remotes::install_github("jiabowang/GAPIT3", upgrade = "never",
-                          quiet = TRUE, lib = local_lib)
-}, error = function(e) {
-  cat("[install] GAPIT3 from GitHub failed:", conditionMessage(e), "\n")
-})
+# CRAN deps
+for (pkg in c("scatterplot3d", "gplots", "ape", "data.table", "remotes",
+              "EMMREML", "genetics", "bigmemory", "lme4", "MASS",
+              "compiler")) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    tryCatch({
+      install.packages(pkg, lib = local_lib, quiet = TRUE)
+    }, error = function(e) cat("[install]", pkg, "failed:", conditionMessage(e), "\n"))
+  }
+}
+
+# GAPIT from GitHub. Upstream repo `jiabowang/GAPIT` ships GAPIT 4.x; the
+# legacy `jiabowang/GAPIT3` repo redirects there. Try the canonical path first.
+gapit_installed <- FALSE
+for (gh_path in c("jiabowang/GAPIT", "jiabowang/GAPIT3")) {
+  tryCatch({
+    remotes::install_github(gh_path, upgrade = "never",
+                            quiet = TRUE, lib = local_lib)
+    gapit_installed <- TRUE
+  }, error = function(e) {
+    cat("[install]", gh_path, "failed:", conditionMessage(e), "\n")
+  })
+  if (gapit_installed) break
+}
 
 # Verify
 for (pkg in c("GAPIT3", "GAPIT")) {
