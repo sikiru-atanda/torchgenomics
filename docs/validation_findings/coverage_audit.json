@@ -274,7 +274,8 @@
       "module": "torchgwas._native",
       "symbol": "_prscs_native",
       "test_files": [
-        "tests/test_native_prscs.py"
+        "tests/test_native_prscs.py",
+        "tests/test_coverage_t2_small.py"
       ],
       "tier": null
     },
@@ -285,7 +286,8 @@
       "module": "torchgwas._native",
       "symbol": "_ldpred2_native",
       "test_files": [
-        "tests/test_native_ldpred2.py"
+        "tests/test_native_ldpred2.py",
+        "tests/test_coverage_t2_small.py"
       ],
       "tier": null
     },
@@ -296,7 +298,8 @@
       "module": "torchgwas._native",
       "symbol": "_ct_native",
       "test_files": [
-        "tests/test_native_ct.py"
+        "tests/test_native_ct.py",
+        "tests/test_coverage_t2_small.py"
       ],
       "tier": null
     },
@@ -318,7 +321,8 @@
       "module": "torchgwas._native",
       "symbol": "_ess_native",
       "test_files": [
-        "tests/test_native_ess.py"
+        "tests/test_native_ess.py",
+        "tests/test_coverage_t2_small.py"
       ],
       "tier": null
     },
@@ -450,7 +454,8 @@
       "module": "torchgwas._native",
       "symbol": "_impute_mode_native",
       "test_files": [
-        "tests/test_native_impute_mode.py"
+        "tests/test_native_impute_mode.py",
+        "tests/test_coverage_preprocess.py"
       ],
       "tier": null
     },
@@ -461,7 +466,8 @@
       "module": "torchgwas._native",
       "symbol": "_impute_knn_native",
       "test_files": [
-        "tests/test_native_impute_knn.py"
+        "tests/test_native_impute_knn.py",
+        "tests/test_coverage_preprocess.py"
       ],
       "tier": null
     },
@@ -472,7 +478,8 @@
       "module": "torchgwas._native",
       "symbol": "_impute_ld_native",
       "test_files": [
-        "tests/test_native_impute_ld.py"
+        "tests/test_native_impute_ld.py",
+        "tests/test_coverage_preprocess.py"
       ],
       "tier": null
     },
@@ -849,12 +856,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 29,
       "module": "torchgwas.io",
       "symbol": "PhenotypeData",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
@@ -939,12 +948,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 34,
       "module": "torchgwas.io",
       "symbol": "run_preflight",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
@@ -988,12 +999,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 24,
       "module": "torchgwas.io.bgen",
       "symbol": "BGENReader",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
@@ -1006,12 +1019,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 13,
       "module": "torchgwas.io.convert",
       "symbol": "convert",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
@@ -1067,30 +1082,36 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 12,
       "module": "torchgwas.io.map_file",
       "symbol": "MapInfo",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 113,
       "module": "torchgwas.io.map_file",
       "symbol": "discover_map_file",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 22,
       "module": "torchgwas.io.map_file",
       "symbol": "read_map_file",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
@@ -1138,7 +1159,8 @@
       "module": "torchgwas.io.phenotype",
       "symbol": "AlignmentManifest",
       "test_files": [
-        "tests/test_contracts.py"
+        "tests/test_contracts.py",
+        "tests/test_coverage_io.py"
       ],
       "tier": 2
     },
@@ -1158,7 +1180,8 @@
       "module": "torchgwas.io.phenotype",
       "symbol": "load_phenotype",
       "test_files": [
-        "tests/test_io_phenotype.py"
+        "tests/test_io_phenotype.py",
+        "tests/test_coverage_io.py"
       ],
       "tier": 2
     },
@@ -1195,12 +1218,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 24,
       "module": "torchgwas.io.plink2",
       "symbol": "Plink2PgenReader",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
@@ -1291,12 +1316,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 24,
       "module": "torchgwas.io.vcf",
       "symbol": "VCFReader",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_io.py"
+      ],
       "tier": 2
     },
     {
@@ -1503,21 +1530,25 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 40,
       "module": "torchgwas.ld",
       "symbol": "PairwiseLD",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 19,
       "module": "torchgwas.ld",
       "symbol": "PLINKBlock",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -3596,7 +3627,8 @@
       "module": "torchgwas.models.bayesian_vs",
       "symbol": "BayesianVSResult",
       "test_files": [
-        "tests/test_coverage_models.py"
+        "tests/test_coverage_models.py",
+        "tests/test_coverage_postgwas_coloc_meta.py"
       ],
       "tier": 1
     },
@@ -6177,12 +6209,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 66,
       "module": "torchgwas.multiomics",
       "symbol": "GeneSetMediationResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -7268,12 +7302,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.pgs.ct",
       "symbol": "HAS_NATIVE_CT",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -7304,12 +7340,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.pgs.diagnostics",
       "symbol": "HAS_NATIVE_ESS",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -7415,12 +7453,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.pgs.ldpred2",
       "symbol": "HAS_NATIVE_LDPRED2",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -7495,12 +7535,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.pgs.prscs",
       "symbol": "HAS_NATIVE_PRSCS",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -7563,12 +7605,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 28,
       "module": "torchgwas.pgs.scoring",
       "symbol": "ScoringResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -7632,21 +7676,25 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 29,
       "module": "torchgwas.pgs.validation",
       "symbol": "PGSValidation",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.pgs.validation",
       "symbol": "pi",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_t2_small.py"
+      ],
       "tier": 2
     },
     {
@@ -7663,597 +7711,731 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 76,
       "module": "torchgwas.postgwas",
       "symbol": "AnnotatedSumStats",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 18,
       "module": "torchgwas.postgwas",
       "symbol": "ClumpResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 80,
       "module": "torchgwas.postgwas",
       "symbol": "ColocPairwiseResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 37,
       "module": "torchgwas.postgwas",
       "symbol": "CredibleSet",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 233,
       "module": "torchgwas.postgwas",
       "symbol": "EnrichmentResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 87,
       "module": "torchgwas.postgwas",
       "symbol": "GeneResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 44,
       "module": "torchgwas.postgwas",
       "symbol": "HESSRegionResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 78,
       "module": "torchgwas.postgwas",
       "symbol": "HESSResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 54,
       "module": "torchgwas.postgwas",
       "symbol": "HyprcolocResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 20,
       "module": "torchgwas.postgwas",
       "symbol": "LDSCResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 33,
       "module": "torchgwas.postgwas",
       "symbol": "LDSCRgResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 140,
       "module": "torchgwas.postgwas",
       "symbol": "LocusSummary",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 56,
       "module": "torchgwas.postgwas",
       "symbol": "MRResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 22,
       "module": "torchgwas.postgwas",
       "symbol": "MetaResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 43,
       "module": "torchgwas.postgwas",
       "symbol": "MultiAncestryResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 62,
       "module": "torchgwas.postgwas",
       "symbol": "PowerResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 38,
       "module": "torchgwas.postgwas",
       "symbol": "SLDSCResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 63,
       "module": "torchgwas.postgwas",
       "symbol": "SMRResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 106,
       "module": "torchgwas.postgwas",
       "symbol": "SMRSummary",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 11,
       "module": "torchgwas.postgwas",
       "symbol": "SumStats",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py",
+        "tests/test_coverage_postgwas_mr_twas.py",
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 47,
       "module": "torchgwas.postgwas",
       "symbol": "TWASGeneResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 75,
       "module": "torchgwas.postgwas",
       "symbol": "TWASResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 74,
       "module": "torchgwas.postgwas",
       "symbol": "WinnersCurseResult",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 140,
       "module": "torchgwas.postgwas",
       "symbol": "align_sumstats",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 332,
       "module": "torchgwas.postgwas",
       "symbol": "annotate_sumstats",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 252,
       "module": "torchgwas.postgwas",
       "symbol": "bootstrap_correction",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 294,
       "module": "torchgwas.postgwas",
       "symbol": "coloc_pairwise",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
-      "lineno": 94,
+      "lineno": 102,
       "module": "torchgwas.postgwas",
       "symbol": "compute_cross_ld_scores",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 19,
       "module": "torchgwas.postgwas",
       "symbol": "compute_ld_scores",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 104,
       "module": "torchgwas.postgwas",
       "symbol": "conditional_likelihood",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 334,
       "module": "torchgwas.postgwas",
       "symbol": "correct_winners_curse",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 185,
       "module": "torchgwas.postgwas",
       "symbol": "extract_credible_sets",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 167,
       "module": "torchgwas.postgwas",
       "symbol": "fiqt",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 262,
       "module": "torchgwas.postgwas",
       "symbol": "gene_set_enrichment",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 91,
       "module": "torchgwas.postgwas",
       "symbol": "gwas_power",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 236,
       "module": "torchgwas.postgwas",
       "symbol": "heidi_test",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 107,
       "module": "torchgwas.postgwas",
       "symbol": "hess_local_h2",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 213,
       "module": "torchgwas.postgwas",
       "symbol": "hess_local_rg",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 127,
       "module": "torchgwas.postgwas",
       "symbol": "hyprcoloc",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 28,
       "module": "torchgwas.postgwas",
       "symbol": "ld_clump",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 143,
       "module": "torchgwas.postgwas",
       "symbol": "ldsc_h2",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 226,
       "module": "torchgwas.postgwas",
       "symbol": "ldsc_intercept",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 245,
       "module": "torchgwas.postgwas",
       "symbol": "ldsc_rg",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 350,
       "module": "torchgwas.postgwas",
       "symbol": "ldsc_rg_from_z",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 61,
       "module": "torchgwas.postgwas",
       "symbol": "load_sumstats",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 410,
       "module": "torchgwas.postgwas",
       "symbol": "locus_summary",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 357,
       "module": "torchgwas.postgwas",
       "symbol": "mantra",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 74,
       "module": "torchgwas.postgwas",
       "symbol": "meta_fixed_effect",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 218,
       "module": "torchgwas.postgwas",
       "symbol": "meta_han_eskin",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 116,
       "module": "torchgwas.postgwas",
       "symbol": "meta_random_effect",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 163,
       "module": "torchgwas.postgwas",
       "symbol": "meta_sample_size",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 564,
       "module": "torchgwas.postgwas",
       "symbol": "mr_all",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 200,
       "module": "torchgwas.postgwas",
       "symbol": "mr_egger",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 156,
       "module": "torchgwas.postgwas",
       "symbol": "mr_ivw",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 139,
       "module": "torchgwas.postgwas",
       "symbol": "mr_mega",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 401,
       "module": "torchgwas.postgwas",
       "symbol": "mr_presso",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 333,
       "module": "torchgwas.postgwas",
       "symbol": "mr_weighted_median",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 148,
       "module": "torchgwas.postgwas",
       "symbol": "power_curve",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 179,
       "module": "torchgwas.postgwas",
       "symbol": "required_n",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 57,
       "module": "torchgwas.postgwas",
       "symbol": "sldsc_h2_partitioned",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_heritability.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 341,
       "module": "torchgwas.postgwas",
       "symbol": "smr_heidi",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 132,
       "module": "torchgwas.postgwas",
       "symbol": "smr_test",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 118,
       "module": "torchgwas.postgwas",
       "symbol": "snp_to_gene",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_misc.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 471,
       "module": "torchgwas.postgwas",
       "symbol": "to_coloc_sumstats",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_coloc_meta.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 245,
       "module": "torchgwas.postgwas",
       "symbol": "twas_individual",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 98,
       "module": "torchgwas.postgwas",
       "symbol": "twas_sumstat",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_postgwas_mr_twas.py"
+      ],
       "tier": 2
     },
     {
@@ -8520,12 +8702,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 67,
       "module": "torchgwas.preprocess.dosage_uncertainty",
       "symbol": "dosage_rsq",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -8554,30 +8738,36 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.preprocess.impute",
       "symbol": "HAS_NATIVE_IMPUTE_KNN",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.preprocess.impute",
       "symbol": "HAS_NATIVE_IMPUTE_LD",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "constant",
       "lineno": null,
       "module": "torchgwas.preprocess.impute",
       "symbol": "HAS_NATIVE_IMPUTE_MODE",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -8594,12 +8784,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 76,
       "module": "torchgwas.preprocess.impute",
       "symbol": "impute_knn_gpu",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -8615,12 +8807,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 172,
       "module": "torchgwas.preprocess.impute",
       "symbol": "impute_ld_gpu",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -8632,7 +8826,8 @@
       "test_files": [
         "tests/test_impute_gpu_kernels.py",
         "tests/test_preprocess.py",
-        "tests/test_real_data_validation.py"
+        "tests/test_real_data_validation.py",
+        "tests/test_coverage_preprocess.py"
       ],
       "tier": 2
     },
@@ -8650,12 +8845,14 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 31,
       "module": "torchgwas.preprocess.impute",
       "symbol": "impute_mode_gpu",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -8683,35 +8880,42 @@
       "module": "torchgwas.preprocess.impute_external",
       "symbol": "ImputationResult",
       "test_files": [
-        "tests/test_contracts.py"
+        "tests/test_contracts.py",
+        "tests/test_coverage_preprocess.py"
       ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 25,
       "module": "torchgwas.preprocess.impute_external",
       "symbol": "run_beagle",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 99,
       "module": "torchgwas.preprocess.impute_external",
       "symbol": "run_impute5",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 153,
       "module": "torchgwas.preprocess.impute_external",
       "symbol": "run_minimac4",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -8759,21 +8963,25 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 92,
       "module": "torchgwas.preprocess.phase",
       "symbol": "load_haplotypes",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 16,
       "module": "torchgwas.preprocess.phase",
       "symbol": "phase_beagle",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -8846,21 +9054,25 @@
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "class",
       "lineno": 27,
       "module": "torchgwas.preprocess.polyrad_wrapper",
       "symbol": "DosageProbabilities",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
-      "has_direct_test": false,
+      "has_direct_test": true,
       "kind": "function",
       "lineno": 52,
       "module": "torchgwas.preprocess.polyrad_wrapper",
       "symbol": "run_polyrad",
-      "test_files": [],
+      "test_files": [
+        "tests/test_coverage_preprocess.py"
+      ],
       "tier": 2
     },
     {
@@ -10233,7 +10445,7 @@
     "total_symbols": 993,
     "untested_by_tier": {
       "1": 328,
-      "2": 196,
+      "2": 97,
       "3": 4
     },
     "untested_no_tier": 2

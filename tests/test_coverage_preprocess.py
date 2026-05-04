@@ -38,7 +38,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.preprocess._impute_gpu import (
+from torchgwas.preprocess.impute import (
     impute_knn_gpu,
     impute_ld_gpu,
     impute_mode_gpu,

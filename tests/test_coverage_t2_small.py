@@ -29,9 +29,8 @@ import math
 import pytest
 import torch
 
-from torchgwas.ld._blocks import PairwiseLD
-from torchgwas.ld._plink_compat import PLINKBlock
-from torchgwas.multiomics._types import GeneSetMediationResult
+from torchgwas.ld import PairwiseLD, PLINKBlock
+from torchgwas.multiomics import GeneSetMediationResult
 from torchgwas.pgs import validation as pgs_validation
 from torchgwas.pgs.ct import HAS_NATIVE_CT
 from torchgwas.pgs.diagnostics import HAS_NATIVE_ESS
