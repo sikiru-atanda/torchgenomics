@@ -131,15 +131,30 @@ def stat_dtype():
 # binaries (PLINK 2, LDSC, regenie, etc.) and are explicitly opt-in. Run with:
 #     pytest -m external
 # Per-tool harness instructions live in validation/external/<tool>/README.md.
+#
+# Pillar C: skip `cli_matrix`-marked tests by default. They spawn one
+# subprocess per CLI subcommand × format cell (~50+ subprocesses) which is
+# slow on every-test-run cadence. Opt in with:
+#     pytest -m cli_matrix
+# Harness lives at tests/test_cli_matrix.py + tests/cli_matrix_spec.py.
 # ============================================================================
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-skip `external`-marked tests unless `-m external` (or a marker
-    expression containing "external") is passed on the command line."""
+    """Auto-skip opt-in markers unless explicitly requested.
+
+    `external` and `cli_matrix` are both opt-in. The user picks them on the
+    pytest command line via `-m external`, `-m cli_matrix`, or a boolean
+    expression that mentions either name.
+    """
     marker_expr = config.getoption("-m") or ""
-    if "external" in marker_expr:
-        return  # user explicitly opted in
-    skip_external = pytest.mark.skip(reason="external-tool harness; run with `pytest -m external`")
+    skip_external = pytest.mark.skip(
+        reason="external-tool harness; run with `pytest -m external`"
+    )
+    skip_cli_matrix = pytest.mark.skip(
+        reason="end-to-end CLI smoke matrix; run with `pytest -m cli_matrix`"
+    )
     for item in items:
-        if "external" in item.keywords:
+        if "external" in item.keywords and "external" not in marker_expr:
             item.add_marker(skip_external)
+        if "cli_matrix" in item.keywords and "cli_matrix" not in marker_expr:
+            item.add_marker(skip_cli_matrix)
