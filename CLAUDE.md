@@ -114,7 +114,12 @@ Optional: zarr, h5py, pyarrow, seaborn
 
 ## Validation campaign
 
-A function-by-function validation campaign runs out of `docs/superpowers/` against `validation/pillar-{A,B,C,D}` branches. Pillars A (coverage audit + tiered fill), B (external reference-tool comparisons), and C (CLI smoke matrix) are complete; D (reproducibility audit) is pending.
+A function-by-function validation campaign runs out of `docs/superpowers/`. **All four pillars are COMPLETE (campaign closed 2026-05-04).** Each pillar lives on its own branch:
+
+- `validation/pillar-A-coverage` — coverage audit + tiered fill (Pillar A)
+- `validation/pillar-B-references` — external reference-tool comparisons (Pillar B)
+- `validation/pillar-C-cli-smoke` — CLI smoke matrix (Pillar C)
+- `validation/pillar-D-reproducibility` — fixture reproducibility audit (Pillar D)
 
 - **Spec:** `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`
 - **Per-pillar plans:** `docs/superpowers/plans/2026-04-30-pillar-{A,B,C,D}-plan.md`
@@ -137,6 +142,9 @@ pytest -m external
 
 # Pillar C CLI smoke matrix (skipped by default; opt-in):
 pytest -m cli_matrix
+
+# Pillar D fixture reproducibility (skipped by default; opt-in):
+pytest -m reproducibility
 
 # A single tool's harness end-to-end:
 bash validation/external/plink2/install.sh

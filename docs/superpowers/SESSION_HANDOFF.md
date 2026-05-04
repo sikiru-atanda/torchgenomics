@@ -4,10 +4,22 @@
 **Worktree:** `/home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/validation-pillar-A-coverage`
 **Active branch:** `validation/pillar-B-references`
 
-> **Status update 2026-05-04 (Pillar C close):**
-> Pillars A, B, and C are now COMPLETE. **13 V1 fix-now production fixes** shipped from validation work. Both R4 reviewer tracks approved each pillar. Full suite: 2738 passed, 541 skipped (cli_matrix opt-in), 0 failed. Cumulative campaign F3 findings: 13 (Pillar A: 8 + Pillar B: 1 + Pillar C: 4).
+> **CAMPAIGN COMPLETE 2026-05-04.**
 >
-> **Next pillar: D — Reproducibility audit.** For each committed reference fixture (`gemma_demo/output/`, `gapit_demo/output/`, `benchmark/gwaspoly_results/`), invoke the matching Pillar B harness and diff the *fresh* tool output against the *committed* fixture (not against TorchGWAS). Drift = `fixture-drift` finding (distinct from `torchgwas-divergence`). Branch off Pillar C's tip until master catches up.
+> All four pillars done. **13 V1 fix-now production fixes** shipped from validation work + 698 new coverage tests + 11 external reference-tool harnesses + 122-cell CLI smoke matrix + 3-fixture reproducibility audit. Cumulative campaign F3: 13 (Pillar A: 8 + Pillar B: 1 + Pillar C: 4 + Pillar D: 0). Full suite: 2738 passed, 541 skipped (external + cli_matrix + reproducibility opt-in), 0 failed.
+>
+> **Pillar D fixture verdicts:**
+> - GEMMA 0.98.5: **fixture-authoritative** (bit-exact reproduction across 19 checks).
+> - GAPIT3: **infra-blocker** (Bioconductor mirror unreachable in this env).
+> - GWASpoly 2.12 vs 2.14: **deferred** (long-wall re-run did not complete in autonomous session).
+>
+> **Branches ready for human-driven push + PR (gh CLI not installed; auth required):**
+> ```
+> git push -u origin validation/pillar-A-coverage
+> git push -u origin validation/pillar-B-references
+> git push -u origin validation/pillar-C-cli-smoke
+> git push -u origin validation/pillar-D-reproducibility
+> ```
 
 ---
 

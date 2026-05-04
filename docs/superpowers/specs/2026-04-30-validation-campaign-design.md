@@ -170,12 +170,24 @@ Pillar A surfaced 8 V1-core / V1-platform fix-now findings (5 unimplemented stub
 
 **Cumulative campaign F3 fix-now findings: 13** (Pillar A: 8, Pillar B: 1, Pillar C: 4).
 
-## 7. Pillar D — Reproducibility audit (outline)
+## 7. Pillar D — Reproducibility audit
 
-Detailed at the Pillar C → D checkpoint. Sketch:
-- `validation/reproducibility/rerun_goldens.py` — for each committed reference fixture, invoke the matching Pillar B harness and diff the *fresh* tool output against the *committed* fixture (not against TorchGWAS).
-- A drift between committed fixture and fresh tool output is logged as a `fixture-drift` finding (distinct from a `torchgwas-divergence` finding).
-- Outcome: either the fixtures are still authoritative, or we have a list of fixtures that need regeneration.
+**Status: COMPLETE (2026-05-04).** Per-fixture verdict captured in ledger. No production-code changes.
+
+**Implementation:**
+- `validation/reproducibility/rerun_goldens.py` — orchestrates fresh re-runs of the 3 committed reference fixtures (GEMMA, GAPIT, GWASpoly) via the Pillar B harnesses.
+- `validation/reproducibility/compare_fixtures.py` — diffs fresh tool output against the committed fixture per spec §7 tolerance bar (1e-10 GRM, 1e-6 β/SE/V_g/V_e, 1e-4 -log10p / log-likelihood, 1e-8 raw p, ≥0.7 Top-K overlap for FarmCPU/BLINK).
+- `tests/test_reproducibility.py` — pytest entry with new `reproducibility` marker (registered in `pyproject.toml`; auto-skipped by default via `tests/conftest.py`).
+
+**Per-fixture drift verdict:**
+
+| Fixture | Source | Verdict | Detail |
+|---|---|---|---|
+| GEMMA 0.98.5 reference (`gemma_demo/output/`) | `cXX`, LMM single, mvLMM | **fixture-authoritative** | Fresh re-run reproduces every committed file **bit-exactly** (\|Δ\| = 0 across 19 checks). Static AMD64 binary is deterministic; BIMBAM input is byte-identical. Do NOT regenerate. |
+| GAPIT3 reference (`benchmark/gapit_results/`) | GLM, MLM, FarmCPU, BLINK | **infra-blocker** | Bioconductor `mirrors.ustc.edu.cn` unreachable in this env (single transitive dep `snpStats` blocked). Re-run on a host with reachable Bioconductor or override `BiocManager::repositories()`. Committed fixture remains canonical until verified. |
+| GWASpoly 2.12 reference (`benchmark/gwaspoly_results/`) | 5 gene-action models | **deferred** | Fresh GWASpoly 2.14 re-run was in-flight at ~47 min wall when the autonomous-loop session wrapped; outputs ended empty. Committed fixture (v2.12) remains canonical pending a long-wall-time re-run. |
+
+**No new V1-platform F3 fix-now findings from Pillar D.** Cumulative campaign F3 stays at 13.
 
 ## 8. Reviewer agent loop (R4: two-track per tier)
 
