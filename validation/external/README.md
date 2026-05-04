@@ -70,5 +70,5 @@ pytest tests/test_external_plink2.py -v -m external
 | regenie | done (B4) | yes | — (see B4 commit) |
 | SAIGE | pending | pending | — |
 | BOLT-LMM | pending | pending | — |
-| SoyNAM | pending | pending | — |
+| SoyNAM | **done (B8)** — install/fetch/run/compare; 4-family yield-BLUP subset (547 RILs × 4275 SNPs); rrBLUP::A.mat + GWAS reference; `WithinFamilyLMM` dual-scan internal-consistency check | yes (`tests/test_external_soynam.py`, marker=`external`) | Kinship: Pearson 1.000, rel diff 3e-6 to A.mat. STLMM: Pearson(−log10p) 0.99991, median \|Δ\| 3e-3, h²/Vu/Ve agree to 2-3 sig figs. WithinFamilyLMM dual-scan finite on 100% of SNPs; 52.7% flagged as confounded. Zero F3 fixes. |
 | SoyMD | pending | pending | — |
