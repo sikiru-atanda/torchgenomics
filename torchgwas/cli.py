@@ -1577,8 +1577,8 @@ def _cmd_glmm_scan(args: argparse.Namespace) -> int:
     G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
 
     # Build GRM
-    from .linalg.grm import grm
-    K = grm(G.to(device))
+    from .linalg.kinship import grm_vanraden
+    K, _ = grm_vanraden(G.to(device))
 
     family = getattr(args, "family", "binary")
     if family == "binary":
@@ -1634,8 +1634,8 @@ def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
         raise ValueError("me-glmm-scan requires at least 2 environments in phenotype")
 
     # Build GRM
-    from .linalg.grm import grm
-    K = grm(G.to(device))
+    from .linalg.kinship import grm_vanraden
+    K, _ = grm_vanraden(G.to(device))
 
     family = getattr(args, "family", "binary")
     from .models.multi_env_glmm import MultiEnvGLMM
@@ -1679,8 +1679,8 @@ def _cmd_survival_scan(args: argparse.Namespace) -> int:
         )
 
     # Build GRM
-    from .linalg.grm import grm
-    K = grm(G.to(device))
+    from .linalg.kinship import grm_vanraden
+    K, _ = grm_vanraden(G.to(device))
 
     from .models.survival_glmm import SurvivalGLMM
     model = SurvivalGLMM(
@@ -3027,7 +3027,17 @@ def _impute_chunk_iter(chunk_iter):
 
 
 def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
-    """Apply multiple testing correction and save results."""
+    """Apply multiple testing correction and save results.
+
+    Handles three families of result objects:
+    1. Single-trait scalar p-value (`result.p` is 1-D, `result.beta/se/stat` 1-D).
+    2. Multi-output / GxE results that expose `p_joint` (and per-component
+       `p_main`, `p_interact`) — we treat `p_joint` as the canonical p for FDR
+       and write per-component p columns alongside.
+    3. Multi-trait results (mvLMM / me-GLMM) where `result.beta/se/stat` are
+       2-D `(m, d)`. We collapse to per-trait columns named `BETA_t{i}` etc.
+       and require `result.p` (or `result.p_joint`) to be 1-D for correction.
+    """
     import pandas as pd
 
     from .stats.multipletesting import (
@@ -3038,7 +3048,16 @@ def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
         storey_qvalue,
     )
 
-    p = result.p
+    # Phase C1: prefer joint p when models expose it (GxE: p_main / p_interact /
+    # p_joint; me-GLMM: p_joint). Falls back to result.p for plain scans.
+    p_attr = getattr(result, "p", None)
+    p_joint = getattr(result, "p_joint", None)
+    if p_attr is None and p_joint is None:
+        raise AttributeError(
+            f"Scan result of type {type(result).__name__} exposes neither "
+            "`p` nor `p_joint`; cannot write association table."
+        )
+    p = p_joint if p_attr is None else p_attr
 
     # Apply correction
     correction = args.correction
@@ -3090,20 +3109,57 @@ def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
         logger.warning("Unknown correction '%s', using none", correction)
         p_adj = p
 
-    # Build output DataFrame
-    df = pd.DataFrame({
+    # Build output DataFrame.
+    # For multi-trait scans (mvlmm, me-glmm) the beta / se / stat tensors are
+    # 2-D (m, d); flatten by writing one column per trait/output dimension
+    # (BETA_d0, BETA_d1, …) so the DataFrame columns stay 1-D.
+    df_data: dict = {
         "CHR": result.chr,
         "POS": result.pos,
         "SNP": result.snp,
         "A1": result.a1,
         "A2": result.a2,
         "AF": result.af.cpu().numpy(),
-        "BETA": result.beta.cpu().numpy(),
-        "SE": result.se.cpu().numpy(),
-        "STAT": result.stat.cpu().numpy(),
-        "P": result.p.cpu().numpy(),
-        "P_ADJ": p_adj.cpu().numpy(),
-    })
+    }
+
+    def _add_per_dim(name: str, t):
+        arr = t.cpu().numpy()
+        if arr.ndim == 1:
+            df_data[name] = arr
+        else:
+            for d in range(arr.shape[1]):
+                df_data[f"{name}_d{d}"] = arr[:, d]
+
+    # GxE results expose {beta,se,stat}_main / _interact instead of plain
+    # beta/se/stat. Detect either schema and emit columns accordingly.
+    if hasattr(result, "beta"):
+        _add_per_dim("BETA", result.beta)
+        _add_per_dim("SE", result.se)
+        _add_per_dim("STAT", result.stat)
+    else:
+        if hasattr(result, "beta_main"):
+            _add_per_dim("BETA_MAIN", result.beta_main)
+            _add_per_dim("SE_MAIN", result.se_main)
+            _add_per_dim("STAT_MAIN", result.stat_main)
+        if hasattr(result, "beta_interact"):
+            _add_per_dim("BETA_INTERACT", result.beta_interact)
+            _add_per_dim("SE_INTERACT", result.se_interact)
+            _add_per_dim("STAT_INTERACT", result.stat_interact)
+        if hasattr(result, "stat_joint"):
+            _add_per_dim("STAT_JOINT", result.stat_joint)
+
+    # GxE / interaction models expose per-component p columns alongside p_joint.
+    p_main = getattr(result, "p_main", None)
+    p_interact = getattr(result, "p_interact", None)
+    if p_main is not None:
+        df_data["P_MAIN"] = p_main.cpu().numpy()
+    if p_interact is not None:
+        df_data["P_INTERACT"] = p_interact.cpu().numpy()
+
+    # Canonical p (joint p when present, else result.p)
+    df_data["P"] = p.cpu().numpy()
+    df_data["P_ADJ"] = p_adj.cpu().numpy()
+    df = pd.DataFrame(df_data)
 
     # Save
     out_path = args.output
@@ -3112,14 +3168,14 @@ def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
     logger.info("Results written to %s (%d variants)", tsv_path, len(df))
 
     # Summary
-    n_sig_raw = int((result.p < 5e-8).sum().item())
+    n_sig_raw = int((p < 5e-8).sum().item())
     n_sig_adj = int((p_adj < 0.05).sum().item())
     print(f"\nResults: {len(result)} variants tested")
     print(f"  Genome-wide significant (P < 5e-8): {n_sig_raw}")
     print(f"  Significant after {correction} (adj P < 0.05): {n_sig_adj}")
     print(f"  Output: {tsv_path}")
 
-    if result.inference_type == "post_selection":
+    if getattr(result, "inference_type", None) == "post_selection":
         print("  NOTE: P-values are post-selection (conditional on selected pseudo-QTNs)")
 
 
