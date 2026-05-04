@@ -114,7 +114,7 @@ Optional: zarr, h5py, pyarrow, seaborn
 
 ## Validation campaign
 
-A function-by-function validation campaign runs out of `docs/superpowers/` against `validation/pillar-{A,B,C,D}` branches. Pillars A (coverage audit + tiered fill) and B (external reference-tool comparisons) are complete; C (CLI smoke matrix) and D (reproducibility audit) are pending.
+A function-by-function validation campaign runs out of `docs/superpowers/` against `validation/pillar-{A,B,C,D}` branches. Pillars A (coverage audit + tiered fill), B (external reference-tool comparisons), and C (CLI smoke matrix) are complete; D (reproducibility audit) is pending.
 
 - **Spec:** `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`
 - **Per-pillar plans:** `docs/superpowers/plans/2026-04-30-pillar-{A,B,C,D}-plan.md`
@@ -135,6 +135,9 @@ python3 scripts/build_tier_worklist.py --tier 1 --package linalg --output /tmp/w
 # All Pillar B external-reference comparisons (skipped by default; opt-in):
 pytest -m external
 
+# Pillar C CLI smoke matrix (skipped by default; opt-in):
+pytest -m cli_matrix
+
 # A single tool's harness end-to-end:
 bash validation/external/plink2/install.sh
 bash validation/external/plink2/fetch_data.sh
@@ -146,13 +149,15 @@ python3 validation/external/plink2/compare.py
 
 Every external-tool harness shell script sources `validation/external/_lib/preflight.sh` and asserts disk + RAM headroom before any download / install / run. This is the user's hard rule (spec §5.3) — no partial executions on insufficient resources.
 
-### Cumulative campaign findings: 9 V1 fix-now production fixes
+### Cumulative campaign findings: 13 V1 fix-now production fixes
 
 **Pillar A (8):** 3 unimplemented model stubs (`models.lmm_single`, `lmm_multi`, `lmm_multi_fit`), 1 unimplemented stats helper (`stats.calibrate.compare_pvalues`), 1 unimplemented optim solver (`optim.fisher_scoring.fisher_scoring_reml`), 1 zarr v3 API compat (`io.convert._write_zarr`), 2 silent shape-truncation guards in postgwas (`_ld_scores.compute_ld_scores`, `_clump.ld_clump`).
 
 **Pillar B (1):** `mr_egger` Bowden-2015 alignment (3 deviations: missing orientation flip, wrong overdispersion direction, normal vs Student's t for p-value). Post-fix agreement with TwoSampleMR R package: 5 sig figs.
 
-All 9 findings have separate fix commits + regression tests + ledger rows.
+**Pillar C (4):** `cli.glmm-scan` / `me-glmm-scan` / `survival-scan` crashed on a non-existent `linalg.grm` import (now `linalg.kinship.grm_vanraden`); `_apply_correction_and_save` couldn't handle multi-output result schemas (gxe / mvlmm / me-glmm); `cli.impute` crashed on reader-chunk tuple unpacking; `cli.lmm-scan --device cuda` left Y/X0 on CPU when K was on CUDA.
+
+All 13 findings have separate fix commits + regression tests + ledger rows.
 
 ## CLI Commands
 

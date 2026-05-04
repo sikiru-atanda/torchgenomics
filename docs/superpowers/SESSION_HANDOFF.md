@@ -4,10 +4,10 @@
 **Worktree:** `/home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/validation-pillar-A-coverage`
 **Active branch:** `validation/pillar-B-references`
 
-> **Status update 2026-05-04 (Pillar B close):**
-> Pillar B is now COMPLETE. All 11 external reference tools wired (GEMMA / GAPIT / GWASpoly rehoused + PLINK 2.0 + LDSC + TwoSampleMR + regenie + SAIGE + BOLT-LMM + SoyNAM + SoyMD). 1 V1-core F3 fix-now finding (mr_egger Bowden-2015 alignment). Both R4 reviewer tracks approved. Cumulative campaign F3 findings: 9 (Pillar A: 8 + Pillar B: 1). Full suite: 2738 passed, 419 skipped, 0 failed.
+> **Status update 2026-05-04 (Pillar C close):**
+> Pillars A, B, and C are now COMPLETE. **13 V1 fix-now production fixes** shipped from validation work. Both R4 reviewer tracks approved each pillar. Full suite: 2738 passed, 541 skipped (cli_matrix opt-in), 0 failed. Cumulative campaign F3 findings: 13 (Pillar A: 8 + Pillar B: 1 + Pillar C: 4).
 >
-> **Next pillar: C — End-to-end CLI smoke matrix.** Branch `validation/pillar-B-references` is ready for push + PR. Pillar C should branch off latest master after Pillars A and B are merged (or off Pillar B's tip if not yet merged).
+> **Next pillar: D — Reproducibility audit.** For each committed reference fixture (`gemma_demo/output/`, `gapit_demo/output/`, `benchmark/gwaspoly_results/`), invoke the matching Pillar B harness and diff the *fresh* tool output against the *committed* fixture (not against TorchGWAS). Drift = `fixture-drift` finding (distinct from `torchgwas-divergence`). Branch off Pillar C's tip until master catches up.
 
 ---
 

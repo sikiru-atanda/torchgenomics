@@ -148,14 +148,27 @@ Pillar A surfaced 8 V1-core / V1-platform fix-now findings (5 unimplemented stub
 - MR weighted-median SE — parametric bootstrap (TG) vs non-parametric (TwoSampleMR).
 - SAIGE β corr 0.973 / -log10p 0.943 — PCG (SAIGE) vs PQL (TG) for null model fit.
 
-## 6. Pillar C — End-to-end CLI smoke matrix (outline)
+## 6. Pillar C — End-to-end CLI smoke matrix
 
-Detailed at the Pillar B → C checkpoint. Sketch:
-- `tests/test_cli_matrix.py` — parametrized over `(subcommand, format, device)`.
-- Subcommands enumerated by introspecting `torchgwas.cli:main` subparsers — new subcommands picked up automatically.
-- Inputs from `tests/fixtures/tiny.*` (already committed; small enough to run all combinations in CI).
-- Per-cell assertions: exit 0, expected output files exist, p-values in [0, 1], output row count matches input.
-- GPU subset gated on `torch.cuda.is_available()` — uses the on-machine RTX 2000 Ada when available.
+**Status: COMPLETE (2026-05-04).** All 40 CLI subcommands wired into a parametric smoke matrix. Both R4 reviewer tracks approved.
+
+**Implementation:**
+- `tests/cli_matrix_spec.py` — `CELL_SPEC` dict with one entry per CLI subcommand (40 entries; coverage parity test asserts no drift vs live `--help`).
+- `tests/test_cli_matrix.py` — parametrized executor over `(subcommand, format, device)`; per-kind output assertions (scan TSV p-columns in [0,1], JSON schema for validate, magic bytes for converted files, dosage tensor for impute outputs, etc.).
+- New `cli_matrix` pytest marker registered in `pyproject.toml`; default suite (`pytest tests/`) skips the matrix unless opted-in via `pytest -m cli_matrix`.
+- `tests/conftest.py` extended `pytest_collection_modifyitems` hook to gate both `external` and `cli_matrix` markers.
+
+**Matrix shape:** 122 tests (108 CPU cells + 13 GPU cells gated on `torch.cuda.is_available()` + 1 coverage self-check). 114 passed, 8 skipped (documented `skip_reason`: `dosage-call` needs updog R + AD-format VCF; `phase-poly` needs PolyOrigin Julia binary; `ldsc` and `ldsc-rg` underdetermined on m=20 / n=10 tiny fixture), 0 failed.
+
+**4 V1-platform F3 fix-now findings surfaced:**
+| # | Finding | Fix commit |
+|---|---|---|
+| 10 | `glmm-scan` / `me-glmm-scan` / `survival-scan` crashed on `from .linalg.grm import grm` (non-existent module) | `ccf1132` |
+| 11 | `gxe-scan` / `mvlmm-scan` / `me-glmm-scan` multi-output result schema bug in `_apply_correction_and_save` | `ccf1132` |
+| 12 | `impute` crashed on `_load_genotype_matrix` mis-unpacking reader chunks (`chunk.dosage` vs tuple) | `adc7b04` |
+| 13 | `lmm-scan --device cuda` crashed: `_cmd_lmm_scan_single` left Y/X0 on CPU when K was on CUDA | `adc7b04` |
+
+**Cumulative campaign F3 fix-now findings: 13** (Pillar A: 8, Pillar B: 1, Pillar C: 4).
 
 ## 7. Pillar D — Reproducibility audit (outline)
 
