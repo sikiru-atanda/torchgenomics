@@ -86,6 +86,8 @@ markers = [
     "golden: golden reference tests against GEMMA/GAPIT/GWASpoly",
     "slow: tests that take more than 30 seconds",
     "gpu: tests that require a CUDA device",
+    "external: tests that install + run external reference tools (Pillar B)",
+    "timeout: per-test or per-module timeout (requires pytest-timeout)",
 ]
 
 [tool.ruff]

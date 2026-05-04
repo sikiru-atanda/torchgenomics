@@ -112,6 +112,36 @@ torch (>=2.0), numpy, pandas, scipy, matplotlib, requests (>=2.28)
 
 Optional: zarr, h5py, pyarrow, seaborn
 
+## Validation campaign
+
+A function-by-function validation campaign runs out of `docs/superpowers/` against `validation/pillar-{A,B,C,D}-coverage` branches. Pillar A (coverage audit + tiered fill) is complete on `validation/pillar-A-coverage`.
+
+- **Spec:** `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`
+- **Per-pillar plans:** `docs/superpowers/plans/2026-04-30-pillar-{A,B,C,D}-plan.md`
+- **Findings ledger:** `docs/validation_findings.md` — every divergence with F3 classification + resolution.
+- **Reviewer prompt templates:** `docs/superpowers/reviewer_prompts/{code_review,rerun_verification}.md`
+
+Re-run a coverage audit (which symbols have direct tests):
+
+```bash
+python3 scripts/audit_public_coverage.py
+# Output: docs/validation_findings/coverage_audit.json with per-symbol rows + summary.
+```
+
+Generate the per-package worklist for a given tier (consumed by Pillar B/C/D fill subagents):
+
+```bash
+python3 scripts/build_tier_worklist.py --tier 1 --package linalg --output /tmp/worklist.json
+```
+
+When Pillar B is wired, run external-reference comparisons:
+
+```bash
+pytest -m external
+```
+
+Pillar A delivered 5 V1-core fix-now production fixes surfaced from validation work (3 unimplemented model stubs, 1 unimplemented stats helper, 1 unimplemented optim solver) plus 3 V1-platform fix-now fixes (zarr v3 API compat, 2 silent shape-truncation guards in postgwas LD scoring + clumping). All 8 are recorded in the findings ledger.
+
 ## CLI Commands
 
 ```bash

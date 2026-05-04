@@ -120,6 +120,20 @@ Before each `fetch_data.sh` and each `run_<tool>.sh`:
 
 This is the user's hard rule — encoded as a contract, not a comment.
 
+### 5.4 Pillar B execution order (post Pillar A close)
+
+Pillar A surfaced 8 V1-core / V1-platform fix-now findings (5 unimplemented stubs + 3 silent-truncation guards). With those production paths now correct, Pillar B comparisons are unblocked for the model classes that depended on them. Recommended execution order:
+
+1. **GEMMA / GAPIT / GWASpoly** — already-wired comparisons (pre-Pillar-A). Re-run on the `validation/external/<tool>/` harness layout. Confirms no regression from the 8 Pillar-A fixes.
+2. **PLINK 2.0** — `BinaryGLM`, `linalg.kinship` (`--make-rel`), `ld.r2_pairwise` (`--r2`), `ld_blocks` (`--blocks`). 1000G chr22.
+3. **LDSC** — `postgwas.ldsc_h2`, `ldsc_rg`, `s_ldsc`. GIANT 2018 height + UKB LD scores. **Highest-leverage Pillar B test** because LDSC is the most numerically subtle reference.
+4. **regenie** — `lmm-scan`, `BinaryGLMM` (Step 1 + Step 2 SPA). UK Biobank-format synthetic + 1000G chr22.
+5. **SAIGE** — `BinaryGLMM`, `OrdinalGLMM`, `survival-scan`. Heavy install; preflight check critical.
+6. **TwoSampleMR (R)** — `postgwas.mr.{ivw,egger,weighted_median,mr_presso}`. OpenGWAS sumstats.
+7. **BOLT-LMM** — `lmm-scan` (LOCO), `linalg.kinship`. Closed binary; install via upstream prebuilt.
+8. **SoyNAM** — within-family LMM (Phase 23) regression equivalence vs. published QTL hits. Diploid soybean ag panel via R `install.packages("SoyNAM")`.
+9. **SoyMD** — multi-omics platform for `multiomics.{mediate_lmm,scan_mediation,mkernel_h2,build_expression_kernel,eigenmt_adjust}` Phase-49 mediation/eQTL/heritability tests. **Currently no external comparison wired for the multiomics module — SoyMD fills that gap.**
+
 ## 6. Pillar C — End-to-end CLI smoke matrix (outline)
 
 Detailed at the Pillar B → C checkpoint. Sketch:
