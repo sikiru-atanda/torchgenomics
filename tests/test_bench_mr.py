@@ -301,10 +301,15 @@ def test_bench_egger_pvalue_slope_matches_scipy():
     exposure, outcome, bx, by, _, sy = _make_benchmark_data()
     result = mr_egger(exposure, outcome)
 
-    # Compute p from our beta_hat and se via scipy
+    # MR-Egger uses Student's t with K-2 d.f. (Bowden 2015 / TwoSampleMR)
+    # rather than the standard normal — see torchgwas.postgwas._mr.mr_egger.
+    # Validate the p-value against scipy.stats.t.
+    K = result.n_instruments
+    df = K - 2
     z = result.beta_hat / result.se
-    p_ref = 2.0 * sp_stats.norm.sf(abs(z))
+    p_ref = 2.0 * sp_stats.t.sf(abs(z), df)
 
     assert abs(result.p_value - p_ref) < 1e-10, (
-        f"Egger slope p-value {result.p_value} != scipy {p_ref}"
+        f"Egger slope p-value {result.p_value} != scipy.t.sf {p_ref} "
+        f"(df={df})"
     )

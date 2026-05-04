@@ -224,38 +224,82 @@ def mr_egger(exposure: SumStats, outcome: SumStats) -> MRResult:
     se_y = outcome.se.to(torch.float64)
     K = bx.shape[0]
 
+    # ── Bowden-2015 orientation step ─────────────────────────────────────────
+    # MR-Egger requires that all exposure betas are positive so the intercept
+    # `alpha` measures average directional pleiotropy with a single, well-
+    # defined sign convention. Reference: Bowden, Davey Smith & Burgess
+    # (2015) "Mendelian randomization with invalid instruments..." §3.
+    # TwoSampleMR's `mr_egger_regression` (MRC-IEU) does the same flip.
+    # We replicate the formulation exactly:
+    #     by_j  ← by_j * sign(bx_j)
+    #     bx_j  ← |bx_j|
+    # (zero exposure betas are treated as positive — same as TwoSampleMR's
+    # `sign0` helper).
+    sgn = torch.where(bx == 0, torch.ones_like(bx), torch.sign(bx))
+    bx_oriented = bx * sgn  # = abs(bx)
+    by_oriented = by * sgn
+
     w = 1.0 / (se_y**2)  # (K,)
 
-    # Design matrix X = [1, bx]  (K x 2)
-    ones = torch.ones_like(bx)
-    X = torch.stack([ones, bx], dim=1)  # (K, 2)
+    # Design matrix X = [1, bx_oriented]  (K x 2)
+    ones = torch.ones_like(bx_oriented)
+    X = torch.stack([ones, bx_oriented], dim=1)  # (K, 2)
 
     # WLS: (X'WX)^{-1} X'Wy
     W = torch.diag(w)  # (K, K)
     XtWX = X.T @ W @ X  # (2, 2)
-    XtWy = X.T @ (w * by)  # (2,)
+    XtWy = X.T @ (w * by_oriented)  # (2,)
     coef = torch.linalg.solve(XtWX, XtWy)  # (2,)
-    alpha_hat = coef[0].item()  # intercept
+    alpha_hat = coef[0].item()  # intercept (directional pleiotropy)
     beta_hat = coef[1].item()  # slope (causal estimate)
 
     # Residuals and sigma^2 estimate
     fitted = X @ coef  # (K,)
-    resid = by - fitted
-    q = (w * resid**2).sum().item()  # Cochran's Q
+    resid = by_oriented - fitted
 
-    # Degrees of freedom for Egger = K - 2
-    df = K - 2
-    sigma2 = max(1.0, q / df)  # overdispersion factor
+    # ── Bowden-2015 SE convention (matches TwoSampleMR exactly) ──────────────
+    # `lm()` in R reports SEs scaled by sigma_hat = sqrt(RSS / (K - 2)). The
+    # MR-Egger convention only deflates the SE when sigma_hat < 1 (under-
+    # dispersion); when sigma_hat > 1 (overdispersion), SE is left at the
+    # `lm()` default. TwoSampleMR codes this as `coef[, 2] / min(1, sigma)`,
+    # which is equivalent to `coef[, 2] * max(1, 1 / sigma)`.
+    # We compute sigma_hat = sqrt(RSS / (K - 2)) where RSS is the *unweighted*
+    # weighted residual sum of squares — i.e. the residuals at the WLS fit
+    # divided by their se_y so that under no overdispersion they are i.i.d.
+    # standard normal in expectation. This is what `lm(weights=1/se_y^2)`
+    # produces internally.
+    df = max(K - 2, 1)
+    rss_w = (w * resid**2).sum().item()  # weighted SSR (Cochran's Q)
+    sigma_hat = (rss_w / df) ** 0.5  # = `summary(lm(...))$sigma`
 
-    # Covariance of coefficients: sigma^2 * (X'WX)^{-1}
+    # Default SE from WLS is sigma^2 * (X'WX)^{-1}; lm() reports the diagonal
+    # square-roots. We compute the same and then apply the divide-by-min(1,σ)
+    # rule used by Bowden-2015 / TwoSampleMR so we agree across both paths.
     XtWX_inv = torch.linalg.inv(XtWX)
-    cov = sigma2 * XtWX_inv
+    cov_default = (sigma_hat**2) * XtWX_inv
 
-    se_alpha = cov[0, 0].sqrt().item()
-    se_beta = cov[1, 1].sqrt().item()
+    se_alpha_default = cov_default[0, 0].sqrt().item()
+    se_beta_default = cov_default[1, 1].sqrt().item()
 
-    p_beta = _two_sided_p_scalar(beta_hat / se_beta) if se_beta > 0 else 1.0
-    p_alpha = _two_sided_p_scalar(alpha_hat / se_alpha) if se_alpha > 0 else 1.0
+    sigma_clip = min(1.0, sigma_hat) if sigma_hat > 0 else 1.0
+    se_alpha = se_alpha_default / sigma_clip
+    se_beta = se_beta_default / sigma_clip
+
+    # ── p-values via t-distribution with df = K - 2 ──────────────────────────
+    # Bowden-2015 / TwoSampleMR use Student's t with K-2 d.f. (textbook
+    # small-sample WLS inference). The previous TorchGWAS implementation
+    # used the standard normal, which is the K → ∞ limit and inflates the
+    # p-value for typical MR scans (K = 20–100). We switch to t for
+    # alignment.
+    from scipy.stats import t as _student_t  # lazy import; scipy is a
+                                              # required runtime dep already.
+    p_beta = (
+        2.0 * _student_t.sf(abs(beta_hat / se_beta), df) if se_beta > 0 else 1.0
+    )
+    p_alpha = (
+        2.0 * _student_t.sf(abs(alpha_hat / se_alpha), df)
+        if se_alpha > 0 else 1.0
+    )
 
     # Egger I-squared: instrument strength after measurement error.
     # I^2_GX = 1 - sum(se_x^2) / sum((bx - mean(bx))^2)
