@@ -65,7 +65,7 @@ pytest tests/test_external_plink2.py -v -m external
 | GAPIT | already wired; rehouse pending | yes (golden marker) | — |
 | GWASpoly | already wired; rehouse pending | yes (golden marker) | — |
 | PLINK 2.0 | **done (B1)** — install/fetch/run/compare scripts + 3-comparison harness on MDP | yes (`tests/test_external_plink2.py`, marker=`external`) | β corr = 1.000, GRM off-diag corr = 0.99995, r² corr = 1.000; all pass observed-then-floored tolerances. Documented PLINK-vs-TG SE parameterization mismatch (n−c−1 vs n−c) and the cov-vs-VanRaden normalizer scalar. No F3 fixes required. |
-| LDSC | pending | pending | — |
+| LDSC | **done (B2)** — install/fetch/run/compare scripts + h²(×2) + rg comparison on simulated chr22 sumstats | yes (`tests/test_external_ldsc.py`, marker=`external`) | h² agreement 2–4e-3, rg agreement 3.5e-3 (within spec §16). Documented IRWLS-vs-single-pass WLS parameterization mismatch on intercept (\|Δ\| ~0.1–0.3); h²/rg unaffected. F3 deferred to a Phase 37 follow-up — IRWLS implementation in `ldsc_h2` would close the intercept gap. |
 | TwoSampleMR | pending | pending | — |
 | regenie | pending | pending | — |
 | SAIGE | pending | pending | — |
