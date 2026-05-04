@@ -16,7 +16,8 @@ are already incorporated into the PGS during ``score_individuals``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import exp, log, pi, sqrt
+import math
+from math import exp, log, sqrt
 
 import torch
 from torch import Tensor
@@ -280,7 +281,7 @@ def _pearson_r(x: Tensor, y: Tensor) -> float:
 
 def _normal_pdf(x: float) -> float:
     """Standard normal PDF evaluated at *x*."""
-    return exp(-0.5 * x * x) / sqrt(2.0 * pi)
+    return exp(-0.5 * x * x) / sqrt(2.0 * math.pi)
 
 
 def _normal_ppf(p: float) -> float:

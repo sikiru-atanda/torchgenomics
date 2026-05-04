@@ -345,13 +345,18 @@ class TestFisherScoringReml:
 
     def test_log_likelihood_close_to_emma(self):
         """Fisher scoring and EMMA grid + Brent should converge to within
-        the same neighbourhood on a well-conditioned tiny problem."""
+        the same neighbourhood on a well-conditioned tiny problem.
+
+        Tolerance is observed-then-floored per spec section 4.3 (Pillar A
+        T7 reviewer note): on this fixture (N=30) the reproduction shows
+        |ll_fs - ll_emma| ~= 2.1e-5, well below the prior >= 1.0-unit
+        floor. Tightening to 1e-4 (~5x the observed gap) catches any
+        future regression that loses accuracy without being so tight as
+        to flake on numerical noise."""
         Y, X0, evs = _tiny_single_trait_rotated()
         _, _, ll_fs = fisher_scoring_reml(Y, X0, evs, max_iter=100, lam_init=1.0)
         _, _, ll_emma, _ = emma_reml_single(Y, X0, evs, n_grid=50)
-        # Fisher scoring may settle near a stationary point that is also EMMA's
-        # optimum; relative tolerance 1% is generous for tiny n=30.
-        assert abs(ll_fs - ll_emma) < 1.0 + 0.01 * max(abs(ll_emma), 1.0)
+        assert abs(ll_fs - ll_emma) < 1e-4
 
 
 # ---------------------------------------------------------------------------

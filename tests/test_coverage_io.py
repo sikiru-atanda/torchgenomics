@@ -295,8 +295,14 @@ class TestConvert:
 
     def test_edge_bed_to_zarr(self, tmp_path):
         """Edge: convert to zarr (different code path that requires the
-        optional zarr dep). Skip cleanly if zarr is unavailable."""
-        zarr = pytest.importorskip("zarr")  # noqa: F841
+        optional zarr dep). Skip cleanly if zarr is unavailable.
+
+        Closes the loop by reading the produced store back: the ``dosage``
+        array under the root group must materialize and have the same shape
+        as the source BED. Per the F3 fix in 0dc5539, ``convert`` writes
+        the dosage matrix at the root key ``dosage`` (zarr v3
+        ``create_array`` path; zarr v2 ``create_dataset`` fallback)."""
+        zarr = pytest.importorskip("zarr")
         out_path = tmp_path / "out.zarr"
         convert(
             str(FIXTURES / "tiny.bed"),
@@ -305,6 +311,19 @@ class TestConvert:
         )
         # Zarr writes a directory store
         assert out_path.exists()
+
+        # Round-trip read-back: the root group exposes a ``dosage`` array
+        # of shape (n_samples, n_variants). We assert shape > 0 in both
+        # dimensions and verify n_samples / n_variants attrs match.
+        g = zarr.open_group(str(out_path), mode="r")
+        assert "dosage" in g
+        dosage = g["dosage"]
+        assert dosage.ndim == 2
+        n, m = dosage.shape
+        assert n > 0 and m > 0
+        # Attribute round-trip (set by convert._write_zarr_dosage_only)
+        assert g.attrs["n_samples"] == n
+        assert g.attrs["n_variants"] == m
 
     def test_error_unsupported_format(self, tmp_path):
         """Error: ``output_format`` that is not in {bed, zarr, vcf, bgen}

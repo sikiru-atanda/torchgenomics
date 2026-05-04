@@ -6,7 +6,7 @@ Bar (Pillar A spec section 4.3 Tier 2):
 - ``HAS_NATIVE_*`` constants: type=bool + cross-check against the
   corresponding ``torchgwas._native`` extension import.
 
-Covers 10 public symbols:
+Covers 9 public symbols:
 
 - ``torchgwas.ld._plink_compat.PLINKBlock`` (dataclass)
 - ``torchgwas.ld._blocks.PairwiseLD`` (dataclass)
@@ -17,21 +17,21 @@ Covers 10 public symbols:
 - ``torchgwas.pgs.diagnostics.HAS_NATIVE_ESS`` (bool constant)
 - ``torchgwas.pgs.ldpred2.HAS_NATIVE_LDPRED2`` (bool constant)
 - ``torchgwas.pgs.prscs.HAS_NATIVE_PRSCS`` (bool constant)
-- ``torchgwas.pgs.validation.pi`` (stray ``math.pi`` re-export from
-  ``from math import exp, log, pi, sqrt`` — smoke-tested; cleanup queued
-  for T12)
+
+Removed (post-campaign cleanup): ``torchgwas.pgs.validation.pi`` was a
+stray ``from math import ... pi ...`` re-export at module top-level with
+no external callers. Removed from the import line in ``pgs/validation.py``
+and the one call site rewritten to use ``math.pi`` inline; the smoke
+test (``TestPgsValidationPi``) is gone with the symbol.
 """
 
 from __future__ import annotations
-
-import math
 
 import pytest
 import torch
 
 from torchgwas.ld import PairwiseLD, PLINKBlock
 from torchgwas.multiomics import GeneSetMediationResult
-from torchgwas.pgs import validation as pgs_validation
 from torchgwas.pgs.ct import HAS_NATIVE_CT
 from torchgwas.pgs.diagnostics import HAS_NATIVE_ESS
 from torchgwas.pgs.ldpred2 import HAS_NATIVE_LDPRED2
@@ -498,33 +498,10 @@ class TestHasNativePrscs:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.validation.pi
+# torchgwas.pgs.validation.pi  --  REMOVED post-campaign
 # ---------------------------------------------------------------------------
-
-
-class TestPgsValidationPi:
-    """Investigation: ``torchgwas.pgs.validation.pi`` is reachable because
-    ``validation.py`` imports ``from math import exp, log, pi, sqrt`` at
-    module top-level. The auditor flagged it as a public symbol because
-    nothing imports ``pi`` *from* ``torchgwas.pgs.validation``; it is a
-    stray re-export with no callers.
-
-    Decision: smoke-test that it equals ``math.pi`` and queue cleanup
-    (changing the import to ``from math import exp, log, sqrt`` and
-    using ``math.pi`` inline at the one call site that uses it) for T12.
-    Not severe enough for an F3 fix-now: it's correct, just cluttered.
-    """
-
-    def test_is_math_pi(self):
-        """Re-exported ``pi`` equals the canonical ``math.pi``."""
-        # NOTE: ``pgs.validation.pi`` is a stray top-level
-        # ``from math import ... pi ...`` re-export. Used in the module
-        # only inside an internal logistic-fit routine; nothing imports
-        # it from this module path. Cleanup queued for T12 — not F3
-        # because the value is correct and the symbol is unused
-        # externally.
-        assert pgs_validation.pi == math.pi
-
-    def test_is_float(self):
-        """Type contract: ``pi`` is a Python float."""
-        assert isinstance(pgs_validation.pi, float)
+# The stray ``from math import ... pi ...`` re-export was cleaned up; the
+# import line in ``pgs/validation.py`` is now ``from math import exp, log,
+# sqrt`` plus ``import math``, and the one inline use was rewritten as
+# ``math.pi``. No external callers existed. The corresponding
+# ``TestPgsValidationPi`` smoke test was deleted with the symbol.

@@ -8,7 +8,13 @@ Symbols covered:
 - torchgwas.annotate.NCBIError (exception class)
 - torchgwas.annotate.AnnotatedGene (dataclass)
 - torchgwas.annotate.AnnotatedHit (dataclass)
-- torchgwas.cli.TYPE_CHECKING (stdlib re-export, smoke only)
+
+Removed (post-campaign cleanup): ``torchgwas.cli.TYPE_CHECKING`` was a
+``typing.TYPE_CHECKING`` re-export at module top-level. The cli.py
+import was renamed to ``from typing import TYPE_CHECKING as
+_TYPE_CHECKING`` so the symbol no longer surfaces in audit
+public-symbol enumeration; the smoke test (``TestCliTypeChecking``)
+was deleted with the symbol.
 """
 
 from __future__ import annotations
@@ -16,7 +22,6 @@ from __future__ import annotations
 import pytest
 
 from torchgwas.annotate import AnnotatedGene, AnnotatedHit, NCBIError
-from torchgwas.cli import TYPE_CHECKING
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -95,22 +100,8 @@ class TestAnnotatedHit:
         assert "AnnotatedHit" in s
 
 
-class TestCliTypeChecking:
-    """`torchgwas.cli.TYPE_CHECKING` is `typing.TYPE_CHECKING` re-imported.
-
-    This is a stdlib re-export used at module top-level for type-only imports
-    that should not run at import time. The Tier-3 smoke check is that the
-    constant resolves to the canonical False at runtime (so type-only imports
-    are skipped) and is the same object as `typing.TYPE_CHECKING`.
-
-    Queued for T12: consider removing this re-export from cli.py if it has
-    no callers, since it is identical to the stdlib symbol.
-    """
-
-    def test_is_false_at_runtime(self):
-        assert TYPE_CHECKING is False
-
-    def test_is_typing_TYPE_CHECKING(self):
-        import typing
-
-        assert TYPE_CHECKING is typing.TYPE_CHECKING
+# TestCliTypeChecking removed post-campaign: ``torchgwas.cli.TYPE_CHECKING``
+# was a stdlib re-export at module top-level. The cli.py import is now
+# ``from typing import TYPE_CHECKING as _TYPE_CHECKING`` so the symbol
+# no longer appears in public-symbol enumeration. Conditional type-only
+# imports inside cli.py still use the renamed binding correctly.

@@ -497,14 +497,14 @@ class TestComputeLdScores:
             assert s == pytest.approx(float(m), abs=0.01)
 
     def test_chr_labels_length_mismatch_errors(self):
-        """Passing chr_labels with the wrong length is a programmer bug; the
-        loop indexes ``pos`` and ``chr_labels`` by SNP, so a too-short list
-        raises IndexError before producing nonsense scores."""
+        """Passing chr_labels with the wrong length is a programmer bug.
+        Post commit 563df33, ``compute_ld_scores`` validates lengths upfront
+        and raises ``ValueError`` containing 'must equal'."""
         torch.manual_seed(2)
         G = torch.randn(50, 10, dtype=torch.float64)
         pos = list(range(0, 10 * 1000, 1000))
         chr_labels = ["1"] * 5  # too short
-        with pytest.raises((IndexError, ValueError, RuntimeError)):
+        with pytest.raises(ValueError, match="must equal"):
             compute_ld_scores(G, pos, chr_labels, window_kb=100.0)
 
 
@@ -699,15 +699,16 @@ class TestLdClump:
 
     def test_p_g_size_mismatch_errors(self):
         """Passing p and G with mismatched SNP counts is a programmer bug.
-        The function indexes ``p`` and chromosome groupings by SNP, so a
-        size mismatch fails with one of IndexError / ValueError / RuntimeError."""
+        Post commit 563df33, ``ld_clump`` validates the SNP dimension upfront
+        and raises ``ValueError`` whose message asserts the SNP dimension
+        contract ('must agree on the SNP dimension')."""
         torch.manual_seed(2)
         n = 50
         G = torch.randn(n, 10, dtype=torch.float64)
         p = torch.linspace(1e-12, 1e-3, 5, dtype=torch.float64)  # too short
         pos = list(range(0, 10 * 1000, 1000))
         chr_labels = ["1"] * 10
-        with pytest.raises((IndexError, ValueError, RuntimeError)):
+        with pytest.raises(ValueError, match="must agree on the SNP dimension"):
             ld_clump(p, G, pos, chr_labels, p_threshold=1e-2)
 
 
