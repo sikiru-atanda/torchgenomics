@@ -93,6 +93,7 @@ def lbfgs_reml(
     best_ll = float("-inf")
     best_Vg = None
     best_Ve = None
+    converged = False  # Post-V1 plumbing: explicit optimizer-side flag
 
     optimizer = torch.optim.LBFGS(
         [Lg_param, Le_param],
@@ -177,8 +178,13 @@ def lbfgs_reml(
             logger.info(
                 "LBFGS-autograd converged in %d outer iterations, ll=%.6f", outer_it, ll,
             )
+            converged = True
             break
     else:
         logger.warning("LBFGS-autograd did not converge in %d outer iterations.", max_iter)
 
+    # Stash the converged flag in the last trace entry so wrappers can
+    # plumb it through without breaking the existing 4-tuple contract.
+    if trace:
+        trace[-1]["converged"] = converged
     return best_Vg.detach(), best_Ve.detach(), best_ll, trace

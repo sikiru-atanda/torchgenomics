@@ -49,21 +49,37 @@ def _build_null_fit(
 
     Computes M00, b0, and per-individual W = (Vg ⊗ d_i + Ve)^{-1} via
     the standard mvLMM null-quantities helper.
+
+    The ``converged`` flag is taken **directly from the optimizer's
+    self-reported flag** (stashed by ``pxem_nr_mvreml`` / ``lbfgs_reml``
+    in ``trace[-1]["converged"]``) when present, falling back to the
+    legacy trace-tail relative-ll heuristic for backward compatibility
+    with optimizer outputs that pre-date the post-V1 flag-plumbing
+    follow-up. The plumbed flag is more reliable: the trace-tail
+    heuristic returns False when the optimizer stops at exactly
+    ``max_iter`` even if the optimizer-side convergence test passed on
+    the final step.
     """
     from .multi_trait_lmm import mvlmm_null_quantities
 
     Y_rot = _ensure_2d(Y_rot)
     null_q = mvlmm_null_quantities(Vg, Ve, Y_rot, X0_rot, eigenvalues)
 
-    converged = (
-        len(trace) > 0
-        and len(trace) < max_iter
-        and (
-            len(trace) < 2
-            or abs(trace[-1].get("ll", 0.0) - trace[-2].get("ll", 0.0))
-            < tol * max(abs(trace[-1].get("ll", 1.0)), 1.0)
+    if trace and "converged" in trace[-1]:
+        # Optimizer-plumbed flag (preferred path).
+        converged = bool(trace[-1]["converged"])
+    else:
+        # Legacy trace-tail heuristic (kept for backward compat with any
+        # caller that constructs a hand-rolled trace).
+        converged = (
+            len(trace) > 0
+            and len(trace) < max_iter
+            and (
+                len(trace) < 2
+                or abs(trace[-1].get("ll", 0.0) - trace[-2].get("ll", 0.0))
+                < tol * max(abs(trace[-1].get("ll", 1.0)), 1.0)
+            )
         )
-    )
 
     return NullFit(
         Vg=Vg,

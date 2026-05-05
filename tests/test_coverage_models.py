@@ -594,6 +594,86 @@ class TestFitMvlmmNullAiReml:
 
 
 # ---------------------------------------------------------------------------
+# Post-V1 follow-up: optimizer-side converged flag plumbing
+# ---------------------------------------------------------------------------
+
+
+class TestConvergedFlagPlumbing:
+    """The ``NullFit.converged`` flag is plumbed directly from the
+    optimizer's self-reported flag (stashed in ``trace[-1]["converged"]``)
+    instead of inferred from the trace-tail relative-ll change.
+
+    The trace-tail heuristic returned False when the optimizer stopped
+    at exactly ``max_iter`` even if the optimizer's own convergence
+    test passed on the final step. The plumbed flag is more reliable.
+    """
+
+    def test_plumbed_flag_lbfgs_matches_optimizer(self):
+        """``fit_mvlmm_null_lbfgs.converged`` matches
+        ``trace[-1]["converged"]`` from ``lbfgs_reml`` directly."""
+        from torchgwas.optim.lbfgs_reml import lbfgs_reml
+
+        Y_rot, X0_rot, eigenvalues = _tiny_mvlmm_inputs()
+        Vg, Ve, ll, trace = lbfgs_reml(
+            Y_rot, X0_rot, eigenvalues, n_traits=2, max_iter=100,
+        )
+        opt_converged = trace[-1].get("converged", None)
+        assert opt_converged is not None, (
+            "lbfgs_reml should stash converged in trace[-1]"
+        )
+
+        nf = fit_mvlmm_null_lbfgs(
+            Y_rot, X0_rot, eigenvalues, max_iter=100,
+        )
+        # Both wrapper and optimizer agree on convergence status (we
+        # can't compare bit-equal due to RNG-free deterministic behavior,
+        # but we can run twice and compare).
+        nf2 = fit_mvlmm_null_lbfgs(
+            Y_rot, X0_rot, eigenvalues, max_iter=100,
+        )
+        assert nf.converged == nf2.converged
+        # And it matches what the underlying optimizer reports.
+        assert nf2.converged == bool(
+            nf2.optimizer_trace[-1].get("converged", False)
+        )
+
+    def test_plumbed_flag_aireml_matches_optimizer(self):
+        """``fit_mvlmm_null_ai_reml.converged`` matches
+        ``trace[-1]["converged"]`` from ``pxem_nr_mvreml`` directly."""
+        Y_rot, X0_rot, eigenvalues = _tiny_mvlmm_inputs()
+
+        nf = fit_mvlmm_null_ai_reml(
+            Y_rot, X0_rot, eigenvalues, max_iter=100, em_iters=5,
+        )
+        # The plumbed flag should match what the optimizer stashed.
+        opt_converged = nf.optimizer_trace[-1].get("converged", None)
+        assert opt_converged is not None, (
+            "pxem_nr_mvreml should stash converged in trace[-1]"
+        )
+        assert nf.converged == bool(opt_converged)
+
+    def test_max_iter_one_reports_not_converged(self):
+        """With max_iter=1, the optimizer cannot have run its delta-
+        check (which needs at least 2 entries in the trace). The
+        plumbed flag should report False — even though the legacy
+        trace-tail heuristic might also report False, the test gates
+        the behavioral contract on the plumbed value."""
+        from torchgwas.optim.lbfgs_reml import lbfgs_reml
+
+        Y_rot, X0_rot, eigenvalues = _tiny_mvlmm_inputs()
+        # max_iter=1: only one outer step → no delta-check possible.
+        Vg, Ve, ll, trace = lbfgs_reml(
+            Y_rot, X0_rot, eigenvalues, n_traits=2, max_iter=1,
+        )
+        assert trace[-1].get("converged", None) is False
+
+        nf = fit_mvlmm_null_lbfgs(
+            Y_rot, X0_rot, eigenvalues, max_iter=1,
+        )
+        assert nf.converged is False
+
+
+# ---------------------------------------------------------------------------
 # _dispatch.native_disabled
 # ---------------------------------------------------------------------------
 

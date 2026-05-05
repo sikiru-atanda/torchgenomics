@@ -520,6 +520,7 @@ def pxem_nr_mvreml(
     best_ll = float("-inf")
     best_Vg = Vg.clone()
     best_Ve = Ve.clone()
+    converged = False  # Post-V1 plumbing: explicit optimizer-side flag
 
     # Phase 1: EM warm-start
     for it in range(em_iters):
@@ -558,6 +559,7 @@ def pxem_nr_mvreml(
                 "PX-EM+NR converged in %d iterations (EM=%d, NR=%d), ll=%.6f",
                 it, em_iters, it - em_iters, ll,
             )
+            converged = True
             break
 
         # Try Newton-Raphson step
@@ -625,6 +627,7 @@ def pxem_nr_mvreml(
                             best_Ve = Ve.clone()
                         if (em_it > it + 1 and
                                 abs(ll - trace[-2]["ll"]) < tol * max(abs(ll), 1.0)):
+                            converged = True
                             break
                         Vg, Ve = _em_step(
                             Py, eigenvalues, W, X0_rot, XtWX_inv, Vg, Ve, n, c,
@@ -639,4 +642,8 @@ def pxem_nr_mvreml(
     else:
         logger.warning("PX-EM+NR did not converge in %d iterations.", max_iter)
 
+    # Stash the converged flag in the last trace entry so wrappers can
+    # plumb it through without breaking the existing 4-tuple contract.
+    if trace:
+        trace[-1]["converged"] = converged
     return best_Vg.detach(), best_Ve.detach(), best_ll, trace
