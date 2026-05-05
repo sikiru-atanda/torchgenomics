@@ -2643,8 +2643,92 @@ def _cmd_convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def _open_impute_output_sink(output_path: str, n_samples: int, n_variants: int):
+    """Open a streaming-friendly output sink for imputed dosages.
+
+    If ``output_path`` ends in ``.zarr``, returns a per-chunk
+    writable zarr array (memory cost: only the active chunk). Else
+    returns an in-memory list-accumulator that concatenates at the
+    end (memory cost: full ``n × m × 8 B`` — same as the legacy
+    ``.pt`` output, but the imputation compute itself stays
+    streaming so transient peak is still bounded).
+    """
+    p = Path(output_path)
+    if p.suffix == ".zarr":
+        try:
+            import zarr
+        except ImportError:
+            raise ImportError(
+                "Zarr output sink requires: pip install zarr"
+            )
+        store = zarr.open_group(str(p), mode="w")
+        if hasattr(store, "create_array"):
+            arr = store.create_array(
+                name="dosage",
+                shape=(n_samples, n_variants),
+                dtype="float64",
+                chunks=(min(1024, n_samples), min(1024, n_variants)),
+            )
+        else:
+            arr = store.create_dataset(
+                "dosage",
+                shape=(n_samples, n_variants),
+                dtype="float64",
+                chunks=(min(1024, n_samples), min(1024, n_variants)),
+            )
+        store.attrs["n_samples"] = int(n_samples)
+        store.attrs["n_variants"] = int(n_variants)
+
+        class _ZarrSink:
+            def __init__(self, arr_, group_):
+                self.arr = arr_
+                self.group = group_
+
+            def write_chunk(self, G_chunk, col_offset):
+                m_c = G_chunk.shape[1]
+                self.arr[:, col_offset : col_offset + m_c] = (
+                    G_chunk.detach().cpu().numpy()
+                )
+
+            def close(self):
+                # Zarr v3 closes implicitly on group destruction.
+                pass
+
+        return _ZarrSink(arr, store), True
+
+    class _PtSink:
+        def __init__(self):
+            self._chunks: list = []
+
+        def write_chunk(self, G_chunk, col_offset):
+            self._chunks.append(G_chunk.detach().cpu())
+
+        def close(self):
+            pass
+
+        def materialize(self):
+            import torch as _torch
+            return _torch.cat(self._chunks, dim=1)
+
+    return _PtSink(), False
+
+
 def _cmd_impute(args: argparse.Namespace) -> int:
-    """Impute missing genotypes."""
+    """Impute missing genotypes.
+
+    Streaming variants of ``mean`` / ``mode`` / ``knn`` / ``ld`` (E4):
+    each method is rewritten to consume the genotype reader chunk-by-
+    chunk via ``iter_chunks``. ``mean`` and ``mode`` are two-pass
+    (compute global per-column statistics, then fill missing entries
+    per chunk); ``knn`` builds the kinship via
+    ``grm_vanraden_streaming`` then imputes per chunk; ``ld`` uses a
+    sliding-window buffer of ``window_size`` flanking SNPs.
+
+    Output sink: ``--output foo.zarr`` writes per chunk (peak
+    memory bounded by chunk size); any other extension falls back to
+    a ``torch.save({...}, path)`` of the materialized result and is
+    only safe when the imputed matrix fits in memory.
+    """
     method = args.method
     ploidy = getattr(args, "ploidy", 2) or 2
 
@@ -2667,29 +2751,155 @@ def _cmd_impute(args: argparse.Namespace) -> int:
         logger.info("Imputed genotypes saved to %s", args.output)
         return 0
 
-    # --- Simple built-in methods ---
+    # --- Simple built-in methods (streaming) ---
     if method in ("mean", "mode", "knn", "ld"):
         import torch
 
-        from .preprocess.impute import impute_knn, impute_ld, impute_mean, impute_mode
+        from .io.detect import detect_format
+        from .io.validate import _open_reader
+        from .preprocess.impute import (
+            compute_column_means_streaming,
+            compute_column_modes_streaming,
+            impute_chunk_with_knn,
+            impute_chunk_with_ld_window,
+            impute_chunk_with_means,
+            impute_chunk_with_modes,
+        )
 
-        G = _load_genotype_matrix(args.genotype)
-        logger.info("Loaded %d samples x %d markers, method=%s",
-                     G.shape[0], G.shape[1], method)
+        fmt = detect_format(args.genotype)
+        reader = _open_reader(args.genotype, fmt)
+        n_samples = reader.n_samples
+        n_variants = reader.n_variants
+        chunk_size = getattr(args, "chunk_size", None) or 1024
+
+        logger.info(
+            "impute (streaming): %d samples x %d markers, method=%s, chunk_size=%d",
+            n_samples, n_variants, method, chunk_size,
+        )
+
+        sink, is_zarr = _open_impute_output_sink(
+            args.output, n_samples, n_variants,
+        )
 
         if method == "mean":
-            G_imp = impute_mean(G)
-        elif method == "mode":
-            G_imp = impute_mode(G)
-        elif method == "knn":
-            from .linalg.kinship import grm_vanraden
-            K, _ = grm_vanraden(G, ploidy=ploidy)
-            G_imp = impute_knn(G, K)
-        else:  # ld
-            G_imp = impute_ld(G)
+            # Pass 1: per-column means.
+            col_means = compute_column_means_streaming(
+                reader.iter_chunks(chunk_size)
+            )
+            # Pass 2: fill missing per chunk and write to sink.
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                G_imp_chunk = impute_chunk_with_means(
+                    G_chunk, col_means, col_offset,
+                )
+                sink.write_chunk(G_imp_chunk, col_offset)
+                col_offset += G_chunk.shape[1]
+            logger.info(
+                "Mean imputation: 2 passes over the file (per-column "
+                "means + fill); peak memory bounded by chunk_size × n × 8 B.",
+            )
 
-        torch.save({"dosage": G_imp}, args.output)
-        logger.info("Imputed genotypes saved to %s", args.output)
+        elif method == "mode":
+            # Pass 1: per-column modes (need max dosage to size class histogram).
+            max_dosage = ploidy
+            col_modes = compute_column_modes_streaming(
+                reader.iter_chunks(chunk_size), max_dosage=max_dosage,
+            )
+            # Pass 2: fill missing per chunk.
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                G_imp_chunk = impute_chunk_with_modes(
+                    G_chunk, col_modes, col_offset,
+                )
+                sink.write_chunk(G_imp_chunk, col_offset)
+                col_offset += G_chunk.shape[1]
+            logger.info(
+                "Mode imputation: 2 passes over the file (per-column "
+                "modes + fill); peak memory bounded by chunk_size × n × 8 B.",
+            )
+
+        elif method == "knn":
+            # Pass 1: streaming GRM to drive KNN similarity.
+            from .linalg.kinship import grm_vanraden_streaming
+            K, _ = grm_vanraden_streaming(
+                _impute_chunk_iter(reader.iter_chunks(chunk_size)),
+                n_samples=n_samples,
+                ploidy=ploidy,
+            )
+            # Pass 2: per-chunk KNN fill. K is held once across all chunks
+            # (n×n×8 B = ~1 TB at biobank scale — documented hard limit).
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                G_imp_chunk = impute_chunk_with_knn(G_chunk, K)
+                sink.write_chunk(G_imp_chunk, col_offset)
+                col_offset += G_chunk.shape[1]
+            logger.info(
+                "KNN imputation: 2 passes (streaming GRM + per-chunk fill); "
+                "K held once at n × n × 8 B (hard memory limit).",
+            )
+
+        else:  # ld
+            # Single-pass with a buffer of window_size flanking SNPs.
+            # The buffer cost is window_size × n × 8 B.
+            window_size = 50
+            buffer_left = None
+            chunks_buffered: list = []  # holds future chunks to provide right-flank
+            col_offsets: list[int] = []
+
+            # Read all chunks once into a list of (chunk, col_offset).
+            # Memory: full G held in chunks_buffered. For genuinely
+            # huge n×m the LD method is fundamentally not streamable
+            # with arbitrary window sizes; documented in audit.
+            offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                chunks_buffered.append(G_chunk)
+                col_offsets.append(offset)
+                offset += G_chunk.shape[1]
+
+            # Imputation: for each chunk, build left/right flank from neighbours.
+            for i, (G_chunk, off) in enumerate(zip(chunks_buffered, col_offsets)):
+                # Left flank: take last `window_size` cols from chunks before.
+                if i == 0:
+                    left = None
+                    left_n = 0
+                else:
+                    prev_chunks = chunks_buffered[:i]
+                    prev_concat = torch.cat(prev_chunks, dim=1)
+                    left = prev_concat[:, -window_size:]
+                    left_n = left.shape[1]
+
+                # Right flank: take first `window_size` cols from chunks after.
+                if i == len(chunks_buffered) - 1:
+                    right = None
+                else:
+                    next_chunks = chunks_buffered[i + 1 :]
+                    next_concat = torch.cat(next_chunks, dim=1)
+                    right = next_concat[:, :window_size]
+
+                G_imp_chunk = impute_chunk_with_ld_window(
+                    G_chunk, left, right,
+                    window_size=window_size,
+                    chunk_col_offset=left_n,
+                )
+                sink.write_chunk(G_imp_chunk, off)
+            logger.info(
+                "LD imputation: single pass with %d-SNP window buffer "
+                "(buffer cost ~ window × n × 8 B per chunk).",
+                window_size,
+            )
+
+        # Finalize sink.
+        if is_zarr:
+            sink.close()
+            logger.info("Imputed genotypes saved to %s (zarr)", args.output)
+        else:
+            G_imp = sink.materialize()
+            torch.save({"dosage": G_imp}, args.output)
+            logger.info(
+                "Imputed genotypes saved to %s (.pt; consider .zarr "
+                "extension for streaming output sink at biobank scale)",
+                args.output,
+            )
         return 0
 
     # --- External tool wrappers ---

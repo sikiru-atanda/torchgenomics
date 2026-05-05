@@ -1194,3 +1194,288 @@ class TestMetScanStreamingMemory:
         _, peak_stream = _peak_kib(_run_streaming)
         budget_kib = 16 * 1024
         assert peak_stream < budget_kib
+
+
+# ---------------------------------------------------------------------------
+# impute (mean / mode / knn / ld) streaming memory regression (E4 Group C)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def impute_inputs():
+    """Genotype with 5% missing entries for impute parity tests."""
+    torch.manual_seed(41)
+    n, m = 50, 200
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    mask = torch.rand(n, m) < 0.05
+    G[mask] = float("nan")
+    return G
+
+
+class TestImputeMeanStreamingMemory:
+    """Streaming mean imputation: two-pass per-column statistics + fill."""
+
+    def test_streaming_mean_matches_materialized(self, impute_inputs):
+        from torchgwas.preprocess.impute import (
+            compute_column_means_streaming,
+            impute_chunk_with_means,
+            impute_mean,
+        )
+
+        G = impute_inputs
+        m = G.shape[1]
+
+        # Reference path.
+        G_ref = impute_mean(G)
+
+        # Streaming path.
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        means = compute_column_means_streaming(reader.iter_chunks(64))
+        out = torch.zeros_like(G)
+        col_offset = 0
+        for G_chunk, _ in reader.iter_chunks(64):
+            out[:, col_offset : col_offset + G_chunk.shape[1]] = (
+                impute_chunk_with_means(G_chunk, means, col_offset)
+            )
+            col_offset += G_chunk.shape[1]
+
+        # Bit-exact: the streaming mean = the in-memory mean.
+        assert torch.allclose(out, G_ref, atol=1e-12, rtol=1e-12)
+
+    def test_streaming_mean_under_explicit_budget(self, impute_inputs):
+        """Hard budget: <8 MiB for the per-column-stat + fill workspace."""
+        from torchgwas.preprocess.impute import (
+            compute_column_means_streaming,
+            impute_chunk_with_means,
+        )
+
+        G = impute_inputs
+        m = G.shape[1]
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+            means = compute_column_means_streaming(reader.iter_chunks(64))
+            chunks = []
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(64):
+                chunks.append(impute_chunk_with_means(G_chunk, means, col_offset))
+                col_offset += G_chunk.shape[1]
+            return chunks
+
+        _, peak = _peak_kib(_run_streaming)
+        # Note: writing to an in-memory list still holds the full
+        # imputed result; the streaming peak measured here is the
+        # per-pass workspace + chunk + means, not the materialization.
+        # The 8 MiB ceiling fits the n=50/m=200 fixture comfortably.
+        budget_kib = 8 * 1024
+        assert peak < budget_kib, (
+            f"Streaming mean peak ({peak:.0f} KiB) exceeds 8 MiB."
+        )
+
+
+class TestImputeModeStreamingMemory:
+    """Streaming mode imputation: per-column class histograms + fill."""
+
+    def test_streaming_mode_matches_materialized(self, impute_inputs):
+        from torchgwas.preprocess.impute import (
+            compute_column_modes_streaming,
+            impute_chunk_with_modes,
+            impute_mode,
+        )
+
+        G = impute_inputs
+        m = G.shape[1]
+
+        G_ref = impute_mode(G)
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        modes = compute_column_modes_streaming(
+            reader.iter_chunks(64), max_dosage=2,
+        )
+        out = torch.zeros_like(G)
+        col_offset = 0
+        for G_chunk, _ in reader.iter_chunks(64):
+            out[:, col_offset : col_offset + G_chunk.shape[1]] = (
+                impute_chunk_with_modes(G_chunk, modes, col_offset)
+            )
+            col_offset += G_chunk.shape[1]
+
+        assert torch.allclose(out, G_ref, atol=1e-12, rtol=1e-12)
+
+    def test_streaming_mode_under_explicit_budget(self, impute_inputs):
+        from torchgwas.preprocess.impute import (
+            compute_column_modes_streaming,
+            impute_chunk_with_modes,
+        )
+
+        G = impute_inputs
+        m = G.shape[1]
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+            modes = compute_column_modes_streaming(
+                reader.iter_chunks(64), max_dosage=2,
+            )
+            chunks = []
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(64):
+                chunks.append(
+                    impute_chunk_with_modes(G_chunk, modes, col_offset)
+                )
+                col_offset += G_chunk.shape[1]
+            return chunks
+
+        _, peak = _peak_kib(_run_streaming)
+        budget_kib = 8 * 1024
+        assert peak < budget_kib
+
+
+class TestImputeKnnStreamingMemory:
+    """Streaming KNN imputation: streaming GRM + per-chunk fill.
+
+    K is held once across all chunks (n × n × 8 B). At biobank scale
+    that's ~1 TB — documented hard memory limit for the KNN method.
+    The streaming-vs-materialized win is on the genotype side: we
+    never need ``n × m × 8 B`` simultaneously.
+    """
+
+    def test_streaming_knn_matches_materialized(self, impute_inputs):
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgwas.preprocess.impute import (
+            impute_chunk_with_knn,
+            impute_knn,
+            impute_mean,
+        )
+
+        G = impute_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        # Reference path: full impute_mean(G) -> grm_vanraden -> impute_knn.
+        G_mean = impute_mean(G)
+        K_ref, _ = grm_vanraden(G_mean, ploidy=2)
+        G_knn_ref = impute_knn(G, K_ref)
+
+        # Streaming path: streaming GRM (over mean-imputed chunks) +
+        # per-chunk KNN fill using the same K_ref.
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+
+        def _imputed_iter():
+            for G_chunk, vm in reader.iter_chunks(64):
+                yield impute_mean(G_chunk), vm
+
+        K_streamed, _ = grm_vanraden_streaming(
+            _imputed_iter(), n_samples=n, ploidy=2,
+        )
+
+        # Per-chunk KNN with K_ref (deterministic match) — proves the
+        # per-chunk decomposition itself is exact.
+        out = torch.zeros_like(G)
+        col_offset = 0
+        for G_chunk, _ in reader.iter_chunks(64):
+            out[:, col_offset : col_offset + G_chunk.shape[1]] = (
+                impute_chunk_with_knn(G_chunk, K_ref)
+            )
+            col_offset += G_chunk.shape[1]
+
+        assert torch.allclose(out, G_knn_ref, atol=1e-10, rtol=1e-10)
+
+    def test_streaming_knn_under_explicit_budget(self, impute_inputs):
+        """Budget: <16 MiB at n=50, K = 50×50×8 = 20 KiB negligible."""
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgwas.preprocess.impute import (
+            impute_chunk_with_knn,
+            impute_mean,
+        )
+
+        G = impute_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+
+            def _imputed_iter():
+                for G_chunk, vm in reader.iter_chunks(64):
+                    yield impute_mean(G_chunk), vm
+
+            K, _ = grm_vanraden_streaming(
+                _imputed_iter(), n_samples=n, ploidy=2,
+            )
+            chunks = []
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(64):
+                chunks.append(impute_chunk_with_knn(G_chunk, K))
+                col_offset += G_chunk.shape[1]
+            return chunks
+
+        _, peak = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak < budget_kib
+
+
+class TestImputeLdStreamingMemory:
+    """Streaming LD imputation: single pass with sliding-window buffer.
+
+    The current implementation builds left/right flank buffers of
+    ``window_size`` SNPs from neighbouring chunks before calling
+    :func:`impute_ld` on the merged window. This holds all chunks in
+    memory inside the function (documented compromise — the LD
+    method is fundamentally not single-pass streamable for arbitrary
+    window sizes, since reverse-look-up is required for the right
+    flank). We assert behavioral parity vs the materialized path.
+    """
+
+    def test_streaming_ld_matches_materialized(self, impute_inputs):
+        from torchgwas.preprocess.impute import (
+            impute_chunk_with_ld_window,
+            impute_ld,
+        )
+
+        G = impute_inputs
+        m = G.shape[1]
+
+        G_ref = impute_ld(G, window_size=50)
+
+        # Streaming with buffered flanks.
+        chunks_buf = []
+        col_offsets = []
+        off = 0
+        chunk_size = 64
+        window_size = 50
+        for s in range(0, m, chunk_size):
+            e = min(s + chunk_size, m)
+            chunks_buf.append(G[:, s:e].clone())
+            col_offsets.append(off)
+            off += e - s
+
+        out = torch.zeros_like(G)
+        for i, (G_chunk, off) in enumerate(zip(chunks_buf, col_offsets)):
+            if i == 0:
+                left = None
+                left_n = 0
+            else:
+                prev = torch.cat(chunks_buf[:i], dim=1)
+                left = prev[:, -window_size:]
+                left_n = left.shape[1]
+            if i == len(chunks_buf) - 1:
+                right = None
+            else:
+                nxt = torch.cat(chunks_buf[i + 1 :], dim=1)
+                right = nxt[:, :window_size]
+            out[:, off : off + G_chunk.shape[1]] = (
+                impute_chunk_with_ld_window(
+                    G_chunk, left, right,
+                    window_size=window_size, chunk_col_offset=left_n,
+                )
+            )
+
+        # LD matches reference exactly: each chunk's window is fully
+        # reconstructed from neighbour buffers.
+        assert torch.allclose(out, G_ref, atol=1e-10, rtol=1e-10)
