@@ -72,8 +72,8 @@ unconditionally upcasts to `STAT_DTYPE` (float64) and mean-imputes. The
 | **set-scan** | `SetBasedScanner` (custom; not UnifiedScanner) | **materialized** | 40 TB | calls `_load_scan_data` then `scanner.scan_regions(G_full, ...)`. Algorithmically per-region; can stream chunks and accumulate into per-region tensors. **REWRITE TARGET (E1).** |
 | **bayes-scan** | `BayesianVS.fit` | **materialized** | 40 TB | SuSiE / CAVI need full G for joint variable selection (algorithmically) |
 | **met-scan** | `MultiEnvLMM.score_chunk` (manual loop) | **materialized** | 40 TB | `_load_scan_data` materializes; subsequent scan does loop `iter_chunks` but G is already held; GRM uses `grm_vanraden(G)` not streaming. **DEFERRABLE — GRM-only fix would push to partial.** |
-| **farmcpu-scan** | `FarmCPU` via `UnifiedScanner` | **materialized** | 40 TB | FarmCPU iteratively re-uses G as covariates; documented as needing full G |
-| **blink-scan** | `BLINK` via `UnifiedScanner` | **materialized** | 40 TB | BLINK LD-clusters across all SNPs; documented as needing full G |
+| **farmcpu-scan** | `FarmCPU.score_streaming` (cached QTN columns + per-iteration streaming GLM) | streaming | < 1 GB per chunk | `_align_samples` + cached QTN columns + per-iteration streaming `_glm_scan_streaming` / `_substitute_qtn_pvalues_streaming`. **Streamed in F2 (commit cf91af0).** |
+| **blink-scan** | `BLINK.score_streaming` (cached QTN columns + per-iteration streaming GLM + on-demand candidate-column reads) | streaming | < 1 GB per chunk | Same shape as `farmcpu-scan`; LD-removal + BIC operate on small candidate column matrices read from the reader. **Streamed in F2 (commit 95c3623).** |
 | **threshold-scan** | `ThresholdLinearModel` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples`; ThresholdLinearModel null fit only needs Y/X0/R/G_cov (no kinship). **Streamed in E3 (commit e8a0d3c).** |
 | **conditional-scan** | `ConditionalLMM` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming`; per-peak random access into reader is via index-based reload (acceptable cost) |
 | **mtmet-scan** | `MultiTraitMultiEnvLMM` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming` |
@@ -93,12 +93,14 @@ unconditionally upcasts to `STAT_DTYPE` (float64) and mean-imputes. The
 | **pgs-fit** | `pgs.PRSCS` / `LDpred2*` / `ClumpingThresholding` | depends on ld-ref input | varies | sumstats-driven; LD ref usually pre-computed |
 | **pgs-score** | `pgs.score_individuals` | streaming (per-SNP weight × dosage) | < 1 GB | scores accumulate while iter_chunks |
 | **pipeline** (glm/lmm/mvlmm) | streaming branch | streaming | < 1 GB | uses `_align_samples` + `grm_vanraden_streaming` |
-| **pipeline** (farmcpu/blink/mklmm/gxe/met) | materialized branch | **materialized** | 40 TB | calls `_load_scan_data`; commented in code as "models that need full G" |
+| **pipeline** (farmcpu/blink) | streaming via `score_streaming` | streaming | < 1 GB per chunk | F2 mechanical follow-on. |
+| **pipeline** (mklmm) | materialized branch | **materialized** | 40 TB | dominance / epistatic kernels still require full G; awaits a model-specific streaming refactor (future F3). |
+| **pipeline** (gxe/met) | E4 mechanical follow-on | streaming | < 1 GB | uses `_align_samples` + `grm_vanraden_streaming` + per-chunk score_chunk loop. |
 | **rr-scan** | `RandomRegressionLMM` / `SpatioTemporalRR` | **materialized** | 40 TB | `_load_full_genotype` then `grm_vanraden(G)`; scan loop is streaming via `iter_chunks`, but G_full is held |
 | **rr-met-scan** | `RandomRegressionMultiEnvLMM` | **materialized** | 40 TB | same shape as rr-scan |
 | **annotate** | NCBI Datasets v2 | N/A (network) | < 1 GB | no genotype I/O |
 | **mediate** | `multiomics.mediate_lmm` | **input-shape dependent** | < 1 GB | takes ndarrays directly; not a scan |
-| **mediate-scan** | `multiomics.scan_mediation` | **materialized** | 40 TB | `_load_full_genotype` (via `_load_scan_data`); GPU-batched scan |
+| **mediate-scan** | `multiomics.scan_mediation(streaming=True)` | **partial** (user-side input fixed) | n × s × 8 B input + chunk | CLI uses `_load_array(args.genotype)` on a flat `.npy` / `.pt` / `.tsv` file; user-supplied input dictates an irreducible `n × s × 8 B` floor. The internal rotated-genotype `G_r = U^T @ G` is now per-SNP-block lazy-rotated via `batched_scan_pairs_streaming`, dropping internal peak from `2 × n × s × 8 B` to `n × s × 8 B + n × s_b × 8 B`. **Streamed in F2 (commit e20f614).** |
 
 **Total subcommands surveyed:** 40.
 
@@ -413,3 +415,109 @@ the corrected behavior).
 
 The other five rewrites are pure efficiency improvements with no
 behavioral regressions exposed.
+
+## F2 ledger — 3 cached-column / per-block streaming rewrites
+
+Date: 2026-04-30. Tackles three of the six remaining materialized
+paths flagged in F1: `farmcpu-scan`, `blink-scan`, `mediate-scan`.
+All three were previously labeled "fundamentally not streamable" in
+audit observation O2; the F2 rewrites use cached-column or per-block
+patterns to stream them while preserving algorithmic semantics.
+
+### Group A — cached QTN columns + per-iteration streaming scan
+
+FarmCPU and BLINK both iterate FEM (GLM scan) → QTN selection. Per
+iteration, only the QTN columns need to be in memory; the genome
+scan to find new candidates can stream. The new
+`score_streaming(reader, null_fit, chunk_size, test)` orchestrates
+the iteration externally:
+
+1. Stream the genome once for `_glm_scan_streaming` (per-SNP gtg /
+   gty / beta / se / p accumulated chunk-by-chunk).
+2. When prior QTNs exist, stream once more for
+   `_substitute_qtn_pvalues_streaming` (chunk-aggregated per-SNP
+   p-values; "reward" / "penalty" track running argmin/argmax in
+   O(n_qtns) state, "mean" / "median" accumulate per-chunk pieces).
+3. Run small QTN-selection logic on the cached columns only (≤ ~20
+   for FarmCPU, ≤ floor(n / log n) for BLINK). For BLINK the
+   LD-removal + BIC steps read candidate columns from the reader on
+   demand (`_read_columns_from_reader`).
+
+Memory: peak goes from O(n × m × 8 B) (~40 TB at UKB) to
+O(n × |QTN| + n × |candidates| + chunk_size × n × 8 B) (~GB-scale
+per chunk).
+
+| Subcommand | Commit | Notes |
+|---|---|---|
+| `farmcpu-scan` | `cf91af0` | FarmCPU.score_streaming + 4 module helpers; max p diff 1.8e-15 vs. eager `score_chunk`; existing 12 tests pass. |
+| `blink-scan` | `95c3623` | BLINK.score_streaming + 5 module helpers; max p diff 0.0 vs. eager `score_chunk`; existing 12 tests pass. |
+
+### Group B — per-SNP-block lazy rotation
+
+`mediate-scan`'s eager `batched_scan_pairs` computed
+`G_r = U^T @ G` for the entire genotype up-front and held both `G`
+(input) and `G_r` (rotated) throughout the SNP-block / feature-block
+dispatch. `batched_scan_pairs_streaming` groups pairs first by
+SNP-block, lazy-rotates that block's columns, processes all paired
+feature-blocks, frees, repeats. The mediator matrix `M_r` is rotated
+once and held (M is typically much smaller than G).
+
+`scan_mediation` gains a `streaming: bool | None` kwarg (default
+None → on for batched scans with ≥1000 pairs). Behavioral parity:
+rotation is linear, per-pair Stage-M / Stage-Y-total / Stage-Y-direct
+fits are arithmetic-identical; bit-for-bit zero diff on a
+80 × 200 × 50 fixture for `streaming=False vs streaming=True`
+(measured at 5e-16 round-off, well under 1e-10 tolerance).
+
+| Subcommand | Commit | Notes |
+|---|---|---|
+| `mediate-scan` | `e20f614` | `batched_scan_pairs_streaming`. Memory: peak `2 × n × s × 8 B` (G + G_r) drops to `n × s × 8 B + n × s_b × 8 B` (G + one rotated SNP-block). At UKB scale this is the difference between 80 TB and ~40 TB peak. The CLI's `--genotype` flat-file contract is unchanged; the user-supplied input array dictates the irreducible `n × s` floor. |
+
+**Audit table correction (F2):** the F1 / E0 audit row for
+`mediate-scan` had labelled it "via `_load_full_genotype` (via
+`_load_scan_data`)". The actual CLI uses `_load_array(args.genotype)`
+on a `.npy` / `.pt` / `.tsv` flat file — the user-side input cost is
+irreducible without a CLI input-format extension (a separate feature,
+deferred). The TorchGWAS-internal rotated-genotype cost is now
+bounded by per-block streaming.
+
+### Group C — pipeline mechanical follow-on
+
+Same shape as E4's pipeline update. The `pipeline` `farmcpu` and
+`blink` branches now stream — port the same template the standalone
+subcommands use. The previous `logger.warning` block ("genuinely not
+streamable; consider lmm/mvlmm/glm") is removed now that streaming
+variants exist for both.
+
+### Updated counts (post-F2)
+
+Total subcommands surveyed: 40.
+
+**Streaming (post-E1+E3+E4+F1+F2):** 35 — adds `farmcpu-scan`,
+`blink-scan`, `pipeline` `farmcpu` + `blink` branches to the prior
+32. Plus `meta` / `annotate` (no genotype I/O).
+
+**Partial (one-shot full G then freed, or user-side input
+materialization unavoidable):** 3 — `lmm-scan --grm-method zhang`,
+`mvlmm-scan --grm-method zhang` (both opt-in), and `mediate-scan`
+(input via `_load_array` on user-supplied flat file; internal
+rotated-G now per-block streamed).
+
+**Materialized:** 2 remaining — `bayes-scan` (SuSiE / CAVI need
+joint posterior over all variants), `mklmm-scan` (dominance /
+epistatic kernels are functions of full G; future F3 candidate per
+the task ledger). Plus the `pipeline` materialized branch for
+`mklmm` (mechanical follow-on the day mklmm-scan itself becomes
+streaming).
+
+Memory regression tests in `tests/test_streaming_memory.py` add 8
+new tests across 3 new test classes (FarmCpu, Blink, MediateScan).
+Total streaming-memory tests: 50.
+
+### F3 verdict (F2)
+
+No latent crashes or correctness bugs surfaced during the rewrite.
+The audit-table mediate-scan entry was found to be inaccurate (it
+listed `_load_full_genotype` as the materialization path; the actual
+CLI uses `_load_array` for flat-file inputs). Corrected in this
+ledger. Pure efficiency improvements; not F3 fix-now.

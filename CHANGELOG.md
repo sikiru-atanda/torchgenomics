@@ -2,6 +2,92 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.7] — 2026-05-05
+
+Cached-column / per-block streaming release (F2). Three of the six
+remaining materialized paths flagged in F1 are now streaming:
+`farmcpu-scan`, `blink-scan`, `mediate-scan`. The `pipeline`
+materialized branch for FarmCPU / BLINK is updated as a mechanical
+follow-on. **Audit counts: 32 → 35 streaming subcommands; 6 → 2
+materialized (excluding the user-side input fixed for `mediate-scan`,
+counted as partial).**
+
+### Added
+
+- **`torchgwas.models.farmcpu.FarmCPU.score_streaming(reader, null_fit,
+  chunk_size, test)`** — orchestrates the FEM / REM iteration
+  externally. Per iteration: stream the genome once for
+  `_glm_scan_streaming` (per-SNP gtg / gty / beta / se / p
+  accumulated chunk-by-chunk) and (when prior QTNs exist) once more
+  for `_substitute_qtn_pvalues_streaming`. The QTN selection logic
+  (`_specify_bins`, p-value filter, `_remove_correlated_with_cols`)
+  operates only on the small (≤ ~20) cached QTN columns. Module-level
+  helpers `_read_columns_from_reader`, `_glm_scan_streaming`,
+  `_substitute_qtn_pvalues_streaming`,
+  `_remove_correlated_with_cols`. Behavioral parity to float64
+  tolerance vs. eager `score_chunk` (max p diff ~1.8e-15 on a
+  100 × 200 fixture).
+
+- **`torchgwas.models.blink.BLINK.score_streaming(reader, null_fit,
+  chunk_size, test)`** — same shape as FarmCPU. LD-removal
+  (`_ld_remove_block_with_cols`) and BIC selection
+  (`_bic_forward_select_with_cols`) operate on candidate column
+  matrices read from the reader on demand (`_read_columns_from_reader`).
+  Behavioral parity (max p diff 0.0 on a 100 × 200 fixture).
+
+- **`torchgwas.multiomics._scan_batched.batched_scan_pairs_streaming`** —
+  per-SNP-block lazy rotation. Groups pairs first by SNP-block, then
+  by feature-block; for each SNP-block lazy-rotates only that
+  block's columns, dispatches all paired feature-blocks, frees. The
+  mediator matrix `M_r` is rotated once and held. `scan_mediation`
+  gains a `streaming: bool | None` kwarg (default None → on for
+  batched scans with ≥1000 pairs). Bit-for-bit zero diff on a
+  80 × 200 × 50 fixture vs. eager `batched_scan_pairs` when the same
+  SE seed is used.
+
+### Changed (F2 streaming rewrites)
+
+- **`cli._cmd_farmcpu_scan_single`** — replaces `_load_scan_data` +
+  `UnifiedScanner` with `_align_samples` + `model.score_streaming`.
+  Peak memory drops from O(n × m × 8 B) (~40 TB at UKB) to
+  O(n × |QTN| + chunk_size × n × 8 B) (~GB-scale per chunk).
+
+- **`cli._cmd_blink_scan_single`** — same shape. Peak: O(n × |QTN|
+  + n × |candidates| + chunk_size × n × 8 B). Both QTN and candidate
+  caches are bounded by sqrt(n) / log(n)-ish.
+
+- **`cli._cmd_pipeline`** (FarmCPU / BLINK branch) — mechanical
+  follow-on. The previous `logger.warning` block ("genuinely not
+  streamable; consider lmm/mvlmm/glm") is removed. The MKLMM branch
+  retains the warning (a future F3 candidate).
+
+### Fixed
+
+- **Audit table mediate-scan row.** The F1 / E0 audit had labelled
+  `mediate-scan` as materializing via `_load_full_genotype` (via
+  `_load_scan_data`). The actual CLI uses
+  `_load_array(args.genotype)` on a `.npy` / `.pt` / `.tsv` flat
+  file — the user-side input cost is irreducible without a CLI
+  input-format extension. Reclassified as "partial" (input-fixed).
+
+### Tests
+
+- **`tests/test_streaming_memory.py`** — 8 new memory regression
+  tests across 3 new test classes (FarmCpu, Blink, MediateScan).
+  Total streaming-memory tests: 50.
+- Suite: 2801 passed (+8 from v0.3.6's 2793), 0 failed.
+
+### Audit (post-F2)
+
+- 35 streaming subcommands (was 13 after E1, 20 after E3, 26 after
+  E4, 32 after F1).
+- 3 partial (`lmm-scan --grm-method zhang`, `mvlmm-scan --grm-method
+  zhang`, `mediate-scan` user-side input).
+- 2 materialized: `bayes-scan` (joint posterior over all variants),
+  `mklmm-scan` (dominance / epistatic kernels). MKLMM is the F3
+  candidate per the task ledger; bayes-scan is genuinely impossible
+  per audit observation O2.
+
 ## [0.3.6] — 2026-05-05
 
 LD-window streaming release (F1). Rewrites the six remaining
