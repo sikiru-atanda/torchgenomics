@@ -237,3 +237,89 @@ merger entirely. The streaming rewrite fixes both the materialization
 regression and this latent crash with the new `_merge_gxe_results`
 helper. Remaining four rewrites are pure efficiency improvements (no
 behavioral regressions exposed).
+
+## E4 ledger — 4 scan rewrites + 4 impute rewrites + pipeline cleanup
+
+Date: 2026-04-30. Tackles the deferred set from E0 — three
+"GRM-only" subcommands that already streamed the scan loop but
+materialized G for kinship, plus a poly-scan rewrite, plus the
+four built-in impute methods, plus the pipeline GxE / MET branches
+which are now mechanical follow-ons.
+
+### Group A — GRM-only fixes (3 rewrites)
+
+Each replaces `_load_full_genotype + grm_vanraden(G)` with
+`grm_vanraden_streaming(_impute_chunk_iter(reader.iter_chunks))` and
+keeps the existing per-chunk scan loop unchanged.
+
+| Subcommand | Commit | Notes |
+|---|---|---|
+| `rr-scan` | `b640052` | RandomRegressionLMM / SpatioTemporalRR; long-format pheno collapsed to per-individual ordering for null fit. |
+| `rr-met-scan` | `b640052` | Same shape as rr-scan. |
+| `met-scan` | `b640052` | MultiEnvLMM; aligned-sample-restricted Y_wide construction. |
+
+### Group B — full streaming via UnifiedScanner
+
+| Subcommand | Commit | Notes |
+|---|---|---|
+| `poly-scan` | `f887f36` | SingleTraitLMM with on-the-fly gene-action recoding via a `_RecodingReader` wrapper. Per-chunk recoding commutes with chunking (recode_gene_action is per-element). The streaming path also surfaces a latent legacy quirk: the materialized variant computed `G_scan = recode_gene_action(...)` but never passed it to UnifiedScanner — so the scan always used the original additive dosages. The streaming rewrite preserves that behavior for `ga in {"additive", "general"}` via passthrough. The opt-in `--joint-qtl` post-analysis branch still materializes G once because joint-QTL needs random-access into specific marker columns; gated on the flag. |
+
+### Group C — impute methods (4 rewrites)
+
+Each method splits into streaming-friendly building blocks in
+`torchgwas.preprocess.impute`. Output sink is `.zarr` (per-chunk
+write, peak memory bounded by chunk size) or fallback `.pt`
+(legacy in-memory materialization, kept for backward compat).
+
+| Method | Commit | Approach |
+|---|---|---|
+| `mean` | `a1a5618` | Two-pass: (1) `compute_column_means_streaming` → per-column running sums; (2) `impute_chunk_with_means` per chunk. Memory: O(n_variants). |
+| `mode` | `a1a5618` | Two-pass: (1) `compute_column_modes_streaming` → per-column class histograms; (2) `impute_chunk_with_modes` per chunk. Memory: O(n_variants × (max_dosage + 1)). |
+| `knn` | `a1a5618` | Two-pass: (1) `grm_vanraden_streaming`; (2) per-chunk KNN with K. **Memory: O(n²) for K — hard limit ~1 TB at biobank scale.** Documented. |
+| `ld` | `a1a5618` | Single pass with sliding-window flank buffer (`window_size × n × 8 B` per side). Documented buffer cost. |
+
+### Group D — pipeline mechanical follow-on
+
+Commit `4cf27fa`:
+- `pipeline` `gxe` and `met` branches now stream — port the same
+  template the standalone subcommands use.
+- `pipeline` `farmcpu`, `blink`, `mklmm` branches keep
+  `_load_scan_data` (genuinely not streamable) but now log a
+  warning that explains the algorithmic constraint and points
+  users to `lmm/mvlmm/glm` for streaming alternatives.
+
+### Updated counts (post-E4)
+
+Total subcommands surveyed: 40.
+
+**Streaming (post-E1+E3+E4):** 26 — `validate`, `glm-scan`,
+`lmm-scan` (default), `mvlmm-scan` (default), `conditional-scan`,
+`mtmet-scan`, `ocf-scan`, `family-scan`, `dosage-call`,
+`phase-poly`, `pgs-score`, `set-scan` (E1), `glmm-scan` (E1),
+`me-glmm-scan` (E3), `survival-scan` (E3), `threshold-scan` (E3),
+`gxe-scan` (E3), `gu-scan` (E3), `rr-scan` (E4), `rr-met-scan`
+(E4), `met-scan` (E4), `poly-scan` (E4), `pipeline` (lmm / mvlmm /
+glm / gxe / met). Plus `meta` / `annotate` (no genotype I/O).
+
+**Partial (one-shot full G then freed):** 2 — `lmm-scan
+--grm-method zhang`, `mvlmm-scan --grm-method zhang`. Both opt-in.
+
+**Materialized:** 12 remaining — `farmcpu-scan`, `blink-scan`,
+`bayes-scan`, `mklmm-scan`, `knockoff-scan`, `lro-scan`,
+`ld-blocks`, `ldsc`, `ldsc-rg`, `clump`, `mediate-scan`, `pipeline`
+materialized branches (farmcpu/blink/mklmm). All algorithmically
+tied to full G or windowed pairwise r² across all variants. See
+observation O2.
+
+Memory regression tests in `tests/test_streaming_memory.py` add 16
+new tests across 8 new test classes (rr-scan, rr-met-scan,
+met-scan, poly-scan, impute mean/mode/knn/ld). Total
+streaming-memory tests: 31.
+
+### F3 verdict (E4)
+
+No new latent crashes uncovered. The `poly-scan` rewrite surfaced
+a latent quirk in the materialized path (G_scan recoding never
+reached UnifiedScanner), but the legacy behavior was consistent
+across runs and the streaming rewrite preserves it. Pure
+efficiency improvements; not F3 fix-now.
