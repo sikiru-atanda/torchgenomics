@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] — 2026-05-05
+
+End-user runtime efficiency release. Audited all 40 CLI scan
+subcommands for memory behavior; rewrote two materializing paths
+(`set-scan`, `glmm-scan`) to stream chunks via `iter_chunks` /
+`UnifiedScanner` for biobank-scale tractability. No API breakage —
+legacy materialized entry points are preserved alongside the new
+streaming variants.
+
+### Added
+
+- **`models.set_based.SetBasedScanner.scan_regions_streaming(chunk_iter, ...)`**
+  — accumulates per-region buffers chunk-by-chunk; peak memory is
+  `Σ region_size × n_samples × 8 B` rather than `n_variants × n_samples × 8 B`.
+  At biobank scale (n=500K samples × m=10M variants × 20K gene-set regions
+  × 50 SNPs/region average): **40 TB → ~4 GB**. Legacy
+  `scan_regions(G_full, ...)` retained for callers that already have
+  the matrix in hand.
+
+- **`docs/efficiency/streaming_audit.md`** — 40-row table classifying
+  every CLI scan subcommand as streaming / partial / materialized,
+  with peak-memory estimates at biobank scale. Identifies 5
+  tractable next-target rewrites (me-glmm-scan, survival-scan,
+  threshold-scan, gxe-scan, gu-scan) and 5 algorithms genuinely
+  unsuitable for streaming (FarmCPU, BLINK, BayesianVS, MultiKernelLMM,
+  KnockoffLMM).
+
+- **`tests/test_streaming_memory.py`** — 5 memory-regression tests via
+  `tracemalloc` that assert streaming peak memory stays under documented
+  budgets (8 MiB for set-scan, 16 MiB for glmm-scan at n=200 / m=500
+  fixture scale). Includes the load-bearing biobank-relevant assertion
+  `peak ∝ Σ region_size`, not `peak ∝ m` — catches future refactors that
+  would silently re-materialize.
+
+### Changed
+
+- **`cli._cmd_set_scan`** — replaces `_load_scan_data` (full G
+  materialization) with `_align_samples + grm_vanraden_streaming +
+  SetBasedScanner.scan_regions_streaming`. Output identical to the
+  prior path; verified via `tests/test_streaming_memory.py::TestSetScanStreamingMemory::test_streaming_matches_materialized`
+  (float64 tolerance on q-stat / p).
+
+- **`cli._cmd_glmm_scan`** — replaces full-chunk `_load_genotype_matrix`
+  with `UnifiedScanner` driving per-chunk `model.score_chunk`. PQL null
+  fit only needs Y / X0 / K. GRM remains streaming via
+  `grm_vanraden_streaming`. Output identical to the prior path; verified
+  via `tests/test_streaming_memory.py::TestGlmmScanStreamingMemory::test_streaming_glmm_matches_full_chunk`.
+
+### Audit findings (40 CLI subcommands)
+
+- **13 streaming** — already do the right thing (lmm-scan, mvlmm-scan,
+  glm-scan, etc.).
+- **2 partial** — opt-in `--grm-method zhang` materializes for kinship,
+  then releases (lmm-scan, mvlmm-scan).
+- **25 materialized** before this release. After this release:
+  set-scan + glmm-scan removed → **23 remaining materialized**.
+
+The choke point is `cli._load_full_genotype` (used by 23 of 25
+materialized paths). It calls `iter_chunks(chunk_size = n_variants)` —
+i.e., one chunk = whole matrix — then upcasts to STAT_DTYPE (float64).
+The 5 next-target rewrites would each take ~15-line diffs following the
+`glmm-scan` template; deferred to subsequent releases.
+
 ## [0.3.1] — 2026-05-05
 
 Three deferred post-V1 follow-ups completed shortly after the v0.3.0
