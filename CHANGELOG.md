@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.5] — 2026-05-05
+
+Performance regression CI release (E5). The wall-time analog to the
+streaming-memory regression nets shipped in v0.3.2–v0.3.4. PRs that
+slow any monitored native kernel by > 10% now fail CI; > 5% gets a
+warning. Closes the regression-net loop on TorchGWAS' 24 native C++
+accelerators.
+
+### Added
+
+- **`bench/native_speedups.py --output json`** — JSON output mode
+  with documented schema (`{kernel, group, size_label, mode,
+  n_repeats, wall_seconds_p50, wall_seconds_p95, speedup_vs_python}`).
+- **`bench/native_speedups.py --kernel-subset ci`** — fast 12-kernel
+  subset (Gabriel / PELT / CC-graph blocks, KNN / mode imputation,
+  LDpred2 / PRS-CS Gibbs, HWE diploid, SPA, LDSC jackknife, GRM
+  streaming, VanRaden GRM). Plus `TORCHGWAS_BENCH_CI=1` env var that
+  shrinks input sizes for kernels with O(m⁴) / O(n²) Python reference
+  paths so the full CI cycle stays under the 8-min budget.
+- **`bench/diff_perf.py`** — reads two benchmark JSON files (master
+  + PR), emits a markdown table per kernel, exits 0 (clean) / 1
+  (regression > 10% on native mode) / 2 (warning > 5%). Python rows
+  are always reported as OK — algorithmic reference, not gated.
+- **`.github/workflows/perf.yml`** — runs on PR + push to master.
+  Builds native extensions, benchmarks both checkouts (master
+  baseline + PR head), runs `diff_perf.py`, posts a markdown diff
+  comment on the PR via `actions/github-script` (hidden-tag
+  identifier so re-runs replace rather than stack), uploads
+  `perf-baseline-master` artifact on master push.
+- **`docs/efficiency/perf_regression.md`** — explainer: how to read
+  the perf table, how to add a new kernel to the CI subset, how to
+  update the gate threshold, regression-vs-warning-vs-noise
+  interpretation.
+- **`tests/test_perf_regression_ci.py`** — 4 new tests: JSON schema
+  shape, regression-flagged exit code, warning-only exit code,
+  no-regression pass-through. Plus 2 edge-case tests: Python row
+  ungated, missing master baseline returns SKIPPED.
+
+### Tests
+
+- 7 new tests in `test_perf_regression_ci.py`. Total suite: 2782
+  passed (+7 from v0.3.4's 2775), 0 failed.
+
+### CI workflow inventory after E5
+
+- `ci.yml` (existing, every PR): default suite + golden + native +
+  no-openmp + type-check.
+- `cli-matrix.yml` (Pillar C, nightly + manual): Pillar C smoke matrix.
+- `external.yml` (Pillar B, weekly + manual): Pillar B reference-tool
+  comparisons.
+- `reproducibility.yml` (Pillar D, monthly + manual): fixture-drift audit.
+- **`perf.yml` (E5, every PR): native-kernel wall-time regression gate.**
+  All four campaign + post-campaign regression nets are now wired.
+
 ## [0.3.4] — 2026-04-30
 
 End-user runtime efficiency release (E4). Continues the streaming
