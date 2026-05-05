@@ -1,25 +1,51 @@
-# Validation Campaign — Session Handoff
+# Validation + Efficiency Campaign — Session Handoff
 
-**Date this handoff was written:** 2026-05-04 (Pillar B close revision)
+**Date this handoff was last refreshed:** 2026-05-05 (post v0.3.8, post README + memory refresh)
 **Worktree:** `/home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/validation-pillar-A-coverage`
-**Active branch:** `validation/pillar-B-references`
+**Active branch:** `efficiency/streaming-scan-audit` (all earlier branches merged into it via the cleanup-and-ldsc-irwls → efficiency progression)
 
-> **CAMPAIGN COMPLETE 2026-05-04.**
+> **CAMPAIGN COMPLETE — validation + efficiency saturated (2026-05-05).**
 >
-> All four pillars done. **13 V1 fix-now production fixes** shipped from validation work + 698 new coverage tests + 11 external reference-tool harnesses + 122-cell CLI smoke matrix + 3-fixture reproducibility audit. Cumulative campaign F3: 13 (Pillar A: 8 + Pillar B: 1 + Pillar C: 4 + Pillar D: 0). Full suite: 2738 passed, 541 skipped (external + cli_matrix + reproducibility opt-in), 0 failed.
+> Genuine terminus. Both axes — correctness regression nets and end-user runtime efficiency — are now algorithmically saturated. Further wins would require research-grade algorithmic redesigns (e.g., approximate SuSiE for `bayes-scan`).
 >
-> **Pillar D fixture verdicts (all THREE authoritative as of D3 close):**
-> - GEMMA 0.98.5: **fixture-authoritative** (bit-exact, |Δ|=0 across 19 checks).
-> - GAPIT3: **fixture-authoritative** (D3 — Bioconductor override resolved the prior infra-blocker; ~1e-13 across 10 checks).
-> - GWASpoly 2.12 → 2.14: **fixture-authoritative** (D3 — fresh v2.14 reproduces committed v2.12: max |Δ| ≤ 8.07e-11 across 25 checks; PSOCK-worker R_LIBS fix in `75da474`).
+> **9 release tags stacked locally (v0.1.1 baseline, v0.3.0–v0.3.8 campaign):**
+>
+> | Tag | Theme | Result |
+> |---|---|---|
+> | v0.3.0 | Validation campaign close | 4 pillars; 14 V1 fixes; +700 tests; LDSC IRWLS port queued; fixture-authoritative verdicts |
+> | v0.3.1 | Deferred follow-ups | MR-PRESSO parametric default; 2 converged-flag plumbing |
+> | v0.3.2 | E1 streaming | set-scan + glmm-scan |
+> | v0.3.3 | E3 streaming + 1 latent crash fix | me-glmm + survival + threshold + gxe + gu (gxe-scan multi-chunk crash) |
+> | v0.3.4 | E4 streaming | rr-scan + rr-met + met-scan + poly-scan + 4 impute methods + pipeline |
+> | v0.3.5 | Perf regression CI | bench JSON output + diff_perf + perf.yml workflow |
+> | v0.3.6 | F1 streaming + 1 latent bug fix | 6 LD-window paths (ldsc family + ld-blocks + clump + knockoff + lro) |
+> | v0.3.7 | F2 streaming | farmcpu + blink + mediate-scan + pipeline mklmm follow-on |
+> | v0.3.8 | F3 streaming (audit close) | mklmm-scan kernel construction streams |
+>
+> **Final audit:** 36 streaming / 3 partial / 1 materialized (`bayes-scan` only — algorithmically tight). 113 commits ahead of master.
+>
+> **Cumulative V1 production fixes from campaign + post-campaign:** 15 (8 Pillar A + 1 Pillar B + 4 Pillar C + 1 device-alignment audit + 1 E3 latent + 1 F1 latent + Phase 33/37/44 follow-ups merged).
+>
+> **Biobank-scale impact (n=500K × m=10M, float64):** median GWAS workflow goes from 40 TB peak to 1-4 GB. UKB-scale runs no longer require cluster RAM.
 >
 > **Branches ready for human-driven push + PR (gh CLI not installed; auth required):**
 > ```
-> git push -u origin validation/pillar-A-coverage
-> git push -u origin validation/pillar-B-references
-> git push -u origin validation/pillar-C-cli-smoke
-> git push -u origin validation/pillar-D-reproducibility
+> git push -u origin validation/pillar-A-coverage \
+>                   validation/pillar-B-references \
+>                   validation/pillar-C-cli-smoke \
+>                   validation/pillar-D-reproducibility \
+>                   validation/cleanup-and-ldsc-irwls \
+>                   efficiency/streaming-scan-audit
+> git push origin v0.3.0 v0.3.1 v0.3.2 v0.3.3 v0.3.4 v0.3.5 v0.3.6 v0.3.7 v0.3.8
+> python -m build && twine upload dist/*  # fires wheels.yml + publish.yml on tag push
 > ```
+>
+> **Five CI workflows wired (will fire after merge to master):**
+> - `ci.yml` (existing, every PR): default + golden + native + no-openmp + type-check
+> - `perf.yml` (E5, every PR): native-kernel wall-time gate (>10% fail / >5% warn)
+> - `cli-matrix.yml` (Pillar C, nightly): 122-cell CLI smoke
+> - `external.yml` (Pillar B, weekly): 11-tool reference comparisons
+> - `reproducibility.yml` (Pillar D, monthly): fixture-drift audit
 
 ---
 

@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TorchGWAS** is a modular Python library for GPU-accelerated Genome-Wide Association Studies (GWAS) using PyTorch. It replicates and extends functionality from established tools like GEMMA and GAPIT, targeting 4th-decimal-place agreement with their p-values. Supports both diploid and polyploid organisms.
 
-**Status**: Active development. Version 0.1.1 (Alpha). 2192 tests pass, 45 skipped. V1 core (Phases 0–13) complete with GEMMA/GAPIT reference equivalence; post-V1 extensions implemented through Phase 56. See the **Phase Index** below for scope, and `git log --grep="Phase NN"` for per-phase details (every phase was shipped as a labeled commit).
+**Status**: Active development. Version 0.3.8 (Alpha). 2801 tests pass, 544 skipped. V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions implemented through Phase 56. See the **Phase Index** below for scope, and `git log --grep="Phase NN"` for per-phase details (every phase was shipped as a labeled commit).
+
+**Post-V1 maturation (v0.3.0–v0.3.8, 2026-04-30 to 2026-05-05):** Multi-pillar validation campaign + streaming/efficiency campaign. 15 V1 production fixes shipped from validation work. 36 of 40 CLI scan subcommands now stream chunks at biobank scale (40 TB → 1-4 GB peak). Reference equivalence validated against 11 external tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, R `mediation`). Five CI workflows wire all four pillar's regression nets + native-kernel wall-time gate. See `docs/superpowers/SESSION_HANDOFF.md` for the full state.
 
 ## Planned Architecture
 
