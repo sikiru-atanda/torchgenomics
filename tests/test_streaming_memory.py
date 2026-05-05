@@ -374,3 +374,92 @@ class TestGlmmScanStreamingMemory:
             f"16 MiB budget. At biobank scale this would translate to "
             "a multi-TB regression."
         )
+
+
+# ---------------------------------------------------------------------------
+# me-glmm-scan (MultiEnvGLMM via per-chunk loop) memory regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def me_glmm_inputs():
+    """Synthetic per-environment binary phenotypes (n, E)."""
+    torch.manual_seed(11)
+    n, m, E = 200, 500, 2
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    K, _ = grm_vanraden(G)
+
+    # Two binary environments with mild correlated signal
+    Y = torch.zeros(n, E, dtype=torch.float64)
+    for e in range(E):
+        eta = 0.0 + 0.05 * G[:, 0] + 0.5 * torch.randn(n, dtype=torch.float64)
+        pi = torch.sigmoid(eta)
+        Y[:, e] = (torch.rand(n, dtype=torch.float64) < pi).to(torch.float64)
+    return G, Y, X0, K
+
+
+class TestMeGlmmScanStreamingMemory:
+    """Streaming multi-environment GLMM scan via per-chunk score_chunk loop.
+
+    MultiEnvGLMM.score_chunk returns ``EnvScanResult`` (richer than
+    ``ScanResult``), so the streaming path uses
+    :func:`torchgwas.cli._merge_env_results` rather than
+    :class:`UnifiedScanner`. The PQL null fit only depends on
+    ``Y / X0 / K``, so the genome scan loop is per-variant.
+    """
+
+    def test_streaming_me_glmm_matches_full_chunk(self, me_glmm_inputs):
+        from torchgwas.cli import _merge_env_results
+        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+
+        G, Y, X0, K = me_glmm_inputs
+        m = G.shape[1]
+
+        model = MultiEnvGLMM(family="binary", use_spa=False, firth=False)
+        nf = model.fit_null(Y, X0, K=K, env_names=["env0", "env1"])
+
+        vmeta_full = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        # Reference: single big-G score_chunk
+        ref = model.score_chunk(G, nf, vmeta_full)
+
+        # Streaming via per-chunk loop
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        chunk_results = []
+        for G_chunk, vm in reader.iter_chunks(64):
+            chunk_results.append(model.score_chunk(G_chunk, nf, vm))
+        streamed = _merge_env_results(chunk_results)
+
+        assert torch.allclose(streamed.stat, ref.stat, atol=1e-9, rtol=1e-9)
+        assert torch.allclose(streamed.p, ref.p, atol=1e-9, rtol=1e-7)
+        assert torch.allclose(streamed.beta, ref.beta, atol=1e-9, rtol=1e-9)
+
+    def test_streaming_me_glmm_under_explicit_budget(self, me_glmm_inputs):
+        """Hard absolute budget: <16 MiB at 200x500/E=2."""
+        from torchgwas.cli import _merge_env_results
+        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+
+        G, Y, X0, K = me_glmm_inputs
+        m = G.shape[1]
+
+        model = MultiEnvGLMM(family="binary", use_spa=False, firth=False)
+        nf = model.fit_null(Y, X0, K=K, env_names=["env0", "env1"])
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+            chunk_results = []
+            for G_chunk, vm in reader.iter_chunks(64):
+                chunk_results.append(model.score_chunk(G_chunk, nf, vm))
+            return _merge_env_results(chunk_results)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib, (
+            f"Streaming ME-GLMM peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
+        )

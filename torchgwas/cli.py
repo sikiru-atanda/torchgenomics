@@ -1686,13 +1686,24 @@ def _cmd_glmm_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
-    """Run multi-environment GLMM association scan."""
+    """Run multi-environment GLMM association scan.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and iterates ``aligned_reader.iter_chunks`` through
+    ``MultiEnvGLMM.score_chunk`` chunk-by-chunk, rather than
+    materializing the full ``(n, m)`` genotype matrix. Per-chunk
+    :class:`EnvScanResult` payloads are merged with
+    :func:`_merge_env_results` (same merger that ``met-scan`` uses).
+    The PQL null fit only depends on ``Y / X0 / K``, so the scan loop
+    after null fit is fundamentally per-variant.
+    """
     from .config import TorchGWASConfig, resolve_device
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Y should be (n, E) — multiple phenotype columns as environments
     env_cols = getattr(args, "env_cols", None)
@@ -1707,9 +1718,16 @@ def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
     if Y.shape[1] < 2:
         raise ValueError("me-glmm-scan requires at least 2 environments in phenotype")
 
-    # Build GRM
-    from .linalg.kinship import grm_vanraden
-    K, _ = grm_vanraden(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     family = getattr(args, "family", "binary")
     from .models.multi_env_glmm import MultiEnvGLMM
@@ -1723,7 +1741,14 @@ def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
     )
 
     nf = model.fit_null(Y.to(device), X0.to(device), K=K, env_names=env_names)
-    result = model.score_chunk(G.to(device), nf, vmeta)
+
+    # Stream chunks through score_chunk and merge per-chunk EnvScanResults.
+    chunk_results = []
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        from .preprocess.impute import impute_mean
+        G_chunk = impute_mean(G_chunk).to(device)
+        chunk_results.append(model.score_chunk(G_chunk, nf, vm))
+    result = _merge_env_results(chunk_results)
 
     _apply_correction_and_save(result, args)
     logger.info("ME-GLMM scan complete: family=%s, E=%d, %d variants",
