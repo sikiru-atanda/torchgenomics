@@ -2846,42 +2846,28 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
-    # Models that need full G: FarmCPU, BLINK
-    # These are genuinely not streamable — both algorithms iteratively
-    # re-use G as a covariate in the QTN-selection / LD-clustering loop,
-    # so the full (n_samples × n_variants) tensor must be in memory.
-    # See docs/efficiency/streaming_audit.md observation O2 for the
-    # algorithmic rationale.
+    # FarmCPU / BLINK — F2 streaming. Both models drive the FEM/REM
+    # iteration externally: per iteration the genome is streamed once
+    # for the GLM scan (and once more for QTN substitution when prior
+    # QTNs exist). The QTN-selection / LD-clustering / BIC operations
+    # only see the small cached candidate columns. Peak memory drops
+    # from O(n × m × 8 B) to O(chunk_size × n × 8 B + n × |QTN|).
     elif model_name in ("farmcpu", "blink"):
-        logger.warning(
-            "pipeline %s materializes the full genotype matrix "
-            "(%s is iterative QTN/LD-cluster selection and is not "
-            "single-pass streamable). At biobank scale this is "
-            "memory-prohibitive; consider lmm/mvlmm/glm for "
-            "streaming alternatives.",
-            model_name, model_name,
-        )
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+        Y, X0, aligned_reader = _align_samples(args, config)
 
         if model_name == "farmcpu":
             from .models.farmcpu import FarmCPU
             model = FarmCPU()
-            null_fit = model.fit_null(
-                Y.to(device), X0.to(device),
-                G=G.to(device), variant_meta=vmeta,
-            )
+            null_fit = model.fit_null(Y.to(device), X0.to(device))
         else:
             from .models.blink import BLINK
             model = BLINK()
-            null_fit = model.fit_null(
-                Y.to(device), X0.to(device),
-                G=G.to(device), variant_meta=vmeta,
-            )
+            null_fit = model.fit_null(Y.to(device), X0.to(device))
 
-        from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
-        qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-        result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+        result = model.score_streaming(
+            aligned_reader, null_fit,
+            chunk_size=config.chunk_size, test=args.test,
+        )
 
     # Multi-kernel LMM — also genuinely not streamable: dominance /
     # epistatic kernels are functions of the full G.

@@ -2192,3 +2192,242 @@ class TestLdScoresStreamingMemory:
             "invariant in m for fixed window. Streaming may have "
             "regressed to per-chromosome materialization."
         )
+
+
+# ---------------------------------------------------------------------------
+# F2 — FarmCPU streaming memory regression
+# ---------------------------------------------------------------------------
+
+
+class TestFarmCpuScanStreamingMemory:
+    """FarmCPU streaming variant: ``score_streaming`` must not materialize G.
+
+    Three guards:
+
+    1. Behavioral parity vs the eager ``score_chunk`` path on a tiny
+       fixture (float64 tolerance).
+    2. Absolute peak budget under a documented ceiling at n=200 / m=500.
+    3. Peak invariance in ``m`` for fixed cached-QTN size — the streaming
+       contract is that peak scales with chunk_size + n × |QTN|, NOT with
+       total m.
+    """
+
+    def _build_fixture(self, n: int = 200, m: int = 500):
+        torch.manual_seed(2026)
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        Y = (5.0 + 0.5 * G[:, 5] + 0.3 * G[:, 100]
+             + torch.randn(n, dtype=torch.float64))
+        X0 = torch.ones(n, 1, dtype=torch.float64)
+        chrs = ["1"] * (m // 2) + ["2"] * (m - m // 2)
+        poss = list(range(m))
+        return G, Y, X0, chrs, poss
+
+    def test_streaming_matches_materialized(self):
+        from torchgwas.models.farmcpu import FarmCPU
+        G, Y, X0, chrs, poss = self._build_fixture(n=100, m=200)
+        vm = VariantMeta(
+            snp=[f"rs{i}" for i in range(G.shape[1])],
+            chr=chrs, pos=poss, a1=["A"] * G.shape[1], a2=["G"] * G.shape[1],
+        )
+        model = FarmCPU(max_iter=4, p_threshold=0.01, max_qtns=10)
+        nf = model.fit_null(Y, X0)
+        ref = model.score_chunk(G, nf, vm, test="wald")
+        reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=37)
+        streamed = model.score_streaming(reader, nf, chunk_size=37, test="wald")
+
+        assert streamed.snp == ref.snp
+        assert torch.allclose(streamed.p, ref.p, atol=1e-10, rtol=1e-10)
+        assert torch.allclose(streamed.beta, ref.beta, atol=1e-10, rtol=1e-10)
+
+    def test_streaming_peak_under_explicit_budget(self):
+        """Hard ceiling: <16 MiB at n=200 / m=500."""
+        from torchgwas.models.farmcpu import FarmCPU
+        G, Y, X0, chrs, poss = self._build_fixture()
+
+        def _run():
+            model = FarmCPU(max_iter=3, p_threshold=0.01, max_qtns=5)
+            nf = model.fit_null(Y, X0)
+            reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=64)
+            return model.score_streaming(reader, nf, chunk_size=64, test="wald")
+
+        _, peak = _peak_kib(_run)
+        budget_kib = 16 * 1024
+        assert peak < budget_kib, (
+            f"FarmCPU streaming peak ({peak:.0f} KiB) exceeds 16 MiB. "
+            "Likely regressed to materializing G."
+        )
+
+    def test_streaming_peak_scales_with_chunk_not_m(self):
+        from torchgwas.models.farmcpu import FarmCPU
+        G_a, Y_a, X0_a, ch_a, ps_a = self._build_fixture(n=80, m=200)
+        G_b, Y_b, X0_b, ch_b, ps_b = self._build_fixture(n=80, m=800)
+
+        def _run(G, Y, X0, ch, ps):
+            model = FarmCPU(max_iter=2, p_threshold=0.01, max_qtns=5)
+            nf = model.fit_null(Y, X0)
+            reader = _ChunkedTensorReader(G, ch, ps, chunk_size=64)
+            return model.score_streaming(reader, nf, chunk_size=64, test="wald")
+
+        _, peak_a = _peak_kib(lambda: _run(G_a, Y_a, X0_a, ch_a, ps_a))
+        _, peak_b = _peak_kib(lambda: _run(G_b, Y_b, X0_b, ch_b, ps_b))
+        # 4x m should not yield ~4x peak. Allow generous slack for
+        # per-chunk allocations + small bookkeeping growth.
+        assert peak_b <= 2.5 * peak_a + 1024, (
+            f"FarmCPU streaming peak grew from {peak_a:.0f} KiB (m=200) "
+            f"to {peak_b:.0f} KiB (m=800) — should scale with chunk, not m."
+        )
+
+
+# ---------------------------------------------------------------------------
+# F2 — BLINK streaming memory regression
+# ---------------------------------------------------------------------------
+
+
+class TestBlinkScanStreamingMemory:
+    """BLINK streaming variant — same shape as FarmCPU."""
+
+    def _build_fixture(self, n: int = 200, m: int = 500):
+        torch.manual_seed(2027)
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        Y = (5.0 + 0.5 * G[:, 5] + 0.3 * G[:, 100]
+             + torch.randn(n, dtype=torch.float64))
+        X0 = torch.ones(n, 1, dtype=torch.float64)
+        chrs = ["1"] * (m // 2) + ["2"] * (m - m // 2)
+        poss = list(range(m))
+        return G, Y, X0, chrs, poss
+
+    def test_streaming_matches_materialized(self):
+        from torchgwas.models.blink import BLINK
+        G, Y, X0, chrs, poss = self._build_fixture(n=100, m=200)
+        vm = VariantMeta(
+            snp=[f"rs{i}" for i in range(G.shape[1])],
+            chr=chrs, pos=poss, a1=["A"] * G.shape[1], a2=["G"] * G.shape[1],
+        )
+        model = BLINK(max_iter=4, cutoff=0.5)
+        nf = model.fit_null(Y, X0)
+        ref = model.score_chunk(G, nf, vm, test="wald")
+        reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=37)
+        streamed = model.score_streaming(reader, nf, chunk_size=37, test="wald")
+        assert streamed.snp == ref.snp
+        assert torch.allclose(streamed.p, ref.p, atol=1e-10, rtol=1e-10)
+        assert torch.allclose(streamed.beta, ref.beta, atol=1e-10, rtol=1e-10)
+
+    def test_streaming_peak_under_explicit_budget(self):
+        from torchgwas.models.blink import BLINK
+        G, Y, X0, chrs, poss = self._build_fixture()
+
+        def _run():
+            model = BLINK(max_iter=3, cutoff=0.5)
+            nf = model.fit_null(Y, X0)
+            reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=64)
+            return model.score_streaming(reader, nf, chunk_size=64, test="wald")
+
+        _, peak = _peak_kib(_run)
+        budget_kib = 16 * 1024
+        assert peak < budget_kib, (
+            f"BLINK streaming peak ({peak:.0f} KiB) exceeds 16 MiB."
+        )
+
+    def test_streaming_peak_scales_with_chunk_not_m(self):
+        from torchgwas.models.blink import BLINK
+        G_a, Y_a, X0_a, ch_a, ps_a = self._build_fixture(n=80, m=200)
+        G_b, Y_b, X0_b, ch_b, ps_b = self._build_fixture(n=80, m=800)
+
+        def _run(G, Y, X0, ch, ps):
+            model = BLINK(max_iter=2, cutoff=0.5)
+            nf = model.fit_null(Y, X0)
+            reader = _ChunkedTensorReader(G, ch, ps, chunk_size=64)
+            return model.score_streaming(reader, nf, chunk_size=64, test="wald")
+
+        _, peak_a = _peak_kib(lambda: _run(G_a, Y_a, X0_a, ch_a, ps_a))
+        _, peak_b = _peak_kib(lambda: _run(G_b, Y_b, X0_b, ch_b, ps_b))
+        assert peak_b <= 2.5 * peak_a + 1024, (
+            f"BLINK streaming peak grew from {peak_a:.0f} KiB (m=200) "
+            f"to {peak_b:.0f} KiB (m=800)."
+        )
+
+
+# ---------------------------------------------------------------------------
+# F2 — mediate-scan SNP-block streaming memory regression
+# ---------------------------------------------------------------------------
+
+
+class TestMediateScanStreamingMemory:
+    """``scan_mediation(streaming=True)`` must not materialize the rotated G.
+
+    Two guards:
+
+    1. Behavioral parity vs ``streaming=False``: bit-for-bit zero diff
+       on the per-pair (a, b, c, c_prime, indirect, indirect_pvalue)
+       fields when the same SE seed is used.
+    2. Peak under explicit budget at n=80 / s_variants=300 / s_features=20.
+    """
+
+    def _build_fixture(self, n: int = 80, s: int = 300, f: int = 20):
+        torch.manual_seed(42)
+        G = torch.randint(0, 3, (n, s), dtype=torch.float64)
+        M = torch.randn(n, f, dtype=torch.float64)
+        K = (G @ G.T) / s + 0.01 * torch.eye(n, dtype=torch.float64)
+        K = (K + K.T) / 2
+        Y = (M[:, 0] * 0.3 + G[:, 5] * 0.5
+             + torch.randn(n, dtype=torch.float64))
+        return Y, G, M, K
+
+    def test_streaming_matches_eager_batched(self):
+        from torchgwas.multiomics import scan_mediation
+        Y, G, M, K = self._build_fixture()
+
+        eager = scan_mediation(
+            Y, G, M, K,
+            cis_window_bp=None,
+            se="monte-carlo", n_mc_draws=200, seed=7,
+            sensitivity=False, batched=True, streaming=False,
+        )
+        stream = scan_mediation(
+            Y, G, M, K,
+            cis_window_bp=None,
+            se="monte-carlo", n_mc_draws=200, seed=7,
+            sensitivity=False, batched=True, streaming=True,
+        )
+        assert eager.n_pairs == stream.n_pairs
+        max_diff = 0.0
+        for re, rs in zip(eager.rows, stream.rows):
+            for k in (
+                "a", "b", "c", "c_prime", "indirect",
+                "indirect_pvalue", "ci_lower", "ci_upper",
+            ):
+                if re[k] is None or rs[k] is None:
+                    continue
+                d = abs(re[k] - rs[k])
+                if d > max_diff:
+                    max_diff = d
+        assert max_diff < 1e-10, (
+            f"streaming mediate-scan diverges from eager batched path "
+            f"(max diff {max_diff:.2e}); rotation is linear so per-pair "
+            "outputs should agree to float64 round-off."
+        )
+
+    def test_streaming_peak_under_explicit_budget(self):
+        """Hard ceiling: <32 MiB at n=80 / s=300 / f=20.
+
+        A regression to materializing G_r alongside G would add roughly
+        ``n × s × 8 B = 80 × 300 × 8 = 187 KiB`` per allocation; on the
+        tiny fixture this is negligible compared to the SE / MC draws,
+        so the ceiling is set well above the observed peak with margin.
+        """
+        from torchgwas.multiomics import scan_mediation
+        Y, G, M, K = self._build_fixture()
+
+        def _run():
+            return scan_mediation(
+                Y, G, M, K,
+                cis_window_bp=None,
+                se="monte-carlo", n_mc_draws=200, seed=7,
+                sensitivity=False, batched=True, streaming=True,
+            )
+
+        _, peak = _peak_kib(_run)
+        budget_kib = 32 * 1024
+        assert peak < budget_kib, (
+            f"mediate-scan streaming peak ({peak:.0f} KiB) exceeds 32 MiB."
+        )
