@@ -1098,7 +1098,19 @@ def _cmd_farmcpu_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
-    """Run FarmCPU scan for a single trait."""
+    """Run FarmCPU scan for a single trait.
+
+    Streaming variant: orchestrates the FEM/REM iteration externally.
+    The full ``(n × m)`` G is never resident; only the cached QTN
+    columns (``n × |QTN|``, |QTN| ≤ ~20 in practice) live in memory
+    alongside one streaming chunk at a time. Per-iteration the genome
+    is streamed once for the GLM scan and (when prior QTNs exist) once
+    more for the p-value substitution.
+
+    Peak memory: ``O(n × |QTN| + chunk_size × n × 8 B)`` instead of
+    ``O(n × m × 8 B)``. At UKB scale this drops the FarmCPU path from
+    ~40 TB float64 to ~GB-scale per chunk.
+    """
     from .config import TorchGWASConfig, resolve_device
     from .models.farmcpu import FarmCPU
     from .preprocess.qc import QCFilterConfig
@@ -1106,7 +1118,8 @@ def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     bin_sizes = [int(x) for x in args.bin_sizes.split(",")]
     max_iter = getattr(args, "max_iter", None) or 10
@@ -1121,19 +1134,16 @@ def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
         maf_threshold=args.maf_threshold,
     )
     logger.info(
-        "FarmCPU: max_iter=%d, p_threshold=%.4f, max_qtns=%d, bins=%s",
+        "FarmCPU(stream): max_iter=%d, p_threshold=%.4f, max_qtns=%d, bins=%s",
         max_iter, args.p_threshold, args.max_qtns, bin_sizes,
     )
 
-    null_fit = model.fit_null(
-        Y.to(device), X0.to(device),
-        G=G.to(device), variant_meta=vmeta,
-    )
+    null_fit = model.fit_null(Y.to(device), X0.to(device))
 
-    from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
-    qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-    result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+    qc_unused = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)  # noqa: F841 — preserved for API compat
+    result = model.score_streaming(
+        aligned_reader, null_fit, chunk_size=config.chunk_size, test=args.test,
+    )
 
     _apply_correction_and_save(result, args)
     return 0
