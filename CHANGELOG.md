@@ -2,6 +2,89 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.6] — 2026-05-05
+
+LD-window streaming release (F1). Rewrites the six remaining
+materialized scan paths whose common shape is "needs LD between SNPs
+in a bounded window": `ldsc`, `ldsc-rg`, `ld-blocks`, `clump`,
+`knockoff-scan`, `lro-scan`. Each path genuinely needs LD inside a
+window — but the window is bounded (1 cM ≈ 1000 SNPs for LD scores;
+per-chromosome for the rest). The legacy paths all materialized the
+full ``(n × m)`` G via either ``_load_scan_data`` or
+``torch.cat([chunks])``; at biobank scale ~40 TB float64. **Audit
+counts: 26 → 32 streaming subcommands; 12 → 6 materialized.**
+
+### Added
+
+- **`torchgwas.postgwas.compute_ld_scores_streaming`** — sliding-
+  window LD-score helper. Per-chromosome buffer holds only SNPs whose
+  right edge has not yet been crossed by the latest streamed position.
+  Running r² partial sums accumulate chunk-by-chunk so each pair
+  contributes exactly once. Peak memory: O(n × window_size × 8 B),
+  independent of total m. Behavioral parity to float64 tolerance vs.
+  the in-memory `compute_ld_scores`.
+
+- **`torchgwas.models.lro_lmm.LROLMM.run` — `K_full` / `normalizer`
+  kwargs.** When supplied, `LROLMM.run` skips its internal
+  `grm_vanraden(G)` call and uses the caller's genome-wide GRM. The
+  per-block `K_b = G_block @ G_block^T / normalizer` semantics are
+  preserved exactly — the chromosome-local G slice contributes only
+  `K_b`; `K_minus_b = K_full − K_b` correctly removes that
+  contribution from the genome-wide GRM. Enables the
+  per-chromosome streaming variant of `lro-scan`.
+
+### Changed (F1 streaming rewrites)
+
+- **`cli._cmd_ldsc`, `cli._cmd_ldsc_rg`** — true sliding-window
+  streaming via `compute_ld_scores_streaming`. Replaces
+  `compute_ld_scores(G_full, …)`. Single shared rewrite (the helper).
+  Peak memory drops from ~40 TB to typically ~4 GB at UKB scale.
+
+- **`cli._cmd_ld_blocks`, `cli._cmd_clump`, `cli._cmd_knockoff_scan`,
+  `cli._cmd_lro_scan`** — per-chromosome streaming buffer. LD blocks
+  never span chromosomes by physical-LD definition, so the chromosome
+  is the natural memory unit for block detection / clumping /
+  knockoff construction / leave-region-out scans. Each rewrite
+  accumulates one chromosome's slice at a time, runs the algorithm,
+  and frees the slice before reading the next. Per-chromosome results
+  are merged into a genome-wide result; the knockoff+ FDR filter is
+  applied ONCE over the merged W-statistic vector for genome-wide
+  control. Peak memory: O(n × max_per_chromosome_m × 8 B) plus, for
+  knockoff / LRO, the streaming GRM (n²).
+
+### Fixed (F1 latent bug)
+
+- **`cli._cmd_ld_blocks` multi-chromosome mis-attribution.** The
+  legacy single-call `detect_blocks(G_full, all_chrs, …)` mis-
+  attributed blocks on chr 2+ to chr 1 because
+  `compute_pairwise_ld` emits chromosome-LOCAL indices, but
+  `_make_block` indexes into the genome-wide `variant_chr` /
+  `variant_pos` arrays. The streaming rewrite calls `detect_blocks`
+  once per chromosome with that chromosome's slice — fixing the bug
+  as a side effect. Test
+  `test_streaming_per_chromosome_correctly_attributes_blocks` guards
+  the corrected behavior.
+
+### Tests
+
+- **`tests/test_streaming_memory.py`** — 11 new memory regression
+  tests across 6 new test classes (LdScores, LdBlocks, Clump,
+  Knockoff, Lro). Total streaming-memory tests: 42. Each guards
+  parity vs the materialized reference (where well-defined) and a
+  per-chromosome scaling assertion (peak roughly invariant in
+  chromosome count for fixed per-chromosome size).
+- Suite: 2793 passed (+11 from v0.3.5's 2782), 0 failed.
+
+### Audit (post-F1)
+
+- 32 streaming subcommands (was 13 after E1, 20 after E3, 26 after E4).
+- 2 partial (unchanged; opt-in `--grm-method zhang`).
+- 6 materialized — `farmcpu-scan`, `blink-scan`, `bayes-scan`,
+  `mklmm-scan`, `mediate-scan`, `pipeline` materialized branches
+  (farmcpu / blink / mklmm). All algorithmically tied to full G —
+  documented as O2 (fundamentally not-streamable) in
+  `docs/efficiency/streaming_audit.md`.
+
 ## [0.3.5] — 2026-05-05
 
 Performance regression CI release (E5). The wall-time analog to the
