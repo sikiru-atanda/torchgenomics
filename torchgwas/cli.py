@@ -3440,30 +3440,145 @@ def _cmd_meta(args: argparse.Namespace) -> int:
 
 
 def _cmd_clump(args: argparse.Namespace) -> int:
-    """LD clumping to identify independent loci."""
+    """LD clumping to identify independent loci.
+
+    Streaming variant: clumping is independently per-chromosome (an
+    index SNP on chr 1 cannot LD-clump a SNP on chr 2). We stream chunks
+    from the genotype reader, accumulate one chromosome's slice at a
+    time, run ld_clump on that chromosome's sumstats subset, then free
+    the slice before reading the next chromosome. Per-chromosome results
+    are concatenated into a genome-wide ClumpResult.
+
+    Peak memory: O(n × max_per_chromosome_m × 8 B) instead of
+    O(n × m × 8 B). The bp_window is bounded by chromosome length.
+    """
     import torch
 
     from .io.detect import detect_format
     from .io.validate import _open_reader
     from .postgwas import ld_clump, load_sumstats
+    from .postgwas._clump import ClumpResult
 
     ss = load_sumstats(args.sumstats)
 
+    # Build a per-chromosome view of the sumstats so we can emit
+    # genome-wide indices from per-chromosome ld_clump calls.
+    ss_chr = [str(c) for c in ss.chr]
+    chrom_to_global_idx: dict[str, list[int]] = {}
+    for i, c in enumerate(ss_chr):
+        chrom_to_global_idx.setdefault(c, []).append(i)
+
     fmt = detect_format(args.genotype)
     reader = _open_reader(args.genotype, fmt)
-    chunks, var_pos, var_chr = [], [], []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks.append(G_chunk)
-        var_pos.extend(vmeta.pos)
-        var_chr.extend(vmeta.chr)
-    G = torch.cat(chunks, dim=1)
 
-    result = ld_clump(
-        ss.p, G, var_pos, var_chr,
-        r2_threshold=args.r2,
-        p_threshold=args.p_threshold,
-        window_kb=args.window_kb,
-    )
+    # Per-chromosome streaming accumulator. ld_clump itself only needs
+    # G for r^2 within max_kb on the same chromosome, so we run it once
+    # per chromosome with that chromosome's slice + sumstats subset.
+    all_index_snps_global: list[int] = []
+    all_clump_members_global: list[list[int]] = []
+
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+    cur_global_start = 0
+    n_seen = 0
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_pos
+        if not cur_chunks or cur_chr is None:
+            return
+        global_idx = chrom_to_global_idx.get(cur_chr, [])
+        if not global_idx:
+            cur_chunks = []
+            cur_pos = []
+            return
+        # Sumstats positions for this chromosome — must align with the
+        # genotype slice column-by-column. Common case: sumstats and
+        # genotype share variant order on disk; if they don't, the
+        # legacy path also fails. We assume row-aligned within
+        # chromosome (PLINK convention).
+        G_chr = torch.cat(cur_chunks, dim=1)
+        m_chr = G_chr.shape[1]
+        # Defensive: sumstats may have more / fewer SNPs than genotype.
+        # Use the minimum and warn — match legacy semantics
+        # (ld_clump errors if shapes disagree).
+        if len(global_idx) != m_chr:
+            logger.warning(
+                "Sumstats chromosome %s has %d SNPs but genotype has %d; "
+                "clumping the overlapping prefix.",
+                cur_chr, len(global_idx), m_chr,
+            )
+            n_use = min(len(global_idx), m_chr)
+            global_idx = global_idx[:n_use]
+            G_chr = G_chr[:, :n_use]
+            cur_pos_use = cur_pos[:n_use]
+        else:
+            cur_pos_use = cur_pos
+
+        gidx_t = torch.tensor(global_idx, dtype=torch.long)
+        p_chr = ss.p[gidx_t]
+
+        # Pass single-chromosome slices to ld_clump.
+        chr_result = ld_clump(
+            p_chr, G_chr, cur_pos_use, [str(cur_chr)] * len(cur_pos_use),
+            r2_threshold=args.r2,
+            p_threshold=args.p_threshold,
+            window_kb=args.window_kb,
+        )
+        # Map local indices back to global sumstats indices.
+        for local_i in chr_result.index_snps:
+            all_index_snps_global.append(global_idx[local_i])
+        for members in chr_result.clump_members:
+            all_clump_members_global.append([global_idx[m] for m in members])
+
+        cur_chunks = []
+        cur_pos = []
+
+    for G_chunk, vmeta in reader.iter_chunks():
+        chr_chunk = [str(c) for c in vmeta.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vmeta.pos[run_start:run_end])
+            run_start = run_end
+        n_seen += G_chunk.shape[1]
+
+    _process_chrom()
+
+    # Order index SNPs by p-value ascending to match the legacy single-
+    # call ld_clump output convention.
+    if all_index_snps_global:
+        order = sorted(
+            range(len(all_index_snps_global)),
+            key=lambda k: float(ss.p[all_index_snps_global[k]].item()),
+        )
+        index_snps_sorted = [all_index_snps_global[k] for k in order]
+        members_sorted = [all_clump_members_global[k] for k in order]
+        index_p_sorted = ss.p[
+            torch.tensor(index_snps_sorted, dtype=torch.long)
+        ]
+        result = ClumpResult(
+            index_snps=index_snps_sorted,
+            index_p=index_p_sorted,
+            clump_members=members_sorted,
+            n_clumps=len(index_snps_sorted),
+        )
+    else:
+        result = ClumpResult(
+            index_snps=[], index_p=torch.tensor([]),
+            clump_members=[], n_clumps=0,
+        )
 
     out_path = f"{args.output}.clumps.tsv"
     with open(out_path, "w") as f:

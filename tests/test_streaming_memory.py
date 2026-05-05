@@ -1658,6 +1658,159 @@ class TestLdBlocksStreamingMemory:
         )
 
 
+def _stream_clump_via_cli_helper(
+    p: torch.Tensor,
+    G: torch.Tensor,
+    chrs: list[str],
+    poss: list[int],
+    *,
+    r2_threshold: float,
+    p_threshold: float,
+    window_kb: float,
+    chunk_size: int = 64,
+):
+    """Replicate _cmd_clump's per-chromosome streaming accumulator."""
+    from torchgwas.postgwas import ld_clump
+    from torchgwas.postgwas._clump import ClumpResult
+
+    chrom_to_global_idx: dict[str, list[int]] = {}
+    for i, c in enumerate(chrs):
+        chrom_to_global_idx.setdefault(c, []).append(i)
+
+    reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=chunk_size)
+
+    all_index_snps_global: list[int] = []
+    all_clump_members_global: list[list[int]] = []
+
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+
+    def _process():
+        nonlocal cur_chunks, cur_pos
+        if not cur_chunks or cur_chr is None:
+            return
+        global_idx = chrom_to_global_idx.get(cur_chr, [])
+        if not global_idx:
+            cur_chunks = []
+            cur_pos = []
+            return
+        G_chr = torch.cat(cur_chunks, dim=1)
+        n_use = min(len(global_idx), G_chr.shape[1])
+        global_idx_use = global_idx[:n_use]
+        G_chr = G_chr[:, :n_use]
+        gidx_t = torch.tensor(global_idx_use, dtype=torch.long)
+        p_chr = p[gidx_t]
+        chr_result = ld_clump(
+            p_chr, G_chr, cur_pos[:n_use],
+            [str(cur_chr)] * n_use,
+            r2_threshold=r2_threshold,
+            p_threshold=p_threshold,
+            window_kb=window_kb,
+        )
+        for local_i in chr_result.index_snps:
+            all_index_snps_global.append(global_idx_use[local_i])
+        for members in chr_result.clump_members:
+            all_clump_members_global.append(
+                [global_idx_use[m] for m in members]
+            )
+        cur_chunks = []
+        cur_pos = []
+
+    for G_chunk, vmeta in reader.iter_chunks(chunk_size):
+        chr_chunk = [str(c) for c in vmeta.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+            elif run_chr != cur_chr:
+                _process()
+                cur_chr = run_chr
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vmeta.pos[run_start:run_end])
+            run_start = run_end
+    _process()
+
+    if all_index_snps_global:
+        order = sorted(
+            range(len(all_index_snps_global)),
+            key=lambda k: float(p[all_index_snps_global[k]].item()),
+        )
+        idx_sorted = [all_index_snps_global[k] for k in order]
+        members_sorted = [all_clump_members_global[k] for k in order]
+        return ClumpResult(
+            index_snps=idx_sorted,
+            index_p=p[torch.tensor(idx_sorted, dtype=torch.long)],
+            clump_members=members_sorted,
+            n_clumps=len(idx_sorted),
+        )
+    return ClumpResult(
+        index_snps=[], index_p=torch.tensor([]),
+        clump_members=[], n_clumps=0,
+    )
+
+
+class TestClumpStreamingMemory:
+    """Per-chromosome streaming for the clump CLI command."""
+
+    def test_streaming_matches_materialized_single_chrom(self):
+        from torchgwas.postgwas import ld_clump
+
+        torch.manual_seed(11)
+        n, m = 100, 200
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        chrs = ["1"] * m
+        poss = list(range(0, m * 100, 100))
+        # Synthesize p-values: a handful below threshold so clumping
+        # actually emits index SNPs.
+        p = torch.full((m,), 0.5, dtype=torch.float64)
+        p[10] = 1e-9
+        p[60] = 1e-8
+        p[120] = 1e-9
+
+        ref = ld_clump(
+            p, G, poss, chrs,
+            r2_threshold=0.1, p_threshold=5e-7, window_kb=2.0,
+        )
+        stream = _stream_clump_via_cli_helper(
+            p, G, chrs, poss,
+            r2_threshold=0.1, p_threshold=5e-7, window_kb=2.0,
+            chunk_size=37,
+        )
+        assert stream.n_clumps == ref.n_clumps
+        assert stream.index_snps == ref.index_snps
+        assert torch.allclose(stream.index_p, ref.index_p)
+
+    def test_streaming_peak_per_chromosome_not_genome(self):
+        torch.manual_seed(13)
+        # 1 chrom × 400 SNPs vs 4 chroms × 400 SNPs each.
+        G_a, chr_a, pos_a = _ld_fixture(n=80, m=400, n_chrom=1)
+        G_b, chr_b, pos_b = _ld_fixture(n=80, m=1600, n_chrom=4)
+        p_a = torch.full((400,), 0.5, dtype=torch.float64)
+        p_a[5] = 1e-9
+        p_b = torch.full((1600,), 0.5, dtype=torch.float64)
+        for k in (5, 405, 805, 1205):
+            p_b[k] = 1e-9
+
+        def _run(p, G, ch, ps):
+            return _stream_clump_via_cli_helper(
+                p, G, ch, ps, r2_threshold=0.1, p_threshold=5e-7,
+                window_kb=2.0, chunk_size=64,
+            )
+
+        _, peak_a = _peak_kib(lambda: _run(p_a, G_a, chr_a, pos_a))
+        _, peak_b = _peak_kib(lambda: _run(p_b, G_b, chr_b, pos_b))
+        assert peak_b <= 2.0 * peak_a + 256, (
+            f"clump streaming peak grew from {peak_a:.0f} KiB "
+            f"(1 chrom) to {peak_b:.0f} KiB (4 chroms) — should be "
+            "roughly invariant per-chromosome."
+        )
+
+
 class TestLdScoresStreamingMemory:
     """``compute_ld_scores_streaming`` peak ∝ window_size, not ∝ m."""
 
