@@ -1,0 +1,86 @@
+name: External reference tools (Pillar B)
+
+# Pillar B of the validation campaign — re-runs the harness comparisons
+# for the external reference tools (PLINK 2.0, LDSC, TwoSampleMR, regenie,
+# SAIGE, BOLT-LMM, GEMMA, GAPIT, GWASpoly, SoyNAM, SoyMD).
+#
+# Skipped from the default test suite via the `external` pytest marker.
+# This workflow opts in via `-m external` and installs each tool fresh.
+#
+# Wall time: ~30–60 min depending on which tools succeed. Runs weekly + manual.
+# Each per-tool harness skips cleanly if its tool isn't installable on the
+# runner — see validation/external/<tool>/install.sh for the per-tool
+# infra-blocker fallback.
+
+on:
+  schedule:
+    - cron: "27 6 * * 0"  # 06:27 UTC every Sunday
+  workflow_dispatch:
+    inputs:
+      tools:
+        description: "Comma-separated tool subset (default: all). Options: plink2,ldsc,twosamplemr,regenie,saige,bolt_lmm,gemma,gapit,gwaspoly,soynam,soymd"
+        required: false
+        default: ""
+
+jobs:
+  external-references:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
+          pip install -e ".[dev]"
+
+      - name: Install R + system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              r-base r-base-dev \
+              libcurl4-openssl-dev libssl-dev libxml2-dev libfontconfig1-dev \
+              libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev \
+              libtiff5-dev libjpeg-dev \
+              build-essential gfortran \
+              docker.io
+          # Verify
+          R --version | head -1
+          docker --version || true
+
+      - name: Install reference tool harnesses (idempotent)
+        run: |
+          # Each harness writes a .install_marker on success or a
+          # .infra_blocker on documented failure; subsequent harness invocations
+          # skip cleanly. The pytest tests then either run the comparison or
+          # skip with the recorded reason.
+          set +e  # don't abort the workflow on any single tool's install failure
+          for tool in plink2 ldsc twosamplemr regenie saige bolt_lmm gemma gapit gwaspoly soynam soymd; do
+              echo "=== installing $tool ==="
+              bash validation/external/$tool/install.sh || echo "   $tool install: deferred to harness skip"
+          done
+          set -e
+
+      - name: Run Pillar B external comparisons
+        run: |
+          pytest tests/ -m external -v --tb=short --timeout=1800
+        env:
+          TORCHGWAS_DISABLE_NATIVE: "1"
+
+      - name: Upload findings artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pillar-b-outputs
+          path: |
+            validation/external/*/outputs/
+            docs/validation_findings.md
+          if-no-files-found: ignore
+          retention-days: 30
