@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.8] — 2026-05-05
+
+Multi-kernel streaming release (F3). The last tractable materialized
+scan path — `mklmm-scan` — now streams kernel construction
+chunk-by-chunk. After this release **only `bayes-scan` remains
+materialized** (joint posterior over all m SNPs is genuinely
+streaming-incompatible). **Audit counts: 35 → 36 streaming
+subcommands; 2 → 1 materialized.**
+
+### Added
+
+- **`torchgwas.linalg.multi_kernel_streaming.build_multi_kernels_streaming`**
+  (commit `c075a8b`) — stream-builds the additive / dominance /
+  epistatic kernel set from an `iter_chunks` reader. Each base kernel
+  (additive, dominance) is accumulated chunk-by-chunk in float64;
+  epistatic kernels are Hadamard products of the now-built `(n × n)`
+  base kernels (so they cost nothing extra in G residency). Behavioral
+  parity with the in-memory `build_multi_kernels(G, ...)` to FP-32-GEMM
+  streaming-accumulator slack (~1e-7).
+
+### Changed (F3 streaming rewrite)
+
+- **`cli._cmd_mklmm_scan`** — replaces `_load_scan_data + build_multi_kernels(G, ...)`
+  with `_align_samples + build_multi_kernels_streaming(...)`. Peak
+  memory drops from `O(n × m × 8 B)` (~40 TB at UKB scale) to
+  `O(n² × n_kernels × 8 B)` for the kernels themselves — the same
+  ceiling every LMM has — plus `O(n × chunk_size × 8 B)` per
+  accumulator pass.
+
+- **`cli._cmd_pipeline`'s mklmm branch** — mechanical follow-on. Now
+  dispatches to `build_multi_kernels_streaming`. Removes the prior
+  warning log about pipeline mklmm being memory-prohibitive at
+  biobank scale.
+
+### Audit (post-F3)
+
+- **36 streaming** subcommands (was 13 baseline → +23 across E1/E3/E4/F1/F2/F3).
+- **3 partial** (unchanged: opt-in `--grm-method zhang` for lmm-scan /
+  mvlmm-scan; mediate-scan user-side `.npy`/`.tsv` input floor).
+- **1 materialized** — `bayes-scan` only. SuSiE / CAVI joint posterior
+  over all m SNPs requires random access; streaming would change the
+  algorithm semantically. Documented as O3 (algorithmically tight).
+
+The streaming campaign is now algorithmically saturated. The single
+remaining materialized path cannot be streamed without changing the
+inference algorithm. Pipeline materialized branches are gone.
+
 ## [0.3.7] — 2026-05-05
 
 Cached-column / per-block streaming release (F2). Three of the six

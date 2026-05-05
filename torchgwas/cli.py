@@ -530,9 +530,24 @@ def _cmd_mvlmm_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
-    """Run multi-kernel LMM scan (additive + dominance + epistatic variance components)."""
+    """Run multi-kernel LMM scan (additive + dominance + epistatic variance components).
+
+    Streaming variant: builds the additive / dominance / epistatic
+    kernel set via :func:`build_multi_kernels_streaming`, which
+    accumulates each base kernel's per-SNP contributions
+    chunk-by-chunk in float64. Epistatic kernels are Hadamard
+    products of the now-built ``(n, n)`` base kernels, so they cost
+    nothing extra in G residency. The scan loop after null fit is
+    already streaming via :class:`UnifiedScanner`.
+
+    Peak memory drops from O(n*m*8B) (~40 TB at UKB scale,
+    float64) to O(n^2 * n_kernels * 8B) (the kernels themselves) +
+    O(n * chunk_size * 8B) per chunk during the accumulator pass —
+    i.e., the same n^2 ceiling every LMM has, with no n*m floor.
+    """
     from .config import TorchGWASConfig, resolve_device
-    from .models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
+    from .linalg.multi_kernel_streaming import build_multi_kernels_streaming
+    from .models.multi_kernel_lmm import MultiKernelLMM
     from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
@@ -541,7 +556,8 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
         config.numerical.reml_max_iter = args.max_iter
     ploidy = getattr(args, "ploidy", 2)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Parse kernel types
     kernel_types = [k.strip() for k in args.kernels.split(",")]
@@ -550,12 +566,16 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
 
     logger.info("Multi-kernel LMM: kernels=%s, ploidy=%d", kernel_types, ploidy)
 
-    kernels, kernel_names = build_multi_kernels(
-        G.to(device), ploidy=ploidy,
+    # Stream-build kernels chunk-by-chunk; never holds the full G.
+    kernels, kernel_names = build_multi_kernels_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        ploidy=ploidy,
         include_dominance=include_dom,
         include_epistatic=include_epi,
+        device=device,
     )
-    logger.info("Built %d kernels: %s", len(kernels), kernel_names)
+    logger.info("Built %d kernels (streaming): %s", len(kernels), kernel_names)
 
     Y_dev = Y.to(device)
     X0_dev = X0.to(device)
@@ -577,7 +597,7 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
         logger.info("Kernel %s: Z=%.3f, p=%.2e", name, z, p)
 
     from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
+    scanner = UnifiedScanner(aligned_reader, model, config)
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
     result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
@@ -2869,25 +2889,27 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
             chunk_size=config.chunk_size, test=args.test,
         )
 
-    # Multi-kernel LMM — also genuinely not streamable: dominance /
-    # epistatic kernels are functions of the full G.
+    # Multi-kernel LMM — streams the kernel construction via
+    # build_multi_kernels_streaming (each base kernel accumulated
+    # chunk-by-chunk; epistatic kernels are Hadamard products of
+    # the (n, n) base kernels).
     elif model_name == "mklmm":
-        logger.warning(
-            "pipeline mklmm materializes the full genotype matrix "
-            "(dominance and epistatic kernels in build_multi_kernels "
-            "require all variants simultaneously). At biobank scale "
-            "this is memory-prohibitive.",
+        from .linalg.multi_kernel_streaming import build_multi_kernels_streaming
+        from .models.multi_kernel_lmm import MultiKernelLMM
+        Y, X0, aligned_reader = _align_samples(args, config)
+        kernels, kernel_names = build_multi_kernels_streaming(
+            _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+            n_samples=aligned_reader.n_samples,
+            ploidy=ploidy,
+            device=device,
         )
-        from .models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
-        kernels, kernel_names = build_multi_kernels(G.to(device), ploidy=ploidy)
         model = MultiKernelLMM()
         null_fit = model.fit_null(
             Y.to(device), X0.to(device),
             kernels=kernels, kernel_names=kernel_names,
         )
         from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
+        scanner = UnifiedScanner(aligned_reader, model, config)
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
