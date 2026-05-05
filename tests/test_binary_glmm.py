@@ -85,6 +85,41 @@ class TestBinaryGLMMNull:
         with pytest.raises(ValueError, match="requires a kinship"):
             model.fit_null(Y, X0, K=None)
 
+    def test_converged_flag_log_likelihood_criterion(self):
+        """Phase 33 follow-up: PQL reports converged=True on a stable
+        problem when the log-likelihood + variance components have
+        plateaued, even if the fixed-effect β is still drifting at the
+        β-only tolerance.
+
+        Reference: SAIGE harness B5 noted that on a fixture where TG
+        BinaryGLMM β/SE/p match SAIGE to within 5%, PQL was returning
+        converged=False due to the β-only criterion. The dual ll/VC
+        criterion captures these cases.
+        """
+        # Easy fixture: balanced case-control, mild kinship signal, no
+        # case-control imbalance issues. PQL should converge cleanly
+        # within the iteration budget.
+        n = 300
+        torch.manual_seed(101)
+        Z = torch.randn(n, 80, dtype=torch.float64)
+        K_mat = Z @ Z.T / 80.0
+        K_mat = 0.5 * (K_mat + K_mat.T)
+        L = torch.linalg.cholesky(K_mat + 1e-6 * torch.eye(n, dtype=torch.float64))
+        u = L @ torch.randn(n, dtype=torch.float64) * math.sqrt(0.2)
+        logit_p = u  # prevalence = 0.5 → balanced
+        prob = torch.sigmoid(logit_p)
+        Y = torch.bernoulli(prob).to(torch.float64)
+        X0 = torch.ones(n, 1, dtype=torch.float64)
+
+        model = BinaryGLMM(use_spa=False, pql_max_iter=30, pql_tol=1e-4)
+        nf = model.fit_null(Y, X0, K=K_mat)
+        assert nf.converged is True, (
+            f"Expected PQL to report converged=True on a clean balanced "
+            f"fixture; got converged={nf.converged}, "
+            f"log_likelihood={nf.log_likelihood}, "
+            f"sig2_g={nf.sig2_g}, sig2_e={nf.sig2_e}"
+        )
+
 
 # ===================================================================
 # Score test calibration

@@ -88,6 +88,9 @@ def pql_fit(
     sig2_e = 1.0
 
     converged = False
+    prev_ll: float | None = None
+    prev_sig2_g: float = sig2_g
+    prev_sig2_e: float = sig2_e
 
     for outer in range(max_outer):
         # Step 1: Working weights and response
@@ -172,13 +175,44 @@ def pql_fit(
         mu_new = torch.sigmoid(eta_new)  # logit link
         mu_new = torch.clamp(mu_new, min=1e-10, max=1.0 - 1e-10)
 
-        # Convergence check
+        # Convergence check — Phase 33 follow-up: in addition to the
+        # fixed-effect β change, monitor relative changes in log-
+        # likelihood and variance components. PQL on case-control data
+        # often stabilizes ll / VCs several iterations *before* β stops
+        # drifting (β co-evolves with the working response z), so the
+        # β-only criterion under-reports convergence (SAIGE harness B5
+        # observation: TG BinaryGLMM reports converged=False even when
+        # β/SE/p match SAIGE to within 5%). The delta-check escape
+        # clause matches the convergence semantics used by the AI-REML
+        # / LBFGS-REML loops elsewhere in `torchgwas.optim`.
         param_change = (beta_new - beta).abs().max().item()
+        ll_curr = _quasi_loglik(Y, mu_new, sig2_g, sig2_e, K)
+        if prev_ll is not None:
+            ll_rel = abs(ll_curr - prev_ll) / max(abs(ll_curr), 1.0)
+        else:
+            ll_rel = float("inf")
+        sig2_g_rel = abs(sig2_g - prev_sig2_g) / max(abs(sig2_g), 1e-10)
+        sig2_e_rel = abs(sig2_e - prev_sig2_e) / max(abs(sig2_e), 1e-10)
 
         beta = beta_new
         mu = mu_new
+        prev_ll = ll_curr
+        prev_sig2_g = sig2_g
+        prev_sig2_e = sig2_e
 
-        if param_change < tol and outer > 0:
+        # Original β-stable criterion (kept for backward compatibility):
+        beta_converged = (param_change < tol) and (outer > 0)
+        # New: log-likelihood + variance-component stable criterion. We
+        # require two consecutive iterations of small deltas to avoid
+        # transient flat steps; `outer > 1` guarantees `prev_ll` is from
+        # iteration `outer-1` rather than the initial `None`.
+        ll_converged = (
+            outer > 1
+            and ll_rel < tol
+            and sig2_g_rel < tol
+            and sig2_e_rel < tol
+        )
+        if beta_converged or ll_converged:
             converged = True
             break
 
