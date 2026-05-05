@@ -2,6 +2,110 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4] — 2026-04-30
+
+End-user runtime efficiency release (E4). Continues the streaming
+audit campaign from v0.3.2 / v0.3.3: rewrites four more scan
+subcommands and four imputation methods to stream chunks via
+`iter_chunks`, plus updates the `pipeline` orchestrator to dispatch
+to the new streaming variants. **Audit counts: 13 → 26 streaming
+subcommands; 25 → 12 materialized.**
+
+### Added
+
+- **`torchgwas.preprocess.impute`** — four streaming-friendly
+  building blocks alongside the in-memory reference functions:
+  `compute_column_means_streaming`, `compute_column_modes_streaming`,
+  `impute_chunk_with_means`, `impute_chunk_with_modes`,
+  `impute_chunk_with_knn`, `impute_chunk_with_ld_window`. Each
+  reduces to the same math as its in-memory equivalent
+  chunk-by-chunk.
+
+- **`cli._open_impute_output_sink`** — supports `.zarr` per-chunk
+  output sinks (peak memory bounded by chunk size) plus legacy
+  `.pt` materialization fallback.
+
+### Changed (E4 streaming rewrites)
+
+- **`cli._cmd_rr_scan`, `cli._cmd_rr_met_scan`, `cli._cmd_met_scan`**
+  — Group A "GRM-only" fixes. Replace `_load_full_genotype +
+  grm_vanraden(G)` with `grm_vanraden_streaming(...)`. The scan
+  loop already streamed; only the kinship build was materialized.
+
+- **`cli._cmd_poly_scan`** — Group B full streaming via
+  `UnifiedScanner` + on-the-fly gene-action recoding wrapper
+  (`_RecodingReader`). The `--joint-qtl` post-analysis branch
+  retains an opt-in materialization since joint QTL needs random
+  column access. Surfaces a latent quirk in the materialized path
+  (G_scan was computed but never reached UnifiedScanner); streaming
+  rewrite preserves that behavior for `additive` / `general`.
+
+- **`cli._cmd_impute`** — Group C streaming for all four built-in
+  methods (mean / mode / knn / ld). Mean/mode use two-pass
+  per-column statistics; knn uses streaming GRM + per-chunk fill
+  (K still held once at n×n×8 B); ld uses sliding-window flank
+  buffer (documented buffer cost).
+
+- **`cli._cmd_pipeline`** — Group D mechanical follow-on. `gxe`
+  and `met` branches now stream (mirroring gxe-scan / met-scan).
+  `farmcpu` / `blink` / `mklmm` branches retain the materialized
+  path (genuinely not streamable) but now log a warning that
+  explains the algorithmic constraint.
+
+### Tests
+
+- **`tests/test_streaming_memory.py`** — 16 new memory regression
+  tests across 8 new test classes (rr-scan, rr-met-scan, met-scan,
+  poly-scan, impute mean/mode/knn/ld). Total streaming-memory
+  tests: 31. Each guards parity vs the materialized reference and
+  an absolute peak budget under tracemalloc.
+
+### Audit (post-E4)
+
+- 26 streaming subcommands (was 13 after E1, 20 after E3).
+- 2 partial (unchanged; opt-in `--grm-method zhang`).
+- 12 materialized — all algorithmically tied to full G or
+  windowed pairwise r² across all variants. See
+  `docs/efficiency/streaming_audit.md` observation O2.
+
+## [0.3.3] — 2026-04-30
+
+End-user runtime efficiency release (E3). Streams five more
+materialized scan subcommands using the glmm-scan template
+established in v0.3.2. Tagged retroactively at commit `418b0cf`
+to mark the E3 ledger entry; pyproject version was bumped in the
+v0.3.4 release.
+
+### Changed (E3 streaming rewrites)
+
+- **`cli._cmd_me_glmm_scan`** (commit `4fafb74`) — `_align_samples`
+  + `grm_vanraden_streaming` + per-chunk `MultiEnvGLMM.score_chunk`
+  loop with `_merge_env_results`.
+- **`cli._cmd_survival_scan`** (commit `507bf5d`) — `UnifiedScanner`
+  default merger (SurvivalGLMM emits `ScanResult`).
+- **`cli._cmd_threshold_scan`** (commit `e8a0d3c`) — `UnifiedScanner`
+  default merger (ThresholdLinearModel emits `ScanResult`).
+- **`cli._cmd_gxe_scan`** (commit `6fc64f7`) — new
+  `_merge_gxe_results` helper for `GxEScanResult`. Also fixes a
+  latent crash for any multi-chunk gxe scan (the legacy single-chunk
+  path bypassed the merger entirely).
+- **`cli._cmd_gu_scan`** (commit `34c1e28`) — paired-stream variant:
+  G chunks via `iter_chunks`; user-supplied `dosage_var` held once
+  and sliced per chunk by running col_offset.
+
+### Tests
+
+- 10 new memory regression tests in
+  `tests/test_streaming_memory.py` — one class per E3 rewrite,
+  each with parity + budget guards. Total streaming-memory tests:
+  15 (3 set-scan + 2 glmm-scan + 10 E3).
+
+### Audit (post-E3)
+
+- 20 streaming subcommands (was 13 after E1).
+- 2 partial (unchanged; opt-in `--grm-method zhang`).
+- 18 materialized.
+
 ## [0.3.2] — 2026-05-05
 
 End-user runtime efficiency release. Audited all 40 CLI scan
