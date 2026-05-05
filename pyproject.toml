@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torchgwas"
-version = "0.3.0"
+version = "0.3.1"
 description = "GPU-accelerated Genome-Wide Association Studies with PyTorch"
 readme = "README.md"
 license = {text = "MIT"}

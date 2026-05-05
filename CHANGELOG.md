@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] — 2026-05-05
+
+Three deferred post-V1 follow-ups completed shortly after the v0.3.0
+campaign close. Resolves outstanding Phase-33 / Phase-44 polish items
+identified in the campaign reviewer notes.
+
+### Changed (one behavioral default change)
+
+- **`postgwas.mr.mr_presso`** — default null distribution switched from
+  `"permutation"` to `"parametric"` (Verbanck 2018 Eq. 2 / MRPRESSO 1.0
+  reference). This brings TG into bit-for-bit agreement with the
+  TwoSampleMR R package: post-fix `|Δ corrected β|` = 3.1e-5 (was
+  4.9e-2), `|Δ global p|` = 1e-3 (was 9.99e-1), outlier-set Jaccard
+  1.0 (was 0.5). Callers depending on the old null can opt back in
+  with `mr_presso(..., null="permutation")`.
+
+### Fixed
+
+- **`models.binary_glmm.BinaryGLMM` (Phase 33)** — `converged` flag
+  was previously inferred from "did we hit max_iter?", which falsely
+  flagged converged=False on small-N PQL fits where β / SE / p all
+  agreed with SAIGE to within tolerance. Now uses a per-iteration
+  log-likelihood + variance-component delta-check alongside the
+  existing β-stability criterion. Used by 5 GLMM models (binary,
+  ordinal, multinomial, multi-env, survival) — all 81 PQL-based tests
+  pass.
+
+- **`models.lmm_multi_fit.fit_mvlmm_null_{ai_reml,lbfgs}`** —
+  `converged` flag was previously a heuristic on trace-tail relative
+  log-likelihood change. Now plumbed directly from the underlying
+  optimizer's reported converged flag (`pxem_nr_mvreml` and
+  `lbfgs_reml` both expose it via `trace[-1]["converged"]`), with
+  legacy heuristic as fallback.
+
+### Migration note
+
+Callers of `mr_presso` who relied on the prior permutation-null
+behavior must explicitly pass `null="permutation"`:
+
+```python
+# Old (v0.3.0 and earlier — permutation null):
+mr_presso(sumstats, n_perms=1000)
+
+# New default (v0.3.1+ — parametric LOO bootstrap, matches TwoSampleMR):
+mr_presso(sumstats, n_perms=1000)
+
+# Opt back into legacy permutation null:
+mr_presso(sumstats, n_perms=1000, null="permutation")
+```
+
+The parametric default produces materially different global-p and
+outlier-set values for any pleiotropic-signal input — review downstream
+analyses if you upgrade.
+
 ## [0.3.0] — 2026-05-05
 
 Validation campaign release. A function-by-function validation campaign
