@@ -893,20 +893,28 @@ def _cmd_bayes_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_met_scan(args: argparse.Namespace) -> int:
-    """Run multi-environment trial (MET) GWAS scan."""
+    """Run multi-environment trial (MET) GWAS scan.
+
+    Streaming variant: builds the additive GRM via the streaming VanRaden
+    path and drives the per-variant scan through a per-chunk
+    ``score_chunk`` loop. The full genotype matrix is never held in
+    memory — chunks flow through both the kinship accumulator and the
+    scan loop independently.
+    """
     import pandas as pd
     import torch
 
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .models.multi_env_lmm import MultiEnvLMM
+    from .preprocess.impute import impute_mean
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Detect environment columns from phenotype
     pheno_df = pd.read_csv(args.phenotype, sep="\t")
@@ -920,14 +928,37 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
             "Specify --env-cols col1,col2,..."
         )
 
-    # Build Y_wide (n, E)
+    # Build Y_wide (n, E) restricted to aligned sample order.
+    aligned_ids = aligned_reader.sample_ids
+    pheno_df_idx = pheno_df.copy()
+    if "IID" in pheno_df_idx.columns:
+        id_col = "IID"
+    elif "SAMPLE" in pheno_df_idx.columns:
+        id_col = "SAMPLE"
+    elif "FID" in pheno_df_idx.columns:
+        id_col = "FID"
+    else:
+        id_col = pheno_df_idx.columns[0]
+    pheno_df_idx[id_col] = pheno_df_idx[id_col].astype(str)
+    pheno_df_idx = pheno_df_idx.set_index(id_col).loc[
+        [str(s) for s in aligned_ids]
+    ]
     Y_wide = torch.tensor(
-        pheno_df[env_cols].values, dtype=STAT_DTYPE, device=device,
+        pheno_df_idx[env_cols].values, dtype=STAT_DTYPE, device=device,
     )
 
-    # Build GRM (and optional additional kernels)
+    # Streaming GRM via VanRaden — never materializes G.
+    from .linalg.kinship import grm_vanraden_streaming
     ploidy = getattr(args, "ploidy", 2)
-    K_add, _ = grm_vanraden(G.to(device), ploidy=ploidy)
+    logger.info("Computing kinship matrix (VanRaden streaming, ploidy=%d)...", ploidy)
+    K_add, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        ploidy=ploidy,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     kernel_files = getattr(args, "kernel_files", None)
     if kernel_files:
@@ -960,10 +991,12 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
     logger.info("Per-environment heritability: %s",
                 {name: f"{h:.3f}" for name, h in zip(env_cols, h2.tolist())})
 
-    # Scan all chunks
+    # Stream all chunks for the scan — never materialize G.
     results = []
-    for chunk_idx, (G_c, vm) in enumerate(reader.iter_chunks(config.chunk_size)):
-        G_c = G_c.to(device)
+    for chunk_idx, (G_c, vm) in enumerate(
+        aligned_reader.iter_chunks(config.chunk_size)
+    ):
+        G_c = impute_mean(G_c.to(STAT_DTYPE)).to(device)
         result = model.score_chunk(G_c, null_fit, vm)
         results.append(result)
 
@@ -4316,14 +4349,22 @@ def _save_rr_results(result, args) -> None:
 
 
 def _cmd_rr_scan(args: argparse.Namespace) -> int:
-    """Run a Random Regression LMM GWAS scan on long-format longitudinal data."""
+    """Run a Random Regression LMM GWAS scan on long-format longitudinal data.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path and
+    drives the per-variant score test through the existing per-chunk scan
+    loop. The full ``(n_samples × n_variants)`` genotype is never held in
+    memory — chunks flow through both the kinship accumulator and the
+    scan loop independently. Long-format phenotype rows are mapped to
+    the aligned per-sample ordering (one row per individual) for null
+    fitting, so the GRM only needs ``n_samples × n_samples``.
+    """
     import json
 
     import pandas as pd
     import torch
 
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .models.rr_lmm import RandomRegressionLMM
     from .models.rr_spatial import SpatioTemporalRR
 
@@ -4361,11 +4402,7 @@ def _cmd_rr_scan(args: argparse.Namespace) -> int:
     geno_idx = [geno_id_to_idx[s] for s in aligned_ids]
     from .io.aligned import SampleAlignedReader
     aligned_reader = SampleAlignedReader(reader, geno_idx, aligned_ids)
-
-    # Materialize the full aligned genotype matrix.
-    G_full, vmeta = _load_full_genotype(aligned_reader)
-    G_full = G_full.to(device)
-    n_samples = G_full.shape[0]
+    n_samples = aligned_reader.n_samples
 
     # Build long-format vectors keyed to the aligned sample order.
     id_to_int = {s: i for i, s in enumerate(aligned_ids)}
@@ -4384,8 +4421,17 @@ def _cmd_rr_scan(args: argparse.Namespace) -> int:
     # Per-individual covariate matrix: intercept-only by default.
     X0 = torch.ones(n_samples, 1, dtype=STAT_DTYPE, device=device)
 
-    # Build the GRM from the aligned genotype.
-    K, _ = grm_vanraden(G_full, ploidy=2)
+    # Streaming GRM via VanRaden — never materializes G.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=n_samples,
+        ploidy=2,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     # Spatial mode if both row/col columns provided.
     use_spatial = bool(args.row_col) and bool(args.col_col)
@@ -4605,14 +4651,19 @@ def _save_rr_met_results(result, args, env_labels: list[str]) -> None:
 
 
 def _cmd_rr_met_scan(args: argparse.Namespace) -> int:
-    """Run a Random Regression × Multi-Environment LMM GWAS scan on long-format data."""
+    """Run a Random Regression × Multi-Environment LMM GWAS scan on long-format data.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path and
+    drives the per-variant score test through the existing per-chunk scan
+    loop. The full ``(n_samples × n_variants)`` genotype is never held in
+    memory.
+    """
     import json
 
     import pandas as pd
     import torch
 
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .models.rr_met import RandomRegressionMultiEnvLMM
 
     device = resolve_device(args.device)
@@ -4644,10 +4695,7 @@ def _cmd_rr_met_scan(args: argparse.Namespace) -> int:
     geno_idx = [geno_id_to_idx[s] for s in aligned_ids]
     from .io.aligned import SampleAlignedReader
     aligned_reader = SampleAlignedReader(reader, geno_idx, aligned_ids)
-
-    G_full, vmeta = _load_full_genotype(aligned_reader)
-    G_full = G_full.to(device)
-    n_samples = G_full.shape[0]
+    n_samples = aligned_reader.n_samples
 
     id_to_int = {s: i for i, s in enumerate(aligned_ids)}
     pheno_df = pheno_df[pheno_df[args.id_col].astype(str).isin(id_to_int)].copy()
@@ -4671,7 +4719,18 @@ def _cmd_rr_met_scan(args: argparse.Namespace) -> int:
         pheno_df[args.time_col].values, dtype=STAT_DTYPE, device=device
     )
     X0 = torch.ones(n_samples, 1, dtype=STAT_DTYPE, device=device)
-    K, _ = grm_vanraden(G_full, ploidy=2)
+
+    # Streaming GRM via VanRaden — never materializes G.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=n_samples,
+        ploidy=2,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     model = RandomRegressionMultiEnvLMM(
         basis=args.basis, order=args.order,

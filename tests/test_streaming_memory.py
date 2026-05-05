@@ -832,3 +832,214 @@ class TestGuScanStreamingMemory:
         assert peak_stream < budget_kib, (
             f"Streaming GU peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
         )
+
+
+# ---------------------------------------------------------------------------
+# rr-scan / rr-met-scan / met-scan streaming-GRM regression (Efficiency E4)
+# ---------------------------------------------------------------------------
+#
+# These three subcommands are "GRM-only" rewrites: the original code
+# materialized G via _load_full_genotype solely to call grm_vanraden(G).
+# The scan loop itself was already streaming via iter_chunks. The
+# rewrite swaps the GRM call for grm_vanraden_streaming(...) over a
+# chunk iterator — the scan loop is unchanged. The streaming memory
+# guard here is on the GRM path: peak << n × m × 8 B.
+
+
+@pytest.fixture
+def rr_long_inputs():
+    """Long-format longitudinal phenotype + per-sample GRM inputs."""
+    torch.manual_seed(29)
+    n, m = 60, 400
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+
+    # 4 time points per individual.
+    t_per = 4
+    sample_ids_long = torch.arange(n, dtype=torch.int64).repeat_interleave(t_per)
+    time_long = torch.linspace(0.0, 1.0, t_per, dtype=torch.float64).repeat(n)
+    Y_long = (
+        2.0
+        + 0.5 * time_long
+        + 0.1 * torch.randn(n * t_per, dtype=torch.float64)
+    )
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    return G, Y_long, sample_ids_long, time_long, X0
+
+
+class TestRrScanStreamingMemory:
+    """Streaming RR-LMM kinship build (E4 GRM-only fix).
+
+    The rewrite replaces ``_load_full_genotype + grm_vanraden(G)`` with
+    ``grm_vanraden_streaming(_impute_chunk_iter(reader.iter_chunks))``.
+    The downstream scan loop already iterates chunks. We assert that
+    streaming the GRM produces the same kinship matrix as the
+    materialized path, and that peak memory is bounded.
+    """
+
+    def test_streaming_grm_matches_materialized(self, rr_long_inputs):
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+
+        G, _, _, _, _ = rr_long_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        K_ref, _ = grm_vanraden(G, ploidy=2)
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+
+        def _imputed_iter():
+            for G_chunk, vm in reader.iter_chunks(64):
+                yield G_chunk, vm  # synthetic G has no NaNs
+
+        K_streamed, _ = grm_vanraden_streaming(
+            _imputed_iter(),
+            n_samples=n,
+            ploidy=2,
+            device=torch.device("cpu"),
+        )
+
+        # Streaming accumulator uses single-pass column moment math, so we
+        # tolerate ~1e-6 absolute difference vs the in-memory two-pass call.
+        assert torch.allclose(K_streamed, K_ref, atol=1e-6, rtol=1e-3)
+
+    def test_streaming_grm_under_explicit_budget(self, rr_long_inputs):
+        """Hard absolute budget: <16 MiB at n=60/m=400."""
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+
+        G, _, _, _, _ = rr_long_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+            return grm_vanraden_streaming(
+                reader.iter_chunks(64),
+                n_samples=n,
+                ploidy=2,
+                device=torch.device("cpu"),
+            )
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib, (
+            f"Streaming RR-LMM GRM peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
+        )
+
+
+class TestRrMetScanStreamingMemory:
+    """Streaming RR-MET-LMM kinship build (E4 GRM-only fix).
+
+    Same rewrite shape as rr-scan: replace ``_load_full_genotype +
+    grm_vanraden(G)`` with the streaming GRM. The downstream
+    long-format scan loop is identical between the two variants.
+    """
+
+    def test_streaming_grm_matches_materialized(self, rr_long_inputs):
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+
+        G, _, _, _, _ = rr_long_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        K_ref, _ = grm_vanraden(G, ploidy=2)
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        K_streamed, _ = grm_vanraden_streaming(
+            reader.iter_chunks(64),
+            n_samples=n,
+            ploidy=2,
+            device=torch.device("cpu"),
+        )
+
+        # Streaming accumulator uses single-pass column moment math, so we
+        # tolerate ~1e-6 absolute difference vs the in-memory two-pass call.
+        assert torch.allclose(K_streamed, K_ref, atol=1e-6, rtol=1e-3)
+
+    def test_streaming_grm_under_explicit_budget(self, rr_long_inputs):
+        """Hard absolute budget: <16 MiB at n=60/m=400."""
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+
+        G, _, _, _, _ = rr_long_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+            return grm_vanraden_streaming(
+                reader.iter_chunks(64),
+                n_samples=n,
+                ploidy=2,
+                device=torch.device("cpu"),
+            )
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib
+
+
+@pytest.fixture
+def met_inputs():
+    """Synthetic per-environment continuous trait."""
+    torch.manual_seed(31)
+    n, m, E = 100, 400, 3
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    Y_wide = torch.randn(n, E, dtype=torch.float64)
+    return G, Y_wide, X0
+
+
+class TestMetScanStreamingMemory:
+    """Streaming MET-LMM kinship build (E4 GRM-only fix).
+
+    The rewrite replaces ``_load_scan_data + grm_vanraden(G)`` with
+    ``_align_samples + grm_vanraden_streaming``. The per-chunk
+    score_chunk loop is identical.
+    """
+
+    def test_streaming_grm_matches_materialized(self, met_inputs):
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+
+        G, _, _ = met_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        K_ref, _ = grm_vanraden(G, ploidy=2)
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        K_streamed, _ = grm_vanraden_streaming(
+            reader.iter_chunks(64),
+            n_samples=n,
+            ploidy=2,
+            device=torch.device("cpu"),
+        )
+
+        # Streaming accumulator uses single-pass column moment math, so we
+        # tolerate ~1e-6 absolute difference vs the in-memory two-pass call.
+        assert torch.allclose(K_streamed, K_ref, atol=1e-6, rtol=1e-3)
+
+    def test_streaming_grm_under_explicit_budget(self, met_inputs):
+        """Hard absolute budget: <16 MiB at n=100/m=400."""
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+
+        G, _, _ = met_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+            return grm_vanraden_streaming(
+                reader.iter_chunks(64),
+                n_samples=n,
+                ploidy=2,
+                device=torch.device("cpu"),
+            )
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib
