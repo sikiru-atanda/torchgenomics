@@ -323,3 +323,93 @@ a latent quirk in the materialized path (G_scan recoding never
 reached UnifiedScanner), but the legacy behavior was consistent
 across runs and the streaming rewrite preserves it. Pure
 efficiency improvements; not F3 fix-now.
+
+## F1 ledger — 6 LD-window scan paths via windowed-buffer streaming
+
+Date: 2026-04-30. Tackles the 6 remaining materialized paths whose
+common shape is "needs LD between SNPs in a bounded window": `ldsc`,
+`ldsc-rg`, `ld-blocks`, `clump`, `knockoff-scan`, `lro-scan`. Each
+genuinely needs LD between SNPs *within a window*, but the window is
+bounded — typically 1 cM ≈ 1000 SNPs (LD scores) or per-chromosome
+(block detection / clumping / knockoff / LRO). The legacy paths all
+materialized the full ``(n × m)`` G via either ``_load_scan_data`` or
+``torch.cat([chunks])`` — at biobank scale ~40 TB float64.
+
+### Group A — true sliding-window streaming (LD scores)
+
+The LD-score formula ``l_j = Σ_{|p_k − p_j| ≤ W} r²(j, k)`` is
+intrinsically windowed: each SNP j only depends on neighbours within
+W bp. The streaming variant
+:func:`compute_ld_scores_streaming` keeps a per-chromosome buffer of
+SNPs whose right edge has not yet been crossed by the latest streamed
+position. Each new chunk's SNPs accumulate r² partial sums against
+the buffered window in one vectorized pass, then the buffer drains
+its left edge as the head advances.
+
+Peak memory: O(n × window_size × 8 B). Independent of total ``m``.
+
+| Subcommand | Commit | Notes |
+|---|---|---|
+| `ldsc` | `17c9467` | Replaces `compute_ld_scores(G_full, …)` with `compute_ld_scores_streaming(reader.iter_chunks(), …)`. Behavioral parity to float64 tolerance vs. the materialized `compute_ld_scores`. |
+| `ldsc-rg` | `17c9467` | Same helper as `ldsc`. Single shared rewrite. |
+
+### Group B — per-chromosome streaming buffer
+
+LD blocks never span chromosomes (by physical-LD definition), so the
+chromosome is the natural memory unit for block detection, clumping,
+knockoff construction, and leave-region-out scans. The legacy paths
+buffered the entire genome; the streaming rewrites accumulate one
+chromosome's slice at a time, run the algorithm on that slice, and
+free it before reading the next.
+
+Peak memory: O(n × max_per_chromosome_m × 8 B) plus, for knockoff /
+LRO, the streaming GRM (n²). At UKB scale (~200K SNPs/chrom) this is
+~800 GB per chrom — still large, but a documented soft cap rather
+than the prior multi-TB whole-genome residency.
+
+| Subcommand | Commit | Notes |
+|---|---|---|
+| `ld-blocks` | `7d24949` | Per-chromosome accumulator; remaps chromosome-local `variant_indices` to genome-wide before block writers. **F3 fix:** the legacy multi-chromosome call mis-attributed chr 2+ blocks to chr 1 because `compute_pairwise_ld` emits chromosome-local indices but `_make_block` indexes into genome-wide arrays. The streaming rewrite calls `detect_blocks` once per chromosome, side-stepping the bug. |
+| `clump` | `809ca79` | Per-chromosome accumulator; runs `ld_clump` per chromosome, merges results, sorts genome-wide by p ascending. |
+| `knockoff-scan` | `c95fc24` | Per-chromosome accumulator; calls `KnockoffLMM.run` per chromosome; merges per-chrom KnockoffResult objects; applies the knockoff+ FDR filter ONCE over the merged W-statistic vector for genome-wide control. |
+| `lro-scan` | `c95fc24` | Per-chromosome accumulator; `LROLMM.run` gains optional `K_full + normalizer` kwargs so the chromosome slice contributes only `K_b`, while `K_minus_b = K_full − K_b` correctly removes that contribution from the genome-wide GRM. |
+
+### Updated counts (post-F1)
+
+Total subcommands surveyed: 40.
+
+**Streaming (post-E1+E3+E4+F1):** 32 — adds `ldsc`, `ldsc-rg`,
+`ld-blocks`, `clump`, `knockoff-scan`, `lro-scan` (F1) to the prior
+26. Plus `meta` / `annotate` (no genotype I/O).
+
+**Partial (one-shot full G then freed):** 2 — `lmm-scan
+--grm-method zhang`, `mvlmm-scan --grm-method zhang`. Both opt-in.
+
+**Materialized:** 6 remaining — `farmcpu-scan`, `blink-scan`,
+`bayes-scan`, `mklmm-scan`, `mediate-scan`, `pipeline` materialized
+branches (farmcpu/blink/mklmm). All algorithmically tied to full G —
+FarmCPU/BLINK iteratively reuse all variants as covariates,
+BayesianVS/SuSiE need joint posterior over all variants,
+MultiKernelLMM builds dominance/epistatic kernels from full G,
+mediate-scan's GPU-batched scan needs random access. Each is
+documented as O2 (fundamentally not-streamable) in this audit.
+
+Memory regression tests in `tests/test_streaming_memory.py` add 11
+new tests across 6 new test classes (LdScores, LdBlocks, Clump,
+Knockoff, Lro). Total streaming-memory tests: 42.
+
+### F3 verdict (F1)
+
+The `ld-blocks` rewrite uncovered a latent multi-chromosome
+mis-attribution bug in the legacy `detect_blocks`/`_make_block`
+path: chromosome-local indices from `compute_pairwise_ld` were used
+to index into genome-wide `variant_chr` / `variant_pos` arrays, so
+all blocks on chr 2+ were silently labelled as belonging to chr 1.
+The streaming rewrite calls `detect_blocks` once per chromosome and
+remaps indices on the way out, fixing the bug as a side-effect.
+Classified as V1-platform fix-now per the playbook (test
+`test_streaming_per_chromosome_correctly_attributes_blocks` guards
+the corrected behavior).
+
+The other five rewrites are pure efficiency improvements with no
+behavioral regressions exposed.
