@@ -469,3 +469,158 @@ class SetBasedScanner:
             test=test,
             rho_opt=torch.tensor(result_rho, dtype=STAT_DTYPE, device=device) if result_rho is not None else None,
         )
+
+    def scan_regions_streaming(
+        self,
+        chunk_iter,
+        regions: list[Region],
+        variant_chr: list[str],
+        variant_pos: list[int],
+        test: str = "skat",
+        device=None,
+        impute: bool = True,
+    ) -> SetBasedResult:
+        """Streaming variant of :meth:`scan_regions`.
+
+        Iterates over genotype chunks (without ever holding the full
+        ``(n, m)`` matrix in memory) and accumulates per-region buffers.
+        Peak memory is bounded by ``n_samples * sum(region_size_j)`` —
+        typically a small fraction of the full genome — plus one chunk
+        at a time.
+
+        This is the biobank-friendly API: at UKB scale (``n=500_000``,
+        ``m=10_000_000``) the materialized path costs ~40 TB float64;
+        a typical exome region scan with ~20K genes × ~50 SNPs/gene =
+        1M region-SNPs lives in ~4 GB.
+
+        Parameters
+        ----------
+        chunk_iter : iterator yielding ``(G_chunk, vmeta)``
+            Same protocol as ``GenotypeReader.iter_chunks``. Variant
+            indexing must be in the global order matching ``variant_chr``
+            / ``variant_pos`` — chunks are concatenated left-to-right.
+        regions : list[Region]
+        variant_chr, variant_pos : variant annotations *across the full
+            genome* (not per-chunk). Same length as the total number of
+            variants the iterator will yield.
+        test : "skat", "burden", or "skat_o".
+        device : torch.device, optional
+            Device to place per-region buffers on. Defaults to the null-fit
+            device (or CPU).
+        impute : bool
+            Mean-impute each chunk before copying into region buffers.
+            Set to False if chunks are already imputed.
+
+        Returns
+        -------
+        SetBasedResult
+            Identical layout to ``scan_regions`` — by-construction
+            numerically equivalent for the same input data.
+        """
+        from ..preprocess.impute import impute_mean
+
+        device = device or self.null_fit.device or torch.device("cpu")
+
+        # Pass 1: build region → global-variant-index map (already efficient;
+        # does not need G itself).
+        region_map = map_regions_to_variants(regions, variant_chr, variant_pos)
+        region_lookup = {r.region_id: r for r in regions}
+
+        # Build, for each region, a tensor of (region_local_idx → global_idx)
+        # plus a destination buffer to be filled chunk-by-chunk. Skip empty
+        # regions (already dropped by map_regions_to_variants).
+        region_global_idx: dict[str, list[int]] = {}
+        # Inverse map: global variant index → list of (region_id, local_idx)
+        # so a single chunk read can fan out to every region overlapping it.
+        global_to_targets: dict[int, list[tuple[str, int]]] = {}
+        for region_id, var_indices in region_map.items():
+            region_global_idx[region_id] = list(var_indices)
+            for local_idx, global_idx in enumerate(var_indices):
+                global_to_targets.setdefault(global_idx, []).append(
+                    (region_id, local_idx),
+                )
+
+        # Allocate per-region buffers. n_samples is unknown until we see
+        # the first chunk, so defer allocation.
+        region_buffers: dict[str, Tensor] = {}
+
+        chunk_offset = 0
+        for G_chunk, _vmeta in chunk_iter:
+            G_chunk = G_chunk.to(STAT_DTYPE)
+            if impute:
+                G_chunk = impute_mean(G_chunk)
+            G_chunk = G_chunk.to(device)
+            n_chunk_samples, n_chunk_variants = G_chunk.shape
+
+            # First chunk fixes n_samples — allocate region buffers now.
+            if not region_buffers:
+                for region_id, var_indices in region_global_idx.items():
+                    region_buffers[region_id] = torch.empty(
+                        (n_chunk_samples, len(var_indices)),
+                        dtype=STAT_DTYPE, device=device,
+                    )
+
+            # Fan out: for every chunk-local column, find which region(s)
+            # it lands in and copy.
+            chunk_end = chunk_offset + n_chunk_variants
+            for chunk_local in range(n_chunk_variants):
+                global_idx = chunk_offset + chunk_local
+                targets = global_to_targets.get(global_idx)
+                if not targets:
+                    continue
+                col = G_chunk[:, chunk_local]
+                for region_id, region_local in targets:
+                    region_buffers[region_id][:, region_local] = col
+
+            chunk_offset = chunk_end
+
+        # Pass 2: run per-region tests against the assembled buffers.
+        result_ids: list[str] = []
+        result_chr: list[str] = []
+        result_start: list[int] = []
+        result_end: list[int] = []
+        result_nvars: list[int] = []
+        result_q: list[float] = []
+        result_p: list[float] = []
+        result_rho: list[float] | None = [] if test == "skat_o" else None
+
+        for region_id, var_indices in region_map.items():
+            region = region_lookup[region_id]
+            G_region = region_buffers[region_id]
+
+            if test == "skat":
+                q, p = self.skat(G_region, region)
+            elif test == "burden":
+                q, p = self.burden(G_region, region)
+            elif test == "skat_o":
+                q, p, rho = self.skat_o(G_region, region)
+                result_rho.append(rho)
+            else:
+                raise ValueError(
+                    f"Unknown test: {test}. Use 'skat', 'burden', or 'skat_o'."
+                )
+
+            result_ids.append(region_id)
+            result_chr.append(region.chr)
+            result_start.append(region.start)
+            result_end.append(region.end)
+            result_nvars.append(len(var_indices))
+            result_q.append(q)
+            result_p.append(p)
+
+            # Free the buffer eagerly so peak memory is bounded by the
+            # *largest* region rather than the sum of all regions during
+            # the per-region scan.
+            del region_buffers[region_id]
+
+        return SetBasedResult(
+            region_id=result_ids,
+            chr=result_chr,
+            start=result_start,
+            end=result_end,
+            n_variants=result_nvars,
+            q_stat=torch.tensor(result_q, dtype=STAT_DTYPE, device=device),
+            p=torch.tensor(result_p, dtype=STAT_DTYPE, device=device),
+            test=test,
+            rho_opt=torch.tensor(result_rho, dtype=STAT_DTYPE, device=device) if result_rho is not None else None,
+        )

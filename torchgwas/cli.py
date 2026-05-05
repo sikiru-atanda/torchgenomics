@@ -636,12 +636,18 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_set_scan(args: argparse.Namespace) -> int:
-    """Run set-based association tests (SKAT/Burden/SKAT-O)."""
+    """Run set-based association tests (SKAT/Burden/SKAT-O).
+
+    Streaming variant: builds GRM via the streaming VanRaden path and
+    accumulates per-region buffers chunk-by-chunk. Peak memory is
+    bounded by ``n_samples × sum(region_size_j)`` plus one chunk —
+    not the full ``(n, m)`` genotype matrix.
+    """
     import pandas as pd
 
     from .config import TorchGWASConfig, resolve_device
     from .io.regions import load_regions
-    from .linalg.kinship import grm_vanraden
+    from .linalg.kinship import grm_vanraden_streaming
     from .models.set_based import SetBasedScanner
     from .models.single_trait_lmm import SingleTraitLMM
 
@@ -650,25 +656,50 @@ def _cmd_set_scan(args: argparse.Namespace) -> int:
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Build GRM (ploidy-aware)
+    # Streaming GRM (ploidy-aware) for the LMM null fit.
     ploidy = getattr(args, "ploidy", 2)
-    K, _ = grm_vanraden(G.to(device), ploidy=ploidy)
+    logger.info("Computing kinship matrix (VanRaden streaming, ploidy=%d)...", ploidy)
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        ploidy=ploidy,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     # Fit null model (same as standard LMM)
     lmm = SingleTraitLMM(config=config.numerical)
     null_fit = lmm.fit_null(Y.to(device), X0.to(device), K=K)
 
-    # Load regions
+    # Load regions. Genome-wide chr/pos lists are gathered cheaply by
+    # walking iter_chunks once for metadata only — no genotype data is
+    # held. (Not every reader implements `.variant_meta` as a property,
+    # so we use the iterator-only contract.)
     regions = load_regions(args.regions)
 
-    # Run set-based scan (ploidy-aware for correct AF/weight computation)
+    # Streaming set-based scan: SetBasedScanner.scan_regions_streaming
+    # iterates chunks and copies columns into per-region buffers without
+    # ever holding the full (n, m) tensor. We pre-collect the variant
+    # annotation (chr/pos lists) from one metadata-only walk; this is
+    # O(m) integers, not O(n*m) genotype values.
+    full_chr: list[str] = []
+    full_pos: list[int] = []
+    for _gchunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        full_chr.extend(vm.chr)
+        full_pos.extend(vm.pos)
+        del _gchunk  # release per-chunk dosage early
+
     scanner = SetBasedScanner(null_fit, ploidy=ploidy)
-    result = scanner.scan_regions(
-        G.to(device), regions,
-        variant_chr=vmeta.chr, variant_pos=vmeta.pos,
+    result = scanner.scan_regions_streaming(
+        aligned_reader.iter_chunks(config.chunk_size),
+        regions,
+        variant_chr=full_chr, variant_pos=full_pos,
         test=args.set_test,
+        device=device,
     )
 
     # Save results as TSV
