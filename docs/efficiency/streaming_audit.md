@@ -68,23 +68,23 @@ unconditionally upcasts to `STAT_DTYPE` (float64) and mean-imputes. The
 | **mvlmm-scan** (`--grm-method zhang`) | `MultiTraitLMM` via `UnifiedScanner` | **partial** | 40 TB once | same pattern as lmm-scan |
 | **poly-scan** | `SingleTraitLMM` (recoded G) via `UnifiedScanner` | **materialized** | 40 TB | `_load_scan_data` materializes G; gene-action recoding is per-model in-memory; scan loop itself is streaming via UnifiedScanner but reads original G into memory first via the held reader. |
 | **mklmm-scan** | `MultiKernelLMM` via `UnifiedScanner` | **materialized** | 40 TB | `build_multi_kernels` needs full G to build dominance/epistatic kernels (algorithmic) |
-| **gxe-scan** | `HetLMM` via `UnifiedScanner` | **materialized** | 40 TB | `grm_vanraden(G)` (non-streaming) plus full G held during scan; algorithmically does need full G for env interaction loop, but GRM does not |
+| **gxe-scan** | `HetLMM` via per-chunk loop + `_merge_gxe_results` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming` + per-chunk score_chunk loop. `_merge_gxe_results` handles GxEScanResult concatenation (UnifiedScanner's default merger only knows ScanResult). **Streamed in E3 (commit 6fc64f7).** |
 | **set-scan** | `SetBasedScanner` (custom; not UnifiedScanner) | **materialized** | 40 TB | calls `_load_scan_data` then `scanner.scan_regions(G_full, ...)`. Algorithmically per-region; can stream chunks and accumulate into per-region tensors. **REWRITE TARGET (E1).** |
 | **bayes-scan** | `BayesianVS.fit` | **materialized** | 40 TB | SuSiE / CAVI need full G for joint variable selection (algorithmically) |
 | **met-scan** | `MultiEnvLMM.score_chunk` (manual loop) | **materialized** | 40 TB | `_load_scan_data` materializes; subsequent scan does loop `iter_chunks` but G is already held; GRM uses `grm_vanraden(G)` not streaming. **DEFERRABLE — GRM-only fix would push to partial.** |
 | **farmcpu-scan** | `FarmCPU` via `UnifiedScanner` | **materialized** | 40 TB | FarmCPU iteratively re-uses G as covariates; documented as needing full G |
 | **blink-scan** | `BLINK` via `UnifiedScanner` | **materialized** | 40 TB | BLINK LD-clusters across all SNPs; documented as needing full G |
-| **threshold-scan** | `ThresholdLinearModel` via `UnifiedScanner` | **materialized** | 40 TB | `_load_scan_data` materializes; UnifiedScanner is streaming but G already held |
+| **threshold-scan** | `ThresholdLinearModel` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples`; ThresholdLinearModel null fit only needs Y/X0/R/G_cov (no kinship). **Streamed in E3 (commit e8a0d3c).** |
 | **conditional-scan** | `ConditionalLMM` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming`; per-peak random access into reader is via index-based reload (acceptable cost) |
 | **mtmet-scan** | `MultiTraitMultiEnvLMM` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming` |
 | **ocf-scan** | `OCFLMM` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming` |
 | **knockoff-scan** | `KnockoffLMM.run` | **materialized** | 40 TB | Knockoff construction is per-LD-block; `KnockoffLMM.run` operates on full G. Could stream chunks within natural LD-block boundaries (two-pass: (1) detect blocks from streaming r² windows, (2) stream chunks and build knockoffs per-block on the fly), but the algorithm fundamentally needs all SNPs visible to detect blocks first. **DEFERRABLE — block-based streaming non-trivial.** |
-| **gu-scan** | `GULM.score_chunk` (manual call on G) | **materialized** | 40 TB | needs paired G + dosage_var; current code holds both. Could stream: per-chunk score with per-chunk dosage_var slice. **REWRITE TARGET (E1).** |
+| **gu-scan** | `GULM.score_chunk` (manual chunk loop with paired dvar slice) | streaming (G) / held (dvar) | < 1 GB for G; ~ n×m×8 B for user-supplied dvar | `_align_samples` + `grm_vanraden_streaming`; G streamed via iter_chunks, dvar held once at user dtype and sliced per chunk by running col_offset. **Streamed in E3 (commit 34c1e28).** |
 | **lro-scan** | `LROLMM.run` | **materialized** | 40 TB | LRO needs full G + LD blocks + per-block GRM updates; algorithmically tight |
 | **family-scan** | `WithinFamilyLMM` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming` |
 | **glmm-scan** | `BinaryGLMM` / `OrdinalGLMM` / `MultinomialGLMM`.score_chunk | **materialized** | 40 TB | `_load_scan_data` + single `score_chunk(G_full, ...)`. PQL null fit only needs K + Y + X0; scan loop is per-variant. **REWRITE TARGET (E1).** |
-| **me-glmm-scan** | `MultiEnvGLMM.score_chunk` | **materialized** | 40 TB | same shape as glmm-scan (single big-G `score_chunk`); `_load_scan_data` materializes |
-| **survival-scan** | `SurvivalGLMM.score_chunk` | **materialized** | 40 TB | same shape as glmm-scan |
+| **me-glmm-scan** | `MultiEnvGLMM.score_chunk` via per-chunk loop + `_merge_env_results` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming` + per-chunk score_chunk loop; `_merge_env_results` (the same merger met-scan uses) handles EnvScanResult concatenation. **Streamed in E3 (commit 4fafb74).** |
+| **survival-scan** | `SurvivalGLMM.score_chunk` via `UnifiedScanner` | streaming | < 1 GB | `_align_samples` + `grm_vanraden_streaming` + UnifiedScanner; SurvivalGLMM emits standard ScanResult. **Streamed in E3 (commit 507bf5d).** |
 | **ld-blocks** | `ld.detect_blocks` | **materialized** | 40 TB | LD detection inherently needs all variants; `torch.cat` from `iter_chunks` |
 | **ldsc** | `compute_ld_scores` + `ldsc_h2` | **materialized** | 40 TB | LD score computation needs all variants for windowed r² |
 | **ldsc-rg** | `compute_ld_scores` + `ldsc_rg_from_z` | **materialized** | 40 TB | same pattern as ldsc |
@@ -102,16 +102,22 @@ unconditionally upcasts to `STAT_DTYPE` (float64) and mean-imputes. The
 
 **Total subcommands surveyed:** 40.
 
-**Streaming:** 13 — `validate`, `glm-scan`, `lmm-scan` (default), `mvlmm-scan`
-(default), `conditional-scan`, `mtmet-scan`, `ocf-scan`, `family-scan`,
-`dosage-call`, `phase-poly`, `pgs-score`, `pipeline` (lmm/mvlmm/glm), plus
-`meta` / `annotate` which take no genotype I/O.
+**Streaming (post-E1+E3):** 20 — `validate`, `glm-scan`, `lmm-scan`
+(default), `mvlmm-scan` (default), `conditional-scan`, `mtmet-scan`,
+`ocf-scan`, `family-scan`, `dosage-call`, `phase-poly`, `pgs-score`,
+`pipeline` (lmm/mvlmm/glm), `set-scan`, `glmm-scan` (E1), plus
+`me-glmm-scan`, `survival-scan`, `threshold-scan`, `gxe-scan`,
+`gu-scan` (E3), plus `meta` / `annotate` which take no genotype I/O.
 
 **Partial (one-shot full G then freed for kinship):** 2 — `lmm-scan
 --grm-method zhang`, `mvlmm-scan --grm-method zhang`. Both opt-in.
 
-**Materialized:** the rest — 25 subcommands that call `_load_scan_data` /
+**Materialized:** the rest — 18 subcommands that call `_load_scan_data` /
 `_load_full_genotype` / `_load_genotype_matrix` / `torch.cat([chunks])`.
+Most are algorithmically tied to full G (FarmCPU / BLINK / BayesianVS /
+MultiKernelLMM / LROLMM / KnockoffLMM / LDSC / ld-clump / ld-blocks /
+rr-scan / rr-met-scan / mediate-scan / met-scan / poly-scan / impute /
+pipeline-materialized-branch).
 
 ## Observations and follow-ups
 
@@ -194,3 +200,40 @@ No silent-materialization bugs found: every materialized path explicitly
 calls `_load_scan_data` / `_load_full_genotype`. The CLI `lmm-scan` and
 `mvlmm-scan` documentation is accurate. **Not F3 fix-now**; the rewrites
 in E1 are pure efficiency improvements.
+
+## E3 ledger — 5 deferred streaming rewrites complete
+
+Date: 2026-04-30. Rewrites the deferred set from E1's "concrete next
+steps" list. All five mirror the glmm-scan template (commit `e553604`):
+`_load_scan_data` swapped for `_align_samples` + (where a kinship is
+needed) `grm_vanraden_streaming`, with the scan driven by
+`UnifiedScanner` or a dedicated per-chunk merger when the result type
+isn't `ScanResult`.
+
+| Subcommand | Commit | Result type | Per-chunk merger |
+|---|---|---|---|
+| `me-glmm-scan` | `4fafb74` | `EnvScanResult` | `_merge_env_results` (shared with met-scan) |
+| `survival-scan` | `507bf5d` | `ScanResult` | `UnifiedScanner` default |
+| `threshold-scan` | `e8a0d3c` | `ScanResult` | `UnifiedScanner` default |
+| `gxe-scan` | `6fc64f7` | `GxEScanResult` | new `_merge_gxe_results` (also fixes a latent multi-chunk crash in pre-rewrite gxe-scan) |
+| `gu-scan` | `34c1e28` | `ScanResult` | `merge_scan_results`; G streamed and dvar held + sliced per chunk by running col_offset |
+
+Memory regression tests in `tests/test_streaming_memory.py` add one
+test class per rewrite (10 new tests), each guarding behavioral parity
+vs. the legacy materialized path and an absolute peak budget (<16 MiB
+at n=200/m=500). Total streaming-memory tests: 15 (3 set-scan + 2
+glmm-scan + 10 E3).
+
+Biobank-scale impact: 40 TB → ~ n × chunk_size × 8 B per chunk
+(~4 GB per chunk at UKB scale, default chunk_size=1024).
+
+### F3 verdict (E3)
+
+The gxe-scan rewrite revealed a latent crash for any multi-chunk scan
+(GxEScanResult ≠ ScanResult, so UnifiedScanner's default merger
+crashes when m > chunk_size). The pre-rewrite implementation only
+worked for tiny fixtures because the single-chunk path bypasses the
+merger entirely. The streaming rewrite fixes both the materialization
+regression and this latent crash with the new `_merge_gxe_results`
+helper. Remaining four rewrites are pure efficiency improvements (no
+behavioral regressions exposed).
