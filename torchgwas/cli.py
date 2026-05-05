@@ -1635,21 +1635,41 @@ def _cmd_gu_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_gu_scan_inner(args, config, device) -> int:
-    """The original gu-scan body after --probs derivation (if any)."""
+    """The original gu-scan body after --probs derivation (if any).
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and iterates ``aligned_reader.iter_chunks`` through
+    ``GULM.score_chunk`` chunk-by-chunk, slicing the per-chunk
+    ``dosage_var`` columns alongside G. The full ``(n, m)`` G tensor
+    never lives in memory; the dosage-variance tensor is held only at
+    user-input dtype/device until per-chunk slicing.
+
+    Per-chunk merge uses :func:`merge_scan_results` (the standard
+    ScanResult merger) — GULM.score_chunk returns ScanResult.
+    """
     import torch
 
     from .models.gu_lmm import GULM
+    from .preprocess.qc import QCFilterConfig
+    from .scan.unified import merge_scan_results
 
-    # Load ALL genotypes (need full G for dosage variance)
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Compute GRM
-    logger.info("Computing kinship matrix (VanRaden)...")
-    from .linalg.kinship import grm_vanraden
-    K, _ = grm_vanraden(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
-    # Load dosage variance if provided
-    dosage_var = None
+    # Load dosage variance if provided. Held once at input dtype on
+    # device; per-chunk slicing in the scan loop is O(n × chunk_size).
+    dosage_var: torch.Tensor | None = None
     if args.dosage_var:
         dvar_path = args.dosage_var
         if dvar_path.endswith(".pt"):
@@ -1664,14 +1684,55 @@ def _cmd_gu_scan_inner(args, config, device) -> int:
     model = GULM(config=config.numerical)
     null_fit = model.fit_null(Y.squeeze(1).to(device), X0.to(device), K=K)
 
-    from .preprocess.qc import QCFilterConfig
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
+    from .preprocess.impute import impute_mean
+    from .preprocess.qc import apply_qc_filters, compute_variant_qc
 
-    # Score all variants with uncertainty correction
-    result = model.score_chunk(
-        G.to(device), null_fit, vmeta,
-        test="score", dosage_var=dosage_var,
-    )
+    # Stream G chunks; slice the matching columns of dosage_var per
+    # chunk so score_chunk sees aligned (G_chunk, dvar_chunk) pairs.
+    chunk_results = []
+    col_offset = 0
+    ploidy = config.ploidy
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        m_chunk = G_chunk.shape[1]
+        G_chunk = impute_mean(G_chunk).to(device)
+        dvar_chunk = (
+            dosage_var[:, col_offset : col_offset + m_chunk]
+            if dosage_var is not None else None
+        )
+
+        # Per-chunk QC mirrors UnifiedScanner._apply_chunk_qc; we
+        # apply it manually here because we need to slice dvar by the
+        # same kept indices.
+        stats = compute_variant_qc(G_chunk, vm, ploidy=ploidy)
+        keep_mask = apply_qc_filters(stats, qc)
+        if not keep_mask.all():
+            keep_idx = keep_mask.nonzero(as_tuple=True)[0]
+            G_chunk = G_chunk[:, keep_idx]
+            from .models.base import VariantMeta
+            vm = VariantMeta(
+                snp=[vm.snp[i] for i in keep_idx.tolist()],
+                chr=[vm.chr[i] for i in keep_idx.tolist()],
+                pos=[vm.pos[i] for i in keep_idx.tolist()],
+                a1=[vm.a1[i] for i in keep_idx.tolist()],
+                a2=[vm.a2[i] for i in keep_idx.tolist()],
+            )
+            if dvar_chunk is not None:
+                dvar_chunk = dvar_chunk[:, keep_idx]
+
+        if G_chunk.shape[1] == 0:
+            col_offset += m_chunk
+            continue
+
+        chunk_results.append(model.score_chunk(
+            G_chunk, null_fit, vm,
+            test="score", dosage_var=dvar_chunk,
+        ))
+        col_offset += m_chunk
+
+    if not chunk_results:
+        raise RuntimeError("No variants passed QC filters in gu-scan.")
+    result = merge_scan_results(chunk_results)
 
     _apply_correction_and_save(result, args)
     return 0

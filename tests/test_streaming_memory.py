@@ -726,3 +726,109 @@ class TestGxeScanStreamingMemory:
         assert peak_stream < budget_kib, (
             f"Streaming GxE peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
         )
+
+
+# ---------------------------------------------------------------------------
+# gu-scan (GULM with paired G + dosage_var streaming) memory regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def gu_inputs():
+    """Synthetic continuous trait + matched dosage variance."""
+    torch.manual_seed(23)
+    n, m = 200, 500
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    K, _ = grm_vanraden(G)
+
+    sig2_g, sig2_e = 0.30, 0.70
+    V = sig2_g * K + sig2_e * torch.eye(n, dtype=torch.float64)
+    L = torch.linalg.cholesky(V + 1e-6 * torch.eye(n, dtype=torch.float64))
+    Y = 5.0 + L @ torch.randn(n, dtype=torch.float64)
+
+    # Synthetic dosage variance — small, positive
+    dvar = 0.05 * torch.rand(n, m, dtype=torch.float64)
+    return G, Y, X0, K, dvar
+
+
+class TestGuScanStreamingMemory:
+    """Streaming GULM (genotype-uncertainty score test) memory regression.
+
+    The streaming rewrite couples G-chunk iteration with column-sliced
+    dosage_var so per-chunk score_chunk sees aligned ``(G_chunk,
+    dvar_chunk)``. ``dvar`` is held once at user-input dtype; we
+    track the column offset to slice it without copying.
+    """
+
+    def test_streaming_gu_matches_full_chunk(self, gu_inputs):
+        from torchgwas.models.gu_lmm import GULM
+        from torchgwas.scan.unified import merge_scan_results
+
+        G, Y, X0, K, dvar = gu_inputs
+        m = G.shape[1]
+
+        model = GULM()
+        nf = model.fit_null(Y, X0, K=K)
+
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        ref = model.score_chunk(G, nf, vmeta, test="score", dosage_var=dvar)
+
+        # Streaming: G chunks paired with sliced dvar columns.
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        chunk_results = []
+        col_offset = 0
+        for G_chunk, vm in reader.iter_chunks(64):
+            mc = G_chunk.shape[1]
+            dchunk = dvar[:, col_offset : col_offset + mc]
+            chunk_results.append(model.score_chunk(
+                G_chunk, nf, vm, test="score", dosage_var=dchunk,
+            ))
+            col_offset += mc
+        streamed = merge_scan_results(chunk_results)
+
+        assert torch.allclose(streamed.stat, ref.stat, atol=1e-9, rtol=1e-9)
+        assert torch.allclose(streamed.p, ref.p, atol=1e-9, rtol=1e-7)
+
+    def test_streaming_gu_under_explicit_budget(self, gu_inputs):
+        """Hard absolute budget: <16 MiB at 200x500.
+
+        Note: dvar itself is (n, m) = 200×500×8 B = 781 KiB held for
+        the whole scan. The streaming guarantee is that *G* (which at
+        biobank scale dominates the budget) never lives in full —
+        only chunk-by-chunk. dvar is a documented user-input held
+        once; the budget reflects that.
+        """
+        from torchgwas.models.gu_lmm import GULM
+        from torchgwas.scan.unified import merge_scan_results
+
+        G, Y, X0, K, dvar = gu_inputs
+        m = G.shape[1]
+
+        model = GULM()
+        nf = model.fit_null(Y, X0, K=K)
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+            chunk_results = []
+            col_offset = 0
+            for G_chunk, vm in reader.iter_chunks(64):
+                mc = G_chunk.shape[1]
+                dchunk = dvar[:, col_offset : col_offset + mc]
+                chunk_results.append(model.score_chunk(
+                    G_chunk, nf, vm, test="score", dosage_var=dchunk,
+                ))
+                col_offset += mc
+            return merge_scan_results(chunk_results)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib, (
+            f"Streaming GU peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
+        )
