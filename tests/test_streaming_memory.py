@@ -463,3 +463,80 @@ class TestMeGlmmScanStreamingMemory:
         assert peak_stream < budget_kib, (
             f"Streaming ME-GLMM peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
         )
+
+
+# ---------------------------------------------------------------------------
+# survival-scan (SurvivalGLMM via UnifiedScanner) memory regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def survival_inputs():
+    """Synthetic (time, event) phenotype + small G."""
+    torch.manual_seed(13)
+    n, m = 200, 500
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    K, _ = grm_vanraden(G)
+
+    # Exponential times + binary event
+    times = torch.rand(n, dtype=torch.float64).clamp(min=0.05) * 10.0
+    events = (torch.rand(n) < 0.7).to(torch.float64)
+    Y = torch.stack([times, events], dim=1)
+    return G, Y, X0, K
+
+
+class TestSurvivalScanStreamingMemory:
+    """Streaming Cox PH frailty scan via UnifiedScanner."""
+
+    def test_streaming_survival_matches_full_chunk(self, survival_inputs):
+        from torchgwas.config import TorchGWASConfig
+        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgwas.scan.unified import UnifiedScanner
+
+        G, Y, X0, K = survival_inputs
+        m = G.shape[1]
+
+        model = SurvivalGLMM(use_spa=False, pql_max_iter=10)
+        nf = model.fit_null(Y, X0, K=K)
+
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        ref = model.score_chunk(G, nf, vmeta, test="score")
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        config = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+        scanner = UnifiedScanner(reader, model, config)
+        streamed = scanner.scan(nf, test="score", qc_config=None)
+
+        assert torch.allclose(streamed.stat, ref.stat, atol=1e-9, rtol=1e-9)
+        assert torch.allclose(streamed.p, ref.p, atol=1e-9, rtol=1e-7)
+
+    def test_streaming_survival_under_explicit_budget(self, survival_inputs):
+        """Hard absolute budget: <16 MiB at 200x500."""
+        from torchgwas.config import TorchGWASConfig
+        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgwas.scan.unified import UnifiedScanner
+
+        G, Y, X0, K = survival_inputs
+        m = G.shape[1]
+
+        model = SurvivalGLMM(use_spa=False, pql_max_iter=10)
+        nf = model.fit_null(Y, X0, K=K)
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            scanner = UnifiedScanner(reader, model, cfg)
+            return scanner.scan(nf, test="score", qc_config=None)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib, (
+            f"Streaming Survival peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
+        )
