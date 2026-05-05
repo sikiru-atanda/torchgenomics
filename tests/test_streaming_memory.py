@@ -1479,3 +1479,77 @@ class TestImputeLdStreamingMemory:
         # LD matches reference exactly: each chunk's window is fully
         # reconstructed from neighbour buffers.
         assert torch.allclose(out, G_ref, atol=1e-10, rtol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# F1 — windowed-buffer streaming for the six LD-window paths
+# (ldsc, ldsc-rg, ld-blocks, clump, knockoff-scan, lro-scan)
+# ---------------------------------------------------------------------------
+
+
+def _ld_fixture(n: int = 200, m: int = 2000, n_chrom: int = 2):
+    """Fixed seed (n × m) genotype + per-SNP chr/pos arrays.
+
+    The two-chromosome layout exercises the chromosome-boundary flush
+    path; positions are spaced 100 bp apart so a 5 kb window covers
+    ~50 neighbours.
+    """
+    torch.manual_seed(7)
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    chrs = []
+    poss = []
+    per = m // n_chrom
+    for c in range(n_chrom):
+        start = c * per
+        end = (c + 1) * per if c < n_chrom - 1 else m
+        chrs.extend([str(c + 1)] * (end - start))
+        poss.extend(list(range(0, (end - start) * 100, 100)))
+    return G, chrs, poss
+
+
+class TestLdScoresStreamingMemory:
+    """``compute_ld_scores_streaming`` peak ∝ window_size, not ∝ m."""
+
+    def test_streaming_matches_materialized(self):
+        from torchgwas.postgwas import (
+            compute_ld_scores,
+            compute_ld_scores_streaming,
+        )
+
+        G, chrs, poss = _ld_fixture(n=200, m=600, n_chrom=2)
+        ref = compute_ld_scores(G, poss, chrs, window_kb=5.0)
+        reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=64)
+        stream, ch_out, pos_out = compute_ld_scores_streaming(
+            reader.iter_chunks(64), window_kb=5.0,
+        )
+
+        assert ch_out == chrs
+        assert pos_out == poss
+        assert torch.allclose(stream, ref, atol=1e-9, rtol=1e-9)
+
+    def test_streaming_peak_scales_with_window_not_m(self):
+        """Peak should depend on window_size, not on total m."""
+        from torchgwas.postgwas import compute_ld_scores_streaming
+
+        # Small m, dense window
+        G_a, chr_a, pos_a = _ld_fixture(n=100, m=500, n_chrom=1)
+        # Large m, same dense window
+        G_b, chr_b, pos_b = _ld_fixture(n=100, m=2000, n_chrom=1)
+
+        def _run(G, ch, ps):
+            reader = _ChunkedTensorReader(G, ch, ps, chunk_size=128)
+            return compute_ld_scores_streaming(
+                reader.iter_chunks(128), window_kb=2.0,
+            )
+
+        _, peak_a = _peak_kib(lambda: _run(G_a, chr_a, pos_a))
+        _, peak_b = _peak_kib(lambda: _run(G_b, chr_b, pos_b))
+
+        # 4x m should NOT yield 4x peak. Allow generous slack
+        # (chunk fluctuations, list growth) but block runaway.
+        assert peak_b <= 2.0 * peak_a + 512, (
+            f"LD-scores streaming peak grew from {peak_a:.0f} KiB "
+            f"(m=500) to {peak_b:.0f} KiB (m=2000) — should be roughly "
+            "invariant in m for fixed window. Streaming may have "
+            "regressed to per-chromosome materialization."
+        )

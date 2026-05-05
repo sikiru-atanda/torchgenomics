@@ -3215,27 +3215,30 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
 
 
 def _cmd_ldsc(args: argparse.Namespace) -> int:
-    """Estimate SNP heritability via LDSC."""
-    import torch
+    """Estimate SNP heritability via LDSC.
 
+    Streaming variant: computes per-SNP LD scores via a sliding-window
+    buffer over ``reader.iter_chunks`` rather than materializing the
+    full ``(n, m)`` genotype matrix. Peak memory is bounded by
+    ``n × window_size × 8 B`` where ``window_size`` is the densest
+    ``2 * window_kb`` stretch on any chromosome.
+    """
     from .io.detect import detect_format
     from .io.validate import _open_reader
-    from .postgwas import compute_ld_scores, ldsc_h2, load_sumstats
+    from .postgwas import compute_ld_scores_streaming, ldsc_h2, load_sumstats
 
     ss = load_sumstats(args.sumstats)
     n = int(ss.n[~ss.n.isnan()].median().item()) if not ss.n.isnan().all() else args.n
 
-    # Load genotypes for LD score computation
+    # Streaming LD scores — the sliding-window buffer holds only the
+    # SNPs whose right edge has not yet been crossed by the latest
+    # streamed position. Output order matches the chunk iterator order.
     fmt = detect_format(args.genotype)
     reader = _open_reader(args.genotype, fmt)
-    chunks, var_pos, var_chr = [], [], []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks.append(G_chunk)
-        var_pos.extend(vmeta.pos)
-        var_chr.extend(vmeta.chr)
-    G = torch.cat(chunks, dim=1)
-
-    ld_scores = compute_ld_scores(G, var_pos, var_chr, window_kb=args.window_kb)
+    ld_scores, _chr_out, _pos_out = compute_ld_scores_streaming(
+        reader.iter_chunks(),
+        window_kb=args.window_kb,
+    )
     result = ldsc_h2(ss.chi2, ld_scores, n, ss.m)
 
     out_path = f"{args.output}.ldsc.txt"
@@ -3251,12 +3254,20 @@ def _cmd_ldsc(args: argparse.Namespace) -> int:
 
 
 def _cmd_ldsc_rg(args: argparse.Namespace) -> int:
-    """Estimate genetic correlation via cross-trait LDSC."""
-    import torch
+    """Estimate genetic correlation via cross-trait LDSC.
 
+    Streaming variant: shares the same sliding-window buffer machinery
+    as :func:`_cmd_ldsc`. The full ``(n, m)`` genotype matrix is never
+    materialized.
+    """
     from .io.detect import detect_format
     from .io.validate import _open_reader
-    from .postgwas import align_sumstats, compute_ld_scores, ldsc_rg_from_z, load_sumstats
+    from .postgwas import (
+        align_sumstats,
+        compute_ld_scores_streaming,
+        ldsc_rg_from_z,
+        load_sumstats,
+    )
 
     ss1 = load_sumstats(args.sumstats1)
     ss2 = load_sumstats(args.sumstats2)
@@ -3267,14 +3278,10 @@ def _cmd_ldsc_rg(args: argparse.Namespace) -> int:
 
     fmt = detect_format(args.genotype)
     reader = _open_reader(args.genotype, fmt)
-    chunks, var_pos, var_chr = [], [], []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks.append(G_chunk)
-        var_pos.extend(vmeta.pos)
-        var_chr.extend(vmeta.chr)
-    G = torch.cat(chunks, dim=1)
-
-    ld_scores = compute_ld_scores(G, var_pos, var_chr, window_kb=args.window_kb)
+    ld_scores, _chr_out, _pos_out = compute_ld_scores_streaming(
+        reader.iter_chunks(),
+        window_kb=args.window_kb,
+    )
     result = ldsc_rg_from_z(ss1.z, ss2.z, ld_scores, n1, n2, ss1.m)
 
     out_path = f"{args.output}.ldsc_rg.txt"
