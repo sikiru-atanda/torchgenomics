@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/torchgwas.svg)](https://pypi.org/project/torchgwas/)
 [![Python](https://img.shields.io/pypi/pyversions/torchgwas.svg)](https://pypi.org/project/torchgwas/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2192%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-2801%20passing-brightgreen.svg)](tests/)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 **GPU-accelerated Genome-Wide Association Studies with PyTorch.**
@@ -23,13 +23,35 @@ single `pip install`.
 
 ## Status
 
-**v0.1.1 · Alpha · 2192 tests passing · Python 3.10 – 3.12 · Linux + Windows**
+**v0.3.8 · Alpha · 2801 tests passing · Python 3.10 – 3.12 · Linux + Windows**
 
 V1 core (Phases 0 – 13) delivers GEMMA / GAPIT reference equivalence for
 Gaussian single- and multi-trait GWAS. Post-V1 extensions implemented through
 Phase 49b cover GLM / GLMM, survival, multi-environment, haplotype, threshold-
 linear, polygenic scoring, fine-mapping, post-GWAS, and causal mediation.
-Golden-data CI pins agreement with GEMMA 0.98.5 on every push.
+
+**Validation campaign (v0.3.0–v0.3.1):** function-by-function audit across four
+pillars (coverage, external reference tools, CLI smoke matrix, fixture
+reproducibility). 14 V1 production fixes shipped from validation work + 700
+new tests. Reference equivalence validated against GEMMA 0.98.5, GAPIT3,
+GWASpoly 2.14, PLINK 2.0, LDSC, regenie 3.3, SAIGE 1.4.4, BOLT-LMM 2.5,
+TwoSampleMR 0.7.5, SoyNAM, and SoyMD-style mediation references. All three
+committed reference fixtures (GEMMA, GAPIT, GWASpoly) re-verified bit-exactly
+authoritative.
+
+**Streaming + efficiency campaign (v0.3.2–v0.3.8):** 36 of 40 CLI scan
+subcommands now stream chunks via `iter_chunks` — peak memory
+`O(n × chunk_size)` instead of `O(n × m)`. Median UKB-scale (n=500K × m=10M)
+GWAS goes from "needs 40 TB cluster" to "runs on a 4 GB workstation." Three
+opt-in materializing paths preserved for callers that already have G in
+hand. One algorithmically-tied path (`bayes-scan` / SuSiE joint posterior)
+retained — streaming would change the inference algorithm.
+
+**Regression nets:** memory (in-test `tracemalloc` guards on streaming peak)
+and wall-time (`perf.yml` workflow with > 10% native-kernel regression =
+hard fail, > 5% = warning). Plus golden-data CI (GEMMA / GAPIT / GWASpoly),
+external-tool CI (Pillar B, weekly), CLI smoke matrix (Pillar C, nightly),
+and fixture-drift audit (Pillar D, monthly).
 
 ## Install
 
@@ -209,13 +231,36 @@ Reporting.**
 ## Testing
 
 ```bash
-pytest tests/ -v                    # full suite (2192 passing, 45 skipped)
-pytest tests/ -v -m golden          # GEMMA / GAPIT golden-data gate
+pytest tests/ -v                    # default suite (2801 passing, 544 skipped)
+pytest tests/ -v -m golden          # GEMMA / GAPIT / GWASpoly golden-data gate
+pytest tests/ -v -m external        # Pillar B external reference-tool comparisons
+pytest tests/ -v -m cli_matrix      # Pillar C end-to-end CLI smoke matrix
+pytest tests/ -v -m reproducibility # Pillar D fixture-drift audit
 pytest tests/ -v -m "not slow"      # skip slow tests
 ```
 
+The `external`, `cli_matrix`, and `reproducibility` markers are opt-in (the
+default suite skips them) and run on cron schedules in CI:
+
+| Workflow | Trigger | What |
+|---|---|---|
+| `.github/workflows/ci.yml` | every PR + master push | default suite + golden + native + no-openmp + type-check |
+| `.github/workflows/perf.yml` | every PR + master push | native-kernel wall-time regression gate (> 10% slower = fail) |
+| `.github/workflows/cli-matrix.yml` | nightly | 122-cell CLI smoke (40 subcommands × formats × CPU + GPU) |
+| `.github/workflows/external.yml` | weekly (Sunday) | Pillar B reference-tool comparisons (PLINK / LDSC / TwoSampleMR / regenie / SAIGE / BOLT / GEMMA / GAPIT / GWASpoly / SoyNAM) |
+| `.github/workflows/reproducibility.yml` | monthly (1st) | fixture-drift audit |
+
 Golden-data fixtures live under `tests/golden/` and are regenerated with
-`scripts/generate_golden_data.py` (see `docs/validation.md`).
+`scripts/generate_golden_data.py` (see `docs/validation.md`). The validation
+campaign findings ledger lives at `docs/validation_findings.md`.
+
+### Memory regression nets
+
+Streaming-friendly scans are protected from accidental re-materialization
+by `tracemalloc`-based peak-memory assertions in
+`tests/test_streaming_memory.py` (42 tests across the streamed
+subcommands). The biobank-relevant invariant is that peak memory scales
+with `chunk_size` / `window_size`, not with total `m`.
 
 ## Requirements
 
@@ -238,6 +283,6 @@ MIT License — see [LICENSE](LICENSE).
   author = {Atanda, Sikiru A.},
   year   = {2026},
   url    = {https://github.com/sikiru-atanda/torchgwas},
-  note   = {Version 0.1.1},
+  note   = {Version 0.3.8},
 }
 ```
