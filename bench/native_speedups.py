@@ -80,15 +80,26 @@ import torch
 
 QUICK = bool(os.environ.get("TORCHGWAS_BENCH_QUICK"))
 REALISTIC = bool(os.environ.get("TORCHGWAS_BENCH_REALISTIC"))
-DEFAULT_REPEATS = 2 if QUICK else 5
+# CI mode: input sizes shrunk so the *python* reference path finishes
+# under ~5 s per kernel even in the unrolled-loop kernels (Gabriel,
+# PELT, Big-LD, etc). The native path is still measured at full
+# accuracy — we're not skipping it, we're just not asking the python
+# reference to run a 90 s O(m⁴) scan inside a 6-min CI budget. The
+# regression test itself only cares that the native p50 doesn't
+# regress; the CI-mode python timing is purely a sanity sentinel.
+CI = bool(os.environ.get("TORCHGWAS_BENCH_CI"))
+DEFAULT_REPEATS = 2 if (QUICK or CI) else 5
 
 
-def _pick(small, realistic):
-    """Return ``realistic`` when TORCHGWAS_BENCH_REALISTIC=1, else ``small``.
+def _pick(small, realistic, ci=None):
+    """Return the size for the active mode.
 
-    Used inside each ``_build_*`` helper so the realistic-mode scale
-    factors are visible right next to the default sizes.
+    Order of precedence: CI > realistic > small. The ``ci`` arg is
+    optional — if a kernel doesn't supply one, we fall back to ``small``
+    (which is already conservative for most kernels).
     """
+    if CI:
+        return ci if ci is not None else small
     return realistic if REALISTIC else small
 
 
@@ -196,8 +207,8 @@ def run_bench(b: Bench) -> tuple[BenchResult, BenchResult]:
 
 def _build_prscs_block():
     rng = torch.Generator().manual_seed(0)
-    m = _pick(200, 400)
-    n_iter = _pick(200, 300)
+    m = _pick(200, 400, ci=80)
+    n_iter = _pick(200, 300, ci=60)
     R = torch.randn(m, m, dtype=torch.float64, generator=rng)
     R = (R + R.T) / 2.0
     R += m * torch.eye(m, dtype=torch.float64)
@@ -216,8 +227,8 @@ def _run_prscs_block(beta_std, R, n_eff, phi, a, b, n_iter, n_burnin, rng):
 
 def _build_ldpred2_block():
     rng = torch.Generator().manual_seed(0)
-    m = _pick(200, 400)
-    n_iter = _pick(200, 300)
+    m = _pick(200, 400, ci=80)
+    n_iter = _pick(200, 300, ci=60)
     R = torch.randn(m, m, dtype=torch.float64, generator=rng)
     R = (R + R.T) / 2.0
     R += m * torch.eye(m, dtype=torch.float64)
@@ -271,8 +282,10 @@ def _run_ct(p, ld_ref, chr_labels, pos, p_thr, r2_thr, window_kb):
 def _build_pelt():
     # NOTE: realistic mode keeps n=5000 because the small-bench Python
     # path is already ~700s; doubling n would need ~45 min per run.
+    # CI mode uses n=400 — the python DP is O(n²), so 400² = 160k ops
+    # vs 5000² = 25M; that puts python under ~1 s.
     rng = np.random.default_rng(0)
-    n = 5000
+    n = _pick(5000, 5000, ci=400)
     sig = np.concatenate([
         rng.normal(0.0, 1.0, n // 4),
         rng.normal(2.0, 1.0, n // 4),
@@ -324,9 +337,11 @@ def _run_cc(A, t):
 def _build_gabriel():
     # NOTE: realistic mode keeps m=300 because the small-bench Python
     # path is already ~120s (O(m⁴) Python scan); doubling m → 1000s+.
+    # CI mode uses m=80 to keep python under ~3 s.
     from torchgwas.ld import compute_pairwise_ld
     rng = torch.Generator().manual_seed(0)
-    n, m = 400, 300
+    n = 400
+    m = _pick(300, 300, ci=80)
     G = torch.randint(0, 3, (n, m), generator=rng).to(torch.float64)
     pos = list(range(0, m * 1000, 1000))
     chrs = ["1"] * m
@@ -375,7 +390,7 @@ def _run_dp_opt(G, pos, chrs):
 
 def _build_cc_graph():
     rng = torch.Generator().manual_seed(0)
-    n, m = 300, _pick(500, 900)
+    n, m = 300, _pick(500, 900, ci=150)
     G = torch.randint(0, 3, (n, m), generator=rng).to(torch.float64)
     pos = list(range(0, m * 1000, 1000))
     chrs = ["1"] * m
@@ -524,7 +539,8 @@ def _run_cross_pop(G, pop_ids, weights, pos, chrs):
 
 def _build_impute_mode():
     rng = np.random.default_rng(0)
-    n, m = _pick(1500, 3000), _pick(800, 1500)
+    n = _pick(1500, 3000, ci=400)
+    m = _pick(800, 1500, ci=200)
     G = rng.integers(0, 3, size=(n, m)).astype(np.float64)
     miss = rng.random(size=(n, m)) < 0.1
     G[miss] = np.nan
@@ -538,7 +554,8 @@ def _run_impute_mode(G):
 
 def _build_impute_knn():
     rng = np.random.default_rng(0)
-    n, m = _pick(400, 700), _pick(200, 350)
+    n = _pick(400, 700, ci=150)
+    m = _pick(200, 350, ci=80)
     G = rng.integers(0, 3, size=(n, m)).astype(np.float64)
     miss = rng.random(size=(n, m)) < 0.1
     G[miss] = np.nan
@@ -574,7 +591,8 @@ def _run_impute_ld(G, w):
 
 def _build_hwe():
     rng = np.random.default_rng(0)
-    n, m = _pick(1500, 2500), _pick(5000, 10000)
+    n = _pick(1500, 2500, ci=500)
+    m = _pick(5000, 10000, ci=1500)
     G = rng.integers(0, 3, size=(n, m)).astype(np.float64)
     af = G.mean(axis=0) / 2.0
     return (torch.from_numpy(G), torch.from_numpy(af), 2)
@@ -603,7 +621,8 @@ def _run_hwe_dr(G, af, ploidy):
 
 def _build_spa():
     rng = torch.Generator().manual_seed(0)
-    n, m = _pick(1500, 2500), _pick(1000, 2000)
+    n = _pick(1500, 2500, ci=500)
+    m = _pick(1000, 2000, ci=300)
     mu = torch.rand(n, generator=rng, dtype=torch.float64).clamp(0.05, 0.95)
     G = torch.rand(n, m, generator=rng, dtype=torch.float64) * 2.0
     Y = (torch.rand(n, generator=rng, dtype=torch.float64) < mu).to(torch.float64)
@@ -620,7 +639,7 @@ def _run_spa(score, mu, G, thr):
 
 def _build_ldsc():
     rng = torch.Generator().manual_seed(0)
-    m = _pick(8000, 40000)
+    m = _pick(8000, 40000, ci=4000)
     ld = torch.rand(m, generator=rng, dtype=torch.float64) * 50 + 5
     n_eff = 100000
     h2_true = 0.3
@@ -651,9 +670,9 @@ def _build_grm_streaming():
     accumulator load.
     """
     rng = torch.Generator().manual_seed(0)
-    n = _pick(600, 1200)
-    m = _pick(8000, 16000)
-    chunk = _pick(800, 1600)
+    n = _pick(600, 1200, ci=300)
+    m = _pick(8000, 16000, ci=2000)
+    chunk = _pick(800, 1600, ci=500)
     G = (torch.rand(n, m, generator=rng, dtype=torch.float64) * 2.0).round()
     chunks: list[tuple[torch.Tensor, None]] = []
     for s in range(0, m, chunk):
@@ -678,8 +697,8 @@ def _build_grm_vanraden():
     every streaming-vs-materialized regression discussion.
     """
     rng = torch.Generator().manual_seed(0)
-    n = _pick(600, 1200)
-    m = _pick(4000, 8000)
+    n = _pick(600, 1200, ci=300)
+    m = _pick(4000, 8000, ci=1500)
     G = (torch.rand(n, m, generator=rng, dtype=torch.float64) * 2.0).round()
     return (G,)
 

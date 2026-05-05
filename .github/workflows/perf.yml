@@ -1,0 +1,230 @@
+name: Performance regression CI (Efficiency E5)
+
+# Wall-time analog to the streaming memory-budget regression nets
+# (``tests/test_streaming_memory.py``). Catches silent native-kernel
+# regressions on the 12 highest-signal kernels.
+#
+# How it works
+# ------------
+# 1. Checkout PR head, install with native extensions, run
+#    ``bench/native_speedups.py --output json --kernel-subset ci`` →
+#    ``/tmp/pr.json``.
+# 2. Checkout master in the same workspace, do the same →
+#    ``/tmp/master.json``.
+# 3. Run ``bench/diff_perf.py`` to compute %Δ p50 / p95 per kernel.
+#    Exit codes: 0 = clean, 1 = >10% native-p50 regression on any
+#    kernel (hard fail), 2 = only 5–10% warnings (job still passes
+#    but PR comment is posted).
+# 4. Post the markdown diff as a PR comment (replacing any prior
+#    comment from this bot).
+#
+# Wall-time budget: ~6 min. The CI subset uses ``TORCHGWAS_BENCH_CI=1``
+# input sizes (smaller than the realistic-mode sweep) so each python+
+# native pair runs in <5 s; 12 kernels × 2 checkouts ≈ 2-3 min of bench
+# wall-time after warmup, plus ~3 min for the editable install + native
+# build on each checkout.
+#
+# See ``docs/efficiency/perf_regression.md`` for the interpretation
+# guide and how to add or remove kernels from the CI subset.
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: perf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          path: pr
+          fetch-depth: 0
+
+      - name: Checkout master baseline
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: master
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          # The ``test-native`` job in ci.yml uses the same pinning.
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
+          pip install "pybind11>=2.11"
+
+      # ----- Native build cache (keyed on csrc/) -----
+      # The pybind11 extensions take ~2 min to compile from scratch.
+      # Caching ``build/`` halves that on subsequent runs that haven't
+      # touched ``csrc/``. We cache PR and master separately so a PR
+      # rebuild doesn't invalidate master's cache and vice versa.
+      - name: Cache native build artifacts (PR head)
+        uses: actions/cache@v4
+        with:
+          path: pr/build
+          key: native-build-pr-${{ hashFiles('pr/csrc/**', 'pr/setup.py') }}-${{ runner.os }}-py3.11
+
+      - name: Cache native build artifacts (master)
+        uses: actions/cache@v4
+        with:
+          path: master/build
+          key: native-build-master-${{ hashFiles('master/csrc/**', 'master/setup.py') }}-${{ runner.os }}-py3.11
+
+      # ----- Install both checkouts in editable mode -----
+      # We install master first so its build artifacts get cached;
+      # then install PR head (which OVERWRITES the editable install).
+      # Right before each benchmark run we re-install the relevant
+      # tree to be sure ``import torchgwas`` resolves to the right code.
+
+      - name: Install master and run baseline benchmark
+        working-directory: master
+        env:
+          TORCHGWAS_BENCH_CI: "1"
+        run: |
+          pip install -e ".[dev]"
+          # Sanity: confirm native extensions imported.
+          python -c "import torchgwas; print(f'master: torchgwas {torchgwas.__file__}')"
+          python -c "
+          import os
+          try:
+              import torchgwas._native
+              print('master: native package importable')
+          except Exception as e:
+              print(f'master: native NOT importable: {e}')
+          "
+          python bench/native_speedups.py \
+              --output json \
+              --output-path /tmp/master.json \
+              --kernel-subset ci \
+              --n-repeats 5
+
+      - name: Install PR head and run benchmark
+        working-directory: pr
+        env:
+          TORCHGWAS_BENCH_CI: "1"
+        run: |
+          pip install -e ".[dev]"
+          python -c "import torchgwas; print(f'pr: torchgwas {torchgwas.__file__}')"
+          python -c "
+          import os
+          try:
+              import torchgwas._native
+              print('pr: native package importable')
+          except Exception as e:
+              print(f'pr: native NOT importable: {e}')
+          "
+          python bench/native_speedups.py \
+              --output json \
+              --output-path /tmp/pr.json \
+              --kernel-subset ci \
+              --n-repeats 5
+
+      - name: Diff master vs PR
+        id: diff
+        working-directory: pr
+        run: |
+          set +e
+          python bench/diff_perf.py \
+              /tmp/master.json /tmp/pr.json \
+              --markdown /tmp/perf_diff.md \
+              --quiet
+          rc=$?
+          set -e
+          echo "diff_exit_code=$rc" >> "$GITHUB_OUTPUT"
+          echo "Diff exit code: $rc"
+          echo "----- markdown body -----"
+          cat /tmp/perf_diff.md
+          echo "-------------------------"
+
+      - name: Upload PR benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-pr-${{ github.run_id }}
+          path: |
+            /tmp/pr.json
+            /tmp/master.json
+            /tmp/perf_diff.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      # ----- Master baseline retention -----
+      # On master pushes, also upload the run's JSON under a stable
+      # name so future PRs (or follow-on master pushes) can grab it
+      # as a baseline. v1 keeps this as an artifact only — it's not
+      # committed to the repo. Future iterations may move it to a
+      # gh-pages branch or a long-term store.
+      - name: Upload master baseline (master push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline-master
+          path: /tmp/master.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Post PR comment with diff
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = '/tmp/perf_diff.md';
+            if (!fs.existsSync(path)) {
+              core.warning(`no diff markdown at ${path}`);
+              return;
+            }
+            const body = fs.readFileSync(path, 'utf8');
+            const tag = '<!-- torchgwas-perf-regression-bot -->';
+            const fullBody = `${tag}\n${body}`;
+
+            // Replace any prior comment from this bot rather than
+            // posting a new one each time the workflow re-runs.
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const prior = comments.find(c => c.body && c.body.includes(tag));
+            if (prior) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: prior.id, body: fullBody,
+              });
+              core.info(`updated prior perf comment id=${prior.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body: fullBody,
+              });
+              core.info('posted new perf comment');
+            }
+
+      - name: Fail job on regression
+        if: steps.diff.outputs.diff_exit_code == '1'
+        run: |
+          echo "::error::Performance regression detected — see PR comment for details."
+          exit 1
+
+      - name: Soft-warn on > 5 % delta (job still passes)
+        if: steps.diff.outputs.diff_exit_code == '2'
+        run: |
+          echo "::warning::Performance warning (5–10 % slower on at least one kernel) — see PR comment."
