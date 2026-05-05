@@ -1616,17 +1616,33 @@ def _cmd_lro_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_glmm_scan(args: argparse.Namespace) -> int:
-    """Run GLMM association scan (binary/ordinal with random effects)."""
+    """Run GLMM association scan (binary/ordinal with random effects).
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and drives the per-variant score test through ``UnifiedScanner``
+    instead of materializing the full ``(n, m)`` genotype matrix. The
+    PQL null fit only depends on ``Y / X0 / K``, so the genotype is
+    only touched chunk-by-chunk during the scan loop.
+    """
     from .config import TorchGWASConfig, resolve_device
+    from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Build GRM
-    from .linalg.kinship import grm_vanraden
-    K, _ = grm_vanraden(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     family = getattr(args, "family", "binary")
     if family == "binary":
@@ -1652,7 +1668,17 @@ def _cmd_glmm_scan(args: argparse.Namespace) -> int:
         raise ValueError(f"Unsupported GLMM family: {family}")
 
     nf = model.fit_null(Y.squeeze(1).to(device), X0.to(device), K=K)
-    result = model.score_chunk(G.to(device), nf, vmeta)
+
+    # Drive the scan through UnifiedScanner so chunks flow through the
+    # model's per-chunk score_chunk one at a time — never materializing
+    # the full G.
+    from .scan.unified import UnifiedScanner
+    scanner = UnifiedScanner(aligned_reader, model, config)
+    qc = QCFilterConfig(
+        maf_min=getattr(args, "maf_min", 0.0),
+        miss_max=getattr(args, "miss_max", 1.0),
+    )
+    result = scanner.scan(nf, test="score", qc_config=qc)
 
     _apply_correction_and_save(result, args)
     logger.info("GLMM scan complete: family=%s, %d variants", family, len(result))

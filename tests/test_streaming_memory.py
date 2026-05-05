@@ -274,3 +274,103 @@ class TestSetScanStreamingMemory:
             "roughly constant in m for fixed region size. The "
             "streaming refactor likely regressed."
         )
+
+
+# ---------------------------------------------------------------------------
+# glmm-scan (BinaryGLMM via UnifiedScanner) memory regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def binary_glmm_inputs():
+    """Synthetic binary phenotype + small genotype matrix."""
+    torch.manual_seed(7)
+    n, m = 200, 500
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+
+    K, _ = grm_vanraden(G)
+
+    # Binary Y from logistic(0.5*X0 + small genetic effect)
+    eta = 0.0 + 0.1 * G[:, 0] + 0.5 * torch.randn(n, dtype=torch.float64)
+    pi = torch.sigmoid(eta)
+    Y = (torch.rand(n, dtype=torch.float64) < pi).to(torch.float64)
+    return G, Y, X0, K
+
+
+class TestGlmmScanStreamingMemory:
+    """Streaming GLMM scan via UnifiedScanner.
+
+    The GLMM null fit (PQL) only depends on Y, X0, K — never on the
+    SNP genotypes. Once K is built (here via ``grm_vanraden`` for the
+    test; production uses ``grm_vanraden_streaming``), the genome scan
+    runs chunk-by-chunk through ``BinaryGLMM.score_chunk`` on each
+    iteration of ``UnifiedScanner.scan``. We check that the per-chunk
+    score path doesn't accidentally hold all chunks in memory.
+    """
+
+    def test_streaming_glmm_matches_full_chunk(self, binary_glmm_inputs):
+        from torchgwas.config import TorchGWASConfig
+        from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgwas.scan.unified import UnifiedScanner
+
+        G, Y, X0, K = binary_glmm_inputs
+        m = G.shape[1]
+
+        model = BinaryGLMM(use_spa=False, firth=False, pql_max_iter=20)
+        nf = model.fit_null(Y, X0, K=K)
+
+        # Reference: single big-G score_chunk (legacy path)
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        ref = model.score_chunk(G, nf, vmeta, test="score")
+
+        # Streaming path via UnifiedScanner
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        config = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+        scanner = UnifiedScanner(reader, model, config)
+        streamed = scanner.scan(nf, test="score", qc_config=None)
+
+        assert torch.allclose(streamed.stat, ref.stat, atol=1e-9, rtol=1e-9)
+        # P-values: allow looser tol because chi2 SF can amplify rounding.
+        assert torch.allclose(streamed.p, ref.p, atol=1e-9, rtol=1e-7)
+
+    def test_streaming_glmm_under_explicit_budget(self, binary_glmm_inputs):
+        """Hard absolute budget: <16 MiB at 200x500.
+
+        At the chosen fixture, peak streaming GLMM allocations are
+        dominated by the score-chunk intermediates (WG, X0tWG, etc.) —
+        all sized (n, chunk_size). With n=200 and chunk=64 these are
+        small. The 16 MiB ceiling holds with margin today and trips
+        immediately on a regression that re-materializes G.
+        """
+        from torchgwas.config import TorchGWASConfig
+        from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgwas.scan.unified import UnifiedScanner
+
+        G, Y, X0, K = binary_glmm_inputs
+        m = G.shape[1]
+
+        model = BinaryGLMM(use_spa=False, firth=False, pql_max_iter=20)
+        nf = model.fit_null(Y, X0, K=K)
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            scanner = UnifiedScanner(reader, model, cfg)
+            return scanner.scan(nf, test="score", qc_config=None)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024  # 16 MiB
+        assert peak_stream < budget_kib, (
+            f"Streaming GLMM peak ({peak_stream:.0f} KiB) exceeds the "
+            f"16 MiB budget. At biobank scale this would translate to "
+            "a multi-TB regression."
+        )
