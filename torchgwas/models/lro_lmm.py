@@ -137,6 +137,9 @@ class LROLMM:
         variant_pos: list[int],
         variant_chr: list[str],
         test: str = "wald",
+        *,
+        K_full: Tensor | None = None,
+        normalizer: float | None = None,
     ) -> LROResult:
         """Full leave-region-out GWAS pipeline.
 
@@ -144,11 +147,23 @@ class LROLMM:
         ----------
         Y : (n,) or (n, 1) — phenotype
         X0 : (n, c) — covariates
-        G : (n, m) — full genotype matrix
-        variant_meta : VariantMeta
-        variant_pos : list[int]
-        variant_chr : list[str]
+        G : (n, m) — genotype matrix. Either the full genome (legacy use) or
+            a single chromosome's slice (streaming use). When a chromosome
+            slice is passed, ``K_full`` and ``normalizer`` MUST be supplied
+            externally so that K_full reflects all chromosomes; the
+            per-block ``K_b = G_block @ G_block^T / normalizer`` is then
+            subtracted from the genome-wide K_full to give the correct
+            leave-this-block-out kinship.
+        variant_meta : VariantMeta — for the SNPs in ``G``.
+        variant_pos : list[int] — for the SNPs in ``G``.
+        variant_chr : list[str] — for the SNPs in ``G``.
         test : "wald", "score", or "lrt"
+        K_full : (n, n) Tensor, optional
+            Pre-computed genome-wide GRM. If None, computed from ``G`` in
+            the legacy single-call code path.
+        normalizer : float, optional
+            VanRaden normalizer for ``K_full`` (sum 2pq across genome).
+            Required when K_full is supplied; otherwise computed from G.
 
         Returns
         -------
@@ -169,9 +184,16 @@ class LROLMM:
         X0 = X0.to(STAT_DTYPE)
 
         # ── Step 1: Compute full GRM and its normalizer ──────────
-        logger.info("Step 1: Computing full GRM (VanRaden)...")
-        K_full, grm_meta = grm_vanraden(G, ploidy=self.ploidy)
-        normalizer = grm_meta.normalizer
+        if K_full is None or normalizer is None:
+            logger.info("Step 1: Computing full GRM (VanRaden)...")
+            K_full, grm_meta = grm_vanraden(G, ploidy=self.ploidy)
+            normalizer = grm_meta.normalizer
+        else:
+            logger.info(
+                "Step 1: Using caller-supplied genome-wide GRM "
+                "(streaming variant; normalizer=%.4g).",
+                float(normalizer),
+            )
 
         # ── Step 2: Detect LD blocks ─────────────────────────────
         logger.info("Step 2: Detecting LD blocks (method=%s)...", self.ld_method)

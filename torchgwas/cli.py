@@ -1516,22 +1516,47 @@ def _cmd_ocf_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
-    """Run knockoff FDR-controlled GWAS scan."""
+    """Run knockoff FDR-controlled GWAS scan.
+
+    Streaming variant: per-chromosome accumulator. The full ``(n, m)``
+    genotype matrix is never resident; the largest tensor in flight is
+    one chromosome's slice. Per-chromosome KnockoffLMM.run produces
+    per-chromosome KnockoffResult objects which we merge into a
+    genome-wide result before applying the global knockoff+ FDR
+    threshold across all blocks.
+
+    Peak memory: O(n × max_per_chromosome_m × 8 B) for per-chromosome G,
+    plus the streaming GRM (n × n × 8 B). This is the irreducible floor
+    — block detection + knockoff construction need pairwise correlations
+    inside each block, which is bounded by chromosome size.
+
+    Tradeoff: the per-chromosome split breaks LD blocks that span chromosomes
+    (none in practice — LD blocks never span chromosomes by definition)
+    and changes the per-block W-statistic ordering used by the knockoff+
+    filter. The filter is FDR-controlling regardless of block ordering,
+    so this is a behavioral tweak (test/parity guarded), not a regression.
+    """
     import pandas as pd
+    import torch
 
     from .config import TorchGWASConfig, resolve_device
-    from .models.knockoff_lmm import KnockoffLMM
+    from .linalg.kinship import grm_vanraden_streaming
+    from .models.knockoff_lmm import KnockoffLMM, KnockoffResult
+    from .models.knockoff_lmm import _knockoff_plus_filter
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    # Load ALL genotypes (knockoff needs full G)
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
-
-    # Compute GRM
-    logger.info("Computing kinship matrix (VanRaden)...")
-    from .linalg.kinship import grm_vanraden
-    K, _ = grm_vanraden(G.to(device))
+    # Streaming sample alignment + GRM.
+    Y, X0, aligned_reader = _align_samples(args, config)
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     model = KnockoffLMM(
         config=config.numerical,
@@ -1541,10 +1566,158 @@ def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
         aggregation=args.aggregation,
         seed=args.seed,
     )
-    result = model.run(
-        Y.squeeze(1).to(device), X0.to(device), K,
-        G.to(device), vmeta,
-        vmeta.pos, vmeta.chr,
+
+    # Per-chromosome accumulator. We collect each chromosome's slice,
+    # call model.run on it (which detects blocks + builds knockoffs +
+    # scans + emits per-chromosome importance stats), then free the
+    # slice before reading the next chromosome.
+    Y_dev = Y.squeeze(1).to(device)
+    X0_dev = X0.to(device)
+
+    per_chr_results: list[KnockoffResult] = []
+    n_seen_global = 0
+
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+    cur_chunks_meta: list[object] = []
+    cur_chunks_global_starts: list[int] = []  # offset into final genome-wide arrays
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_pos, cur_chunks_meta, cur_chunks_global_starts
+        if not cur_chunks or cur_chr is None:
+            return
+        from .models.base import VariantMeta
+        from .preprocess.impute import impute_mean
+
+        G_chr = torch.cat(cur_chunks, dim=1).to(device)
+        G_chr = impute_mean(G_chr).to(STAT_DTYPE := torch.float64)
+        # Build a per-chromosome VariantMeta from the per-chunk meta.
+        chr_snp: list[str] = []
+        chr_pos: list[int] = []
+        chr_chr: list[str] = []
+        chr_a1: list[str] = []
+        chr_a2: list[str] = []
+        for cm in cur_chunks_meta:
+            chr_snp.extend(cm.snp)
+            chr_pos.extend(cm.pos)
+            chr_chr.extend([str(c) for c in cm.chr])
+            chr_a1.extend(cm.a1)
+            chr_a2.extend(cm.a2)
+        vm_chr = VariantMeta(
+            snp=chr_snp, chr=chr_chr, pos=chr_pos,
+            a1=chr_a1, a2=chr_a2,
+        )
+        chr_result = model.run(
+            Y_dev, X0_dev, K,
+            G_chr, vm_chr,
+            vm_chr.pos, vm_chr.chr,
+        )
+        per_chr_results.append(chr_result)
+        # Free.
+        cur_chunks = []
+        cur_pos = []
+        cur_chunks_meta = []
+        cur_chunks_global_starts = []
+
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        chr_chunk = [str(c) for c in vm.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+            from .models.base import VariantMeta
+            sub_vm = VariantMeta(
+                snp=vm.snp[run_start:run_end],
+                chr=vm.chr[run_start:run_end],
+                pos=vm.pos[run_start:run_end],
+                a1=vm.a1[run_start:run_end],
+                a2=vm.a2[run_start:run_end],
+            )
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vm.pos[run_start:run_end])
+            cur_chunks_meta.append(sub_vm)
+            run_start = run_end
+        n_seen_global += G_chunk.shape[1]
+
+    _process_chrom()
+
+    # Merge per-chromosome KnockoffResults into a genome-wide result.
+    # block_indices need a +offset remap; per-SNP arrays concatenate
+    # in the order they were seen. The knockoff+ filter is then
+    # re-applied over the merged W-stat vector for genome-wide FDR.
+    if not per_chr_results:
+        raise RuntimeError("knockoff-scan: no variants processed.")
+
+    block_indices_g: list[list[int]] = []
+    W_pieces: list[torch.Tensor] = []
+    chr_g: list[str] = []
+    pos_g: list[int] = []
+    snp_g: list[str] = []
+    a1_g: list[str] = []
+    a2_g: list[str] = []
+    af_pieces: list[torch.Tensor] = []
+    beta_pieces: list[torch.Tensor] = []
+    se_pieces: list[torch.Tensor] = []
+    stat_pieces: list[torch.Tensor] = []
+    p_pieces: list[torch.Tensor] = []
+    beta_kn_pieces: list[torch.Tensor] = []
+    stat_kn_pieces: list[torch.Tensor] = []
+
+    offset = 0
+    for r in per_chr_results:
+        for indices in r.block_indices:
+            block_indices_g.append([i + offset for i in indices])
+        W_pieces.append(r.W_stat)
+        chr_g.extend(r.chr)
+        pos_g.extend(r.pos)
+        snp_g.extend(r.snp)
+        a1_g.extend(r.a1)
+        a2_g.extend(r.a2)
+        af_pieces.append(r.af)
+        beta_pieces.append(r.beta)
+        se_pieces.append(r.se)
+        stat_pieces.append(r.stat)
+        p_pieces.append(r.p)
+        beta_kn_pieces.append(r.beta_knockoff)
+        stat_kn_pieces.append(r.stat_knockoff)
+        offset += r.beta.shape[0]
+
+    W = torch.cat(W_pieces) if W_pieces else torch.tensor([], dtype=torch.float64)
+    threshold, selected = _knockoff_plus_filter(W, args.fdr_level)
+
+    is_selected = torch.zeros(offset, dtype=torch.bool, device=device)
+    for b in selected:
+        for j in block_indices_g[b]:
+            is_selected[j] = True
+
+    result = KnockoffResult(
+        block_indices=block_indices_g,
+        W_stat=W,
+        selected_blocks=selected,
+        threshold=threshold,
+        chr=chr_g, pos=pos_g, snp=snp_g, a1=a1_g, a2=a2_g,
+        af=torch.cat(af_pieces),
+        beta=torch.cat(beta_pieces),
+        se=torch.cat(se_pieces),
+        stat=torch.cat(stat_pieces),
+        p=torch.cat(p_pieces),
+        beta_knockoff=torch.cat(beta_kn_pieces),
+        stat_knockoff=torch.cat(stat_kn_pieces),
+        is_selected=is_selected,
+        target_fdr=args.fdr_level,
+        n_blocks=len(block_indices_g),
+        n_selected=len(selected),
+        ld_method=args.ld_method,
+        knockoff_method=args.knockoff_method,
+        aggregation=args.aggregation,
     )
 
     # Save results
@@ -1772,25 +1945,158 @@ def _cmd_gu_scan_inner(args, config, device) -> int:
 
 
 def _cmd_lro_scan(args: argparse.Namespace) -> int:
-    """Run leave-region-out GWAS scan (block-level LOCO)."""
+    """Run leave-region-out GWAS scan (block-level LOCO).
+
+    Streaming variant: per-chromosome accumulator. Two passes:
+      1. Streaming GRM (VanRaden) over the full genome — gives the
+         genome-wide K_full and its normalizer.
+      2. Per chromosome: accumulate one chromosome's slice at a time and
+         call LROLMM.run with the genome-wide K_full + normalizer
+         (passed via the new K_full / normalizer kwargs). LROLMM detects
+         blocks within that chromosome and runs the per-block leave-out
+         scan with the correct block-removed K = K_full - K_b. LD blocks
+         do not span chromosomes, so per-chromosome detection is exact.
+
+    Peak memory: O(n × max_per_chromosome_m × 8 B) for the per-chromosome
+    G slice, plus the streaming GRM (n × n × 8 B). At UKB scale (n=500K,
+    ~200K SNPs/chrom) this drops the LRO path from ~40 TB whole-genome G
+    residency to ~800 GB per chrom — still large, but a documented soft
+    cap rather than the prior multi-TB residency.
+    """
+    import torch
+
     from .config import TorchGWASConfig, resolve_device
-    from .models.lro_lmm import LROLMM
+    from .linalg.kinship import grm_vanraden_streaming
+    from .models.lro_lmm import LROLMM, LROResult
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    # Load ALL genotypes (LRO needs full G)
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment + genome-wide GRM.
+    Y, X0, aligned_reader = _align_samples(args, config)
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
+    normalizer = float(grm_meta.normalizer)
 
     model = LROLMM(
         config=config.numerical,
         ld_method=args.ld_method,
     )
-    result = model.run(
-        Y.squeeze(1).to(device), X0.to(device),
-        G.to(device), vmeta,
-        vmeta.pos, vmeta.chr,
+    Y_dev = Y.squeeze(1).to(device)
+    X0_dev = X0.to(device)
+
+    per_chr_results: list[LROResult] = []
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_chunks_meta: list[object] = []
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_chunks_meta
+        if not cur_chunks or cur_chr is None:
+            return
+        from .models.base import VariantMeta
+        from .preprocess.impute import impute_mean
+
+        G_chr = torch.cat(cur_chunks, dim=1).to(device)
+        G_chr = impute_mean(G_chr).to(torch.float64)
+        chr_snp: list[str] = []
+        chr_pos: list[int] = []
+        chr_chr: list[str] = []
+        chr_a1: list[str] = []
+        chr_a2: list[str] = []
+        for cm in cur_chunks_meta:
+            chr_snp.extend(cm.snp)
+            chr_pos.extend(cm.pos)
+            chr_chr.extend([str(c) for c in cm.chr])
+            chr_a1.extend(cm.a1)
+            chr_a2.extend(cm.a2)
+        vm_chr = VariantMeta(
+            snp=chr_snp, chr=chr_chr, pos=chr_pos,
+            a1=chr_a1, a2=chr_a2,
+        )
+        chr_result = model.run(
+            Y_dev, X0_dev, G_chr, vm_chr,
+            vm_chr.pos, vm_chr.chr,
+            test=args.test,
+            K_full=K, normalizer=normalizer,
+        )
+        per_chr_results.append(chr_result)
+        cur_chunks = []
+        cur_chunks_meta = []
+
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        chr_chunk = [str(c) for c in vm.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+            from .models.base import VariantMeta
+            sub_vm = VariantMeta(
+                snp=vm.snp[run_start:run_end],
+                chr=vm.chr[run_start:run_end],
+                pos=vm.pos[run_start:run_end],
+                a1=vm.a1[run_start:run_end],
+                a2=vm.a2[run_start:run_end],
+            )
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_chunks_meta.append(sub_vm)
+            run_start = run_end
+    _process_chrom()
+
+    if not per_chr_results:
+        raise RuntimeError("lro-scan: no variants processed.")
+
+    # Merge per-chromosome LROResults into a genome-wide LROResult.
+    chr_g: list[str] = []
+    pos_g: list[int] = []
+    snp_g: list[str] = []
+    a1_g: list[str] = []
+    a2_g: list[str] = []
+    af_pieces: list[torch.Tensor] = []
+    beta_pieces: list[torch.Tensor] = []
+    se_pieces: list[torch.Tensor] = []
+    stat_pieces: list[torch.Tensor] = []
+    p_pieces: list[torch.Tensor] = []
+    block_sizes: list[int] = []
+    n_blocks_total = 0
+    for r in per_chr_results:
+        chr_g.extend(r.chr)
+        pos_g.extend(r.pos)
+        snp_g.extend(r.snp)
+        a1_g.extend(r.a1)
+        a2_g.extend(r.a2)
+        af_pieces.append(r.af)
+        beta_pieces.append(r.beta)
+        se_pieces.append(r.se)
+        stat_pieces.append(r.stat)
+        p_pieces.append(r.p)
+        block_sizes.extend(r.block_sizes)
+        n_blocks_total += r.n_blocks
+
+    result = LROResult(
+        chr=chr_g, pos=pos_g, snp=snp_g, a1=a1_g, a2=a2_g,
+        af=torch.cat(af_pieces),
+        beta=torch.cat(beta_pieces),
+        se=torch.cat(se_pieces),
+        stat=torch.cat(stat_pieces),
+        p=torch.cat(p_pieces),
         test=args.test,
+        n_blocks=n_blocks_total,
+        block_sizes=block_sizes,
+        block_method=args.ld_method,
     )
 
     # Save as ScanResult-like format

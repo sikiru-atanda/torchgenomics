@@ -1658,6 +1658,341 @@ class TestLdBlocksStreamingMemory:
         )
 
 
+def _stream_knockoff_via_cli_helper(
+    Y: torch.Tensor,
+    X0: torch.Tensor,
+    G: torch.Tensor,
+    K: torch.Tensor,
+    chrs: list[str],
+    poss: list[int],
+    snp_ids: list[str],
+    *,
+    chunk_size: int = 64,
+    target_fdr: float = 0.1,
+    ld_method: str = "r2",
+    seed: int = 42,
+):
+    """Replicate _cmd_knockoff_scan's per-chromosome streaming flow."""
+    from torchgwas.models.base import VariantMeta
+    from torchgwas.models.knockoff_lmm import (
+        KnockoffLMM,
+        KnockoffResult,
+        _knockoff_plus_filter,
+    )
+
+    reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=chunk_size)
+    model = KnockoffLMM(target_fdr=target_fdr, ld_method=ld_method, seed=seed)
+
+    per_chr: list[KnockoffResult] = []
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_meta: list[object] = []
+
+    def _process():
+        nonlocal cur_chunks, cur_meta
+        if not cur_chunks or cur_chr is None:
+            return
+        G_chr = torch.cat(cur_chunks, dim=1)
+        chr_snp: list[str] = []
+        chr_pos: list[int] = []
+        chr_chr: list[str] = []
+        for cm in cur_meta:
+            chr_snp.extend(cm.snp)
+            chr_pos.extend(cm.pos)
+            chr_chr.extend([str(c) for c in cm.chr])
+        vm = VariantMeta(
+            snp=chr_snp, chr=chr_chr, pos=chr_pos,
+            a1=["A"] * len(chr_snp), a2=["G"] * len(chr_snp),
+        )
+        per_chr.append(model.run(Y, X0, K, G_chr, vm, vm.pos, vm.chr))
+        cur_chunks = []
+        cur_meta = []
+
+    for G_chunk, vm in reader.iter_chunks(chunk_size):
+        chr_chunk = [str(c) for c in vm.chr]
+        rs = 0
+        while rs < len(chr_chunk):
+            rc = chr_chunk[rs]
+            re_ = rs + 1
+            while re_ < len(chr_chunk) and chr_chunk[re_] == rc:
+                re_ += 1
+            if cur_chr is None:
+                cur_chr = rc
+            elif rc != cur_chr:
+                _process()
+                cur_chr = rc
+            sub = VariantMeta(
+                snp=vm.snp[rs:re_], chr=vm.chr[rs:re_], pos=vm.pos[rs:re_],
+                a1=vm.a1[rs:re_], a2=vm.a2[rs:re_],
+            )
+            cur_chunks.append(G_chunk[:, rs:re_].clone())
+            cur_meta.append(sub)
+            rs = re_
+    _process()
+
+    # Merge.
+    block_indices_g: list[list[int]] = []
+    W_pieces: list[torch.Tensor] = []
+    chr_g: list[str] = []
+    pos_g: list[int] = []
+    snp_g: list[str] = []
+    a1_g: list[str] = []
+    a2_g: list[str] = []
+    af_p: list[torch.Tensor] = []
+    beta_p: list[torch.Tensor] = []
+    se_p: list[torch.Tensor] = []
+    stat_p: list[torch.Tensor] = []
+    p_p: list[torch.Tensor] = []
+    bk_p: list[torch.Tensor] = []
+    sk_p: list[torch.Tensor] = []
+    offset = 0
+    for r in per_chr:
+        for indices in r.block_indices:
+            block_indices_g.append([i + offset for i in indices])
+        W_pieces.append(r.W_stat)
+        chr_g.extend(r.chr)
+        pos_g.extend(r.pos)
+        snp_g.extend(r.snp)
+        a1_g.extend(r.a1)
+        a2_g.extend(r.a2)
+        af_p.append(r.af)
+        beta_p.append(r.beta)
+        se_p.append(r.se)
+        stat_p.append(r.stat)
+        p_p.append(r.p)
+        bk_p.append(r.beta_knockoff)
+        sk_p.append(r.stat_knockoff)
+        offset += r.beta.shape[0]
+
+    W = torch.cat(W_pieces)
+    threshold, selected = _knockoff_plus_filter(W, target_fdr)
+    is_sel = torch.zeros(offset, dtype=torch.bool)
+    for b in selected:
+        for j in block_indices_g[b]:
+            is_sel[j] = True
+    return KnockoffResult(
+        block_indices=block_indices_g,
+        W_stat=W, selected_blocks=selected, threshold=threshold,
+        chr=chr_g, pos=pos_g, snp=snp_g, a1=a1_g, a2=a2_g,
+        af=torch.cat(af_p), beta=torch.cat(beta_p), se=torch.cat(se_p),
+        stat=torch.cat(stat_p), p=torch.cat(p_p),
+        beta_knockoff=torch.cat(bk_p), stat_knockoff=torch.cat(sk_p),
+        is_selected=is_sel, target_fdr=target_fdr,
+        n_blocks=len(block_indices_g), n_selected=len(selected),
+        ld_method=ld_method, knockoff_method="equicorrelated",
+        aggregation="max_stat",
+    )
+
+
+def _stream_lro_via_cli_helper(
+    Y: torch.Tensor,
+    X0: torch.Tensor,
+    G: torch.Tensor,
+    K_full: torch.Tensor,
+    normalizer: float,
+    chrs: list[str],
+    poss: list[int],
+    snp_ids: list[str],
+    *,
+    chunk_size: int = 64,
+    test: str = "wald",
+    ld_method: str = "r2",
+):
+    """Replicate _cmd_lro_scan's per-chromosome streaming flow."""
+    from torchgwas.models.base import VariantMeta
+    from torchgwas.models.lro_lmm import LROLMM, LROResult
+
+    reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=chunk_size)
+    model = LROLMM(ld_method=ld_method)
+    per_chr: list[LROResult] = []
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_meta: list[object] = []
+
+    def _process():
+        nonlocal cur_chunks, cur_meta
+        if not cur_chunks or cur_chr is None:
+            return
+        G_chr = torch.cat(cur_chunks, dim=1)
+        chr_snp: list[str] = []
+        chr_pos: list[int] = []
+        chr_chr: list[str] = []
+        for cm in cur_meta:
+            chr_snp.extend(cm.snp)
+            chr_pos.extend(cm.pos)
+            chr_chr.extend([str(c) for c in cm.chr])
+        vm = VariantMeta(
+            snp=chr_snp, chr=chr_chr, pos=chr_pos,
+            a1=["A"] * len(chr_snp), a2=["G"] * len(chr_snp),
+        )
+        per_chr.append(model.run(
+            Y, X0, G_chr, vm, vm.pos, vm.chr,
+            test=test, K_full=K_full, normalizer=normalizer,
+        ))
+        cur_chunks = []
+        cur_meta = []
+
+    for G_chunk, vm in reader.iter_chunks(chunk_size):
+        chr_chunk = [str(c) for c in vm.chr]
+        rs = 0
+        while rs < len(chr_chunk):
+            rc = chr_chunk[rs]
+            re_ = rs + 1
+            while re_ < len(chr_chunk) and chr_chunk[re_] == rc:
+                re_ += 1
+            if cur_chr is None:
+                cur_chr = rc
+            elif rc != cur_chr:
+                _process()
+                cur_chr = rc
+            sub = VariantMeta(
+                snp=vm.snp[rs:re_], chr=vm.chr[rs:re_], pos=vm.pos[rs:re_],
+                a1=vm.a1[rs:re_], a2=vm.a2[rs:re_],
+            )
+            cur_chunks.append(G_chunk[:, rs:re_].clone())
+            cur_meta.append(sub)
+            rs = re_
+    _process()
+
+    chr_g: list[str] = []
+    pos_g: list[int] = []
+    snp_g: list[str] = []
+    a1_g: list[str] = []
+    a2_g: list[str] = []
+    af_p: list[torch.Tensor] = []
+    beta_p: list[torch.Tensor] = []
+    se_p: list[torch.Tensor] = []
+    stat_p: list[torch.Tensor] = []
+    p_p: list[torch.Tensor] = []
+    block_sizes: list[int] = []
+    n_blocks_total = 0
+    for r in per_chr:
+        chr_g.extend(r.chr)
+        pos_g.extend(r.pos)
+        snp_g.extend(r.snp)
+        a1_g.extend(r.a1)
+        a2_g.extend(r.a2)
+        af_p.append(r.af)
+        beta_p.append(r.beta)
+        se_p.append(r.se)
+        stat_p.append(r.stat)
+        p_p.append(r.p)
+        block_sizes.extend(r.block_sizes)
+        n_blocks_total += r.n_blocks
+    return LROResult(
+        chr=chr_g, pos=pos_g, snp=snp_g, a1=a1_g, a2=a2_g,
+        af=torch.cat(af_p), beta=torch.cat(beta_p), se=torch.cat(se_p),
+        stat=torch.cat(stat_p), p=torch.cat(p_p),
+        test=test, n_blocks=n_blocks_total,
+        block_sizes=block_sizes, block_method=ld_method,
+    )
+
+
+class TestKnockoffScanStreamingMemory:
+    """Per-chromosome streaming for knockoff-scan."""
+
+    def _build_inputs(self, n=60, m=80, n_chrom=2):
+        torch.manual_seed(31)
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        chrs = []
+        poss = []
+        per = m // n_chrom
+        for c in range(n_chrom):
+            s = c * per
+            e = (c + 1) * per if c < n_chrom - 1 else m
+            chrs.extend([str(c + 1)] * (e - s))
+            poss.extend(list(range(0, (e - s) * 1000, 1000)))
+        from torchgwas.linalg.kinship import grm_vanraden
+        K, _ = grm_vanraden(G)
+        Y = torch.randn(n, dtype=torch.float64)
+        X0 = torch.ones(n, 1, dtype=torch.float64)
+        ids = [f"r{i}" for i in range(m)]
+        return Y, X0, G, K, chrs, poss, ids
+
+    def test_streaming_runs_end_to_end(self):
+        Y, X0, G, K, chrs, poss, ids = self._build_inputs()
+        result = _stream_knockoff_via_cli_helper(
+            Y, X0, G, K, chrs, poss, ids, chunk_size=23,
+        )
+        # Sanity: matches G shape.
+        assert result.beta.shape[0] == G.shape[1]
+        assert result.n_blocks > 0
+
+    def test_streaming_peak_per_chromosome_not_genome(self):
+        Y_a, X0_a, G_a, K_a, chr_a, pos_a, id_a = self._build_inputs(
+            n=60, m=80, n_chrom=1,
+        )
+        Y_b, X0_b, G_b, K_b, chr_b, pos_b, id_b = self._build_inputs(
+            n=60, m=320, n_chrom=4,
+        )
+
+        def _run(Y, X0, G, K, chs, ps, ids):
+            return _stream_knockoff_via_cli_helper(
+                Y, X0, G, K, chs, ps, ids, chunk_size=32,
+            )
+
+        _, peak_a = _peak_kib(lambda: _run(Y_a, X0_a, G_a, K_a, chr_a, pos_a, id_a))
+        _, peak_b = _peak_kib(lambda: _run(Y_b, X0_b, G_b, K_b, chr_b, pos_b, id_b))
+        # 4x more chromosomes at fixed per-chromosome size: peak should
+        # not blow up (allow generous slack for per-block tensor work).
+        assert peak_b <= 3.0 * peak_a + 2048, (
+            f"knockoff streaming peak {peak_a:.0f} -> {peak_b:.0f} "
+            f"KiB with 4x more chromosomes — should be roughly per-chrom."
+        )
+
+
+class TestLroScanStreamingMemory:
+    """Per-chromosome streaming for lro-scan."""
+
+    def _build_inputs(self, n=60, m=80, n_chrom=2):
+        torch.manual_seed(53)
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        chrs = []
+        poss = []
+        per = m // n_chrom
+        for c in range(n_chrom):
+            s = c * per
+            e = (c + 1) * per if c < n_chrom - 1 else m
+            chrs.extend([str(c + 1)] * (e - s))
+            poss.extend(list(range(0, (e - s) * 1000, 1000)))
+        from torchgwas.linalg.kinship import grm_vanraden
+        K, meta = grm_vanraden(G)
+        Y = torch.randn(n, dtype=torch.float64)
+        X0 = torch.ones(n, 1, dtype=torch.float64)
+        ids = [f"r{i}" for i in range(m)]
+        return Y, X0, G, K, float(meta.normalizer), chrs, poss, ids
+
+    def test_streaming_runs_end_to_end(self):
+        Y, X0, G, K, norm, chrs, poss, ids = self._build_inputs()
+        result = _stream_lro_via_cli_helper(
+            Y, X0, G, K, norm, chrs, poss, ids, chunk_size=23,
+        )
+        assert result.beta.shape[0] == G.shape[1]
+        assert result.n_blocks > 0
+        # P-values bounded.
+        assert (result.p >= 0).all() and (result.p <= 1).all()
+
+    def test_streaming_peak_per_chromosome_not_genome(self):
+        Y_a, X0_a, G_a, K_a, norm_a, chr_a, pos_a, id_a = self._build_inputs(
+            n=60, m=80, n_chrom=1,
+        )
+        Y_b, X0_b, G_b, K_b, norm_b, chr_b, pos_b, id_b = self._build_inputs(
+            n=60, m=320, n_chrom=4,
+        )
+
+        def _run(Y, X0, G, K, norm, chs, ps, ids):
+            return _stream_lro_via_cli_helper(
+                Y, X0, G, K, norm, chs, ps, ids, chunk_size=32,
+            )
+
+        _, peak_a = _peak_kib(lambda: _run(Y_a, X0_a, G_a, K_a, norm_a, chr_a, pos_a, id_a))
+        _, peak_b = _peak_kib(lambda: _run(Y_b, X0_b, G_b, K_b, norm_b, chr_b, pos_b, id_b))
+        assert peak_b <= 3.0 * peak_a + 2048, (
+            f"lro streaming peak {peak_a:.0f} -> {peak_b:.0f} KiB with "
+            "4x more chromosomes — should be roughly per-chrom."
+        )
+
+
 def _stream_clump_via_cli_helper(
     p: torch.Tensor,
     G: torch.Tensor,
