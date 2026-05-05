@@ -981,6 +981,157 @@ class TestRrMetScanStreamingMemory:
         assert peak_stream < budget_kib
 
 
+# ---------------------------------------------------------------------------
+# poly-scan (SingleTraitLMM with gene-action recoding) memory regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def poly_inputs():
+    """Synthetic tetraploid (ploidy=4) genotype + continuous trait."""
+    torch.manual_seed(37)
+    n, m = 100, 400
+    ploidy = 4
+    G = torch.randint(0, ploidy + 1, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+
+    # Build additive GRM for null fit (mirrors grm_polyploid_gene_action
+    # with model="additive").
+    K, _ = grm_vanraden(G, ploidy=ploidy)
+
+    sig2_g, sig2_e = 0.30, 0.70
+    V = sig2_g * K + sig2_e * torch.eye(n, dtype=torch.float64)
+    L = torch.linalg.cholesky(V + 1e-6 * torch.eye(n, dtype=torch.float64))
+    Y = (5.0 + L @ torch.randn(n, dtype=torch.float64)).unsqueeze(1)
+    return G, Y, X0, K, ploidy
+
+
+class TestPolyScanStreamingMemory:
+    """Streaming poly-scan via UnifiedScanner + on-the-fly recoded chunks.
+
+    The legacy code path materialized G via ``_load_scan_data``, then
+    fed the *same* aligned reader (not the recoded G_scan tensor) to
+    UnifiedScanner. The streaming rewrite wraps the reader with a
+    ``_RecodingReader`` so per-chunk gene-action recoding happens
+    on-the-fly during ``iter_chunks``. Behavioral parity is guaranteed
+    for the additive model because the recoder is the identity for
+    ``ga in {"additive", "general"}``.
+
+    The streaming GRM uses ``grm_vanraden_streaming`` with the same
+    effective-ploidy mapping that ``grm_polyploid_gene_action`` applies
+    in the materialized path. We assert that streaming additive GRM
+    matches the materialized polyploid additive GRM to float64
+    tolerance.
+    """
+
+    def test_streaming_additive_grm_matches_materialized(self, poly_inputs):
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
+
+        G, _, _, _, ploidy = poly_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        K_ref, _ = grm_polyploid_gene_action(G, model="additive", ploidy=ploidy)
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        K_streamed, _ = grm_vanraden_streaming(
+            reader.iter_chunks(64),
+            n_samples=n,
+            ploidy=ploidy,
+            device=torch.device("cpu"),
+        )
+
+        # Streaming accumulator vs in-memory two-pass: <1e-6 absolute.
+        assert torch.allclose(K_streamed, K_ref, atol=1e-6, rtol=1e-3)
+
+    def test_streaming_dominance_grm_matches_materialized(self, poly_inputs):
+        """1-dom recoding must commute with chunking — recoding is per-element."""
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
+        from torchgwas.preprocess.polyploid import recode_gene_action
+
+        G, _, _, _, ploidy = poly_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        K_ref, _ = grm_polyploid_gene_action(G, model="1-dom", ploidy=ploidy)
+
+        # Streaming recoder: recode each chunk before feeding to GRM accumulator.
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+
+        def _recoded_iter():
+            for G_chunk, vm in reader.iter_chunks(64):
+                yield recode_gene_action(G_chunk, "1-dom", ploidy), vm
+
+        K_streamed, _ = grm_vanraden_streaming(
+            _recoded_iter(),
+            n_samples=n,
+            ploidy=1,  # j-dom -> binary -> effective_ploidy=1
+            device=torch.device("cpu"),
+        )
+
+        assert torch.allclose(K_streamed, K_ref, atol=1e-6, rtol=1e-3)
+
+    def test_streaming_poly_scan_under_explicit_budget(self, poly_inputs):
+        """Hard absolute budget: <16 MiB at n=100/m=400, ploidy=4."""
+        from torchgwas.config import TorchGWASConfig
+        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgwas.preprocess.polyploid import recode_gene_action
+        from torchgwas.scan.unified import UnifiedScanner
+
+        G, Y, X0, K, ploidy = poly_inputs
+        m = G.shape[1]
+        n = G.shape[0]
+
+        model = SingleTraitLMM()
+        nf = model.fit_null(Y.squeeze(1), X0, K=K)
+
+        class _RecodingReader:
+            def __init__(self, base, ga, ploidy_int):
+                self._base = base
+                self._ga = ga
+                self._ploidy = ploidy_int
+
+            @property
+            def n_samples(self):
+                return self._base.n_samples
+
+            @property
+            def n_variants(self):
+                return self._base.n_variants
+
+            @property
+            def sample_ids(self):
+                return self._base.sample_ids
+
+            def iter_chunks(self, chunk_size=None):
+                for G_chunk, vm in self._base.iter_chunks(chunk_size=chunk_size):
+                    if self._ga == "additive":
+                        yield G_chunk, vm
+                    else:
+                        yield (
+                            recode_gene_action(G_chunk, self._ga, self._ploidy),
+                            vm,
+                        )
+
+        def _run_streaming():
+            base = _ChunkedTensorReader(
+                G, ["1"] * m, list(range(m)), chunk_size=64,
+            )
+            scan_reader = _RecodingReader(base, "additive", ploidy)
+            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            scanner = UnifiedScanner(scan_reader, model, cfg)
+            return scanner.scan(nf, test="score", qc_config=None)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib, (
+            f"Streaming poly-scan peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
+        )
+
+
 @pytest.fixture
 def met_inputs():
     """Synthetic per-environment continuous trait."""

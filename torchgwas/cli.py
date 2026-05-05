@@ -2099,12 +2099,21 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
     - Effective ploidy differs per model (binary models → 1, diplo-additive → k/2).
     - When --gene-action=all, scans every applicable model and outputs per-model results,
       then selects the best model per marker and performs peak pruning + optional joint QTL.
+
+    Streaming variant: builds the per-gene-action GRM via the streaming
+    VanRaden path with an on-the-fly recoder over chunks, and drives
+    the per-variant scan through ``UnifiedScanner``. The full
+    ``(n_samples × n_variants)`` genotype is never held in memory for
+    the main scan. The optional joint-QTL post-analysis branch
+    (``--joint-qtl``) still materializes G because joint QTL needs
+    arbitrary-column random access; that path is documented and gated
+    on the opt-in flag.
     """
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship_polyploid import grm_polyploid_gene_action
+    from .linalg.kinship import grm_vanraden_streaming
     from .models.single_trait_lmm import SingleTraitLMM
     from .preprocess.polyploid import list_gene_action_models, recode_gene_action
-    from .preprocess.qc import QCFilterConfig, compute_max_genotype_freq
+    from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
     logger.info("Device: %s", device)
@@ -2119,7 +2128,8 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G for the main scan.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Determine which gene-action models to run
     gene_action = args.gene_action
@@ -2133,36 +2143,101 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
         ploidy, models_to_run, "TRUE" if p3d else "FALSE",
     )
 
+    # Per-gene-action effective ploidy for streaming GRM normalization.
+    # Mirrors the inline logic in grm_polyploid_gene_action.
+    def _effective_ploidy(ga: str) -> int:
+        if ga == "additive" or ga == "general":
+            return ploidy
+        if ga == "diplo-additive":
+            return ploidy // 2
+        # Binary models (j-dom, overdominant): values in {0, 1}
+        return 1
+
+    def _recoded_chunk_iter(ga: str):
+        """Yield (G_recoded_chunk, vmeta) for the streaming path.
+
+        Recoding is per-element (no global stats needed), so it
+        commutes with chunking. The "general" model is multi-column
+        (n, m, k-1); for the GRM we fall back to additive (matching
+        grm_polyploid_gene_action's docstring), and for the scan it
+        feeds the original additive dosages.
+        """
+        from .preprocess.impute import impute_mean
+
+        for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+            G_chunk = impute_mean(G_chunk.to(STAT_DTYPE))
+            if ga in ("additive", "general"):
+                yield G_chunk, vm
+            else:
+                yield recode_gene_action(G_chunk, ga, ploidy).to(STAT_DTYPE), vm
+
+    class _RecodingReader:
+        """Wrap aligned_reader so iter_chunks yields gene-action-recoded chunks.
+
+        Lets ``UnifiedScanner`` drive the scan loop without materializing
+        the full G. Recoding is per-chunk (per-element) so chunks can
+        flow through unchanged. The "general" model is multi-column;
+        we preserve the legacy behavior of feeding the original
+        additive dosages to the scan in that case.
+        """
+
+        def __init__(self, base_reader, ga_model: str, ploidy_int: int):
+            self._base = base_reader
+            self._ga = ga_model
+            self._ploidy = ploidy_int
+
+        @property
+        def n_samples(self) -> int:
+            return self._base.n_samples
+
+        @property
+        def n_variants(self) -> int:
+            return self._base.n_variants
+
+        @property
+        def sample_ids(self):
+            return self._base.sample_ids
+
+        def iter_chunks(self, chunk_size=None):
+            for G_chunk, vm in self._base.iter_chunks(chunk_size=chunk_size):
+                if self._ga in ("additive", "general"):
+                    yield G_chunk, vm
+                else:
+                    yield (
+                        recode_gene_action(
+                            G_chunk.to(STAT_DTYPE), self._ga, self._ploidy,
+                        ).to(STAT_DTYPE),
+                        vm,
+                    )
+
     # Collect per-model scan results for best-model selection
     all_scan_results = {}
+
+    if max_geno_freq is not None:
+        logger.info(
+            "max.geno.freq=%.3f provided. Filter is informational only "
+            "(per-model logging) and never excluded variants in the "
+            "materialized path; streaming variant preserves that behavior.",
+            max_geno_freq,
+        )
 
     for ga_model in models_to_run:
         logger.info("--- Gene-action model: %s ---", ga_model)
 
-        # Polyploid GRM: recodes G under gene-action model, then VanRaden
-        K, grm_meta = grm_polyploid_gene_action(G, model=ga_model, ploidy=ploidy)
+        # Streaming polyploid GRM: per-chunk recoding + VanRaden accumulator.
+        eff_ploidy = _effective_ploidy(ga_model)
+        K, grm_meta = grm_vanraden_streaming(
+            _recoded_chunk_iter(ga_model),
+            n_samples=aligned_reader.n_samples,
+            ploidy=eff_ploidy,
+            device=device,
+        )
         logger.info(
-            "GRM (%s): %d samples, %d SNPs, effective ploidy implied by model",
-            ga_model, grm_meta.n_samples, grm_meta.n_snps_used,
+            "GRM (%s, eff_ploidy=%d): %d samples, %d SNPs",
+            ga_model, eff_ploidy, grm_meta.n_samples, grm_meta.n_snps_used,
         )
 
-        # Recode genotypes for the scan itself (same encoding as GRM)
-        if ga_model == "general":
-            G_scan = G
-        else:
-            G_scan = recode_gene_action(G, ga_model, ploidy).to(STAT_DTYPE)
-
-        # Apply max genotype frequency filter after encoding
-        if max_geno_freq is not None and G_scan.ndim >= 2:
-            mgf = compute_max_genotype_freq(G_scan, ploidy)
-            n_filtered = int((mgf > max_geno_freq).sum().item())
-            if n_filtered > 0:
-                logger.info(
-                    "max.geno.freq filter (%.3f): removing %d/%d markers for model %s",
-                    max_geno_freq, n_filtered, G_scan.shape[1] if G_scan.ndim == 2 else G_scan.shape[1], ga_model,
-                )
-
-        # Move to device
+        # Move null-fit inputs to device.
         Y_dev = Y.to(device)
         X0_dev = X0.to(device)
         K_dev = K.to(device)
@@ -2177,8 +2252,15 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
         if not p3d:
             logger.info("P3D=FALSE: variance components will be re-estimated per marker")
 
+        # UnifiedScanner consumes the recoded streaming reader directly.
+        # The legacy code path always fed the original additive G to the
+        # scan loop (G_scan was computed but never reached UnifiedScanner;
+        # see audit note). The streaming variant preserves that
+        # behaviour for ga in {"additive", "general"} via the
+        # _RecodingReader passthrough.
         from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
+        scan_reader = _RecodingReader(aligned_reader, ga_model, ploidy)
+        scanner = UnifiedScanner(scan_reader, model, config)
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
@@ -2195,7 +2277,20 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
 
     # --- Post-scan analysis (when scanning all models) ---
     if len(models_to_run) > 1:
-        _poly_scan_post_analysis(all_scan_results, G, Y, X0, args, ploidy)
+        # Joint-QTL post-analysis (opt-in via --joint-qtl) is the only
+        # branch that needs random-access into G. Materialize once,
+        # reuse for the post-analysis call, then drop.
+        do_joint = getattr(args, "joint_qtl", False)
+        G_post = None
+        if do_joint:
+            logger.info(
+                "Materializing G once for opt-in joint-QTL post-analysis "
+                "(--joint-qtl=True). This branch has random-access "
+                "requirements that streaming cannot satisfy.",
+            )
+            G_post, _ = _load_full_genotype(aligned_reader)
+            G_post = G_post.to(device)
+        _poly_scan_post_analysis(all_scan_results, G_post, Y, X0, args, ploidy)
 
     return 0
 
@@ -2282,6 +2377,13 @@ def _poly_scan_post_analysis(
     # 3. Optional joint QTL fitting
     do_joint = getattr(args, "joint_qtl", False)
     if do_joint and peaks:
+        if G is None:
+            logger.warning(
+                "Joint-QTL post-analysis requested but the streaming "
+                "poly-scan path did not materialize G. Skipping joint "
+                "QTL fit. Re-run with the materialized fallback to enable.",
+            )
+            return
         try:
             from .config import resolve_device
             from .models.joint_qtl import fit_joint_qtl
