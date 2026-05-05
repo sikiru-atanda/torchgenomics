@@ -388,3 +388,154 @@ def batched_scan_pairs(
 
     # No element should be None.
     return [r for r in results if r is not None]
+
+
+def batched_scan_pairs_streaming(
+    nf: NullFit,
+    G: Tensor,                        # (n, s)
+    M: Tensor,                        # (n, f)
+    pairs: list[tuple[int, int]],
+    *,
+    se: str = "monte-carlo",
+    n_mc_draws: int = 10_000,
+    n_boot: int = 0,
+    sensitivity: bool = True,
+    seed: int | None = None,
+    block_size: tuple[int, int] = (256, 64),
+) -> list[dict[str, Any]]:
+    """Streaming variant of :func:`batched_scan_pairs`.
+
+    Processes one SNP-block at a time. For each SNP-block:
+
+    1. Lazy-rotate that block's columns: ``G_blk_r = U^T @ G[:, snp_lo:snp_hi]``.
+    2. For each feature-block paired with that SNP-block, run the
+       Stage-M / Stage-Y-total / Stage-Y-direct fits.
+    3. Drop the rotated block before moving to the next SNP-block.
+
+    The rotated mediator matrix ``M_r`` is computed once and held; the
+    rotated genotype matrix ``G_r`` is NEVER materialized whole. Peak
+    memory drops from ``2 × n × s × 8 B`` (G + G_r) to roughly
+    ``n × s × 8 B + n × s_b × 8 B`` (G + one rotated SNP-block).
+
+    Behavioral parity with :func:`batched_scan_pairs` to float64
+    tolerance — the per-pair arithmetic is identical; only the
+    ordering of the rotation matters, and rotation is a linear
+    operation so it's exact.
+    """
+    U, w, Y_r, X0_r = _null_weights(nf)
+    n = Y_r.shape[0]
+
+    # Mediator matrix M is (n, f) — typically much smaller than G (m_features <<
+    # m_variants). Rotate once and hold; same as the eager path.
+    M_r = rotate(M, U)
+
+    s_b, f_b = block_size
+
+    # Group pairs by SNP-block first, then feature-block. Per SNP-block
+    # we'll lazy-rotate that slice and dispatch to all paired feature-
+    # blocks before freeing.
+    pairs_by_snp_block: dict[int, dict[int, list[tuple[int, tuple[int, int]]]]] = {}
+    for row_idx, (i, j) in enumerate(pairs):
+        sb = i // s_b
+        fb = j // f_b
+        pairs_by_snp_block.setdefault(sb, {}).setdefault(fb, []).append(
+            (row_idx, (i, j))
+        )
+
+    results: list[dict[str, Any] | None] = [None] * len(pairs)
+
+    for sb_idx, fb_dict in pairs_by_snp_block.items():
+        snp_start = sb_idx * s_b
+        snp_end = min(snp_start + s_b, G.shape[1])
+        # Rotate ONLY this SNP-block. G[:, snp_start:snp_end] is a view;
+        # the rotation produces a fresh (n, s_b_eff) tensor.
+        G_blk = G[:, snp_start:snp_end]
+        SNP_blk = rotate(G_blk, U)
+
+        for fb_idx, members in fb_dict.items():
+            feat_start = fb_idx * f_b
+            feat_end = min(feat_start + f_b, M_r.shape[1])
+            M_blk = M_r[:, feat_start:feat_end]
+
+            a_blk, var_a_blk = _stage_m_block(SNP_blk, M_blk, X0_r, w)
+            c_blk, var_c_blk = _total_effect_block(SNP_blk, Y_r, X0_r, w)
+            c_prime_blk, var_cp_blk, b_blk, var_b_blk = _direct_effect_block(
+                SNP_blk, M_blk, Y_r, X0_r, w
+            )
+            if sensitivity:
+                sigma_v_blk = _sigma_v_block(SNP_blk, M_blk, X0_r, w, a_blk)
+                sigma_u_blk = _sigma_u_block(
+                    SNP_blk, M_blk, Y_r, X0_r, w, c_prime_blk, b_blk
+                )
+
+            for row_idx, (i, j) in members:
+                li = i - snp_start
+                lj = j - feat_start
+                a = float(a_blk[li, lj])
+                var_a = float(var_a_blk[li, lj])
+                b = float(b_blk[li, lj])
+                var_b = float(var_b_blk[li, lj])
+                c = float(c_blk[li])
+                var_c = float(var_c_blk[li])
+                c_prime = float(c_prime_blk[li, lj])
+                var_cp = float(var_cp_blk[li, lj])
+
+                if se == "sobel":
+                    s_ind, ci_l, ci_u, p_ind = sobel_se(a, b, var_a, var_b)
+                elif se == "monte-carlo":
+                    s_ind, ci_l, ci_u, p_ind = monte_carlo_se(
+                        a, b, var_a, var_b, cov_ab=0.0,
+                        n_draws=n_mc_draws, seed=seed,
+                    )
+                elif se == "bootstrap":
+                    raise ValueError(
+                        "bootstrap SE is not supported in the streaming scan path; "
+                        "use se='sobel' or se='monte-carlo' or call the per-pair "
+                        "scan_mediation with device='cpu' and a small pair count."
+                    )
+                else:
+                    raise ValueError(
+                        f"se must be 'sobel' or 'monte-carlo' in streaming path; got {se!r}"
+                    )
+
+                indirect = a * b
+                total = c
+                inconsistent = (
+                    (c_prime != 0.0)
+                    and (indirect != 0.0)
+                    and ((c_prime > 0) != (indirect > 0))
+                )
+                if total == 0.0 or inconsistent:
+                    proportion = float("nan")
+                else:
+                    proportion = indirect / total
+
+                if sensitivity:
+                    sigma_v = float(sigma_v_blk[li, lj])
+                    sigma_u = float(sigma_u_blk[li, lj])
+                    rho = imai_rho_sensitivity(b, sigma_v, sigma_u)
+                else:
+                    rho = None
+
+                results[row_idx] = {
+                    "a": a, "a_se": float(np.sqrt(max(var_a, 0.0))),
+                    "b": b, "b_se": float(np.sqrt(max(var_b, 0.0))),
+                    "c": c, "c_prime": c_prime,
+                    "c_se": float(np.sqrt(max(var_c, 0.0))),
+                    "c_prime_se": float(np.sqrt(max(var_cp, 0.0))),
+                    "indirect": indirect,
+                    "indirect_se": s_ind,
+                    "indirect_pvalue": p_ind,
+                    "ci_lower": ci_l,
+                    "ci_upper": ci_u,
+                    "proportion_mediated": proportion,
+                    "inconsistent": inconsistent,
+                    "sensitivity_rho": rho,
+                    "total": total,
+                    "n": n,
+                }
+
+        # Free the rotated SNP-block before moving on.
+        del SNP_blk
+
+    return [r for r in results if r is not None]
