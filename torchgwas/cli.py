@@ -2523,7 +2523,20 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
     # Models that need full G: FarmCPU, BLINK
+    # These are genuinely not streamable — both algorithms iteratively
+    # re-use G as a covariate in the QTN-selection / LD-clustering loop,
+    # so the full (n_samples × n_variants) tensor must be in memory.
+    # See docs/efficiency/streaming_audit.md observation O2 for the
+    # algorithmic rationale.
     elif model_name in ("farmcpu", "blink"):
+        logger.warning(
+            "pipeline %s materializes the full genotype matrix "
+            "(%s is iterative QTN/LD-cluster selection and is not "
+            "single-pass streamable). At biobank scale this is "
+            "memory-prohibitive; consider lmm/mvlmm/glm for "
+            "streaming alternatives.",
+            model_name, model_name,
+        )
         G, Y, X0, vmeta, reader = _load_scan_data(args, config)
 
         if model_name == "farmcpu":
@@ -2546,8 +2559,15 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
-    # Multi-kernel LMM
+    # Multi-kernel LMM — also genuinely not streamable: dominance /
+    # epistatic kernels are functions of the full G.
     elif model_name == "mklmm":
+        logger.warning(
+            "pipeline mklmm materializes the full genotype matrix "
+            "(dominance and epistatic kernels in build_multi_kernels "
+            "require all variants simultaneously). At biobank scale "
+            "this is memory-prohibitive.",
+        )
         from .models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
         G, Y, X0, vmeta, reader = _load_scan_data(args, config)
         kernels, kernel_names = build_multi_kernels(G.to(device), ploidy=ploidy)
@@ -2561,14 +2581,20 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
-    # GxE LMM (single-trait HetLMM via pipeline)
+    # GxE LMM (single-trait HetLMM via pipeline) — streaming variant
     elif model_name == "gxe":
         import pandas as pd
 
-        from .linalg.kinship import grm_vanraden
+        from .linalg.kinship import grm_vanraden_streaming
         from .models.lmm_gxe import HetLMM
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
-        K, _ = grm_vanraden(G.to(device))
+        from .preprocess.impute import impute_mean
+
+        Y, X0, aligned_reader = _align_samples(args, config)
+        K, _ = grm_vanraden_streaming(
+            _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+            n_samples=aligned_reader.n_samples,
+            device=device,
+        )
         # GxE requires an environment covariate — use first covariate column
         env = torch.zeros(Y.shape[0], dtype=STAT_DTYPE, device=device)
         logger.warning(
@@ -2577,18 +2603,26 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         )
         model = HetLMM()
         null_fit = model.fit_null(Y.to(device), X0.to(device), K=K, env=env)
-        from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
-        qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-        result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
-    # Multi-environment trial (MET)
+        # Per-chunk scan loop matching gxe-scan's E3 streaming rewrite —
+        # HetLMM emits GxEScanResult, which UnifiedScanner's default
+        # merger cannot concatenate. We use the dedicated merger.
+        results: list = []
+        for G_c, vm in aligned_reader.iter_chunks(config.chunk_size):
+            G_c = impute_mean(G_c.to(STAT_DTYPE)).to(device)
+            res = model.score_chunk(G_c, null_fit, vm, test=args.test)
+            results.append(res)
+        result = _merge_gxe_results(results)
+
+    # Multi-environment trial (MET) — streaming variant matching met-scan.
     elif model_name == "met":
         import pandas as pd
 
-        from .linalg.kinship import grm_vanraden
+        from .linalg.kinship import grm_vanraden_streaming
         from .models.multi_env_lmm import MultiEnvLMM
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+        from .preprocess.impute import impute_mean
+
+        Y, X0, aligned_reader = _align_samples(args, config)
 
         pheno_df = pd.read_csv(args.phenotype, sep="\t")
         env_cols = [c for c in pheno_df.columns if c not in ("FID", "IID", "SAMPLE")]
@@ -2598,8 +2632,31 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
             logger.error("MET requires >= 2 environment columns, found: %s", env_cols)
             return 1
 
-        Y_wide = torch.tensor(pheno_df[env_cols].values, dtype=STAT_DTYPE, device=device)
-        K, _ = grm_vanraden(G.to(device), ploidy=ploidy)
+        # Build Y_wide restricted to aligned sample order.
+        aligned_ids = aligned_reader.sample_ids
+        if "IID" in pheno_df.columns:
+            id_col = "IID"
+        elif "SAMPLE" in pheno_df.columns:
+            id_col = "SAMPLE"
+        elif "FID" in pheno_df.columns:
+            id_col = "FID"
+        else:
+            id_col = pheno_df.columns[0]
+        pheno_df_idx = pheno_df.copy()
+        pheno_df_idx[id_col] = pheno_df_idx[id_col].astype(str)
+        pheno_df_idx = pheno_df_idx.set_index(id_col).loc[
+            [str(s) for s in aligned_ids]
+        ]
+        Y_wide = torch.tensor(
+            pheno_df_idx[env_cols].values, dtype=STAT_DTYPE, device=device,
+        )
+
+        K, _ = grm_vanraden_streaming(
+            _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+            n_samples=aligned_reader.n_samples,
+            ploidy=ploidy,
+            device=device,
+        )
 
         parameterization = getattr(args, "parameterization", "per_env")
         vg_structure = getattr(args, "vg_structure", "unstructured")
@@ -2611,8 +2668,10 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         null_fit = model.fit_null(Y_wide, X0.to(device), K, env_names=env_cols)
 
         results = []
-        for chunk_idx, (G_c, vm) in enumerate(reader.iter_chunks(config.chunk_size)):
-            G_c = G_c.to(device)
+        for chunk_idx, (G_c, vm) in enumerate(
+            aligned_reader.iter_chunks(config.chunk_size)
+        ):
+            G_c = impute_mean(G_c.to(STAT_DTYPE)).to(device)
             res = model.score_chunk(G_c, null_fit, vm)
             results.append(res)
 
