@@ -3097,39 +3097,41 @@ def _cmd_phase_poly(args: argparse.Namespace) -> int:
 
 
 def _cmd_ld_blocks(args: argparse.Namespace) -> int:
-    """Detect haplotype blocks."""
+    """Detect haplotype blocks.
+
+    Streaming variant: accumulates one chromosome's genotype slice at a
+    time from ``reader.iter_chunks``, runs the block-detection algorithm
+    on that chromosome, then frees the slice before reading the next.
+    Peak memory is ``O(n × max_per_chromosome_m × 8 B)`` instead of
+    ``O(n × m × 8 B)``. The block-detection algorithms operate on the
+    chromosome-scale dosage matrix because they fundamentally require
+    pairwise r²/D' across the full max_kb window — which is bounded by
+    the chromosome boundary anyway.
+
+    Per-chromosome cap (soft documentation): at biobank density a single
+    chromosome holds ~1M SNPs × 500K samples × 8 B = ~4 TB. At that scale,
+    block detection requires more aggressive on-disk windowing or a
+    chromosome shard pass. Today's algorithms target ag-panel and
+    intermediate biobank scales (n ≤ ~50K) where chromosome-scale
+    materialization fits within ~80 GB. Documented in
+    docs/efficiency/streaming_audit.md.
+    """
     import torch
 
     from .io.detect import detect_format
     from .io.validate import _open_reader
-    from .ld import detect_blocks, save_blocks_bed
+    from .ld import detect_blocks
 
     device = torch.device(args.device) if args.device else None
 
-    # Load genotype matrix and variant metadata
-    fmt = detect_format(args.genotype)
-    reader = _open_reader(args.genotype, fmt)
-    chunks_dosage = []
-    variant_pos = []
-    variant_chr = []
-    variant_ids = []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks_dosage.append(G_chunk)
-        variant_pos.extend(vmeta.pos)
-        variant_chr.extend(vmeta.chr)
-        variant_ids.extend(vmeta.snp)
-
-    G = torch.cat(chunks_dosage, dim=1)
-    logger.info("Loaded %d samples x %d markers", G.shape[0], G.shape[1])
-
-    # Optionally load phased haplotypes
-    haplotypes = None
+    # Optionally load phased haplotypes (file-level — small).
+    haplotypes_full = None
     if args.phased_vcf:
         from .preprocess.phase import load_haplotypes
-        haplotypes = load_haplotypes(args.phased_vcf)
-        logger.info("Loaded phased haplotypes: %s", haplotypes.shape)
+        haplotypes_full = load_haplotypes(args.phased_vcf)
+        logger.info("Loaded phased haplotypes: %s", haplotypes_full.shape)
 
-    # Build method-specific kwargs
+    # Build method-specific kwargs (unchanged from the legacy path).
     method_kwargs = {}
     method = args.method
     if method == "gabriel":
@@ -3160,17 +3162,105 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
         method_kwargs["objective"] = args.objective
         method_kwargs["max_block_snps"] = args.max_block_snps
 
-    blocks = detect_blocks(
-        G, variant_pos, variant_chr, variant_ids,
-        method=method,
-        haplotypes=haplotypes,
-        max_kb=args.max_kb,
-        device=device,
-        **method_kwargs,
+    fmt = detect_format(args.genotype)
+    reader = _open_reader(args.genotype, fmt)
+
+    # Per-chromosome streaming accumulator. We keep one chromosome's
+    # G slice resident, run detection when the chromosome flips, free
+    # the slice, and continue. The detection algorithms still see a
+    # chromosome-scale tensor — this is the irreducible scale for
+    # methods that require all-pairs r²/D' inside max_kb.
+    blocks: list = []
+    variant_pos: list[int] = []
+    variant_chr: list[str] = []
+    variant_ids: list[str] = []
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+    cur_ids: list[str] = []
+    # Offset within the global variant index where the current
+    # chromosome started — needed to remap detect_blocks' local
+    # variant indices into haplotype slicing.
+    cur_global_start: int = 0
+    n_seen: int = 0
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_pos, cur_ids, cur_chr, cur_global_start
+        if not cur_chunks:
+            return
+        G_chr = torch.cat(cur_chunks, dim=1)
+        # Slice phased haplotypes to this chromosome's variant range, if any.
+        hap_chr = None
+        if haplotypes_full is not None:
+            n_chr_var = G_chr.shape[1]
+            hap_chr = haplotypes_full[
+                :, :, cur_global_start : cur_global_start + n_chr_var,
+            ]
+        chrom_blocks = detect_blocks(
+            G_chr, cur_pos, [str(cur_chr)] * G_chr.shape[1],
+            cur_ids,
+            method=method,
+            haplotypes=hap_chr,
+            max_kb=args.max_kb,
+            device=device,
+            **method_kwargs,
+        )
+        # detect_blocks emits variant_indices that are local to G_chr;
+        # remap them to genome-wide indices so save_blocks_det can index
+        # the genome-wide variant_ids list correctly.
+        for blk in chrom_blocks:
+            blk.variant_indices = [
+                i + cur_global_start for i in blk.variant_indices
+            ]
+        blocks.extend(chrom_blocks)
+        # Promote the per-chromosome metadata into the genome-wide arrays.
+        variant_pos.extend(cur_pos)
+        variant_chr.extend([str(cur_chr)] * G_chr.shape[1])
+        variant_ids.extend(cur_ids)
+        # Free the chromosome-scale tensor before the next read.
+        cur_chunks = []
+        cur_pos = []
+        cur_ids = []
+
+    for G_chunk, vmeta in reader.iter_chunks():
+        chr_chunk = [str(c) for c in vmeta.chr]
+        # Split this chunk by chromosome boundaries (rare in practice —
+        # readers deliver in sorted order, so most chunks are
+        # single-chromosome).
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            # Find the contiguous run of run_chr in this chunk.
+            run_end = run_start + 1
+            while (
+                run_end < len(chr_chunk)
+                and chr_chunk[run_end] == run_chr
+            ):
+                run_end += 1
+
+            if cur_chr is None:
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vmeta.pos[run_start:run_end])
+            cur_ids.extend(vmeta.snp[run_start:run_end])
+            run_start = run_end
+
+        n_seen += G_chunk.shape[1]
+
+    _process_chrom()
+    logger.info(
+        "Loaded %d samples x %d markers (%d chromosome partitions)",
+        reader.n_samples, len(variant_pos), len(set(variant_chr)),
     )
 
     # Save output in all standard formats
-    from .ld import save_blocks_det, save_blocks_summary
+    from .ld import save_blocks_bed, save_blocks_det, save_blocks_summary
 
     bed_path = f"{args.output}.bed"
     det_path = f"{args.output}.blocks.det"

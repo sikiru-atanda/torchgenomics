@@ -1507,6 +1507,157 @@ def _ld_fixture(n: int = 200, m: int = 2000, n_chrom: int = 2):
     return G, chrs, poss
 
 
+def _stream_ld_blocks_via_cli_helper(
+    G: torch.Tensor,
+    chrs: list[str],
+    poss: list[int],
+    *,
+    method: str,
+    max_kb: float,
+    chunk_size: int = 64,
+    **method_kwargs,
+):
+    """Replicate _cmd_ld_blocks's per-chromosome streaming accumulator
+    in a unit-testable form. Returns the list of detected blocks.
+    """
+    from torchgwas.ld import detect_blocks
+
+    reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=chunk_size)
+    blocks: list = []
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+    cur_ids: list[str] = []
+    cur_global_start = 0
+    n_seen = 0
+
+    def _process():
+        nonlocal cur_chunks, cur_pos, cur_ids, cur_chr
+        if not cur_chunks:
+            return
+        G_chr = torch.cat(cur_chunks, dim=1)
+        chrom_blocks = detect_blocks(
+            G_chr, cur_pos, [str(cur_chr)] * G_chr.shape[1],
+            cur_ids, method=method, max_kb=max_kb, **method_kwargs,
+        )
+        for blk in chrom_blocks:
+            blk.variant_indices = [i + cur_global_start for i in blk.variant_indices]
+        blocks.extend(chrom_blocks)
+        cur_chunks = []
+        cur_pos = []
+        cur_ids = []
+
+    for G_chunk, vmeta in reader.iter_chunks(chunk_size):
+        chr_chunk = [str(c) for c in vmeta.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            elif run_chr != cur_chr:
+                _process()
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vmeta.pos[run_start:run_end])
+            cur_ids.extend(vmeta.snp[run_start:run_end])
+            run_start = run_end
+        n_seen += G_chunk.shape[1]
+    _process()
+    return blocks
+
+
+class TestLdBlocksStreamingMemory:
+    """Per-chromosome streaming for the ld-blocks CLI command.
+
+    Block detection algorithms (Gabriel/spine/r²/...) need a
+    chromosome-scale view to compute pairwise r²/D' inside max_kb. The
+    streaming refactor accumulates one chromosome at a time, runs
+    detection, then frees the slice. Peak memory drops from
+    ``O(n × m)`` to ``O(n × max_chromosome_m)``.
+    """
+
+    def test_streaming_matches_materialized_r2_single_chrom(self):
+        """Single-chromosome parity: legacy and streaming agree exactly.
+
+        We deliberately use a single-chromosome fixture here because the
+        legacy path harbors a latent bug for multi-chromosome inputs:
+        compute_pairwise_ld emits chromosome-LOCAL indices, but
+        detect_blocks_{r2,spine,gabriel} index into the genome-wide
+        ``variant_chr`` / ``variant_pos`` lists, mis-attributing later
+        chromosomes' blocks as belonging to the first. The streaming
+        rewrite calls detect_blocks once per chromosome with that
+        chromosome's slice — fixing this latent bug as a side effect.
+        See the multi-chromosome test below for the corrected behavior.
+        """
+        from torchgwas.ld import detect_blocks
+
+        G, chrs, poss = _ld_fixture(n=120, m=200, n_chrom=1)
+        ref = detect_blocks(
+            G, poss, chrs, [f"r{i}" for i in range(len(poss))],
+            method="r2", max_kb=2.0, r2_threshold=0.05,
+        )
+        stream_blocks = _stream_ld_blocks_via_cli_helper(
+            G, chrs, poss, method="r2", max_kb=2.0, chunk_size=37,
+            r2_threshold=0.05,
+        )
+
+        assert len(stream_blocks) == len(ref)
+        ref.sort(key=lambda b: (b.region.chr, b.region.start))
+        stream_blocks.sort(key=lambda b: (b.region.chr, b.region.start))
+        for sb, rb in zip(stream_blocks, ref):
+            assert sb.region.chr == rb.region.chr
+            assert sb.region.start == rb.region.start
+            assert sb.region.end == rb.region.end
+            assert sb.n_variants == rb.n_variants
+
+    def test_streaming_per_chromosome_correctly_attributes_blocks(self):
+        """Multi-chromosome streaming attributes blocks to their actual
+        chromosome — fixing a latent legacy bug where chr 2+ blocks
+        were mis-labelled as chr 1.
+        """
+        G, chrs, poss = _ld_fixture(n=120, m=400, n_chrom=2)
+        stream_blocks = _stream_ld_blocks_via_cli_helper(
+            G, chrs, poss, method="r2", max_kb=2.0, chunk_size=37,
+            r2_threshold=0.05,
+        )
+        chrom_set = {b.region.chr for b in stream_blocks}
+        # Both chromosomes should contribute blocks (or at least not
+        # everything be coerced to chr 1).
+        assert chrom_set.issubset({"1", "2"})
+        for blk in stream_blocks:
+            # Variant indices must point to SNPs whose chromosome
+            # matches the block's reported chromosome.
+            for vi in blk.variant_indices:
+                assert chrs[vi] == blk.region.chr
+
+    def test_streaming_peak_per_chromosome_not_genome(self):
+        """Doubling m for fixed per-chromosome size should NOT double peak."""
+        # Scenario A: 1 chromosome of 400 SNPs.
+        G_a, chr_a, pos_a = _ld_fixture(n=80, m=400, n_chrom=1)
+        # Scenario B: 4 chromosomes × 400 SNPs each (m=1600).
+        G_b, chr_b, pos_b = _ld_fixture(n=80, m=1600, n_chrom=4)
+
+        def _run(G, ch, ps):
+            return _stream_ld_blocks_via_cli_helper(
+                G, ch, ps, method="r2", max_kb=2.0, chunk_size=64,
+            )
+
+        _, peak_a = _peak_kib(lambda: _run(G_a, chr_a, pos_a))
+        _, peak_b = _peak_kib(lambda: _run(G_b, chr_b, pos_b))
+
+        # 4x m at fixed per-chromosome size should yield similar peak.
+        assert peak_b <= 2.0 * peak_a + 256, (
+            f"ld-blocks streaming peak grew from {peak_a:.0f} KiB "
+            f"(m=400) to {peak_b:.0f} KiB (m=1600) — should be roughly "
+            "invariant in m for fixed per-chromosome size."
+        )
+
+
 class TestLdScoresStreamingMemory:
     """``compute_ld_scores_streaming`` peak ∝ window_size, not ∝ m."""
 
