@@ -245,14 +245,22 @@ def test_bench_presso_rss_matches_manual():
     exposure, outcome, bx, by, _, sy = _make_benchmark_data()
     result = mr_presso(exposure, outcome, n_perm=10, seed=42)
 
-    # Manual RSS using the IVW beta from our result
+    # Manual LOO RSS per Verbanck 2018 / MRPRESSO 1.0 `getRSS_LOO`:
+    # for each i, fit IVW on j≠i to get beta_LOO[i], then sum weighted
+    # squared residuals (by_i - beta_LOO[i]·bx_i)² · w_i.
     w = 1.0 / sy**2
-    beta_ivw = result.beta_hat
-    resid = by - beta_ivw * bx
-    rss_manual = np.sum(w * resid**2)
+    K = bx.shape[0]
+    rss_manual = 0.0
+    for i in range(K):
+        mask = np.ones(K, dtype=bool)
+        mask[i] = False
+        num = np.sum(w[mask] * bx[mask] * by[mask])
+        den = np.sum(w[mask] * bx[mask] ** 2)
+        beta_loo = num / den
+        rss_manual += w[i] * (by[i] - beta_loo * bx[i]) ** 2
 
     assert abs(result.global_rss - rss_manual) < 1e-8, (
-        f"PRESSO RSS {result.global_rss} != manual {rss_manual}"
+        f"PRESSO RSS {result.global_rss} != manual LOO {rss_manual}"
     )
 
 

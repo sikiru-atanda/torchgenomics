@@ -62,8 +62,8 @@ Observed values from the first successful run (2026-04-30, K = 30, seed = 42, θ
 | Weighted median | \|Δ β\| | 2.23e-4 | 5e-3 | small interpolation gap |
 | Weighted median | \|Δ SE\| | 3.58e-2 | 5e-2 | DIFFERENT BOOTSTRAP SCHEMES |
 | MR-PRESSO | \|Δ raw β\| | 2.96e-5 | 1e-3 | matches IVW |
-| MR-PRESSO | \|Δ corrected β\| | 4.87e-2 | 1e-1 | OUTLIER-SET DIVERGENCE |
-| MR-PRESSO | \|Δ global p\| | 9.99e-1 | 1.0 | KNOWN ALGORITHMIC MISMATCH |
+| MR-PRESSO | \|Δ corrected β\| | 3.13e-5 | 5e-3 | post parametric-LOO port |
+| MR-PRESSO | \|Δ global p\| | 1.00e-3 | 5e-2 | post parametric-LOO port (MC noise) |
 
 ### F3 fix: MR-Egger orientation + SE/p convention (V1-platform)
 
@@ -86,26 +86,34 @@ The fix is a 30-line change in `torchgwas/postgwas/_mr.py::mr_egger`. Existing T
 
 This is committed as a separate F3 fix-now ledger row.
 
-### KNOWN DIVERGENCE: MR-PRESSO global-p (algorithmic mismatch)
+### F3 fix: MR-PRESSO parametric LOO bootstrap (post-V1)
 
-MRPRESSO's null distribution for the global pleiotropy test is a **parametric leave-one-out bootstrap** (Verbanck 2018, Eq. 2):
+MRPRESSO 1.0 (Verbanck 2018, Eq. 2) generates the global / outlier null via a **parametric leave-one-out bootstrap**:
 
 ```
-For each replicate:
-  bx_j_sim ~ N(bx_j, se_x_j²)                         for each SNP j
-  by_j_sim ~ N(beta_loo_j · bx_j, se_y_j²)            using LOO IVW prediction
-  RSS_sim  = sum over j of (by_j_sim - beta_loo_j_sim · bx_j_sim)²
+For each replicate t and SNP i:
+  bx_boot[t, i] ~ N(bx[i], se_x[i]²)                        # exposure draw
+  by_boot[t, i] ~ N(β_LOO_obs[i] · bx[i], se_y[i]²)         # outcome draw under LOO causal effect
+  RSS_boot[t]   = LOO weighted RSS on the simulated dataset (using w = 1/se_y², not se_y_boot)
+Global p = mean(RSS_boot > RSS_obs)
 ```
 
-TorchGWAS' `mr_presso` uses a **permutation null** instead: shuffle `by` while keeping `bx` fixed, then re-fit IVW. Both are valid pleiotropy tests but they sample different reference distributions; the resulting global p-values are not directly comparable.
+Per-SNP outlier residuals use the **observed β_LOO** (held fixed across replicates):
+```
+Dif_i      = by_i - bx_i · β_LOO_obs[i]                  # observed unweighted residual
+Exp_t,i    = by_boot[t, i] - bx_boot[t, i] · β_LOO_obs[i] # simulated unweighted residual
+p_i_raw    = mean over t of (Exp_t,i² > Dif_i²)
+p_i        = min(p_i_raw · K, 1)                         # Bonferroni correction
+```
 
-In the seed=42 simulation (3 planted pleiotropic SNPs):
-- MRPRESSO global p = 1e-3 (correctly detects pleiotropy).
-- TG `mr_presso` global p = 1.0 (no detection: the permutation null has the *same* RSS distribution as the observed because it doesn't know about the pleiotropy structure).
+Pre-fix, `torchgwas.postgwas.mr_presso` used a **permutation null** (shuffle `by` against fixed `bx`) which gave a global p = 1.0 vs MRPRESSO's 1e-3 on the seed=42 simulation. As of the post-V1 follow-up commit, `mr_presso` defaults to the parametric LOO bootstrap and matches MRPRESSO 1.0 to FP / MC-noise precision:
 
-**Tolerance choice**: `TOL_PRESSO_GLOBAL_P = 1.0`. The test still signals if anything regresses (e.g. RSS observed becomes pathologically zero), but does not gate-fail today. Per the spec's F3 logic, this is documented + commented rather than fixed in this PR — switching TG to the parametric LOO bootstrap is a non-trivial algorithmic rewrite (~150 LOC, K-quadratic in the LOO loop with an extra parametric draw) and is filed as a deferred follow-up.
+- Global RSS: 77.6197 vs 77.6197 (5+ digits)
+- Outlier set: {15, 21} vs {15, 21} (exact match — both miss SNP 18, whose pleiotropy effect is below the Bonferroni-corrected detection threshold at K=30 / NbDistribution=1000)
+- Corrected β: 0.4377 vs 0.4377 (4+ digits)
+- Global p: 0.000 vs 0.001 (within 1/sqrt(NbDistribution) MC noise)
 
-The downstream effect on outlier detection: with the permutation null, TG flags fewer outliers (1 of 3 planted) than MRPRESSO does (2 of 3 planted). The truth set is `{15, 18, 21}`; MRPRESSO flags `{15, 21}` and TG flags `{15}`. Outlier Jaccard = 0.5 between the two implementations. The **corrected β** (post-outlier-removal IVW slope) thus differs between the two: R = 0.4377, TG = 0.4864, |Δ| = 0.049. We floor `TOL_PRESSO_BETA_CORR = 0.1` to accept this gap.
+The legacy permutation null is preserved under `mr_presso(..., null="permutation")` for backward compatibility.
 
 ### Weighted median: deterministic point, stochastic SE
 
@@ -153,6 +161,6 @@ The pytest module dynamically imports `compare.py` from outside the package tree
 
 ## Next steps (post-Pillar B)
 
-- TorchGWAS-side parametric LOO bootstrap in `mr_presso` to close the global-p gap (would tighten `TOL_PRESSO_GLOBAL_P` from 1.0 to ~5e-2).
+- ✅ TorchGWAS-side parametric LOO bootstrap in `mr_presso` (default as of post-V1 follow-up; closed the global-p gap from 1.0 to MC-noise floor 5e-2).
 - TorchGWAS-side parametric bootstrap option in `mr_weighted_median` to close the SE gap (would tighten `TOL_WMED_SE` from 5e-2 to ~1e-2).
 - `mr_all` parity test: run TG `mr_all` and TwoSampleMR `mr(method_list = c(...all 4...))` on the same data and assert per-method agreement (the four individual tests already cover this).

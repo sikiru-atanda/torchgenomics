@@ -659,6 +659,119 @@ class TestMrPresso:
         assert res_dirty.global_rss > res_clean.global_rss * 100
         assert math.isfinite(res_dirty.global_rss)
 
+    # ─── Phase 44 follow-up: parametric LOO bootstrap parity tests ──────
+
+    def test_both_nulls_run(self):
+        """Both ``null="parametric"`` and ``null="permutation"`` execute
+        successfully and return a valid MRResult."""
+        torch.manual_seed(7)
+        bx = torch.linspace(0.5, 3.0, 6, dtype=torch.float64)
+        by = 0.5 * bx + torch.randn(6, dtype=torch.float64) * 0.005
+        expo, out = _build_mr_sumstats(bx, by, se_x=0.02, se_y=0.05)
+
+        res_param = mr_presso(
+            expo, out, n_perm=100, outlier_threshold=0.05, seed=42,
+            null="parametric",
+        )
+        res_perm = mr_presso(
+            expo, out, n_perm=100, outlier_threshold=0.05, seed=42,
+            null="permutation",
+        )
+        assert isinstance(res_param, MRResult)
+        assert isinstance(res_perm, MRResult)
+        assert 0.0 <= res_param.global_p <= 1.0
+        assert 0.0 <= res_perm.global_p <= 1.0
+        # Raw IVW slope is the same regardless of null choice (it is
+        # computed independently of the bootstrap).
+        assert abs(res_param.beta_hat - res_perm.beta_hat) < 1e-12
+
+    def test_parametric_default(self):
+        """Default null is parametric, matching MRPRESSO 1.0 behavior."""
+        torch.manual_seed(8)
+        bx = torch.linspace(0.5, 3.0, 6, dtype=torch.float64)
+        by = 0.5 * bx + torch.randn(6, dtype=torch.float64) * 0.005
+        expo, out = _build_mr_sumstats(bx, by, se_x=0.02, se_y=0.05)
+
+        res_default = mr_presso(
+            expo, out, n_perm=100, outlier_threshold=0.05, seed=42,
+        )
+        res_explicit = mr_presso(
+            expo, out, n_perm=100, outlier_threshold=0.05, seed=42,
+            null="parametric",
+        )
+        assert res_default.global_p == res_explicit.global_p
+        assert res_default.outlier_indices == res_explicit.outlier_indices
+        assert abs(res_default.global_rss - res_explicit.global_rss) < 1e-12
+
+    def test_invalid_null_raises(self):
+        """Unknown ``null`` arg raises ValueError."""
+        bx = torch.linspace(0.5, 3.0, 6, dtype=torch.float64)
+        by = 0.5 * bx
+        expo, out = _build_mr_sumstats(bx, by, se_y=0.05)
+        with pytest.raises(ValueError):
+            mr_presso(expo, out, n_perm=10, null="bogus_null")
+
+    def test_parametric_matches_mrpresso_reference(self):
+        """Parametric LOO bootstrap matches MRPRESSO 1.0 / TwoSampleMR
+        on the K=30 + 3-planted-pleiotropic-SNP fixture used by
+        ``validation/external/twosamplemr/compare.py``.
+
+        Reference values come from the committed
+        ``twosamplemr_results.json`` produced by the R harness with
+        seed=42, NbDistribution=1000.
+        """
+        # Reproduce the simulate_mr.R fixture exactly:
+        #     theta_true = 0.5, K = 30, pleio_indices = {15, 18, 21}
+        #     se_x = 0.02, se_y = 0.03, pleio_sigma = 0.15, seed = 42
+        # We use the bundled fixture rather than re-simulating to keep the
+        # test independent of any RNG impl differences between R and torch.
+        from pathlib import Path
+        import csv as _csv
+        repo_root = Path(__file__).resolve().parents[1]
+        sumstats_path = (
+            repo_root / "validation" / "external" / "twosamplemr"
+            / "data" / "sumstats.tsv"
+        )
+        if not sumstats_path.exists():
+            pytest.skip(f"fixture not present: {sumstats_path}")
+
+        rows = list(_csv.DictReader(open(sumstats_path), delimiter="\t"))
+        bx = torch.tensor(
+            [float(r["beta_exposure"]) for r in rows], dtype=torch.float64,
+        )
+        se_x = torch.tensor(
+            [float(r["se_exposure"]) for r in rows], dtype=torch.float64,
+        )
+        by = torch.tensor(
+            [float(r["beta_outcome"]) for r in rows], dtype=torch.float64,
+        )
+        se_y = torch.tensor(
+            [float(r["se_outcome"]) for r in rows], dtype=torch.float64,
+        )
+        expo, out = _build_mr_sumstats(bx, by, se_x=se_x, se_y=se_y)
+
+        res = mr_presso(
+            expo, out, n_perm=1000, outlier_threshold=0.05, seed=42,
+        )
+
+        # MRPRESSO 1.0 reference (from twosamplemr_results.json):
+        #   global_rss   = 77.6197
+        #   raw_b        = 0.4570
+        #   corrected_b  = 0.4377
+        #   outliers     = {15, 21} (zero-based)
+        #   global_p     = 0.001
+        # We assert exact equality on RSS / β_raw / β_corrected (closed
+        # form, no bootstrap noise) and require the outlier set to match
+        # exactly (the parametric bootstrap is stable enough at K=30,
+        # NbDistribution=1000 that the planted pleiotropic SNPs
+        # 15 and 21 always pass the Bonferroni threshold).
+        assert abs(res.global_rss - 77.6197) < 1e-3
+        assert abs(res.beta_hat - 0.4570) < 1e-3
+        assert abs(res.beta_corrected - 0.4377) < 1e-3
+        assert set(res.outlier_indices) == {15, 21}
+        # MC noise tolerance for global_p ~ 1/sqrt(1000) ≈ 3e-2.
+        assert abs(res.global_p - 0.001) < 5e-2
+
 
 # ===========================================================================
 # mr_all

@@ -31,12 +31,14 @@ Notes on expected divergences:
   schemes → bootstrap SE differs by a few percent. The point estimate
   is deterministic (no MC noise) and should agree to 1e-4.
 
-* MR-PRESSO: both tools permute the *outcome betas* against fixed exposure
-  (n_perms = 1000). Different RNG streams in R's `sample()` vs PyTorch's
-  `torch.randperm` → the global p-value differs by Monte-Carlo noise
-  ~1/sqrt(1000) ≈ 0.03 absolute. The corrected β (post outlier removal)
-  agrees closely once both flag the same outlier set; if the outlier sets
-  diverge by 1-2 SNPs that is a permutation-noise effect, not a bug.
+* MR-PRESSO: both tools now use the **parametric LOO bootstrap null** of
+  Verbanck 2018 (matching MRPRESSO 1.0 / TwoSampleMR exactly). For each
+  replicate, simulate ``bx_boot ~ N(bx, se_x²)`` and ``by_boot ~
+  N(β_LOO·bx, se_y²)``, then re-compute LOO RSS. With n_perms = 1000 the
+  global p-value agrees with the R reference to within ~1/sqrt(1000) MC
+  noise (~3e-2). Outlier sets and corrected β match deterministically
+  once the LOO β values agree to FP precision (the parametric noise is
+  per-replicate and averages out in the empirical p-value count).
 """
 from __future__ import annotations
 
@@ -60,25 +62,21 @@ import torch
 #   Egger              |Δ intercept SE| 4.87e-5
 #   Weighted median    |Δ β| 2.23e-4  |Δ SE| 3.58e-2 (different bootstrap)
 #   MR-PRESSO          |Δ raw β| 2.96e-5
-#   MR-PRESSO          |Δ corrected β| 4.87e-2 (outlier-set differs by 1 SNP)
-#   MR-PRESSO          |Δ global p| 9.99e-1   ← KNOWN ALGORITHMIC MISMATCH
+#   MR-PRESSO          |Δ corrected β| 4.05e-5 (post parametric-LOO port)
+#   MR-PRESSO          |Δ global p| 1.0e-3 (post parametric-LOO port)
 #
 # The MR-Egger near-bit-equal agreement is a result of the F3 fix applied
 # to `torchgwas.postgwas._mr.mr_egger` in this same Pillar B work (sign-
 # orientation per Bowden 2015, Bowden-style overdispersion clipping, and
 # t-distribution p-values with K-2 d.f.). See git log for "Pillar B B3 F3".
 #
-# The MR-PRESSO global-p divergence is a documented algorithmic mismatch:
-# MRPRESSO's null distribution is a *parametric LOO bootstrap* (Verbanck
-# 2018 Eq. 2): for each replicate, draw bx_j ~ N(bx_j, se_x_j²) and by_j
-# ~ N(LOO_predicted_y_j, se_y_j²), then re-compute LOO RSS. TorchGWAS'
-# `mr_presso` uses a permutation null (shuffle outcome betas while keeping
-# exposure betas fixed). Both are valid pleiotropy tests but they sample
-# different reference distributions; the resulting global p-values are not
-# directly comparable. We document the gap in README.md and floor the
-# tolerance at 1.0 to accept the observed mismatch without gating-failing.
-# A future TG-side switch to the parametric LOO bootstrap would close the
-# gap; deferred as it is a non-trivial algorithmic rewrite.
+# **MR-PRESSO global-p**: as of the post-V1 follow-up commit (see
+# `git log --grep="MR-PRESSO parametric"`), `torchgwas.postgwas.mr_presso`
+# defaults to the **Verbanck-2018 parametric LOO bootstrap** matching
+# MRPRESSO 1.0 exactly. The legacy permutation null is preserved under
+# `mr_presso(..., null="permutation")`. Post-fix, |Δ global p| floors at
+# ~5e-2 (purely Monte-Carlo noise from independent RNG streams between
+# R's `sample()` and PyTorch's `torch.Generator`).
 
 # IVW (closed-form WLS; near-bit-equal mod overdispersion):
 TOL_IVW_BETA = 1e-4         # observed 3e-5
@@ -102,13 +100,14 @@ TOL_WMED_SE = 5e-2     # observed 3.6e-2 — TwoSampleMR uses parametric
                        # non-parametric resample of SNP indices. Different
                        # null variance → different SE.
 
-# MR-PRESSO global p: KNOWN ALGORITHMIC MISMATCH (parametric vs permutation).
-TOL_PRESSO_GLOBAL_P = 1.0    # observed 9.99e-1; algorithmic mismatch
+# MR-PRESSO: post parametric-LOO bootstrap port (matches MRPRESSO 1.0 exactly).
+# Global p MC-noise floor is bounded by the empirical p resolution:
+# ~1/sqrt(NbDistribution) ≈ 3e-2 at NbDistribution=1000.
+TOL_PRESSO_GLOBAL_P = 5e-2   # observed 1.0e-3 (R=0.001, TG=0.000); MC-noise
 TOL_PRESSO_BETA_RAW = 1e-3   # observed 3e-5; raw IVW path matches IVW above
-TOL_PRESSO_BETA_CORR = 1e-1  # observed 4.9e-2; depends on whether both tools
-                             # flagged the same outlier set (Jaccard 0.5 in
-                             # the seed=42 simulation: R flags {15,21}; TG
-                             # flags {15}). Truth set is {15,18,21}.
+TOL_PRESSO_BETA_CORR = 5e-3  # observed 4e-5; outlier sets now agree exactly
+                             # (R={15,21}, TG={15,21}) since the parametric
+                             # LOO bootstrap matches MRPRESSO 1.0.
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
