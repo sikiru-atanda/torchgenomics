@@ -1155,7 +1155,17 @@ def _cmd_blink_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
-    """Run BLINK scan for a single trait."""
+    """Run BLINK scan for a single trait.
+
+    Streaming variant: same shape as FarmCPU's streaming path. Per-
+    iteration the genome is streamed once for the GLM scan; LD-removal
+    + BIC selection operate only on the small candidate set, so they
+    read those columns from the reader rather than from a full ``G``.
+
+    Peak memory: ``O(n × |QTN| + n × |candidates| + chunk_size × n × 8 B)``
+    instead of ``O(n × m × 8 B)``. At UKB scale this drops the BLINK
+    path from ~40 TB float64 to ~GB-scale per chunk.
+    """
     from .config import TorchGWASConfig, resolve_device
     from .models.blink import BLINK
     from .preprocess.qc import QCFilterConfig
@@ -1163,7 +1173,8 @@ def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     max_iter = getattr(args, "max_iter", None) or 10
     max_qtns = args.max_qtns if args.max_qtns is not None and args.max_qtns > 0 else None
@@ -1178,19 +1189,16 @@ def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
         maf_threshold=args.maf_threshold,
     )
     logger.info(
-        "BLINK: max_iter=%d, cutoff=%.4f, ld_threshold=%.2f",
+        "BLINK(stream): max_iter=%d, cutoff=%.4f, ld_threshold=%.2f",
         max_iter, args.cutoff, args.ld_threshold,
     )
 
-    null_fit = model.fit_null(
-        Y.to(device), X0.to(device),
-        G=G.to(device), variant_meta=vmeta,
-    )
+    null_fit = model.fit_null(Y.to(device), X0.to(device))
 
-    from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
-    qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-    result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+    qc_unused = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)  # noqa: F841 — preserved for API compat
+    result = model.score_streaming(
+        aligned_reader, null_fit, chunk_size=config.chunk_size, test=args.test,
+    )
 
     _apply_correction_and_save(result, args)
     return 0
