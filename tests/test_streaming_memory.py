@@ -636,3 +636,93 @@ class TestThresholdScanStreamingMemory:
         assert peak_stream < budget_kib, (
             f"Streaming threshold peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
         )
+
+
+# ---------------------------------------------------------------------------
+# gxe-scan (HetLMM via per-chunk loop) memory regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def gxe_inputs():
+    """Synthetic continuous trait + env covariate."""
+    torch.manual_seed(19)
+    n, m = 200, 500
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    K, _ = grm_vanraden(G)
+
+    env = torch.randn(n, dtype=torch.float64)
+    sig2_g, sig2_e = 0.30, 0.70
+    V = sig2_g * K + sig2_e * torch.eye(n, dtype=torch.float64)
+    L = torch.linalg.cholesky(V + 1e-6 * torch.eye(n, dtype=torch.float64))
+    Y = (5.0 + L @ torch.randn(n, dtype=torch.float64)).unsqueeze(1)
+    return G, Y, X0, K, env
+
+
+class TestGxeScanStreamingMemory:
+    """Streaming GxE (HetLMM) scan via per-chunk loop + _merge_gxe_results.
+
+    HetLMM.score_chunk returns ``GxEScanResult`` with main +
+    interaction + joint test fields. The default UnifiedScanner
+    merger expects ``ScanResult`` and would crash on multi-chunk
+    scans (latent pre-rewrite bug for genomes with > chunk_size
+    variants). The streaming rewrite uses a dedicated merger.
+    """
+
+    def test_streaming_gxe_matches_full_chunk(self, gxe_inputs):
+        from torchgwas.cli import _merge_gxe_results
+        from torchgwas.models.lmm_gxe import HetLMM
+
+        G, Y, X0, K, env = gxe_inputs
+        m = G.shape[1]
+
+        model = HetLMM()
+        nf = model.fit_null(Y, X0, K=K, env=env)
+
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        ref = model.score_chunk(G, nf, vmeta, test="wald")
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        chunk_results = []
+        for G_chunk, vm in reader.iter_chunks(64):
+            chunk_results.append(model.score_chunk(G_chunk, nf, vm, test="wald"))
+        streamed = _merge_gxe_results(chunk_results)
+
+        # GxEScanResult uses stat_joint / p_joint as primary outputs
+        assert torch.allclose(streamed.stat_joint, ref.stat_joint,
+                              atol=1e-9, rtol=1e-9)
+        assert torch.allclose(streamed.p_joint, ref.p_joint,
+                              atol=1e-9, rtol=1e-7)
+        assert torch.allclose(streamed.beta_main, ref.beta_main,
+                              atol=1e-9, rtol=1e-9)
+
+    def test_streaming_gxe_under_explicit_budget(self, gxe_inputs):
+        """Hard absolute budget: <16 MiB at 200x500."""
+        from torchgwas.cli import _merge_gxe_results
+        from torchgwas.models.lmm_gxe import HetLMM
+
+        G, Y, X0, K, env = gxe_inputs
+        m = G.shape[1]
+
+        model = HetLMM()
+        nf = model.fit_null(Y, X0, K=K, env=env)
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+            chunk_results = []
+            for G_chunk, vm in reader.iter_chunks(64):
+                chunk_results.append(model.score_chunk(G_chunk, nf, vm, test="wald"))
+            return _merge_gxe_results(chunk_results)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib, (
+            f"Streaming GxE peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
+        )

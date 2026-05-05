@@ -585,13 +585,65 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _merge_gxe_results(results: list):
+    """Concatenate :class:`GxEScanResult` objects across chunks.
+
+    HetLMM / GxELMM emit GxEScanResult, which has main + interaction +
+    joint test fields rather than the standard ScanResult schema. The
+    canonical UnifiedScanner merger only knows ScanResult, so a
+    multi-chunk gxe-scan needs this dedicated merger.
+    """
+    import torch
+
+    from .models.lmm_gxe import GxEScanResult
+
+    chr_all, pos_all, snp_all, a1_all, a2_all = [], [], [], [], []
+    for r in results:
+        chr_all.extend(r.chr)
+        pos_all.extend(r.pos)
+        snp_all.extend(r.snp)
+        a1_all.extend(r.a1)
+        a2_all.extend(r.a2)
+
+    return GxEScanResult(
+        chr=chr_all, pos=pos_all, snp=snp_all, a1=a1_all, a2=a2_all,
+        af=torch.cat([r.af for r in results]),
+        beta_main=torch.cat([r.beta_main for r in results]),
+        se_main=torch.cat([r.se_main for r in results]),
+        stat_main=torch.cat([r.stat_main for r in results]),
+        p_main=torch.cat([r.p_main for r in results]),
+        beta_interact=torch.cat([r.beta_interact for r in results]),
+        se_interact=torch.cat([r.se_interact for r in results]),
+        stat_interact=torch.cat([r.stat_interact for r in results]),
+        p_interact=torch.cat([r.p_interact for r in results]),
+        stat_joint=torch.cat([r.stat_joint for r in results]),
+        p_joint=torch.cat([r.p_joint for r in results]),
+        test=results[0].test if results else "wald",
+    )
+
+
 def _cmd_gxe_scan(args: argparse.Namespace) -> int:
-    """Run gene-environment interaction LMM scan."""
+    """Run gene-environment interaction LMM scan.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and iterates ``aligned_reader.iter_chunks`` through
+    ``HetLMM.score_chunk`` / ``GxELMM.score_chunk`` chunk-by-chunk.
+    HetLMM / GxELMM null fits depend only on ``Y / X0 / K / env``, so
+    the scan after null fit is fundamentally per-variant — the full
+    ``(n, m)`` ``G`` never lives in memory.
+
+    Per-chunk merge uses :func:`_merge_gxe_results` (custom merger
+    because GxEScanResult has main / interaction / joint fields rather
+    than the standard ScanResult schema). UnifiedScanner's default
+    merger is incompatible — pre-rewrite, gxe-scan also routed through
+    UnifiedScanner but only worked when m <= chunk_size (single-chunk
+    path bypasses the merger). The dedicated merger here also fixes
+    that latent crash for genomes with > chunk_size variants.
+    """
     import pandas as pd
     import torch
 
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
@@ -599,14 +651,23 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Load environment variable
     env_df = pd.read_csv(args.env, sep="\t")
     env = torch.tensor(env_df["ENV"].values, dtype=STAT_DTYPE, device=device)
 
-    # Build GRM
-    K, _ = grm_vanraden(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     Y_dev = Y.to(device)
     X0_dev = X0.to(device)
@@ -626,10 +687,38 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
         model = GxELMM()
         null_fit = model.fit_null(Y_dev, X0_dev, K=K, env=env)
 
-    from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-    result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+    from .preprocess.impute import impute_mean
+    from .preprocess.qc import apply_qc_filters, compute_variant_qc
+
+    # Stream G chunks through score_chunk; merge with the GxE-aware
+    # merger (UnifiedScanner's default merger expects ScanResult, not
+    # GxEScanResult).
+    chunk_results = []
+    ploidy = config.ploidy
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        G_chunk = impute_mean(G_chunk).to(device)
+        # Per-chunk QC (mirrors UnifiedScanner._apply_chunk_qc).
+        stats = compute_variant_qc(G_chunk, vm, ploidy=ploidy)
+        keep_mask = apply_qc_filters(stats, qc)
+        if not keep_mask.all():
+            keep_idx = keep_mask.nonzero(as_tuple=True)[0]
+            G_chunk = G_chunk[:, keep_idx]
+            from .models.base import VariantMeta
+            vm = VariantMeta(
+                snp=[vm.snp[i] for i in keep_idx.tolist()],
+                chr=[vm.chr[i] for i in keep_idx.tolist()],
+                pos=[vm.pos[i] for i in keep_idx.tolist()],
+                a1=[vm.a1[i] for i in keep_idx.tolist()],
+                a2=[vm.a2[i] for i in keep_idx.tolist()],
+            )
+        if G_chunk.shape[1] == 0:
+            continue
+        chunk_results.append(model.score_chunk(G_chunk, null_fit, vm, test=args.test))
+
+    if not chunk_results:
+        raise RuntimeError("No variants passed QC filters in gxe-scan.")
+    result = _merge_gxe_results(chunk_results)
 
     _apply_correction_and_save(result, args)
     return 0
