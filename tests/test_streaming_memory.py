@@ -540,3 +540,99 @@ class TestSurvivalScanStreamingMemory:
         assert peak_stream < budget_kib, (
             f"Streaming Survival peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
         )
+
+
+# ---------------------------------------------------------------------------
+# threshold-scan (ThresholdLinearModel via UnifiedScanner) memory regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def threshold_inputs():
+    """Synthetic (ordinal, continuous) traits."""
+    torch.manual_seed(17)
+    n, m = 200, 500
+    G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+
+    # Ordinal trait (3 categories) and continuous trait
+    Y_ord = torch.randint(0, 3, (n,), dtype=torch.float64)
+    Y_con = torch.randn(n, dtype=torch.float64)
+    Y = torch.stack([Y_ord, Y_con], dim=1)
+    return G, Y, X0
+
+
+class TestThresholdScanStreamingMemory:
+    """Streaming threshold-linear scan via UnifiedScanner.
+
+    threshold-scan already drove the scan loop through UnifiedScanner;
+    only the data-load helper materialized G. Post-rewrite,
+    ``_align_samples`` is used so chunks flow through ``score_chunk``
+    without ever materializing the full ``(n, m)`` tensor.
+    """
+
+    def test_streaming_threshold_matches_full_chunk(self, threshold_inputs):
+        from torchgwas.config import STAT_DTYPE, TorchGWASConfig
+        from torchgwas.models.threshold_linear import ThresholdLinearModel
+        from torchgwas.scan.unified import UnifiedScanner
+
+        G, Y, X0 = threshold_inputs
+        m = G.shape[1]
+        c = 2
+
+        R = torch.eye(c, dtype=STAT_DTYPE)
+        G_cov = torch.eye(c, dtype=STAT_DTYPE) * 0.5
+        model = ThresholdLinearModel(
+            trait_types=["ordinal", "continuous"],
+            n_categories=[3, 0],
+            R=R, G_cov=G_cov, solver="em", max_iter=20, em_warmup=5,
+        )
+        nf = model.fit_null(Y, X0)
+
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        ref = model.score_chunk(G, nf, vmeta, test="score")
+
+        reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+        cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+        scanner = UnifiedScanner(reader, model, cfg)
+        streamed = scanner.scan(nf, test="score", qc_config=None)
+
+        assert torch.allclose(streamed.stat, ref.stat, atol=1e-9, rtol=1e-9)
+        assert torch.allclose(streamed.p, ref.p, atol=1e-9, rtol=1e-7)
+
+    def test_streaming_threshold_under_explicit_budget(self, threshold_inputs):
+        """Hard absolute budget: <16 MiB at 200x500."""
+        from torchgwas.config import STAT_DTYPE, TorchGWASConfig
+        from torchgwas.models.threshold_linear import ThresholdLinearModel
+        from torchgwas.scan.unified import UnifiedScanner
+
+        G, Y, X0 = threshold_inputs
+        m = G.shape[1]
+        c = 2
+
+        R = torch.eye(c, dtype=STAT_DTYPE)
+        G_cov = torch.eye(c, dtype=STAT_DTYPE) * 0.5
+        model = ThresholdLinearModel(
+            trait_types=["ordinal", "continuous"],
+            n_categories=[3, 0],
+            R=R, G_cov=G_cov, solver="em", max_iter=20, em_warmup=5,
+        )
+        nf = model.fit_null(Y, X0)
+
+        def _run_streaming():
+            reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
+            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            scanner = UnifiedScanner(reader, model, cfg)
+            return scanner.scan(nf, test="score", qc_config=None)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024
+        assert peak_stream < budget_kib, (
+            f"Streaming threshold peak ({peak_stream:.0f} KiB) exceeds 16 MiB."
+        )

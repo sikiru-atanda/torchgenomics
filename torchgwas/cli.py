@@ -1065,7 +1065,15 @@ def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
 
 
 def _cmd_threshold_scan(args: argparse.Namespace) -> int:
-    """Run threshold-linear GWAS scan for ordinal + continuous traits."""
+    """Run threshold-linear GWAS scan for ordinal + continuous traits.
+
+    Streaming variant: the threshold-linear null fit only depends on
+    ``Y / X0 / R / G_cov``; the genome scan loop after null fit is per-
+    chunk safe via :class:`UnifiedScanner`. We replace the eager
+    ``_load_scan_data`` (which materializes ``(n, m)`` G in float64)
+    with ``_align_samples``, so chunks flow through ``score_chunk`` one
+    at a time.
+    """
     import numpy as np
     import torch
 
@@ -1076,7 +1084,8 @@ def _cmd_threshold_scan(args: argparse.Namespace) -> int:
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     trait_types = [t.strip() for t in args.trait_types.split(",")]
     n_categories = [int(x.strip()) for x in args.n_categories.split(",")]
@@ -1111,7 +1120,7 @@ def _cmd_threshold_scan(args: argparse.Namespace) -> int:
     null_fit = model.fit_null(Y.to(device), X0.to(device))
 
     from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
+    scanner = UnifiedScanner(aligned_reader, model, config)
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
     result = scanner.scan(null_fit, test="score", qc_config=qc)
 
