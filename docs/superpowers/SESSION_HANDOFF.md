@@ -49,6 +49,69 @@
 
 ---
 
+## NEXT AGENT TASKS (assigned by user 2026-05-06)
+
+The streaming + validation campaigns are saturated. The user has explicitly assigned these three forward-looking items to the next agent. Each is **research/infra-grade work**, not a template-port refactor — read carefully, plan with `superpowers:brainstorming` before executing.
+
+### Task NA1 — bayes-scan SuSiE streaming (research)
+
+**What:** the only remaining materialized scan path. Current behavior: `BayesianVS.fit` requires the full G in memory because SuSiE / CAVI joint posterior over all m candidate SNPs needs random column access during inference.
+
+**Why it's hard:** streaming SuSiE is an open research problem in the GWAS-fine-mapping literature. Possible approaches:
+- **SuSiE+ / online SuSiE** (Wang & Stephens 2020 follow-up directions): chunked credible-set updates with per-chunk posterior approximations.
+- **Stochastic VI variants:** mini-batch CAVI updates with bias correction.
+- **Sparse representation:** for low-MAF variants (which dominate biobank-scale m), a sparse-G representation could reduce the memory floor by 10-100×.
+- **SuSiE-RSS** (already in literature): runs on summary statistics + LD reference, not raw G — not "streaming" but "different input shape." Could be wired as a CLI alternative.
+
+**Where to start:**
+- `torchgwas/models/bayesian_vs.py::BayesianVS` — current impl.
+- `docs/efficiency/streaming_audit.md` — O3 observation explaining why bayes-scan is currently materialized.
+- Brainstorm scope with the user (this is research-grade — needs explicit scope alignment, not autonomous execution).
+- Output: either an approximate-streaming variant under a new `--method susie-streaming` flag (preferred), or a documented SuSiE-RSS alternative.
+
+**Success criteria:** peak memory becomes `O(n × chunk_size)` or `O(n × |credible_sets|)` instead of `O(n × m)`, with documented fidelity vs. exact SuSiE on a representative fixture (target: credible-set Jaccard > 0.95 vs exact at typical biobank-scale).
+
+### Task NA2 — GPU CI on PRs (infra)
+
+**What:** the `gpu` pytest marker exists and `tests/test_gpu*.py` files exist, but no CI workflow runs them. Currently `--device cuda` paths can silently regress.
+
+**Why it's hard:** GitHub-hosted runners don't have GPUs. Need a self-hosted runner.
+
+**Where to start:**
+- The user has access to `NVIDIA RTX 2000 Ada Generation` (16 GB VRAM) on this machine. A self-hosted runner pointed at this hardware would suffice for PR-time GPU regression catching.
+- Set up `.github/workflows/gpu.yml` triggered on PR (or nightly to amortize the runner cost) — runs `pytest -m gpu`.
+- Consider a self-hosted-runner Docker image with TorchGWAS + CUDA preinstalled to avoid per-PR install overhead.
+
+**Where it gets infra-political:** self-hosted runners on PR triggers are a well-known security risk if the repo accepts community PRs (PR code runs on your hardware). Restrict to `pull_request_target` + `if: contains(github.event.pull_request.labels.*.name, 'gpu-tested')` so only opted-in PRs run on the GPU runner.
+
+**Success criteria:** every PR with the `gpu-tested` label gets a green/red on `pytest -m gpu` from the self-hosted runner. Nightly runs catch regressions on master.
+
+**Pillar C history note:** the device-alignment audit during Pillar C / E1 caught 5 silent CUDA fallback bugs (commit `adc7b04` and the post-campaign `1e27d81`). Without GPU CI, more such bugs are guaranteed to land. This is the highest-value infra item remaining.
+
+### Task NA3 — UKB-scale validation runs
+
+**What:** all of the campaign's biobank-scale memory math (40 TB → 4 GB) is *projected* from chunk-size arithmetic. No actual run on UKB-scale (n ≈ 500K samples, m ≈ 10M variants) data has been done. The streaming-memory regression tests verify peak ∝ chunk_size on n=200/m=2000 fixtures — that's the *invariant*, not the *biobank-scale measurement*.
+
+**Why it's hard:** needs UKB data access (DUA, controlled access committee, etc.) and tens of CPU-hours per run. Not something that can be auto-dispatched.
+
+**Where to start:**
+- The user has UKB access in their day job (per `bench/data/` references). If access is in place, a single LMM scan + a single LDSC h² estimate at UKB chr22 scale (~1.6M variants) is the right first target.
+- Build a one-off harness at `validation/external/ukb/` that mirrors the Pillar B layout: install (no-op; uses pre-fetched UKB), fetch_data (assumes UKB locally), run, compare.
+- Compare: TorchGWAS LMM vs regenie LMM (already wired), TorchGWAS h² vs LDSC h² (already wired), peak memory observed vs the projected `O(n × chunk_size)` invariant.
+
+**Success criteria:** at least one biobank-scale comparison empirically validates that the streaming peak holds and the numerical agreement holds (β corr > 0.999, h² Δ < 5e-3). One ledger row capturing the result. Future runs can re-use the harness.
+
+**Why this matters:** without an empirical biobank run, the campaign's claims are theoretically sound but not empirically validated at scale. A single UKB chr22 LMM + LDSC h² run takes ~few CPU-hours and ratifies the entire campaign's memory + correctness story.
+
+### Process notes for the next agent
+
+- Don't restart the campaign. The worktree state IS the source of truth.
+- Use `superpowers:brainstorming` for NA1 (research-scope task). The other two are more execution-y but still warrant a written plan.
+- Each task is independent; tackle in any order. NA2 (GPU CI) is highest infra-impact. NA3 (UKB run) is highest empirical-validation-impact. NA1 (SuSiE) is highest scientific-impact.
+- All campaign infrastructure is in place: pre-flight library, validation findings ledger, R4 review templates, F3 severity policy, audit + worklist generators, streaming + perf regression nets. New work plugs into them — don't reinvent.
+
+---
+
 ## TL;DR for the next agent
 
 You're picking up a multi-pillar function-by-function validation campaign for TorchGWAS. Pillars A (coverage audit + tiered fill) and ~half of B (external reference-tool comparisons) are complete on a long-lived branch. **Resume by checking out the worktree, reading this file end-to-end, then dispatching the next subagent against the still-pending Pillar B tasks.**
