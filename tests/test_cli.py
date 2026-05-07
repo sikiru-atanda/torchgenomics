@@ -97,6 +97,24 @@ class TestCLIParsing:
         with pytest.raises(FileNotFoundError):
             main(["impute", "--genotype", "a.bed", "--method", "mean", "--output", "out.bed"])
 
+    def test_impute_mean_runs_on_csv_fixture(self, tmp_path):
+        """mean imputation loads real reader chunks and writes a dosage tensor."""
+        import torch
+
+        out = tmp_path / "imputed.pt"
+        rc = main([
+            "impute",
+            "--genotype", "tests/fixtures/tiny_dosage.csv",
+            "--method", "mean",
+            "--output", str(out),
+        ])
+
+        assert rc == 0
+        payload = torch.load(out, weights_only=False)
+        assert set(payload) == {"dosage"}
+        assert payload["dosage"].shape == (10, 20)
+        assert torch.isfinite(payload["dosage"]).all()
+
     def test_ld_blocks_parses(self):
         """ld-blocks subcommand accepts required args (fails on missing file)."""
         with pytest.raises(FileNotFoundError):

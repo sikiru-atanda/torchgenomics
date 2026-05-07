@@ -1,4 +1,4 @@
-"""Format conversion utilities (VCF->BED, BGEN->Zarr, etc.)."""
+"""Format conversion utilities."""
 
 from __future__ import annotations
 
@@ -21,7 +21,9 @@ def convert(
     """Convert genotype data between formats.
 
     Reads the input using the appropriate reader, then writes to the
-    target format.  Currently supports output to: bed, vcf, zarr.
+    target format.  Currently supports output to: bed, zarr. A minimal
+    GT-only VCF writer is kept private for internal experiments and is not
+    exposed as a supported conversion target.
 
     Parameters
     ----------
@@ -30,7 +32,7 @@ def convert(
     output_path : str
         Path for output file (prefix for PLINK filesets).
     output_format : str
-        Target format: "bed", "vcf", "zarr", "bgen".
+        Target format: "bed" or "zarr".
     sample_path : str, optional
         Path to .sample file (for BGEN input).
     map_path : str, optional
@@ -46,12 +48,10 @@ def convert(
         _write_plink_bed(reader, output_path)
     elif output_format == "zarr":
         _write_zarr(reader, output_path)
-    elif output_format == "vcf":
-        _write_vcf_stub(reader, output_path)
     else:
         raise ValueError(
             f"Conversion to '{output_format}' not yet supported. "
-            f"Supported: bed, zarr, vcf"
+            f"Supported: bed, zarr"
         )
 
     logger.info("Converted %s (%s) → %s (%s)", input_path, fmt, output_path, output_format)

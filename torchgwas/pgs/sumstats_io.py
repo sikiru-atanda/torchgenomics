@@ -164,7 +164,7 @@ class _Harmonizer(BasePGSMethod):
     name = "harmonize"
 
     def fit(self, sumstats, ld_ref, **kwargs):  # pragma: no cover
-        raise NotImplementedError("Harmonizer is not a fitting method.")
+        raise TypeError("Harmonizer exposes allele harmonization only; use harmonize_to_reference().")
 
 
 def harmonize_to_reference(

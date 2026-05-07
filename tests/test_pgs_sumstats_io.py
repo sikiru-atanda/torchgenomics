@@ -9,6 +9,7 @@ import torch
 
 from torchgwas.pgs.base import LDReference
 from torchgwas.pgs.sumstats_io import (
+    _Harmonizer,
     _resolve,
     harmonize_to_reference,
     load_pgs_sumstats,
@@ -143,3 +144,8 @@ def test_harmonize_to_reference_functional_wrapper():
     assert float(new_ss.af[1]) == pytest.approx(0.4)
     # LD reference unchanged length
     assert new_ld.m == 2
+
+
+def test_harmonizer_fit_is_misuse_guard():
+    with pytest.raises(TypeError, match="harmonize_to_reference"):
+        _Harmonizer().fit(None, None)

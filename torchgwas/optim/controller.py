@@ -1,8 +1,8 @@
-"""Optimizer controller: automatic fallback A -> B -> D -> F.
+"""Single-trait optimizer controller: automatic fallback A -> B -> D -> F.
 
-Implements the 6-mode optimizer hierarchy from charter Section 13.
-For Phase 4 (single-trait), modes A (PX-EM), B (AI-REML), and D (MM)
-are fully implemented.  Modes C, E, F are stubs for later phases.
+Implements the single-trait optimizer hierarchy from charter Section 13.
+Modes A (PX-EM), B (AI-REML), and D (MM) are implemented here. Multi-trait
+models use their dedicated optimizers instead of this controller.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class OptimizerMode(Enum):
-    """The 6-mode optimizer hierarchy."""
+    """Optimizer modes used by the controller and related model-specific paths."""
 
     PX_EM = auto()        # Mode A: warm start
     AI_REML = auto()      # Mode B: primary exact (small d)
@@ -81,8 +81,11 @@ class OptimizerController:
         -------
         NullFit with variance components, weights, log-likelihood, trace
         """
-        if n_traits > 1:
-            raise NotImplementedError("Multi-trait optimizer not yet implemented (Phase 5).")
+        if n_traits != 1:
+            raise ValueError(
+                "OptimizerController is single-trait only; use MultiTraitLMM "
+                "or torchgwas.models.lmm_multi_fit for multi-trait REML."
+            )
 
         return self._fit_single_trait(
             Y_rot, X0_rot, eigenvalues, max_iter=max_iter,

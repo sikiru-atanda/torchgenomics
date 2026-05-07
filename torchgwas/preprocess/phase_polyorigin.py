@@ -15,7 +15,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from itertools import combinations, combinations_with_replacement
+from itertools import combinations_with_replacement
 from pathlib import Path
 from typing import Optional
 

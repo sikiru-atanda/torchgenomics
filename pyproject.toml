@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "GPU-accelerated Genome-Wide Association Studies with PyTorch"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 authors = [
     {name = "Sikiru Atanda", email = "sikiru-atanda@github.com"},
 ]
@@ -24,8 +24,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "torch>=2.0",
-    "numpy>=1.24",
+    "torch>=2.0,<2.5",
+    "numpy>=1.24,<2.0",
     "pandas>=2.0",
     "scipy>=1.10",
     "matplotlib>=3.7",
@@ -69,7 +69,7 @@ torchgwas = "torchgwas.cli:main"
 
 [project.urls]
 Repository = "https://github.com/sikiru-atanda/torchgwas"
-Documentation = "https://github.com/sikiru-atanda/torchgwas#readme"
+Documentation = "https://sikiru-atanda.github.io/torchgwas/"
 Issues = "https://github.com/sikiru-atanda/torchgwas/issues"
 
 [tool.setuptools.packages.find]

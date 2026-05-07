@@ -1,6 +1,6 @@
 # CLI Reference
 
-TorchGWAS ships a single entry point, `torchgwas`, with 37 subcommands. Every
+TorchGWAS ships a single entry point, `torchgwas`, with 40 subcommands. Every
 subcommand accepts `--help` for full argument listings.
 
 ```bash
@@ -227,9 +227,13 @@ torchgwas annotate --sumstats hits.tsv --crop maize \
 
 ## Full pipeline
 
+The pipeline command supports built-in mean imputation. Run `torchgwas impute`
+first for BEAGLE, IMPUTE5, Minimac4, Li-Stephens, or deep-learning imputation,
+then pass the imputed data to the pipeline.
+
 ```bash
-torchgwas pipeline --genotype data.vcf.gz --impute beagle \
-                   --model lmm --test wald
+torchgwas pipeline --genotype data.vcf.gz --phenotype pheno.txt \
+                   --impute mean --model lmm --test wald
 torchgwas pipeline --genotype data.bed --phenotype pheno.txt \
                    --model met --env-cols E1,E2,E3
 ```

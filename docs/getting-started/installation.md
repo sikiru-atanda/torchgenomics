@@ -10,9 +10,10 @@ Python.
 pip install torchgwas
 ```
 
-This pulls the **source distribution** and compiles the 24 native C++ extensions
-if a compiler is available. If compilation fails, the pure-Python / torch fall-
-backs still work — every accelerator is optional.
+Pip uses a pre-built wheel where one is available and falls back to the source
+distribution otherwise. Source installs compile the 24 native C++ extension
+modules if a compiler is available. If compilation fails, the pure-Python /
+torch fallbacks still work — every accelerator is optional.
 
 ## With optional dependencies
 
@@ -21,10 +22,12 @@ backs still work — every accelerator is optional.
 | `[all]`    | `zarr`, `h5py`, `pyarrow`, `seaborn`                    |
 | `[dev]`    | `all` + `pytest`, `pytest-cov`, `ruff`, `mypy`          |
 | `[docs]`   | `mkdocs`, `mkdocs-material`, `mkdocstrings[python]`     |
+| `[polyploid-phase]` | `juliacall` for Julia-backed polyploid phasing |
 
 ```bash
 pip install "torchgwas[all]"
 pip install "torchgwas[dev]"
+pip install "torchgwas[polyploid-phase]"
 ```
 
 ## From source
@@ -38,14 +41,18 @@ pip install -e ".[dev]"
 Editable installs are the path of choice for contributors. Tests run with:
 
 ```bash
-pytest tests/ -v
+LC_ALL=C.UTF-8 LANG=C.UTF-8 TORCHGWAS_DISABLE_NATIVE=1 pytest tests/ -v --tb=short -x -q --timeout=300
+LC_ALL=C.UTF-8 LANG=C.UTF-8 TORCHGWAS_DISABLE_NATIVE=1 pytest tests/ -m golden -v --tb=short --timeout=600
 ```
+
+See [Validation](../validation.md) for the supported local validation tiers.
 
 ## GPU support
 
-TorchGWAS is device-agnostic — every tensor operation works on CPU or CUDA.
-To use a GPU, install PyTorch with the matching CUDA toolchain **before** in-
-stalling TorchGWAS:
+TorchGWAS has CUDA-qualified tensor paths for core PyTorch operations and
+selected GPU imputation kernels. Unsupported native kernels fall back through
+the package dispatch layer. To use a GPU, install PyTorch with the matching CUDA
+toolchain **before** installing TorchGWAS:
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu121
@@ -54,16 +61,26 @@ pip install torchgwas
 
 See the [PyTorch install matrix](https://pytorch.org/get-started/locally/) for
 the exact wheel URL for your CUDA version. The native C++ extensions are linked
-against CPU PyTorch but run correctly against GPU PyTorch at runtime — GPU
-kernels for imputation dispatch automatically via
-`torchgwas._dispatch.select_path`.
+against CPU PyTorch but run correctly against GPU PyTorch at runtime. GPU
+coverage is validated by tests marked `gpu` when CUDA is available:
+
+```bash
+pytest tests/ -m gpu -v --tb=short
+```
+
+## Polyploid phasing
+
+The `polyploid-phase` extra installs `juliacall`. End-to-end PolyOrigin-backed
+phasing additionally requires Julia 1.10 or newer and the Julia packages
+declared in `torchgwas/preprocess/juliapkg.json`. Tests that require the Julia
+bridge are skipped automatically when those external tools are unavailable.
 
 ## Windows users
 
-The sdist compiles on Windows with Visual Studio Build Tools installed. If you
-don't have a C++ toolchain, the pure-Python path still works — just with
-reduced performance on a handful of hot loops. A pre-built Windows wheel is
-planned for v0.3.0 (see the [roadmap](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/ROADMAP.md)).
+Pre-built `win_amd64` wheels are built for supported CPython releases. If pip
+falls back to the sdist, it compiles on Windows with Visual Studio Build Tools
+installed. Without a C++ toolchain, the pure-Python path still works — just with
+reduced performance on a handful of hot loops.
 
 ## Verifying your install
 
@@ -71,13 +88,13 @@ planned for v0.3.0 (see the [roadmap](https://github.com/sikiru-atanda/torchgwas
 python -c "import torchgwas; print(torchgwas.__version__)"
 ```
 
-Should print `0.1.1`.
+Should print `0.2.0`.
 
 ```bash
 torchgwas --help
 ```
 
-Should list all 35 subcommands.
+Should list all 40 subcommands.
 
 ## Disabling native accelerators
 

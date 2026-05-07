@@ -131,9 +131,9 @@ def test_shared_eigenbasis_used_once_per_scan():
     assert math.isclose(res1.indirect, res2.indirect, rel_tol=1e-9)
 
 
-def test_joint_fit_not_implemented():
+def test_joint_fit_not_exposed():
     Y, snp, M, K = _simulate_triple(n=100, seed=7)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="fit must be 'two-stage'"):
         mediate_lmm(Y, snp, M, K, fit="joint")
 
 

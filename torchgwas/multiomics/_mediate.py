@@ -209,15 +209,11 @@ def mediate_lmm(
     Y, SNP, M : array-like (n,)
     K : array-like (n, n) GRM
     covariates : array-like (n, c) or None
-    fit : {"two-stage", "joint"} — joint not yet supported in Phase 49.
+    fit : {"two-stage"}
     se : {"sobel", "monte-carlo", "bootstrap"}
     """
-    if fit not in ("two-stage", "joint"):
-        raise ValueError(f"fit must be 'two-stage' or 'joint'; got {fit!r}")
-    if fit == "joint":
-        raise NotImplementedError(
-            "fit='joint' is deferred to Phase 49b; use 'two-stage' for now."
-        )
+    if fit != "two-stage":
+        raise ValueError(f"fit must be 'two-stage'; got {fit!r}")
 
     Y_t = _as_tensor(Y).reshape(-1)
     SNP_t = _as_tensor(SNP).reshape(-1)

@@ -9,8 +9,8 @@ C++ accelerators, and support for both diploid and polyploid organisms.
 
 ## Status
 
-- **Version**: 0.1.1 (Alpha)
-- **Tests**: 2201 pass, 38 skip across 49 development phases
+- **Version**: 0.2.0 (Alpha)
+- **Tests**: 2402 collected locally; CI gates the supported matrix
 - **Python**: 3.10, 3.11, 3.12
 - **Platforms**: Linux, Windows, macOS
 - **License**: MIT

@@ -247,7 +247,7 @@ def compute_pve(
     if beta_full.ndim == 2:
         # Multi-trait scan: PVE is univariate-only for now — the user
         # should loop over traits and feed one column at a time.
-        raise NotImplementedError(
+        raise ValueError(
             "compute_pve expects a single-trait ScanResult; select a trait "
             "column before calling."
         )

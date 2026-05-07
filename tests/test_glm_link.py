@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from torchgwas.models.glm_link import (
     CumulativeLogitLink,
+    LinkFunction,
     LogitLink,
     ProbitLink,
 )
+
+
+def test_link_function_is_abstract():
+    with pytest.raises(TypeError):
+        LinkFunction()
 
 
 class TestLogitLink:

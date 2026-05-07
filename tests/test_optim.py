@@ -9,9 +9,11 @@ import torch
 
 from torchgwas.linalg.eigh import eigendecompose, rotate
 from torchgwas.linalg.kinship import grm_vanraden
+from torchgwas.models.lmm_multi_fit import fit_mvlmm_null_lbfgs
 from torchgwas.optim.ai_reml import ai_reml_single
 from torchgwas.optim.controller import OptimizerController, OptimizerMode
 from torchgwas.optim.em_warmstart import px_em_warmstart
+from torchgwas.optim.fisher_scoring import fisher_scoring_reml
 
 
 @pytest.fixture
@@ -68,10 +70,10 @@ class TestOptimizerController:
         modes = [e.get("mode", "") for e in nf_warm.optimizer_trace]
         assert "PX-EM" not in modes, f"Expected no PX-EM in warm-start trace, got: {modes}"
 
-    def test_all_modes_exhausted_raises(self):
-        """Multi-trait raises NotImplementedError for now."""
+    def test_controller_is_single_trait_only(self):
+        """Multi-trait calls are routed to model-specific optimizers."""
         controller = OptimizerController()
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ValueError, match="single-trait only"):
             controller.fit(
                 torch.randn(10, dtype=torch.float64),
                 torch.ones(10, 1, dtype=torch.float64),
@@ -95,6 +97,14 @@ class TestAIREML:
         assert sig2_g > 0
         assert sig2_e > 0
 
+    def test_fisher_scoring_wrapper_returns_scalars(self, rotated_data):
+        """The legacy Fisher-scoring path delegates to implemented AI-REML."""
+        Y_rot, X0_rot, evals = rotated_data
+        sig2_g, sig2_e, ll = fisher_scoring_reml(Y_rot, X0_rot, evals, max_iter=20)
+        assert sig2_g > 0
+        assert sig2_e > 0
+        assert math.isfinite(ll)
+
 
 class TestPXEM:
     def test_px_em_warmstart_improves_likelihood(self, rotated_data):
@@ -107,6 +117,8 @@ class TestPXEM:
 
 
 class TestLBFGS:
-    def test_lbfgs_reml_convergence(self):
-        """L-BFGS REML via autograd — deferred to Phase 5 (multi-trait)."""
-        pytest.skip("Phase 5: L-BFGS autograd REML not yet implemented")
+    def test_lbfgs_mvlmm_wrapper_rejects_single_trait(self, rotated_data):
+        """The mvLMM LBFGS wrapper is explicitly multi-trait only."""
+        Y_rot, X0_rot, evals = rotated_data
+        with pytest.raises(ValueError, match="d >= 2"):
+            fit_mvlmm_null_lbfgs(Y_rot, X0_rot, evals)

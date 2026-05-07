@@ -13,6 +13,7 @@ Link functions:
 from __future__ import annotations
 
 import math
+from abc import ABC, abstractmethod
 
 import torch
 from torch import Tensor
@@ -23,26 +24,26 @@ from ..config import STAT_DTYPE
 # Base link function
 # ===================================================================
 
-class LinkFunction:
+class LinkFunction(ABC):
     """Base class for GLM link functions."""
 
     name: str = "base"
 
+    @abstractmethod
     def link(self, mu: Tensor) -> Tensor:
         """Map mean to linear predictor: eta = g(mu)."""
-        raise NotImplementedError
 
+    @abstractmethod
     def inverse(self, eta: Tensor) -> Tensor:
         """Map linear predictor to mean: mu = g^{-1}(eta)."""
-        raise NotImplementedError
 
+    @abstractmethod
     def derivative(self, mu: Tensor) -> Tensor:
         """Derivative of link: d(eta)/d(mu)."""
-        raise NotImplementedError
 
+    @abstractmethod
     def variance(self, mu: Tensor) -> Tensor:
         """Variance function V(mu) for the GLM family."""
-        raise NotImplementedError
 
 
 # ===================================================================

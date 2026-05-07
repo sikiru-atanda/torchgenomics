@@ -8,6 +8,7 @@ import pytest
 import scipy.stats as sp_stats
 import torch
 
+from torchgwas.stats.calibrate import compare_pvalues
 from torchgwas.stats.genomic_control import diagnose_inflation, lambda_gc
 from torchgwas.stats.multipletesting import (
     benjamini_hochberg,
@@ -49,6 +50,16 @@ class TestStatisticalTests:
         assert torch.all(p >= 0) and torch.all(p <= 1)
         # beta=0 => stat=0 => p=1
         assert abs(p[2].item() - 1.0) < 1e-5
+
+    def test_compare_pvalues_metrics(self):
+        ours = torch.tensor([0.01, 0.20, float("nan"), 0.50], dtype=torch.float64)
+        ref = torch.tensor([0.011, 0.199, 0.30, 0.70], dtype=torch.float64)
+        metrics = compare_pvalues(ours, ref, tolerance=0.002)
+
+        assert metrics["n_total"] == 4
+        assert metrics["n_finite"] == 3
+        assert metrics["n_within_tolerance"] == 2
+        assert metrics["max_abs_diff"] == pytest.approx(0.20)
 
     def test_lrt_nonnegative(self):
         """LRT stat should be non-negative."""

@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/torchgwas.svg)](https://pypi.org/project/torchgwas/)
 [![Python](https://img.shields.io/pypi/pyversions/torchgwas.svg)](https://pypi.org/project/torchgwas/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2192%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-2402%20collected-blue.svg)](tests/)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 **GPU-accelerated Genome-Wide Association Studies with PyTorch.**
@@ -23,7 +23,7 @@ single `pip install`.
 
 ## Status
 
-**v0.1.1 · Alpha · 2192 tests passing · Python 3.10 – 3.12 · Linux + Windows**
+**v0.2.0 · Alpha · 2402 tests collected · Python 3.10 – 3.12 · Linux, Windows, macOS**
 
 V1 core (Phases 0 – 13) delivers GEMMA / GAPIT reference equivalence for
 Gaussian single- and multi-trait GWAS. Post-V1 extensions implemented through
@@ -34,7 +34,7 @@ Golden-data CI pins agreement with GEMMA 0.98.5 on every push.
 ## Install
 
 ```bash
-pip install torchgwas             # sdist + compiled-on-install native extensions
+pip install torchgwas             # wheel where available; sdist fallback
 pip install "torchgwas[all]"      # + zarr, h5py, pyarrow, seaborn
 pip install "torchgwas[dev]"      # + pytest, ruff, mypy (editable development)
 pip install "torchgwas[docs]"     # + mkdocs + mkdocs-material + mkdocstrings
@@ -100,7 +100,7 @@ fdr = benjamini_hochberg(result.p.cpu())
 
 - [**Docs site**](https://sikiru-atanda.github.io/torchgwas/) — installation,
   tutorials, full API reference, and validation protocol. Built with MkDocs
-  Material; deployed on every push to `master`.
+  Material; deployed on pushes to `master` / `main`.
 - [**examples/python/**](examples/python/) — 10 working end-to-end scripts
   (single/multi-trait LMM, MET, threshold-linear, PGS, SuSiE fine-mapping,
   mediation, NCBI annotation, polyploid, haplotype).
@@ -158,7 +158,7 @@ fdr = benjamini_hochberg(result.p.cpu())
 - Multi-kernel heritability; eigenMT FDR; colocalisation prefilter
 
 ### Performance
-- 26 native C++ accelerators via pybind11 (up to ~12 000× speedup on hot kernels)
+- 24 native C++ extension modules via pybind11 (up to ~12 000× speedup on hot kernels)
 - OpenMP parallelization where measured beneficial
 - GPU kernels for imputation (mode, KNN, LD-based)
 - Three-tier dispatch: GPU > native C++ > Python (automatic fallback)
@@ -186,8 +186,8 @@ torchgwas/
   multiomics/  GRM-corrected mediation + multi-kernel heritability
   annotate/    NCBI Datasets v2 + E-utilities gene annotation
   viz/         Manhattan, QQ, Miami, Circos, Haploview, trumpet plots
-  _native/     26 C++ pybind11 accelerators + GPU kernels + select_path dispatcher
-  cli.py       35 CLI subcommands
+  _native/     24 C++ pybind11 extension modules + GPU kernels + select_path dispatcher
+  cli.py       40 CLI subcommands
 ```
 
 Data flow: **Format detection → Imputation / phasing → QC → Genotype encoding
@@ -209,18 +209,18 @@ Reporting.**
 ## Testing
 
 ```bash
-pytest tests/ -v                    # full suite (2192 passing, 45 skipped)
-pytest tests/ -v -m golden          # GEMMA / GAPIT golden-data gate
-pytest tests/ -v -m "not slow"      # skip slow tests
+LC_ALL=C.UTF-8 LANG=C.UTF-8 TORCHGWAS_DISABLE_NATIVE=1 pytest tests/ -v --tb=short -x -q --timeout=300
+LC_ALL=C.UTF-8 LANG=C.UTF-8 TORCHGWAS_DISABLE_NATIVE=1 pytest tests/ -m golden -v --tb=short --timeout=600
 ```
 
-Golden-data fixtures live under `tests/golden/` and are regenerated with
-`scripts/generate_golden_data.py` (see `docs/validation.md`).
+These are the CPU reference and golden-data validation tiers used by CI.
+Native, no-OpenMP, and CUDA validation use separate commands; see
+`docs/validation.md`.
 
 ## Requirements
 
-Python ≥ 3.10, PyTorch ≥ 2.0, NumPy ≥ 1.24, pandas ≥ 2.0, SciPy ≥ 1.10,
-matplotlib ≥ 3.7, requests ≥ 2.28.
+Python ≥ 3.10 and < 3.13, PyTorch ≥ 2.0 and < 2.5, NumPy ≥ 1.24 and < 2.0,
+pandas ≥ 2.0, SciPy ≥ 1.10, matplotlib ≥ 3.7, requests ≥ 2.28.
 
 Optional: `zarr`, `h5py`, `pyarrow`, `seaborn`. A C++ compiler with pybind11 is
 optional; if unavailable, every native path falls back to the pure-torch
@@ -238,6 +238,6 @@ MIT License — see [LICENSE](LICENSE).
   author = {Atanda, Sikiru A.},
   year   = {2026},
   url    = {https://github.com/sikiru-atanda/torchgwas},
-  note   = {Version 0.1.1},
+  note   = {Version 0.2.0},
 }
 ```

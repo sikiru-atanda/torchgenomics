@@ -4,6 +4,27 @@ TorchGWAS targets **4th-decimal-place p-value agreement** with established
 GWAS tools on canonical datasets. Reference equivalence is enforced on every
 CI run by the `golden` test marker.
 
+## Validation tiers
+
+The current release exposes three supported pytest markers: `golden`, `slow`,
+and `gpu`. Optional integrations with GEMMA, GAPIT3, GWASpoly, PolyOrigin,
+Julia, and CUDA are skip-gated when the required external toolchain is not
+available.
+
+```bash
+# Fast pure-Python package check
+LC_ALL=C.UTF-8 LANG=C.UTF-8 TORCHGWAS_DISABLE_NATIVE=1 pytest tests/ -v --tb=short -x -q --timeout=300
+
+# Reference-output equivalence
+LC_ALL=C.UTF-8 LANG=C.UTF-8 TORCHGWAS_DISABLE_NATIVE=1 pytest tests/ -m golden -v --tb=short --timeout=600
+
+# CUDA-only checks, when a CUDA PyTorch build and GPU are available
+pytest tests/ -m gpu -v --tb=short
+
+# Longer checks excluded from the fast tier
+pytest tests/ -m slow -v --tb=short
+```
+
 ## Reference tools and versions
 
 | Tool            | Version  | Role                                               |
