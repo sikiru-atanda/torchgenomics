@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import logging
 from pathlib import Path
 
@@ -21,9 +22,7 @@ def convert(
     """Convert genotype data between formats.
 
     Reads the input using the appropriate reader, then writes to the
-    target format.  Currently supports output to: bed, zarr. A minimal
-    GT-only VCF writer is kept private for internal experiments and is not
-    exposed as a supported conversion target.
+    target format.  Currently supports output to: bed, zarr, vcf.
 
     Parameters
     ----------
@@ -32,7 +31,7 @@ def convert(
     output_path : str
         Path for output file (prefix for PLINK filesets).
     output_format : str
-        Target format: "bed" or "zarr".
+        Target format: "bed", "zarr", or "vcf".
     sample_path : str, optional
         Path to .sample file (for BGEN input).
     map_path : str, optional
@@ -48,10 +47,12 @@ def convert(
         _write_plink_bed(reader, output_path)
     elif output_format == "zarr":
         _write_zarr(reader, output_path)
+    elif output_format == "vcf":
+        _write_vcf(reader, output_path)
     else:
         raise ValueError(
             f"Conversion to '{output_format}' not yet supported. "
-            f"Supported: bed, zarr"
+            f"Supported: bed, zarr, vcf"
         )
 
     logger.info("Converted %s (%s) → %s (%s)", input_path, fmt, output_path, output_format)
@@ -145,12 +146,20 @@ def _write_zarr(reader, output_path: str) -> None:
     logger.info("Wrote Zarr store: %s, %d samples × %d variants", output_path, *dosage.shape)
 
 
-def _write_vcf_stub(reader, output_path: str) -> None:
-    """Write a minimal VCF file (positions + GT field)."""
-    p = Path(output_path)
+def _write_vcf(reader, output_path: str) -> None:
+    """Write dosage data as VCF with GT and DS fields.
 
-    with open(p, "w") as fh:
+    The internal convention stores dosage as ALT/effect-allele count where
+    ``VariantMeta.a1`` is ALT and ``a2`` is REF. Integer dosages are rendered
+    as GT; fractional dosages keep a best-guess GT and preserve the value in DS.
+    """
+    p = Path(output_path)
+    opener = gzip.open if p.suffix == ".gz" else open
+
+    with opener(p, "wt") as fh:
         fh.write("##fileformat=VCFv4.3\n")
+        fh.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Best-guess genotype\">\n")
+        fh.write("##FORMAT=<ID=DS,Number=1,Type=Float,Description=\"ALT allele dosage\">\n")
         fh.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT")
         for sid in reader.sample_ids:
             fh.write(f"\t{sid}")
@@ -160,20 +169,27 @@ def _write_vcf_stub(reader, output_path: str) -> None:
             dosage_np = G_chunk.numpy()  # (n, m)
             for j in range(len(vmeta)):
                 fh.write(f"{vmeta.chr[j]}\t{vmeta.pos[j]}\t{vmeta.snp[j]}\t")
-                fh.write(f"{vmeta.a2[j]}\t{vmeta.a1[j]}\t.\tPASS\t.\tGT")
+                fh.write(f"{vmeta.a2[j]}\t{vmeta.a1[j]}\t.\tPASS\t.\tGT:DS")
                 for i in range(dosage_np.shape[0]):
                     val = dosage_np[i, j]
                     if np.isnan(val):
-                        gt = "./."
-                    elif val == 0.0:
-                        gt = "0/0"
-                    elif val == 1.0:
-                        gt = "0/1"
-                    elif val == 2.0:
-                        gt = "1/1"
+                        sample = "./.:."
                     else:
-                        gt = "./."
-                    fh.write(f"\t{gt}")
+                        clipped = min(max(float(val), 0.0), 2.0)
+                        rounded = int(round(clipped))
+                        if rounded == 0:
+                            gt = "0/0"
+                        elif rounded == 1:
+                            gt = "0/1"
+                        else:
+                            gt = "1/1"
+                        sample = f"{gt}:{clipped:.6g}"
+                    fh.write(f"\t{sample}")
                 fh.write("\n")
 
     logger.info("Wrote VCF: %s", p)
+
+
+def _write_vcf_stub(reader, output_path: str) -> None:
+    """Backward-compatible alias for the supported VCF writer."""
+    _write_vcf(reader, output_path)
