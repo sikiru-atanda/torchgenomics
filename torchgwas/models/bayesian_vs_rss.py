@@ -114,3 +114,60 @@ class BayesianVSRss:
 
     # Methods fit_rss, _run_ibss, _compute_elbo, _build_credible_sets
     # are added in Tasks 6-9.
+
+
+def compute_alpha(
+    log_bf: torch.Tensor,
+    prior_pi: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Compute per-variant inclusion probabilities via prior-weighted softmax.
+
+    Per Zou et al. 2022 [C4] eq. 10 and the D3 shim from Phase 59 PolyFun spec:
+        alpha_lj = pi_j * exp(log_BF_lj) / sum_j' pi_j' * exp(log_BF_lj')
+
+    With prior_pi=None, uses uniform 1/p — recovers exact softmax over log_BF.
+    With prior_pi provided as a tensor, normalizes internally to sum to 1.0
+    within the locus, then weights the softmax accordingly.
+
+    Args:
+        log_bf: Per-variant log Bayes factors, shape (p,).
+        prior_pi: Optional per-variant prior inclusion probabilities, shape (p,).
+            If None, uniform 1/p is used.
+
+    Returns:
+        alpha: Per-variant inclusion probabilities, shape (p,), summing to 1.0.
+    """
+    if prior_pi is None:
+        return torch.softmax(log_bf, dim=0)
+
+    # Normalize prior_pi to sum to 1.0 within the locus
+    prior_pi_normalized = prior_pi / prior_pi.sum()
+    log_prior = torch.log(prior_pi_normalized.clamp_min(1e-300))
+    return torch.softmax(log_bf + log_prior, dim=0)
+
+
+def ibss_residual_update(
+    z: torch.Tensor,
+    R: torch.Tensor,
+    b: torch.Tensor,
+    layer_idx: int,
+) -> torch.Tensor:
+    """Compute the IBSS residual for a given layer.
+
+    Per Zou et al. 2022 [C4] eq. 11:
+        tilde_z_l = z - R @ sum_{l' != l} b_{l'}
+
+    Args:
+        z: Per-variant z-scores, shape (p,).
+        R: LD correlation matrix, shape (p, p).
+        b: Per-layer effect vectors, shape (L, p), where b[l] = alpha[l] * mu[l].
+        layer_idx: Index of the layer being updated (excluded from the sum).
+
+    Returns:
+        tilde_z_l: Residual z-scores for layer layer_idx, shape (p,).
+    """
+    # Sum over all layers except layer_idx
+    mask = torch.ones(b.shape[0], dtype=torch.bool, device=b.device)
+    mask[layer_idx] = False
+    other_layers_sum = b[mask].sum(dim=0)  # shape (p,)
+    return z - R @ other_layers_sum

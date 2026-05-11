@@ -74,3 +74,70 @@ def test_bayesian_vs_rss_class_constructs():
     assert model.max_num_causal == 10
     assert model.coverage == 0.95
     assert model.purity == 0.5
+
+
+from torchgwas.models.bayesian_vs_rss import compute_alpha
+
+
+def test_softmax_uniform_prior_recovers_softmax_over_bf():
+    """With uniform prior, alpha is exact softmax over log_BF."""
+    log_bf = torch.tensor([0.0, 1.0, 2.0, 0.5], dtype=torch.float64)
+    alpha = compute_alpha(log_bf, prior_pi=None)
+    expected = torch.softmax(log_bf, dim=0)
+    assert torch.allclose(alpha, expected, atol=1e-12)
+
+
+def test_softmax_uniform_prior_sums_to_one():
+    """alpha sums to 1.0."""
+    log_bf = torch.tensor([0.0, 5.0, 1.0, 3.0], dtype=torch.float64)
+    alpha = compute_alpha(log_bf, prior_pi=None)
+    assert torch.isclose(alpha.sum(), torch.tensor(1.0, dtype=torch.float64), atol=1e-10)
+
+
+def test_extreme_prior_dominates_alpha():
+    """An extreme per-SNP prior on one SNP drives alpha toward that SNP."""
+    log_bf = torch.zeros(4, dtype=torch.float64)  # uniform BFs
+    prior_pi = torch.tensor([0.99, 1e-3, 1e-3, 1e-3 - 1e-12], dtype=torch.float64)
+    # Normalize prior_pi to sum to 1.0 inside compute_alpha
+    alpha = compute_alpha(log_bf, prior_pi=prior_pi)
+    # Approx: alpha[0] ~ 0.99 / (0.99 + 3e-3) ~ 0.997
+    assert alpha[0] > 0.99
+
+
+def test_per_snp_prior_normalized_internally():
+    """Unnormalized prior is normalized internally; equivalent to normalized input."""
+    log_bf = torch.tensor([1.0, 2.0, 0.5], dtype=torch.float64)
+    prior_unnorm = torch.tensor([2.0, 1.0, 1.0], dtype=torch.float64)
+    prior_norm = prior_unnorm / prior_unnorm.sum()
+    alpha_unnorm = compute_alpha(log_bf, prior_pi=prior_unnorm)
+    alpha_norm = compute_alpha(log_bf, prior_pi=prior_norm)
+    assert torch.allclose(alpha_unnorm, alpha_norm, atol=1e-12)
+
+
+from torchgwas.models.bayesian_vs_rss import ibss_residual_update
+
+
+def test_ibss_residual_subtracts_other_layers():
+    """IBSS residual: tilde_z_l = z - R @ sum_{l' != l} b_{l'}.
+
+    Per Zou et al. 2022 [C4] eq. 11.
+    """
+    z = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float64)
+    R = torch.tensor(
+        [[1.0, 0.5, 0.0], [0.5, 1.0, 0.5], [0.0, 0.5, 1.0]],
+        dtype=torch.float64,
+    )
+    # Two layers, each with effects b_l = alpha_l * mu_l
+    b = torch.tensor(
+        [[0.1, 0.0, 0.0], [0.0, 0.2, 0.0]],
+        dtype=torch.float64,
+    )  # shape (L=2, p=3)
+    # Tilde z for layer 0: z - R @ b[1] = z - R @ [0, 0.2, 0]
+    expected_l0 = z - R @ b[1]
+    tilde_z_l0 = ibss_residual_update(z, R, b, layer_idx=0)
+    assert torch.allclose(tilde_z_l0, expected_l0, atol=1e-12)
+
+    # Tilde z for layer 1: z - R @ b[0] = z - R @ [0.1, 0, 0]
+    expected_l1 = z - R @ b[0]
+    tilde_z_l1 = ibss_residual_update(z, R, b, layer_idx=1)
+    assert torch.allclose(tilde_z_l1, expected_l1, atol=1e-12)
