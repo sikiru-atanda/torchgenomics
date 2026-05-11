@@ -141,3 +141,61 @@ def test_ibss_residual_subtracts_other_layers():
     expected_l1 = z - R @ b[0]
     tilde_z_l1 = ibss_residual_update(z, R, b, layer_idx=1)
     assert torch.allclose(tilde_z_l1, expected_l1, atol=1e-12)
+
+
+def test_ibss_elbo_monotone_non_decreasing():
+    """ELBO is non-decreasing per IBSS iteration (within numerical tolerance).
+
+    Per Zou et al. 2022 [C4] section A.2 supplementary.
+    """
+    rng = np.random.default_rng(13)
+    p = 30
+    n = 500
+    # Synthetic z-scores with one strong signal
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64))
+    z[10] += 5.0  # planted causal at index 10
+    # Identity R (independent SNPs) — IBSS should converge in few iterations
+    R = torch.eye(p, dtype=torch.float64)
+
+    model = BayesianVSRss(max_num_causal=3, max_iter=50, tol=1e-8)
+    result = model.fit_rss(z=z, R=R, n=n)
+
+    elbo_history = result.elbo_history
+    # Within numerical noise (1e-9), ELBO is non-decreasing
+    diffs = elbo_history[1:] - elbo_history[:-1]
+    assert (diffs >= -1e-9).all(), f"ELBO decreased: min diff = {diffs.min().item()}"
+
+
+def test_ibss_recovers_planted_causal():
+    """IBSS recovers a planted causal SNP at high PIP."""
+    rng = np.random.default_rng(17)
+    p = 50
+    n = 1000
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64) * 0.5)
+    causal_idx = 25
+    z[causal_idx] = 6.0  # very strong signal
+    R = torch.eye(p, dtype=torch.float64)
+
+    model = BayesianVSRss(max_num_causal=5)
+    result = model.fit_rss(z=z, R=R, n=n)
+
+    assert result.pip[causal_idx] > 0.9, \
+        f"Planted causal at index {causal_idx} had PIP {result.pip[causal_idx]:.4f}"
+
+
+def test_pip_formula():
+    """PIP = 1 - prod_l (1 - alpha[l]) per Wang et al. 2020 [C1] eq. 12."""
+    p = 5
+    L = 3
+    rng = np.random.default_rng(23)
+    alpha = torch.from_numpy(rng.uniform(0.0, 0.3, (L, p)).astype(np.float64))
+    expected_pip = 1.0 - torch.prod(1.0 - alpha, dim=0)
+
+    # Build a fixture result with known alpha
+    z = torch.zeros(p, dtype=torch.float64)
+    R = torch.eye(p, dtype=torch.float64)
+    model = BayesianVSRss(max_num_causal=L, max_iter=1)
+    result = model.fit_rss(z=z, R=R, n=100)
+    # The internal pip computation must match the formula on result.alpha
+    actual_pip = 1.0 - torch.prod(1.0 - result.alpha, dim=0)
+    assert torch.allclose(result.pip, actual_pip, atol=1e-12)
