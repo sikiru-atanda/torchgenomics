@@ -202,8 +202,7 @@ class BayesianVSRss:
         beta_var = beta_var.clamp_min(0.0)  # numerical floor
         beta_sd = beta_var.sqrt()
 
-        # Credible sets (placeholder; full implementation in Task 8)
-        credible_sets: list[Tuple[int, list[int]]] = []
+        credible_sets = self._build_credible_sets(alpha, R)
 
         return BayesianVSRssResult(
             alpha=alpha,
@@ -218,6 +217,55 @@ class BayesianVSRss:
             converged=converged,
             n_iter=iteration + 1,
         )
+
+    def _build_credible_sets(
+        self,
+        alpha: torch.Tensor,
+        R: torch.Tensor,
+    ) -> list[Tuple[int, list[int]]]:
+        """Construct credible sets per layer, with purity filtering.
+
+        Per Wang et al. 2020 [C1] section 3.4:
+        1. Sort alpha[l] descending.
+        2. Take the smallest set whose cumulative alpha >= self.coverage.
+        3. Enforce purity: minimum pairwise |R_jk| within the set >= self.purity.
+           If purity check fails, drop the credible set.
+
+        Args:
+            alpha: Per-layer per-variant inclusion probabilities, shape (L, p).
+            R: LD correlation matrix, shape (p, p).
+
+        Returns:
+            List of (layer_idx, sorted_member_indices) tuples for credible sets
+            that pass the purity check.
+        """
+        L, p = alpha.shape
+        cs_list: list[Tuple[int, list[int]]] = []
+
+        for l in range(L):
+            alpha_l = alpha[l]
+            # Sort descending
+            sorted_alpha, sorted_indices = torch.sort(alpha_l, descending=True)
+            cumsum = torch.cumsum(sorted_alpha, dim=0)
+            # First index where cumsum >= coverage
+            mask = cumsum >= self.coverage
+            if not mask.any():
+                continue  # Not enough alpha mass to form a credible set
+            cutoff = int(mask.nonzero(as_tuple=True)[0][0].item()) + 1
+            members = sorted_indices[:cutoff].tolist()
+
+            # Purity check: min pairwise |R_jk| over members
+            if len(members) > 1:
+                sub_R = R[members][:, members]
+                # Off-diagonal absolute values
+                off_diag_mask = ~torch.eye(len(members), dtype=torch.bool, device=R.device)
+                min_abs_corr = sub_R.abs()[off_diag_mask].min().item()
+                if min_abs_corr < self.purity:
+                    continue  # Purity failed; drop CS
+
+            cs_list.append((l, members))
+
+        return cs_list
 
     def _compute_elbo(
         self,

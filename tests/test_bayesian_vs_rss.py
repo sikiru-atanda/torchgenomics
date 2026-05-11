@@ -230,3 +230,68 @@ def test_pip_formula():
     # The internal pip computation must match the formula on result.alpha
     actual_pip = 1.0 - torch.prod(1.0 - result.alpha, dim=0)
     assert torch.allclose(result.pip, actual_pip, atol=1e-12)
+
+
+def test_credible_set_single_strong_layer():
+    """A layer with one dominant alpha produces a credible set of one variant."""
+    p = 5
+    alpha = torch.zeros(1, p, dtype=torch.float64)
+    alpha[0, 2] = 0.99
+    alpha[0] += 0.01 / p
+    alpha[0, 2] -= 0.01 / p  # keep total = 1.0 (approx)
+    R = torch.eye(p, dtype=torch.float64)
+
+    model = BayesianVSRss(max_num_causal=1, coverage=0.95, purity=0.5)
+    cs = model._build_credible_sets(alpha, R)
+    assert len(cs) == 1
+    layer_idx, members = cs[0]
+    assert layer_idx == 0
+    assert members == [2]
+
+
+def test_credible_set_purity_filters_low_correlation():
+    """If purity check fails, the credible set is dropped (or shrunk)."""
+    p = 4
+    alpha = torch.zeros(1, p, dtype=torch.float64)
+    # Two SNPs share alpha but are uncorrelated
+    alpha[0, 0] = 0.55
+    alpha[0, 3] = 0.45
+    R = torch.eye(p, dtype=torch.float64)  # zero off-diagonal correlation
+
+    model = BayesianVSRss(max_num_causal=1, coverage=0.95, purity=0.5)
+    cs = model._build_credible_sets(alpha, R)
+    # The naive cumulative-coverage set would be {0, 3} but purity = 0
+    # (R[0, 3] = 0), so the credible set should be empty (purity-failed)
+    # OR truncated to just the top variant. Per susieR, the entire CS is
+    # dropped when purity fails; mirror that.
+    assert len(cs) == 0 or (len(cs) == 1 and len(cs[0][1]) <= 1)
+
+
+def test_credible_set_sorted_by_pip():
+    """Variants within a credible set are ordered by descending alpha."""
+    p = 4
+    alpha = torch.zeros(2, p, dtype=torch.float64)
+    alpha[0, 0] = 0.5
+    alpha[0, 1] = 0.4
+    alpha[0, 2] = 0.1
+    alpha[1, 3] = 0.95
+    alpha[1, 0] = 0.05
+    R = torch.tensor(
+        [[1.0, 0.7, 0.0, 0.0],
+         [0.7, 1.0, 0.0, 0.0],
+         [0.0, 0.0, 1.0, 0.0],
+         [0.0, 0.0, 0.0, 1.0]],
+        dtype=torch.float64,
+    )
+
+    model = BayesianVSRss(max_num_causal=2, coverage=0.9, purity=0.5)
+    cs = model._build_credible_sets(alpha, R)
+
+    # Layer 0: cumsum 0.5 + 0.4 = 0.9 → CS = [0, 1]; purity |R[0,1]| = 0.7 ≥ 0.5 → kept
+    # Layer 1: alpha[3] = 0.95 ≥ 0.9 → CS = [3]
+    # Both layers should produce a credible set
+    assert len(cs) == 2
+    # Within CS, members ordered by descending alpha
+    layers = {layer_idx: members for layer_idx, members in cs}
+    assert layers[0] == [0, 1]  # 0.5 > 0.4
+    assert layers[1] == [3]
