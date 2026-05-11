@@ -166,6 +166,37 @@ def test_ibss_elbo_monotone_non_decreasing():
     assert (diffs >= -1e-9).all(), f"ELBO decreased: min diff = {diffs.min().item()}"
 
 
+def test_ibss_elbo_monotone_non_decreasing_ar1_R():
+    """ELBO is non-decreasing per IBSS iteration on AR(1) LD matrix.
+
+    Critical regression test: the original prescribed _compute_elbo was
+    monotone only on R=I (the original fixture). The reviewer of Task 7
+    empirically demonstrated non-monotonicity (min diff = -5.35) on
+    non-identity R, which would silently fail Tier 2 parity vs susieR.
+    This test catches that regression.
+    """
+    rng = np.random.default_rng(31)
+    p = 30
+    n = 500
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64))
+    z[10] += 5.0  # planted causal at index 10
+    # AR(1) R with rho=0.7
+    rho = 0.7
+    indices = torch.arange(p, dtype=torch.float64)
+    R = rho ** torch.abs(indices.unsqueeze(0) - indices.unsqueeze(1))
+    # Add small jitter for numerical stability of torch.linalg.solve
+    R = R + 1e-6 * torch.eye(p, dtype=torch.float64)
+
+    model = BayesianVSRss(max_num_causal=3, max_iter=50, tol=1e-8)
+    result = model.fit_rss(z=z, R=R, n=n)
+
+    elbo_history = result.elbo_history
+    diffs = elbo_history[1:] - elbo_history[:-1]
+    # Allow tiny numerical noise (1e-6) but no real regression
+    assert (diffs >= -1e-6).all(), \
+        f"ELBO decreased on AR(1) R: min diff = {diffs.min().item()}"
+
+
 def test_ibss_recovers_planted_causal():
     """IBSS recovers a planted causal SNP at high PIP."""
     rng = np.random.default_rng(17)

@@ -257,24 +257,25 @@ class BayesianVSRss:
         z_pred = R @ b_total
 
         # Likelihood term: E_q[log p(z | beta)] = -0.5 * E_q[(z - R b_eff)^T R^{-1} (z - R b_eff)] + const.
-        # For monotonicity diagnostics we drop the R^{-1} weighting (exact for R = I,
-        # the test fixture; tight approximation for well-conditioned R).
-        # Decomposition of the second moment under the mean-field factorization:
-        #   E_q[||R sum_l b_l||^2] = ||R E[b_total]||^2
-        #                          + sum_l (E_q[b_l^T R^T R b_l] - ||R E[b_l]||^2)
-        # The per-layer term is sum_l tr(R^T R Var_q(b_l)) >= 0 — the variance
-        # penalty essential for ELBO monotonicity per Zou 2022 [C4] §A.2.
-        # Under the per-layer SER (exactly one SNP active per layer):
-        #   E_q[b_l^T R^T R b_l] = sum_j alpha_lj * (mu_eff_lj^2 + sigma_eff_lj^2) * (R^T R)_jj
+        # Per Zou 2022 [C4] §A.2 the canonical SuSiE-RSS likelihood under z | beta ~ N(R b_eff, R)
+        # uses the R^{-1} Mahalanobis weighting. Solve R^{-1}(z - z_pred) via torch.linalg.solve
+        # for numerical stability (avoids explicit matrix inverse; equivalent but better-conditioned).
         residual = z - z_pred
-        squared_residual = (residual ** 2).sum()
-        rtr_diag = (R ** 2).sum(dim=0)  # (p,): diagonal of R^T R = R^2 (R symmetric)
-        trace_per_layer = (alpha * (mu_eff ** 2 + sigma_eff_sq) * rtr_diag).sum(dim=1)
-        # ||R E[b_l]||^2 per layer (R symmetric)
-        Rb_l = b_l @ R  # (L, p)
-        mean_quad_per_layer = (Rb_l ** 2).sum(dim=1)  # (L,)
-        # Variance penalty: sum_l (E_q[b_l^T R^T R b_l] - ||R E[b_l]||^2) >= 0
-        var_penalty = (trace_per_layer - mean_quad_per_layer).sum()
+        R_inv_residual = torch.linalg.solve(R, residual)
+        squared_residual = (residual * R_inv_residual).sum()
+
+        # Variance trace term under the R^{-1}-weighted likelihood:
+        #   E_q[(R b_l)^T R^{-1} (R b_l)] = E[b_l]^T R E[b_l] + tr(R Var_q(b_l))
+        # Decomposing the second moment over layers gives the variance penalty
+        #   sum_l (E_q[b_l^T R b_l] - E[b_l]^T R E[b_l]) = sum_l tr(R Var_q(b_l)) >= 0.
+        # Under the per-layer SER mean-field factorization:
+        #   Var_q(b_l[j]) = alpha_lj * (mu_eff_lj^2 + sigma_eff_lj^2) - (alpha_lj * mu_eff_lj)^2
+        # and tr(R diag(v)) = sum_j R_jj * v_j.
+        R_diag = torch.diag(R)  # (p,)
+        b_eff_var = (
+            alpha * (mu_eff ** 2 + sigma_eff_sq) - (alpha * mu_eff) ** 2
+        )  # (L, p)
+        var_penalty = (R_diag * b_eff_var).sum()
         log_lik = (-0.5 * (squared_residual + var_penalty)).item()
 
         # KL for the categorical inclusion (alpha vs uniform 1/p)
@@ -341,7 +342,10 @@ def ibss_residual_update(
     Args:
         z: Per-variant z-scores, shape (p,).
         R: LD correlation matrix, shape (p, p).
-        b: Per-layer effect vectors, shape (L, p), where b[l] = alpha[l] * mu[l].
+        b: Per-layer effect vectors on z-score scale, shape (L, p), where
+            b[l] = sqrt(n) * alpha[l] * mu[l] (the IBSS convention used by
+            fit_rss; mu and alpha returned in BayesianVSRssResult are on the
+            beta scale and must be rescaled by sqrt(n) before passing here).
         layer_idx: Index of the layer being updated (excluded from the sum).
 
     Returns:
