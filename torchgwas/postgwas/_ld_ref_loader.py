@@ -104,3 +104,35 @@ def load_ld_reference(
         f"Unsupported LD reference format: {suffix!r}. "
         f"Tier A supports .pt and .npz only; .bcor (FINEMAP) is Tier B."
     )
+
+
+def compute_in_sample_ld(G: torch.Tensor) -> torch.Tensor:
+    """Compute the LD correlation matrix from an in-sample genotype panel.
+
+    Args:
+        G: Genotype matrix, shape (n, p), dtype float64 (or upcast internally).
+
+    Returns:
+        R: LD correlation matrix, shape (p, p), dtype matching G after upcast.
+
+    Notes:
+        Constant columns (zero variance) produce NaN correlations on the
+        corresponding rows/columns, matching numpy.corrcoef's behavior.
+        Caller should handle NaN downstream (e.g., drop constant SNPs).
+    """
+    # Upcast to float64 for numerical stability of the centering + scaling
+    G64 = G.to(torch.float64)
+    # Center columns
+    G_centered = G64 - G64.mean(dim=0, keepdim=True)
+    # Compute standard deviations (ddof=1 for sample std; matches numpy.corrcoef)
+    n = G64.shape[0]
+    if n < 2:
+        raise ValueError(
+            f"compute_in_sample_ld requires n >= 2 samples; got n={n}"
+        )
+    std = G_centered.std(dim=0, keepdim=True, unbiased=True)
+    # Scale (NaN where std is 0 — matches numpy.corrcoef)
+    G_scaled = G_centered / std
+    # R = (G_scaled^T @ G_scaled) / (n - 1)
+    R = (G_scaled.T @ G_scaled) / (n - 1)
+    return R

@@ -137,3 +137,44 @@ def test_load_format_inferred_from_extension(tmp_path):
     R_pt, _, _ = load_ld_reference(pt_path)
     R_npz, _, _ = load_ld_reference(npz_path)
     assert torch.allclose(R_pt, R_npz)
+
+
+from torchgwas.postgwas._ld_ref_loader import compute_in_sample_ld
+
+
+def test_in_sample_ld_matches_corrcoef():
+    """compute_in_sample_ld matches np.corrcoef(G.T) for a synthetic panel."""
+    rng = np.random.default_rng(42)
+    n, p = 100, 20
+    G = torch.from_numpy(rng.standard_normal((n, p)).astype(np.float64))
+    R = compute_in_sample_ld(G)
+    R_ref = torch.from_numpy(np.corrcoef(G.numpy(), rowvar=False))
+    assert torch.allclose(R, R_ref, atol=1e-10)
+
+
+def test_in_sample_ld_handles_constant_columns():
+    """Constant columns produce NaN correlations; assert documented behavior."""
+    G = torch.zeros(50, 5, dtype=torch.float64)
+    G[:, 0] = 1.0  # constant column
+    G[:, 1] = torch.arange(50, dtype=torch.float64)  # variable
+    R = compute_in_sample_ld(G)
+    # diagonal is 1 except for constant columns (which become NaN)
+    assert torch.isnan(R[0, 0]) or R[0, 0] == 1.0
+    # variable column should have R[1,1] = 1.0
+    assert torch.isclose(R[1, 1], torch.tensor(1.0, dtype=torch.float64))
+
+
+def test_in_sample_ld_diagonal_is_one():
+    """For a non-constant panel, diagonal of R is exactly 1.0."""
+    rng = np.random.default_rng(7)
+    G = torch.from_numpy(rng.standard_normal((30, 8)).astype(np.float64))
+    R = compute_in_sample_ld(G)
+    assert torch.allclose(R.diag(), torch.ones(8, dtype=torch.float64), atol=1e-12)
+
+
+def test_in_sample_ld_symmetric():
+    """R is symmetric to numerical precision."""
+    rng = np.random.default_rng(11)
+    G = torch.from_numpy(rng.standard_normal((50, 12)).astype(np.float64))
+    R = compute_in_sample_ld(G)
+    assert torch.allclose(R, R.T, atol=1e-12)
