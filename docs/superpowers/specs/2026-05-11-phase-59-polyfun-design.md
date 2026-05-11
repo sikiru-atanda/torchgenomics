@@ -53,13 +53,13 @@ Add functional-annotation–informed fine-mapping (PolyFun, Weissbrod et al. 202
 
 Per Weissbrod et al. 2020 [C3] Methods §"Computing per-SNP heritabilities":
 
-**Step 1 — L2-regularized S-LDSC on even chromosomes.** Fit per-annotation coefficients $\hat\tau^{\text{even}}_c$ for $c = 1, \dots, A = 187$ baseline-LF v2.2 annotations:
+**Step 1 — L2-regularized S-LDSC on even chromosomes.** Fit per-annotation coefficients $\hat\tau^{\text{even}}_c$ for $c = 1, \dots, A = 187$ baseline-LF v2.2 annotations using the weighted-LDSC objective (LDSC weights $w_i$ per Bulik-Sullivan et al. 2015 [C28] and Finucane et al. 2015 [C29] correct for heteroskedasticity from per-SNP $\chi^2$ variance scaling with LD):
 
 $$
-\min_{\boldsymbol\tau, b}\; \sum_i \Bigl(\chi_i^2 - n \sum_{c=1}^{A} \tau_c \ell(i,c) - n b - 1\Bigr)^2 + \lambda \sum_{c=1}^{A} \tau_c^2
+\min_{\boldsymbol\tau, b}\; \sum_i w_i \Bigl(\chi_i^2 - n \sum_{c=1}^{A} \tau_c \ell(i,c) - n b - 1\Bigr)^2 + \lambda \sum_{c=1}^{A} \tau_c^2
 $$
 
-where $\ell(i,c)$ is the per-SNP LD score for annotation $c$, $\chi_i^2$ is the GWAS chi-square at SNP $i$, $b$ is the LDSC intercept, and $\lambda$ is the L2 penalty. Per [C3]: *"To address the first limitation, PolyFun incorporates an L2-regularized extension of S-LDSC."*
+where $\ell(i,c)$ is the per-SNP LD score for annotation $c$, $\chi_i^2$ is the GWAS chi-square at SNP $i$, $b$ is the LDSC intercept, $w_i$ is the LDSC heteroskedasticity weight per [C29] (typically $w_i = 1 / [\ell(i,\text{base}) \cdot (1 + n \ell(i,\text{base}) / M)^2 ]$ where $\ell(i,\text{base})$ is the unpartitioned LD score and $M$ is the genome-wide SNP count), and $\lambda$ is the L2 penalty added by PolyFun on top of standard S-LDSC. Per [C3]: *"To address the first limitation, PolyFun incorporates an L2-regularized extension of S-LDSC."* The weighted normal-equation form $\hat\tau = (X^\top W X + \lambda I)^{-1} X^\top W \chi^2$ in §2.4 below is the closed-form solution to this objective.
 
 **Step 2 — Per-SNP heritability for held-out (odd) chromosomes.** The fitted even-chromosome $\hat\tau^{\text{even}}_c$ are applied to odd-chromosome SNPs (and vice versa, by symmetry):
 
@@ -450,7 +450,7 @@ torchgwas polyfun-extract-annotations ...
 
 ### 6.2 Flag mapping (ours → PolyFun upstream)
 
-For brevity, only the non-trivial mappings are listed here. ALL upstream flags (88 total per brief §5.1–§5.4) are mapped 1:1 to kebab-case equivalents in our CLI.
+For brevity, only the non-trivial mappings are listed here. The full 88-flag table (every upstream flag mapped 1:1 to a kebab-case equivalent in our CLI) is **a Tier A deliverable** (see §10.1 step A8.5) and will be appended to this spec at implementation time. Until then, the contract is: any flag in upstream PolyFun's argparse must have a mapped equivalent in our CLI; an UNMAPPED upstream flag is a Tier A blocker.
 
 | Ours (combined `polyfun-finemap`) | Upstream | Notes |
 |---|---|---|
@@ -556,6 +556,7 @@ Shippable when: `polyfun-finemap` runs end-to-end on the bundled `example_data/`
 
 | Step | Files | Test |
 |---|---|---|
+| **A0** Pre-emptively log §2.7 deliberate divergence (pure-Python SuSiE vs upstream R-susier) in `docs/validation_findings.md` BEFORE Tier 2 runs, per `feedback_scientific_rigor` | `docs/validation_findings.md` | n/a (documentation entry) |
 | **A1** D3 shim — `prior_pi_per_snp` keyword in `bayesian_vs.py` | `models/bayesian_vs.py` | `tests/test_polyfun_per_snp_prior.py` |
 | **A2** L2 regularization in `_sldsc.py` | `postgwas/_sldsc.py` | `tests/test_polyfun_h2.py` L2 closed-form |
 | **A3** `predict_per_snp_h2` accessor | `postgwas/_sldsc.py` | unit test |
@@ -564,6 +565,7 @@ Shippable when: `polyfun-finemap` runs end-to-end on the bundled `example_data/`
 | **A6** Per-SNP SNPVAR computation (Step 5 normalization) | `postgwas/_polyfun_finemap.py` | `tests/test_polyfun_finemap.py` |
 | **A7** `polyfun_finemap_locus` driver (SuSiE backend only) | `postgwas/_polyfun_finemap.py` | `tests/test_polyfun_finemap.py` |
 | **A8** CLI subcommand `polyfun-finemap` (combined) + `polyfun-h2-l2` + `polyfun-finemap-locus` + `polyfun-munge-sumstats` | `cli.py` | `tests/test_cli.py` smoke |
+| **A8.5** Full 88-flag mapping table appended to spec §6.2 (per E2 reviewer finding) — every upstream flag from `polyfun.py` (24), `finemapper.py` (32), `aggregate_finemapper_results.py` (7), `munge_polyfun_sumstats.py` (8), `extract_snpvar.py` (5), `compute_ldscores_from_ld.py` (8), `extract_annotations.py` (7) mapped 1:1 to kebab-case equivalents | `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md` (this spec, §6.2 appendix) + `cli.py` exhaustive flag wiring | `tests/test_cli.py::test_polyfun_full_flag_surface` — programmatically diff our argparse against upstream's argparse to assert zero unmapped flags |
 | **A9** Tier 2 parity vs upstream (L2-only approach) on bundled fixture | `tests/test_polyfun_parity_upstream.py` | this test |
 | **A10** Uniform-prior reduction parity (`--non-funct` matches existing SuSiE) | `tests/test_polyfun_finemap.py` | this test |
 | **A11** Backward-compat regression net (existing `bayesian_vs.py` tests pass) | full test suite | implicit |
@@ -626,6 +628,8 @@ Shippable when: full non-parametric (binned) approach works, pre-computed SNPVAR
 - **[C25] TorchGWAS `postgwas/_sldsc.py`** — current OLS S-LDSC. Repo file.
 - **[C26] Wang, G. et al. (2020).** *A simple new approach to variable selection in regression, with application to genetic fine mapping.* *Journal of the Royal Statistical Society Series B* 82:1273–1300. <https://doi.org/10.1111/rssb.12388>. SuSiE / IBSS algorithm.
 - **[C27] Benner, C. et al. (2016).** *FINEMAP: efficient variable selection using summary data from genome-wide association studies.* *Bioinformatics* 32:1493–1501. <https://doi.org/10.1093/bioinformatics/btw018>. FINEMAP backend reference.
+- **[C28] Bulik-Sullivan, B. K. et al. (2015).** *LD Score regression distinguishes confounding from polygenicity in genome-wide association studies.* *Nature Genetics* 47:291–295. <https://doi.org/10.1038/ng.3211>. Original LDSC weighting derivation.
+- **[C29] Finucane, H. K. et al. (2015).** *Partitioning heritability by functional annotation using genome-wide association summary statistics.* *Nature Genetics* 47:1228–1235. <https://doi.org/10.1038/ng.3404>. S-LDSC partitioning + heteroskedasticity weight formula used in §2.1 step 1.
 
 ## 12. Approval & next step
 

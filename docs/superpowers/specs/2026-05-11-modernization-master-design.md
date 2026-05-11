@@ -124,13 +124,23 @@ All four items are post-V1 (V1 covers Phases 0–13, GEMMA/GAPIT-equivalent quan
 
 ## 9. Open questions deferred to sub-specs
 
-These were intentionally not resolved in the master, because they are item-specific and will be answered in each sub-spec after the research brief lands:
+These were intentionally not resolved in the master and have now been answered in each sub-spec (status as of 2026-05-11 sub-spec drafting):
 
-- **REGENIE:** does step-1's BLUP predictions file streamably integrate with `UnifiedScanner`, or do we need an offline → on-demand re-load strategy?
-- **PRS-CSx:** extend `pgs/prscs.py` or new file `pgs/prscsx.py`? Lean: new file. Final decision in Phase 58 sub-spec.
-- **PolyFun:** does the spec ship a CLI subcommand or extend an existing one? Lean: new `polyfun-finemap` subcommand.
-- **X-chrom:** which X-inactivation models to support — uniform skewing only, gene-level skewing, or random? Default lean: uniform skewing as the MVP within "full parity," gene-level deferred.
-- **All four:** native-acceleration sub-phases — assigned phase numbers (Phase 41ag, ah, …) or deferred until profiling evidence justifies?
+- **REGENIE:** does step-1's BLUP predictions file streamably integrate with `UnifiedScanner`, or do we need an offline → on-demand re-load strategy? **RESOLVED** in Phase 57 sub-spec §4.2 + R-REG-1: LOCO file is row-streamable per chromosome (~4 MB at UKB scale); a `RegenieLOCOReader` adapter loads one row per chromosome change. Resolves R-MOD-2 in §8.
+- **PRS-CSx:** extend `pgs/prscs.py` or new file `pgs/prscsx.py`? **RESOLVED** in Phase 58 sub-spec §3.3 + brief §11.1: NEW FILE `pgs/prscsx.py`. Resolves R-MOD-3 in §8.
+- **PolyFun:** does the spec ship a CLI subcommand or extend an existing one? **RESOLVED** in Phase 59 sub-spec §6.1: new `polyfun-finemap` (combined) plus 8 individual subcommands for the auxiliary scripts.
+- **X-chrom:** which X-inactivation models to support — uniform skewing only, gene-level skewing, or random? **RESOLVED** in X-chrom sub-spec §2.1 + §10: all four PLINK `--xchr-model` values (0/1/2/3) plus sex-stratified meta-analysis for Tier A/B; gene-level XCI (Tukiainen 2017) deferred to Tier C.
+- **All four:** native-acceleration sub-phases — assigned phase numbers (Phase 41ag, ah, …) or deferred until profiling evidence justifies? **RESOLVED uniformly:** deferred until profiling evidence justifies; each sub-spec §7 lists candidate hot loops without committing.
+
+## 9b. Brainstorming decisions (D1 / D2 / D3) ledger
+
+Three decisions were made during the 2026-05-11 brainstorming session that affect multiple sub-specs. Where each landed:
+
+| Decision | Resolution | Where operationalized |
+|---|---|---|
+| **D1 — X-chrom ploidy strategy** | Per-sample-per-variant ploidy tensor (option a). Honors the polyploid-first charter; wider blast radius than splitting chrX into a separate code branch but cleaner long-term. | `xchromosome-refactor-design.md` §3.3 (preprocess/standardize.py — per-sample-per-variant ploidy support), §10.1 step A2, R-XC-1 mitigation. |
+| **D2 — X-chrom GRM strategy** (revised under scientific-rigor mandate) | Support BOTH: default to GCTA two-kernel via `MultiKernelLMM` for LMM scanners (statistically rigorous published approach); fall through to weighted single-kernel for FarmCPU/BLINK (which can't use multi-kernel). Exposed via `--xchr-grm-kernel {separate,joint,none}`. | `xchromosome-refactor-design.md` §2.7, §6 (CLI flag), §10.2 step B5 (two-kernel via `MultiKernelLMM`). |
+| **D3 — PolyFun `bayesian_vs.py` API change** | Backward-compat shim: add new `prior_pi_per_snp: Optional[Tensor] = None` keyword preserving scalar `prior_pi: float = 0.01`. No breaking change to existing callers. | `phase-59-polyfun-design.md` §2.3 (D3 explanation), §3.2 (modified files table — bayesian_vs.py change), §10.1 step A1 (Tier A first item). |
 
 ## 10. Companion artifacts
 

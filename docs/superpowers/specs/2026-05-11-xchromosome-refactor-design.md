@@ -44,7 +44,7 @@ Add complete sex-chromosome (chrX, chrY, PAR1/PAR2, mtDNA) support to TorchGWAS 
 
 Notation: $g_{ij} \in \{0,1,2\}$ is the additive allele-count dosage at SNP $j$ for individual $i$; $s_i \in \{F, M\}$ is sex; $\beta_j$ is the per-allele effect.
 
-**Uniform skewing model (PLINK `--xchr-model 2`, default):** male hemizygote treated as homozygous-equivalent. This is the BOLT-LMM and PLINK 2.0 `--glm` default. Equation from Clayton 2008 [C1] equation (2):
+**Uniform skewing model (PLINK `--xchr-model 2`, default):** male hemizygote treated as homozygous-equivalent (one functional X allele in males is biologically equivalent to two female alleles after random X-inactivation silences one female allele). This is the BOLT-LMM v2.4 default and PLINK 2.0 `--glm` default per [C4]. Statistically equivalent to the dosage-doubling test of Clayton 2008 [C1] §2 ("X-inactivation"); the explicit dosage-coding form below is the PLINK 2.0 implementation per [C4]:
 
 $$
 \tilde g_{ij} = \begin{cases} g_{ij}, & s_i = F \\ 2\,g_{ij}, & s_i = M \end{cases}
@@ -52,7 +52,9 @@ $$
 
 Resulting effective dosages: females $\in \{0, 1, 2\}$, males $\in \{0, 2\}$. Same per-allele effect $\beta_j$ across sexes.
 
-**Random skewing model (PLINK `--xchr-model 1`):** no dosage compensation; male hemizygote = single allele, female heterozygote = single allele. Equation from Clayton 2008 [C1] equation (1):
+**UNVERIFIED — equation-label precision:** The cited "equation (2)" attribution to Clayton 2008 was paraphrased from the research brief; Clayton 2008 (Biostatistics 9(4):593–600) presents X-chrom association tests in *test-statistic* form (1-df sex-stratified vs 2-df), not as labeled dosage-coding equations. The dosage-coding interpretation above originates in the PLINK 2.0 docs [C4]. Implementation kickoff MUST verify by reading the Clayton 2008 PDF and either updating the citation to the correct equation/section or further refining the wording.
+
+**Random skewing model (PLINK `--xchr-model 1`):** no dosage compensation; male hemizygote = single allele, female heterozygote = single allele. Statistically equivalent to the no-doubling alternative discussed in Clayton 2008 [C1] §2 (UNVERIFIED equation label, same caveat as above). Explicit dosage-coding form per PLINK 2.0 docs [C4]:
 
 $$
 \tilde g_{ij} = g_{ij}
@@ -143,13 +145,13 @@ User-exposed flag: `--xchr-grm-kernel {separate,joint,none}`. `separate` = two-k
 
 ### 2.8 Sex-stratified meta-analysis (alternative pathway)
 
-Per König et al. 2014 [C3] §"Sex-stratified analysis": run the chrX scan twice (males-only and females-only), then combine per-SNP $p$-values via Stouffer Z-score combination:
+Per König et al. 2014 [C3] §"Sex-stratified analysis": run the chrX scan twice (males-only and females-only), then combine per-SNP $p$-values via the **sample-size–weighted Stouffer combination** (also known as the Liptak weighted Z-method [C28]; the canonical GWAS reference is the METAL meta-analysis paper, Willer et al. 2010 [C29]):
 
 $$
 Z_{combined} = \frac{Z_M \sqrt{N_M} + Z_F \sqrt{N_F}}{\sqrt{N_M + N_F}}
 $$
 
-with $Z_M = \Phi^{-1}(1 - p_M)$ and analogously for females. This is the model-free alternative to the dosage-coding models in §2.1 and is the conservative choice when XCI status of the variant is unknown. Exposed via flag `--xchr-strategy {dosage,stratified}`; default `dosage` (Clayton-style).
+with $Z_M = \Phi^{-1}(1 - p_M)$ and analogously for females. (Note: this is the *weighted* form, distinct from the classical unweighted Stouffer 1949 combination $Z = (Z_M + Z_F)/\sqrt{2}$.) This is the model-free alternative to the dosage-coding models in §2.1 and is the conservative choice when XCI status of the variant is unknown. Exposed via flag `--xchr-strategy {dosage,stratified}`; default `dosage` (Clayton-style).
 
 ## 3. Module layout
 
@@ -407,6 +409,8 @@ All claims in this spec MUST trace to a primary source. Citations consolidated h
 - **[C18] Mueller, J. L. et al. (2008).** *Chromosomal mapping reveals deeply conserved human genes on the X-transposed region.* *Nature Genetics* 40(7):794–799. <https://doi.org/10.1038/ng.272>.
 - **[C19] Yonova-Doing, E. et al. (2021).** *An atlas of mitochondrial DNA genotype-phenotype associations in the UK Biobank.* *Nat. Genet.* 53:982–993. <https://doi.org/10.1038/s41588-021-00868-1>. Methods: heteroplasmy filtering.
 - **[C20] Hägg, S. et al. (2021).** *Deciphering the genetic and epidemiological landscape of mitochondrial DNA abundance.* *Nat. Commun.* 12:6147. <https://doi.org/10.1038/s41467-021-26424-3>. Methods: mtDNA scan protocol.
+- **[C28] Liptak, T. (1958).** *On the combination of independent tests.* *Magyar Tud. Akad. Mat. Kutató Int. Közl.* 3:171–197. Original derivation of the weighted Z-combination method (also independently rediscovered as Whitlock 2005, *J. Evol. Biol.* 18:1368–1373, <https://doi.org/10.1111/j.1420-9101.2005.00917.x>).
+- **[C29] Willer, C. J., Li, Y., Abecasis, G. R. (2010).** *METAL: fast and efficient meta-analysis of genomewide association scans.* *Bioinformatics* 26:2190–2191. <https://doi.org/10.1093/bioinformatics/btq340>. Canonical GWAS reference for the sample-size–weighted Stouffer combination as used in §2.8.
 
 ## 12. Approval & next step
 

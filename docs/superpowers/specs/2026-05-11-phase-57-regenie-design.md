@@ -352,6 +352,21 @@ torchgwas regenie-scan \
 | `--out` | `--out` | identical |
 | `--xchr-model` | (none — REGENIE uses `--par-region` + sex-driven default) | inherits from X-chrom refactor; we expose explicitly per master spec convention |
 
+### 6.2.1 Deferred upstream flags (NotImplementedError in MVP)
+
+Users running `regenie-scan --help` will see the flags below listed as DEFERRED with a one-line explanation. Passing any of them raises `NotImplementedError` with the deferral pointer. This makes the MVP scope boundary explicit in the user surface.
+
+| Upstream flag | Deferred to | Reason |
+|---|---|---|
+| `--firth`, `--firth-se`, `--approx`, `--write-null-firth` | follow-on phase | Firth correction explicitly out of MVP per §1 |
+| `--t2e`, `--eventColList` | follow-on phase | Time-to-event / Cox out of MVP per §1 |
+| `--anno-file`, `--mask-def`, `--set-list`, `--mask-lovo`, `--vc-tests`, `--rgc-gene-p` | follow-on phase | Gene/region/SKAT/SBAT burden out of MVP per §1 |
+| `--interaction`, `--interaction-snp`, `--interaction-prs` | follow-on phase | Interaction tests out of MVP per §1 |
+| `--condition-list`, `--condition-file` | follow-on phase | Conditional analyses out of MVP per §1 |
+| `--htp` | follow-on phase | HTP output format out of MVP per §1 |
+| `--lowmem`, `--lowmem-prefix` | Tier B (per §10.2 B2) | Per-block disk spill for Step 1 — deferred from Tier A but in-scope for Phase 57 |
+| `--gz` | Tier B | Output compression — defer to Tier B; MVP writes uncompressed |
+
 **Streaming compliance**: `regenie-step2` and `regenie-scan` both use `iter_chunks` per `feedback_streaming` memory. Step 1 reads the array-genotype matrix in `bsize`-sized blocks (Level-0 fit per block), which is naturally streaming-friendly.
 
 ## 7. Native acceleration scope (deferred)
@@ -392,7 +407,7 @@ Per master spec §7:
 | R-P57-6 | Family-pedigree fixture would reflect REGENIE over-correction (Loesch 2022) | Fixture choice constraint per §5.2 |
 | R-P57-7 | UNVERIFIED ridge grid defaults (§2.5) | Confirm at implementation time via `regenie --help` |
 | R-P57-8 | Sex-chromosome handling depends on X-chrom refactor (R-REG-4) | Sequencing per master spec §3 — X-chrom first |
-| R-P57-9 | Level-1 CV $\tau$ selection differs from REGENIE due to RNG differences in fold splitting | Use REGENIE's published fold definitions if available; else fix random seed and document |
+| R-P57-9 | Level-1 CV $\tau$ selection differs from REGENIE due to RNG differences in fold splitting | Decision criterion: at implementation time, check whether `regenie --step 1 --debug` exposes the per-fold sample assignments (search `src/Pheno.cpp` for `cv_idx` or `fold_idx` allocation). **If exposed:** mirror REGENIE's fold assignment by reading the debug output. **If not exposed:** fix `random_state=42` in our `KFold(n_splits=cv, shuffle=True, random_state=42)` call and document the fold-assignment divergence in `docs/validation_findings.md` as expected-bounded (≤ 1e-4 absolute on per-variant β under the `floor + observed × 2` tolerance). |
 | R-P57-10 | REGENIE's `_pred.list` format may include absolute paths that don't survive being moved | `RegenieLOCOReader` resolves relative paths from the `_pred.list` directory |
 
 ### 9.2 Open questions (deferred to implementation kickoff)
