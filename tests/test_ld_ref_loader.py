@@ -178,3 +178,42 @@ def test_in_sample_ld_symmetric():
     G = torch.from_numpy(rng.standard_normal((50, 12)).astype(np.float64))
     R = compute_in_sample_ld(G)
     assert torch.allclose(R, R.T, atol=1e-12)
+
+
+from torchgwas.postgwas._ld_ref_loader import (
+    decompose_into_blocks,
+    BlockSpec,
+)
+
+
+def test_blocks_explicit_regions_preserved():
+    """When regions are explicitly passed, decompose returns them unchanged."""
+    R = torch.eye(100, dtype=torch.float64)
+    snp_ids = [f"rs{i}" for i in range(100)]
+    explicit = [BlockSpec(start=0, stop=40), BlockSpec(start=40, stop=100)]
+    blocks = decompose_into_blocks(R, snp_ids, regions=explicit, max_block_size=5000)
+    assert blocks == explicit
+
+
+def test_blocks_below_threshold_returns_single_block():
+    """If p <= max_block_size, return a single block covering all SNPs."""
+    R = torch.eye(100, dtype=torch.float64)
+    snp_ids = [f"rs{i}" for i in range(100)]
+    blocks = decompose_into_blocks(R, snp_ids, regions=None, max_block_size=5000)
+    assert len(blocks) == 1
+    assert blocks[0].start == 0
+    assert blocks[0].stop == 100
+
+
+def test_blocks_above_threshold_splits():
+    """If p > max_block_size, blocks are produced (may auto-detect or fall back)."""
+    R = torch.eye(50, dtype=torch.float64)
+    snp_ids = [f"rs{i}" for i in range(50)]
+    blocks = decompose_into_blocks(R, snp_ids, regions=None, max_block_size=10)
+    # Expect at least 5 blocks of ~10 SNPs each
+    assert len(blocks) >= 5
+    # Blocks tile the entire range without overlap
+    assert blocks[0].start == 0
+    assert blocks[-1].stop == 50
+    for i in range(len(blocks) - 1):
+        assert blocks[i].stop == blocks[i + 1].start

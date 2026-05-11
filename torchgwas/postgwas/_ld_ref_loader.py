@@ -10,6 +10,7 @@ In-sample LD computation from a genotype panel (--geno mode) is in Task 3.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -136,3 +137,60 @@ def compute_in_sample_ld(G: torch.Tensor) -> torch.Tensor:
     # R = (G_scaled^T @ G_scaled) / (n - 1)
     R = (G_scaled.T @ G_scaled) / (n - 1)
     return R
+
+
+@dataclass(frozen=True)
+class BlockSpec:
+    """Specifies an LD block as a half-open interval [start, stop) over SNP indices."""
+    start: int
+    stop: int
+
+
+def decompose_into_blocks(
+    R: torch.Tensor,
+    snp_ids: list[str],
+    regions: list[BlockSpec] | None,
+    max_block_size: int = 5000,
+) -> list[BlockSpec]:
+    """Decompose an LD reference into per-block sub-references.
+
+    Per NA1 spec section 2.6: when the locus exceeds the block-size
+    threshold (default 5000 per PolyFun / ldetect convention), the LD ref
+    is decomposed into LD blocks. Per-block IBSS is mathematically equivalent
+    to dense IBSS when block boundaries are at near-zero-LD positions.
+
+    SIGNATURE NOTE: ``torchgwas.ld.detect_blocks`` requires raw genotypes +
+    positions + chromosomes, which are unavailable for ``--ld-ref`` mode
+    (we only have R + snp_ids). Tier A therefore uses fixed-size tiling
+    as the fallback path when ``regions`` is None and ``p > max_block_size``.
+    Genotype-aware auto-detection (``--geno`` mode) is wired into the CLI
+    layer in Task 11, which calls ``detect_blocks`` directly on G and
+    passes the result as explicit ``regions`` to this function.
+
+    Args:
+        R: LD correlation matrix, shape (p, p).
+        snp_ids: List of p SNP identifiers in order.
+        regions: Explicit block specs; if None and p > max_block_size, fall
+            back to fixed-size tiling. If None and p <= max_block_size,
+            returns a single block covering [0, p).
+        max_block_size: Threshold above which auto-detection / fallback
+            tiling kicks in.
+
+    Returns:
+        List of BlockSpec covering [0, p) without overlap or gaps.
+    """
+    p = R.shape[0]
+    if regions is not None:
+        return list(regions)
+
+    if p <= max_block_size:
+        return [BlockSpec(start=0, stop=p)]
+
+    # Fixed-size tiling fallback (Tier A path)
+    blocks = []
+    start = 0
+    while start < p:
+        stop = min(start + max_block_size, p)
+        blocks.append(BlockSpec(start=start, stop=stop))
+        start = stop
+    return blocks
