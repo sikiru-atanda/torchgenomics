@@ -9,8 +9,8 @@ In-sample LD computation from a genotype panel (--geno mode) is in Task 3.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Tuple
 
 import numpy as np
 import torch
@@ -56,7 +56,7 @@ def save_ld_reference(
             str(path),
             R=R.cpu().numpy(),
             snp_ids=np.array(snp_ids, dtype=object),
-            metadata_json=str(meta.to_dict()),
+            metadata_json=json.dumps(meta.to_dict()),
         )
     else:
         raise LDReferenceUnsupportedFormatError(
@@ -67,7 +67,7 @@ def save_ld_reference(
 
 def load_ld_reference(
     path: Path | str,
-) -> Tuple[torch.Tensor, list[str], LDReferenceMetadata]:
+) -> tuple[torch.Tensor, list[str], LDReferenceMetadata]:
     """Load an LD reference from disk.
 
     Args:
@@ -93,8 +93,10 @@ def load_ld_reference(
         d = np.load(str(path), allow_pickle=True)
         R = torch.from_numpy(d["R"])
         snp_ids = list(d["snp_ids"])
-        # metadata_json is stored as a Python repr of a dict; eval it safely
-        meta_dict = eval(str(d["metadata_json"]), {"__builtins__": {}}, {})
+        # metadata_json is stored as JSON; parse safely (no eval -- eval with
+        # {"__builtins__": {}} is NOT a sandbox; an attacker-controlled .npz
+        # would otherwise enable RCE via .__class__.__mro__ escapes).
+        meta_dict = json.loads(str(d["metadata_json"]))
         meta = LDReferenceMetadata.from_dict(meta_dict)
         return R, snp_ids, meta
 
