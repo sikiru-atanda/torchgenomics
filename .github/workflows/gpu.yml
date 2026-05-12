@@ -179,6 +179,14 @@ jobs:
           # We require >= 8 GiB VRAM so the parity tests have headroom.
           assert props.total_memory >= 8 * (1024**3), \
               f"Insufficient VRAM: {props.total_memory / (1024**3):.2f} GiB"
+          # Catch silent CPU fallback: actually execute a CUDA op end-to-end
+          # (a bug in driver/runtime/torch wheel could leave is_available()
+          # True but ops silently fall back). One round-trip is enough.
+          x = torch.ones(8, device="cuda")
+          y = (x * 2.0 + 1.0).sum()
+          assert y.device.type == "cuda", f"CUDA op fell back to {y.device}"
+          assert float(y.cpu()) == 8 * 3.0, f"CUDA op returned wrong value: {float(y.cpu())}"
+          print(f"CUDA op test: ok (sum = {float(y.cpu()):.1f})")
           PY
 
       - name: Run GPU-marked tests + GPU test files (with JUnit XML)
