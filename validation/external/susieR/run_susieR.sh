@@ -37,11 +37,12 @@ n <- as.integer(readLines("${DATA_DIR}/locus_n.txt")[1])
 fit <- susie_rss(z=z, R=R, n=n, L=10, coverage=0.95)
 
 # Extract PIP, beta_mean, beta_sd, credible sets, ELBO
-pip <- fit\$pip
-beta_post <- coef(fit)[-1]  # drop intercept
-# Posterior variance: susieR provides posterior_mean_sd2 helper, fall back to V if needed
-beta_var <- if (!is.null(fit\$V)) diag(fit\$V) else rep(NA, length(pip))
-elbo <- fit\$elbo[length(fit\$elbo)]
+# susieR helpers return one scalar per variant (length p), not an L-column
+# matrix. coef() includes an intercept at position 1 that we drop.
+pip <- as.numeric(fit\$pip)
+beta_post <- as.numeric(coef(fit)[-1])
+beta_sd_per_variant <- as.numeric(susie_get_posterior_sd(fit))
+elbo <- as.numeric(fit\$elbo[length(fit\$elbo)])
 writeLines(as.character(elbo), "${OUT_DIR}/susieR_elbo.txt")
 
 # Credible sets
@@ -53,7 +54,7 @@ out <- data.frame(
     SNP_idx = seq_along(pip),
     PIP = pip,
     BETA_MEAN = beta_post,
-    BETA_SD = sqrt(beta_var),
+    BETA_SD = beta_sd_per_variant,
     IN_CS = ifelse(seq_along(pip) %in% cs_indices, 1, 0),
     ELBO_FINAL = elbo
 )

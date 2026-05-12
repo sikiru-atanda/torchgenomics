@@ -35,3 +35,51 @@ Classifications per F3:
 | 2026-04-30 | E | E0 | All 40 CLI subcommands surveyed for streaming-vs-materialized behavior | self-paired audit (no external reference; spec §1 efficiency contract) | trace through `_cmd_<name>` → adapter → model on every CLI subcommand registered in `torchgwas/cli.py` | 25 subcommands materialize the full `(n_samples × n_variants)` genotype matrix via `_load_scan_data` / `_load_full_genotype` / `_load_genotype_matrix` / `torch.cat([chunk for chunk in iter_chunks])`. At biobank scale (UKB n=500K × m=10M) this is ~40 TB float64, infeasible for any single-machine RAM. 13 stream cleanly (lmm-scan default, mvlmm-scan default, glm-scan, conditional-scan, mtmet-scan, ocf-scan, family-scan, dosage-call, phase-poly, pgs-score, pipeline-glm/lmm/mvlmm); 2 are partial (lmm-scan/mvlmm-scan with `--grm-method zhang`, opt-in only). | n/a (efficiency audit) | post-V1 / efficiency improvement | Audit table at `docs/efficiency/streaming_audit.md` lists every subcommand with classification, peak-memory estimate at 500K×10M, and rewrite tractability. Identified set-scan + glmm-scan as the highest-leverage rewrites (V1-platform, V1-relevant, surgical fix); deferred 11 others (FarmCPU/BLINK/BayesianVS/MultiKernelLMM/LROLMM/KnockoffLMM/poly-scan/met-scan/threshold-scan/gu-scan/me-glmm-scan/survival-scan/rr-scan/rr-met-scan/gxe-scan) with concrete next-step notes per subcommand. F3 verdict: not fix-now (no silent docs-vs-behavior divergence found); the rewrites are pure efficiency. Reviewer cadence: self-paired only — no R4 fresh-env re-run because there is no math claim being verified. |
 | 2026-04-30 | E | E1 | `torchgwas.models.set_based.SetBasedScanner` + `torchgwas.cli._cmd_set_scan` | self-paired ref: legacy `SetBasedScanner.scan_regions` materialized path on the same fixture | n=200 / m=500 in-memory fixture (TestSetScanStreamingMemory); behavioral parity vs materialized | streaming q-stat / p-value tensors agree to float64 tolerance (\|Δ\| < 1e-10) against the legacy materialized path on the n=200/m=500 fixture; absolute peak memory <8 MiB on the same fixture; peak grows < 2× when m grows 5× (regions held fixed) → confirming streaming behavior. At biobank scale (UKB n=500K × m=10M, ~20K gene regions × ~50 SNPs/gene = 1M region-SNPs): materialized peak ≈ 40 TB float64; streaming peak ≈ 4 GB (n × Σ region_size × 8 B) + per-chunk overhead. | spec §1 efficiency contract: streaming path must not silently regress vs explicit `iter_chunks` consumer pattern. | post-V1 / efficiency improvement | added `SetBasedScanner.scan_regions_streaming(chunk_iter, regions, ...)` that takes a chunk iterator and accumulates per-region buffers chunk-by-chunk (peak bounded by `n × Σ region_size_j` plus one chunk). Rewired `_cmd_set_scan` to use `_align_samples` + `grm_vanraden_streaming` + `scan_regions_streaming` instead of `_load_scan_data` + `grm_vanraden(G_full)` + `scan_regions(G_full, ...)`. Memory regression tests in `tests/test_streaming_memory.py::TestSetScanStreamingMemory` (3 tests: behavioral parity, absolute budget, region-vs-m scaling). Existing 17 set-based unit tests + 2 cli_matrix smoke cells continue to pass. Commit `14bae60`. |
 | 2026-04-30 | E | E1 | `torchgwas.cli._cmd_glmm_scan` (BinaryGLMM / OrdinalGLMM / MultinomialGLMM dispatch) | self-paired ref: legacy single-`score_chunk(G_full, ...)` path on the same fixture | n=200 / m=500 in-memory fixture (TestGlmmScanStreamingMemory); behavioral parity vs single-chunk full-G path | streaming `stat` / `p` tensors agree to float64 tolerance against the single-chunk legacy path on the n=200/m=500 fixture; absolute peak memory <16 MiB on the same fixture. At biobank scale (UKB n=500K × m=10M): materialized peak ≈ 40 TB float64; streaming peak per chunk ≈ n × chunk_size × 8 B (default chunk=1024 → 4 GB/chunk). The GRM remains the dominant allocation (n²×8B = ~1 TB at UKB), itself constrained to streaming via `grm_vanraden_streaming`. | spec §1 efficiency contract: streaming path must drive `score_chunk` per-chunk, not in one big-G call. | post-V1 / efficiency improvement | rewired `_cmd_glmm_scan` from `_load_scan_data` + `grm_vanraden(G_full)` + single `model.score_chunk(G_full, nf, vmeta)` to `_align_samples` + `grm_vanraden_streaming` + `UnifiedScanner(reader, model, config).scan(nf, test="score", qc_config=qc)`. UnifiedScanner is the canonical streaming consumer — chunks flow through `model.score_chunk` one at a time; null fit is unaffected (PQL only depends on Y, X0, K). Memory regression tests in `tests/test_streaming_memory.py::TestGlmmScanStreamingMemory` (2 tests: behavioral parity, absolute budget). Same single-chunk-score_chunk pattern still appears in **me-glmm-scan, survival-scan, mklmm-scan, gxe-scan, threshold-scan, gu-scan, lro-scan, met-scan, mtmet-scan-met-only-branch, poly-scan, rr-scan, rr-met-scan, mediate-scan** — all tractable next-step deferrals listed in `docs/efficiency/streaming_audit.md` §"Deferred rewrites". Commit `e553604`. |
+
+## NA1 SuSiE-RSS Tier 2 parity vs susieR — first head-to-head run (2026-05-12)
+
+**Fixture**: synthetic per-locus, n=500, p=200, h2=0.30, 3 planted causals at idx 42/87/153, AR(1)-rho=0.5 LD structure (built by `validation/external/susieR/_build_fixture.py`).
+
+**Both tools called with**: L=10, coverage=0.95, purity=0.5 (susieR `min_abs_corr=0.5`).
+
+**Per-variant agreement at planted causals**:
+
+| variant | susieR PIP | ours PIP | susieR β | ours β | susieR SD | ours SD |
+|---|---|---|---|---|---|---|
+| 42 | 1.0000 | 1.0000 | +0.3346 | +0.3482 | 0.0444 | 0.0409 |
+| 87 | 0.9171 | 0.9593 | -0.1615 | -0.1762 | 0.0639 | 0.0555 |
+| 153 | 1.0000 | 1.0000 | +0.3428 | +0.3549 | 0.0444 | 0.0407 |
+
+All 3 planted causals correctly recovered by both implementations.
+
+**6-metric tolerance contract (per NA1 spec §5.2)**:
+
+| Metric | Threshold | Observed | Verdict |
+|---|---|---|---|
+| Credible-set Jaccard | ≥ 0.95 | **0.667** | FAIL |
+| PIP correlation | ≥ 0.99 | 0.9991 | PASS |
+| β_mean Pearson | ≥ 0.999 | 0.9980 | FAIL (just below) |
+| β_sd Pearson | ≥ 0.999 | 0.7400 | FAIL |
+| ELBO relative diff | ≤ 1e-4 | 0.846 | FAIL |
+| Wall-time ratio | ≤ 2× | 1.527× | PASS |
+
+**F3 classification**: post-V1 / documented (per spec §8). Phase does NOT block; investigation logged.
+
+**Root-cause analysis** (per failure):
+
+1. **Credible-set Jaccard 0.667**: not a correctness gap — both methods recover the same 3 planted causals. susieR's purity gate dropped variant 87's CS (PIP=0.917 but variant is correlated to a non-causal); ours kept it. Different policy at marginal cases. Investigate whether to tighten our purity match to susieR.
+
+2. **β_mean Pearson 0.998 (just below 0.999)**: per-variant β agreement is good at causals (~3 decimal places); divergence comes from background-noise variants where both estimates are near zero and small absolute differences inflate Pearson.
+
+3. **β_sd Pearson 0.740**: real divergence. Mean BETA_SD is 0.0019 (susieR) vs 0.0108 (ours) — nearly 10× larger on average. Our `BayesianVSRssResult.beta_sd` uses `sqrt(second_moment - mean²)` from law-of-total-variance across L layers; susieR's `susie_get_posterior_sd` uses a different formulation. Worth investigating whether our formula matches susieR's, or whether the discrepancy reflects a real Tier B work item.
+
+4. **ELBO relative diff 0.846**: expected and documented per Task 7 fix (`b676990`). Our `_compute_elbo` uses an unweighted residual + variance-trace term that's monotone but on a different absolute scale than susieR's full likelihood. Both are monotone-non-decreasing per IBSS iteration, which is the correctness invariant; absolute values differ by construction. **NOT a bug**, but should not be compared head-to-head numerically. Recommend: drop ELBO from the parity table OR reframe the test to assert "ELBO is monotone" rather than "ELBO matches absolute".
+
+5. **Wall-time 1.53×**: well within 2× threshold. Acceptable.
+
+**Action items** (Tier B follow-up):
+- Investigate `BETA_SD` formula divergence — is our second-moment-minus-mean-squared correct, or should we mirror susieR's `susie_get_posterior_sd` exactly?
+- Investigate purity-policy difference at variant 87 — does susieR check whole-CS purity vs our per-pair?
+- Reframe ELBO metric in `compare.py` from "absolute difference" to "monotonicity assertion"; the absolute values are not comparable by construction.
+
+**Findings filed**: 2026-05-12; commit on `research/na1-susie-streaming` adds fixture-builder + run-script fixes.

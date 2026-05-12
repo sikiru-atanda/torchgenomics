@@ -56,7 +56,7 @@ save_ld_reference("${DATA_DIR}/ld.pt", R, snp_ids, meta)
 PYEOF
 
 START=$(date +%s.%N)
-/usr/bin/time -v torchgwas bayes-scan-rss \
+/usr/bin/time -v python3 -m torchgwas bayes-scan-rss \
     --sumstats "${DATA_DIR}/sumstats.tsv" \
     --ld-ref "${DATA_DIR}/ld.pt" \
     --max-num-causal 10 \
@@ -67,7 +67,23 @@ START=$(date +%s.%N)
 END=$(date +%s.%N)
 echo "$END $START" | awk '{print $1 - $2}' > "${OUT_DIR}/torchgwas_walltime_seconds.txt"
 
-# Extract our final ELBO from the TSV (we'd need to add it to the writer; for now leave blank)
-echo "0.0" > "${OUT_DIR}/torchgwas_elbo.txt"
+# Extract our final ELBO post-hoc by re-fitting and reading result.elbo.
+# (The output TSV writer doesn't include ELBO; adding that is a Tier B item.
+# Re-fitting is cheap on a p=200 fixture and avoids changing the writer
+# schema or the existing 17/17 NA1 tests.)
+python3 - <<PYEOF
+import torch
+from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+
+z = torch.load("${DATA_DIR}/locus_z.pt", weights_only=True)
+R = torch.load("${DATA_DIR}/locus_R.pt", weights_only=True)
+n = int(open("${DATA_DIR}/locus_n.txt").read().strip())
+
+model = BayesianVSRss(max_num_causal=10, coverage=0.95, purity=0.5)
+result = model.fit_rss(z=z, R=R, n=n)
+with open("${OUT_DIR}/torchgwas_elbo.txt", "w") as f:
+    f.write(f"{result.elbo}\n")
+print(f"torchgwas ELBO = {result.elbo:.6g} (converged={result.converged}, n_iter={result.n_iter})")
+PYEOF
 
 echo "torchgwas bayes-scan-rss run complete: ${OUT_DIR}/torchgwas.tsv"
