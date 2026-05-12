@@ -213,39 +213,104 @@ def load_tg_lmm(path: Path) -> pd.DataFrame:
 
 # ── Comparison 1: β correlation TG vs REGENIE ──────────────────────────────
 def compare_beta_correlation(tg_path: Path, regenie_path: Path) -> ComparisonReport:
+    """Compare per-SNP β across tools with allele-aware sign alignment.
+
+    Allele conventions actually in play (verified against
+    https://rgcgithub.github.io/regenie/options/ and torchgwas/io/plink.py):
+
+      - TG `lmm-scan` writes columns CHR, POS, SNP, A1, A2, AF, BETA, SE.
+        TG's BED reader counts the BIM A2 allele as the dosage (decode
+        comment in plink.py: `00=hom_A1(0), 11=hom_A2(2)`), so β is the
+        effect of A2.
+      - REGENIE Step 2 writes CHROM, GENPOS, ID, ALLELE0, ALLELE1, A1FREQ,
+        N, TEST, BETA, SE, CHISQ, LOG10P. By default REGENIE treats the
+        BIM A1 column as ALLELE1 (the effect allele) and reports β =
+        effect-of-ALLELE1 — i.e. the OPPOSITE of TG's default.
+
+    Without alignment a global Pearson r near -1 is the expected baseline
+    for a correctly-running pair of tools. We therefore align row-by-row
+    on (CHR/CHROM, POS/GENPOS, allele set) and flip β_TG's sign when
+    TG-A2 == REGENIE-ALLELE0 (i.e. TG's effect allele equals REGENIE's
+    reference allele). Per-row strand/allele mismatches (palindromes,
+    multi-allelics) are dropped from the comparison.
+    """
     tg = load_tg_lmm(tg_path)
     rg = load_regenie_step2(regenie_path)
 
     # SNP id columns: TG writes `SNP`; REGENIE writes `ID`.
     tg_id_col = "SNP" if "SNP" in tg.columns else tg.columns[0]
     rg_id_col = "ID"
-    tg = tg.rename(columns={tg_id_col: "_id"})
-    rg = rg.rename(columns={rg_id_col: "_id"})
-    tg["_id"] = tg["_id"].astype(str)
-    rg["_id"] = rg["_id"].astype(str)
 
-    # Allele check: TG default counts BIM A2; REGENIE counts ALLELE1 = A1.
-    # For UKB-scale chr22 we cannot guarantee in this scaffold whether the
-    # user's BED has A1/A2 in the order REGENIE expects. Best practice:
-    # merge on SNP id, compare β magnitude correlation (sign + magnitude),
-    # and warn if Pearson is < 0 (would indicate a global flip).
-    merged = pd.merge(
-        tg[["_id", "BETA", "SE"]].rename(columns={"BETA": "beta_tg", "SE": "se_tg"}),
-        rg[["_id", "BETA", "SE"]].rename(columns={"BETA": "beta_rg", "SE": "se_rg"}),
-        on="_id",
-        how="inner",
+    # Allele columns must be present on both sides for sign alignment. TG
+    # has emitted A1/A2 since the v0.3.x lmm-scan refactor (cli.py
+    # _apply_correction_and_save line ~4364). REGENIE always emits
+    # ALLELE0 / ALLELE1 in its step-2 .regenie file.
+    tg_required = [tg_id_col, "A1", "A2", "BETA", "SE"]
+    rg_required = [rg_id_col, "ALLELE0", "ALLELE1", "BETA", "SE"]
+    missing_tg = [c for c in tg_required if c not in tg.columns]
+    missing_rg = [c for c in rg_required if c not in rg.columns]
+    if missing_tg or missing_rg:
+        raise SystemExit(
+            f"[compare] FAIL: missing columns. TG missing: {missing_tg}; "
+            f"REGENIE missing: {missing_rg}. Allele-aware β alignment requires "
+            "A1/A2 (TG) and ALLELE0/ALLELE1 (REGENIE)."
+        )
+
+    tg_slim = (
+        tg[tg_required + (["CHR", "POS"] if "CHR" in tg.columns and "POS" in tg.columns else [])]
+        .rename(columns={tg_id_col: "_id", "A1": "tg_a1", "A2": "tg_a2",
+                         "BETA": "beta_tg", "SE": "se_tg"})
     )
+    rg_slim = (
+        rg[rg_required + (["CHROM", "GENPOS"] if "CHROM" in rg.columns and "GENPOS" in rg.columns else [])]
+        .rename(columns={rg_id_col: "_id", "ALLELE0": "rg_a0", "ALLELE1": "rg_a1",
+                         "BETA": "beta_rg", "SE": "se_rg"})
+    )
+    tg_slim["_id"] = tg_slim["_id"].astype(str)
+    rg_slim["_id"] = rg_slim["_id"].astype(str)
 
+    merged = pd.merge(tg_slim, rg_slim, on="_id", how="inner")
     if len(merged) == 0:
         raise SystemExit(
             "[compare] FAIL: zero SNP ID overlap between TG and REGENIE outputs. "
             "Check that lmm-scan and REGENIE Step 2 saw the same fileset."
         )
 
+    # Uppercase allele symbols for case-insensitive comparison.
+    for col in ("tg_a1", "tg_a2", "rg_a0", "rg_a1"):
+        merged[col] = merged[col].astype(str).str.upper()
+
+    # Allele-aware sign convention:
+    #   case A: TG-A2 == REGENIE-ALLELE1  → both count the same allele;
+    #           β_TG and β_REGENIE share sign convention; no flip needed.
+    #   case B: TG-A2 == REGENIE-ALLELE0  → TG counts the REGENIE-reference
+    #           allele; flip β_TG so it agrees with REGENIE's effect direction.
+    #   case C: alleles don't match either way (multi-allelic, palindrome,
+    #           or stray strand mismatch) → drop from comparison.
+    same_count_allele = (
+        (merged["tg_a2"] == merged["rg_a1"]) & (merged["tg_a1"] == merged["rg_a0"])
+    )
+    flip_needed = (
+        (merged["tg_a2"] == merged["rg_a0"]) & (merged["tg_a1"] == merged["rg_a1"])
+    )
+    keep = same_count_allele | flip_needed
+    n_dropped = int((~keep).sum())
+    n_flipped = int(flip_needed.sum())
+    merged = merged[keep].copy()
+
+    # Apply the sign flip in-place on the TG β.
+    merged.loc[flip_needed[keep].values, "beta_tg"] = -merged.loc[flip_needed[keep].values, "beta_tg"]
+
     a = merged["beta_tg"].to_numpy(dtype=np.float64)
     b = merged["beta_rg"].to_numpy(dtype=np.float64)
     mask = np.isfinite(a) & np.isfinite(b)
     a, b = a[mask], b[mask]
+
+    if len(a) == 0:
+        raise SystemExit(
+            "[compare] FAIL: zero finite β pairs after allele-aware alignment. "
+            f"(merged={len(merged)}, dropped-allele-mismatch={n_dropped})"
+        )
 
     r, _p = pearsonr(a, b)
 
@@ -258,8 +323,15 @@ def compare_beta_correlation(tg_path: Path, regenie_path: Path) -> ComparisonRep
     rep.extras["β max |Δ|"] = float(np.max(np.abs(a - b)))
     rep.extras["mean |β_TG|"] = float(np.mean(np.abs(a)))
     rep.extras["mean |β_REGENIE|"] = float(np.mean(np.abs(b)))
+    rep.extras["n SNPs sign-flipped (TG-A2 == REGENIE-ALLELE0)"] = n_flipped
+    rep.extras["n SNPs dropped (allele mismatch)"] = n_dropped
     if r < 0:
-        rep.extras["WARNING"] = "Pearson r is negative — likely allele convention flip; investigate."
+        rep.extras["WARNING"] = (
+            "Pearson r is negative even after allele-aware sign alignment — "
+            "this is unexpected and likely points to a residual convention "
+            "mismatch (e.g. REGENIE was run with --ref-first) or a true model "
+            "divergence; investigate."
+        )
     return rep
 
 

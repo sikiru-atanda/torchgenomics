@@ -20,7 +20,7 @@ campaign's memory + correctness story.
 |---|---|
 | Chromosome | chr22 only (smallest autosome; ~1.6M variants in UKB v3 imputed) |
 | Trait type | Quantitative (Gaussian) — Phase 57 modernization MVP scope |
-| Reference tool 1 | REGENIE v4.x (Step 1 + Step 2 quantitative LMM) |
+| Reference tool 1 | REGENIE v4.x — `install.sh` tries v4.2 first, falls back to v4.1 (both UNVERIFIED at scaffold time; Anthropic knowledge cutoff Jan 2026). The pinned version actually installed is recorded in `.env_marker` as `REGENIE_VERSION_USED` and reported by `compare.py`. |
 | Reference tool 2 | LDSC 1.0.1 (`--h2` on REGENIE-munged sumstats) |
 | GPU | Not required; CPU-only baseline first |
 | Re-runs | Reference outputs cached in `reference_outputs/` |
@@ -36,6 +36,13 @@ campaign's memory + correctness story.
 3. **Stage a phenotype TSV** with columns `FID  IID  <trait>  [covariates ...]`.
    The trait must be quantitative for the MVP. Default expected covariate
    columns: `AGE,SEX,PC1,PC2,...,PC10` (override via `UKB_COVAR_COLS`).
+   **Important:** the SAME TSV is passed to REGENIE as both `--phenoFile`
+   and `--covarFile` (run_reference.sh lines 94-97 / 122-125). It therefore
+   MUST contain the trait column AND every column listed in
+   `UKB_COVAR_COLS` alongside `FID`/`IID`, all in one file. A separate
+   covariate file is not currently wired; if you need one, edit
+   `STAGED_PHENO` resolution in `fetch_data.sh` (or hand-edit
+   `run_reference.sh` to point `--covarFile` at a different path).
 4. **Export env vars** before running install.sh:
    ```bash
    export UKB_CHR22_PATH=/path/to/ukb_imp_chr22_v3      # no .bed/.pgen suffix
@@ -72,6 +79,25 @@ python3 validation/external/ukb/compare.py \
 The compare step prints a markdown row formatted for direct append to
 `docs/validation_findings.md`. The user (or future-Claude with user
 approval) pastes that row into the ledger and commits.
+
+## Updating UKB inputs between runs
+
+The harness records `UKB_CHR22_PATH` and `UKB_PHENO_PATH` in `.env_marker`
+during `install.sh` (which overwrites the file) and stages them as
+symlinks under `data/` during `fetch_data.sh`. If you change either env
+var to point at a new file, **you must re-run `install.sh` to refresh
+`.env_marker`**, otherwise the run scripts will continue to source the
+old paths from the marker. `fetch_data.sh` updates the symlinks
+correctly on its own (via `ln -sfn`), but it appends — rather than
+overwrites — staged-path entries to `.env_marker`, and `install.sh` is
+the canonical source for the user-supplied paths.
+
+A second wrinkle: `run_torchgwas.sh` computes the sample size N for the
+LDSC h² driver as `N = $(wc -l < ${STAGED_PHENO}) - 1`. This assumes the
+phenotype TSV has **exactly one** header line and **no comment lines or
+trailing blank lines**. If your TSV has comments (`#...`) or extra
+blanks, edit the `N_SAMPLES=` line in `run_torchgwas.sh` (or strip
+them before staging).
 
 ## Expected runtimes (per Task NA3 spec — "few CPU-hours per run")
 
