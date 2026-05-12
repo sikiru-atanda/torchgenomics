@@ -83,6 +83,9 @@ model = BayesianVSRss(max_num_causal=10, coverage=0.95, purity=0.5)
 result = model.fit_rss(z=z, R=R, n=n)
 with open("${OUT_DIR}/torchgwas_elbo.txt", "w") as f:
     f.write(f"{result.elbo}\n")
+# Convergence flag (replaces the absolute-ELBO parity metric).
+with open("${OUT_DIR}/torchgwas_converged.txt", "w") as f:
+    f.write("True" if result.converged else "False")
 print(f"torchgwas ELBO = {result.elbo:.6g} (converged={result.converged}, n_iter={result.n_iter})")
 PYEOF
 

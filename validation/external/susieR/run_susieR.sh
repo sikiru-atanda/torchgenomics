@@ -44,6 +44,11 @@ beta_post <- as.numeric(coef(fit)[-1])
 beta_sd_per_variant <- as.numeric(susie_get_posterior_sd(fit))
 elbo <- as.numeric(fit\$elbo[length(fit\$elbo)])
 writeLines(as.character(elbo), "${OUT_DIR}/susieR_elbo.txt")
+# Convergence flag (replaces the absolute-ELBO parity metric per
+# docs/validation_findings.md Update 2026-05-12). susieR's fit\$converged
+# is TRUE/FALSE; serialize as a Python-readable token.
+converged_token <- if (isTRUE(fit\$converged)) "True" else "False"
+writeLines(converged_token, "${OUT_DIR}/susieR_converged.txt")
 
 # Credible sets
 cs <- fit\$sets\$cs
