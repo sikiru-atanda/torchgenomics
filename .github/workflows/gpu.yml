@@ -1,45 +1,82 @@
 name: GPU tests
 
-# Validates that CUDA paths agree with CPU paths numerically and that the
-# dedicated GPU imputation kernels pass. Kept separate from the main CI
-# matrix because GPU runners are slower to schedule and cost-sensitive.
+# Validates CUDA paths agree with CPU paths numerically and that dedicated
+# GPU imputation + scan kernels pass. Kept separate from the main CI matrix
+# because a GPU is required.
 #
 # Triggers:
-#   - push to master / main (after merge)
-#   - weekly cron (Mondays 04:00 UTC) to catch drift on quiet weeks
-#   - manual dispatch for targeted investigation
+#   - push to master / main (after merge): always runs
+#   - pull_request_target (labeled): opt-in, requires the 'gpu-ci' label
+#     to be applied by a maintainer. NEVER triggers automatically on PRs
+#     from forks (that would let anyone run arbitrary code on the
+#     self-hosted runner).
+#   - weekly cron (Mondays 04:00 UTC): catches drift on quiet weeks
+#   - manual dispatch: targeted investigation
 #
-# Runner: GitHub-hosted NVIDIA A10G ("runs-on: gpu"). If your org uses a
-# self-hosted fleet, swap in `runs-on: [self-hosted, linux, gpu]`.
+# Runner: self-hosted on the maintainer's machine (RTX 2000 Ada, 16 GB).
+# The runner advertises labels [self-hosted, linux, gpu] when registered
+# (see docs/superpowers/runbooks/gpu-ci-setup.md). If the runner ever moves
+# to a fleet-of-one GitHub-hosted GPU runner, swap `runs-on` to `gpu`.
 
 on:
   push:
     branches: [master, main]
+  # 'labeled' fires only when a maintainer adds the 'gpu-ci' label to a PR.
+  # We deliberately do NOT subscribe to 'synchronize' — that would let a PR
+  # author push new code AFTER the label is applied and have it run
+  # automatically. With 'labeled' only, the maintainer must remove and
+  # re-add the label to re-run on a new commit. This is the GitHub-
+  # documented secure pattern for self-hosted runners with PRs from forks.
+  pull_request_target:
+    types: [labeled]
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
 
+# Run at most one GPU job per ref. Cancels superseded runs.
+concurrency:
+  group: gpu-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gpu-tests:
     name: CUDA parity + dedicated GPU kernels
-    runs-on: gpu
-    timeout-minutes: 60
+    # Skip if this is a PR event without the 'gpu-ci' label.
+    # On non-PR events the condition is vacuously true and the job runs.
+    if: |
+      github.event_name != 'pull_request_target' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'gpu-ci')
+    runs-on: [self-hosted, linux, gpu]
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: "Check out PR HEAD (security gate: maintainer label required)"
+        uses: actions/checkout@v4
+        with:
+          # On pull_request_target the default ref is the BASE branch (trusted).
+          # We deliberately check out the PR HEAD here because the label gate
+          # IS the maintainer review of that code. Without this, the workflow
+          # would run trusted master code and miss what the PR actually changed.
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
+      - name: Verify CUDA runtime visibility
+        run: |
+          nvidia-smi
+          echo "Runner: $(hostname)"
+          echo "GPU memory free: $(nvidia-smi --query-gpu=memory.free --format=csv,noheader)"
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Verify CUDA runtime visibility
-        run: |
-          nvidia-smi
-
       - name: Install CUDA-build PyTorch
         run: |
           python -m pip install --upgrade pip
-          pip install torch --index-url https://download.pytorch.org/whl/cu121
+          # Use the CUDA wheel matching the runner's driver (cu128 for the
+          # local RTX 2000 Ada with driver 580+; older drivers fall back to
+          # cu121). The runner setup runbook documents the driver requirement.
+          pip install torch --index-url https://download.pytorch.org/whl/cu128 || \
+            pip install torch --index-url https://download.pytorch.org/whl/cu121
 
       - name: Install torchgwas + dev deps
         run: |
@@ -48,15 +85,20 @@ jobs:
 
       - name: Confirm CUDA is available to torch
         run: |
-          python -c "import torch; assert torch.cuda.is_available(), 'CUDA not visible to torch'; print('CUDA:', torch.version.cuda, '| device:', torch.cuda.get_device_name(0))"
+          python -c "import torch; assert torch.cuda.is_available(), 'CUDA not visible to torch'; print('CUDA:', torch.version.cuda, '| device:', torch.cuda.get_device_name(0), '| VRAM:', torch.cuda.get_device_properties(0).total_memory // 1_000_000_000, 'GB')"
 
-      - name: Run CUDA-gated imputation kernel parity
+      - name: GPU test suite (test_gpu.py + parity + impute kernels)
         run: |
-          pytest tests/test_impute_gpu_kernels.py -v --tb=short --timeout=600
+          pytest tests/test_gpu.py tests/test_gpu_model_parity.py tests/test_impute_gpu_kernels.py \
+            -v --tb=short --timeout=600
+        env:
+          # Default to native build for fidelity to production. Toggle via
+          # workflow_dispatch input if a CI-only torch-only run is wanted.
+          TORCHGWAS_DISABLE_NATIVE: "0"
 
-      - name: Run CPU↔GPU model-scan parity
+      - name: CUDA-marked pytest selection (anything tagged @pytest.mark.gpu)
         run: |
-          pytest tests/test_gpu_model_parity.py -v --tb=short --timeout=900
+          pytest tests/ -m gpu -v --tb=short --timeout=600
 
       - name: Smoke CLI on CUDA
         run: |
