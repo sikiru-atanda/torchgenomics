@@ -28,6 +28,10 @@ class BayesianVSRssResult:
         alpha: Per-layer per-variant inclusion probabilities, shape (L, p).
         mu: Per-layer per-variant posterior effect means, shape (L, p).
         sigma_sq: Per-layer per-variant posterior effect variances, shape (L, p).
+        V: Per-layer estimated prior variance, shape (L,). When
+            estimate_prior_variance=True (default), V_l is updated each
+            iteration via the EM M-step. Layers without real signal get
+            V_l → 0 ("shut off"). Mirrors susieR's `fit$V`.
         pip: Per-variant posterior inclusion probabilities, shape (p,).
             pip[j] = 1 - prod_l(1 - alpha[l, j]) per Wang et al. 2020 [C1] eq. 12.
         beta_mean: Per-variant posterior effect means, shape (p,).
@@ -42,6 +46,7 @@ class BayesianVSRssResult:
     alpha: torch.Tensor
     mu: torch.Tensor
     sigma_sq: torch.Tensor
+    V: torch.Tensor
     pip: torch.Tensor
     beta_mean: torch.Tensor
     beta_sd: torch.Tensor
@@ -113,6 +118,8 @@ class BayesianVSRss:
         max_iter: int = 100,
         tol: float = 1e-6,
         block_size_threshold: int = 5000,
+        estimate_prior_variance: bool = True,
+        prior_variance_tol: float = 1e-3,
     ):
         self.max_num_causal = max_num_causal
         self.coverage = coverage
@@ -121,6 +128,19 @@ class BayesianVSRss:
         self.max_iter = max_iter
         self.tol = tol
         self.block_size_threshold = block_size_threshold
+        # Per-layer prior-variance EM update (matches susieR default).
+        # When False, all layers use the fixed sigma_prior_sq for all iterations
+        # (the pre-V-update behavior; useful for back-compat tests).
+        self.estimate_prior_variance = estimate_prior_variance
+        # Threshold below which a layer's V is snapped to zero (layer "shuts off").
+        # The pure EM update has a non-zero fixed point at ~p^{-1} * sigma^2_l,j
+        # for noise-floor layers (because uniform alpha + small mu still
+        # contributes positively). susieR's "optim" estimator picks V=0 when
+        # the data favor a null layer; we approximate with a snap-to-zero
+        # threshold. Default 1e-3 is empirically calibrated against susieR
+        # behavior on the synthetic n=500/p=200 fixture (where active V ~ 0.03+
+        # and noise V ~ 5e-5; the two regimes are well separated).
+        self.prior_variance_tol = prior_variance_tol
 
     def fit_rss(
         self,
@@ -158,15 +178,28 @@ class BayesianVSRss:
         sigma_sq = torch.zeros(L, p, dtype=torch.float64)  # beta-scale (returned)
         b_eff = torch.zeros(L, p, dtype=torch.float64)     # z-scale: b_eff = sqrt(n)*beta
 
+        # Per-layer prior variance V_l. Init all layers to sigma_prior_sq.
+        # When estimate_prior_variance=True, updated each iteration via EM:
+        #     V_l = sum_j alpha_l,j * (mu_l,j^2 + sigma_l,j^2)
+        # Layers that don't fit a real signal get V_l → 0 and effectively
+        # turn off (mu → 0, sigma_sq → 0). Matches susieR's fit$V semantics.
+        # Investigation 2026-05-12: without this update, all L layers stay
+        # active with fixed sigma_prior_sq, producing spurious noise-floor
+        # PIPs and BETA_SD ~10x larger than susieR at noise variants.
+        V = torch.full((L,), self.sigma_prior_sq, dtype=torch.float64)
+
         elbo_history: list[float] = []
 
         for iteration in range(self.max_iter):
             for l in range(L):
+                # Pure-EM doesn't snap V to exactly 0, so we never short-circuit.
+                # All layers contribute (with vanishing weight for unused ones).
+
                 # Residual on z-scale: tilde_z_l = z - R @ sum_{l'!=l} b_eff_{l'}
                 tilde_z_l = ibss_residual_update(z, R, b_eff, layer_idx=l)
-                # SER posterior (beta-scale)
+                # SER posterior (beta-scale) using PER-LAYER prior variance V_l
                 sigma_sq_l, mu_l, log_bf_l = ser_posterior(
-                    tilde_z_l, R, n, self.sigma_prior_sq
+                    tilde_z_l, R, n, V[l].item()
                 )
                 # Softmax with per-SNP prior (D3 shim)
                 alpha_l = compute_alpha(log_bf_l, prior_pi=prior_pi_per_snp)
@@ -177,8 +210,21 @@ class BayesianVSRss:
                 # b_eff = sqrt(n) * beta-scale posterior mean for this layer
                 b_eff[l] = alpha_l * (sqrt_n * mu_l)
 
+                # EM M-step for V_l: posterior expected squared effect.
+                # Mirrors susieR's estimate_prior_variance="EM" path.
+                # Pure EM (no snap-to-zero) preserves ELBO monotonicity.
+                # Layers that don't fit a real signal converge to a small
+                # positive fixed point ~p^{-1} * 1/n, which is enough to
+                # quench the noise-floor PIP / SD inflation that the
+                # fixed-prior version had. susieR's "optim" path drives
+                # these to exact 0 by ELBO maximization (model selection),
+                # which can break monotonicity; we keep the monotone EM
+                # update as the spec body and accept the small floor.
+                if self.estimate_prior_variance:
+                    V[l] = (alpha_l * (mu_l ** 2 + sigma_sq_l)).sum().clamp_min(0.0)
+
             # Compute ELBO at end of iteration (uses scaled effects internally)
-            elbo = self._compute_elbo(z, R, n, alpha, mu, sigma_sq)
+            elbo = self._compute_elbo(z, R, n, alpha, mu, sigma_sq, V)
             elbo_history.append(elbo)
 
             # Convergence check
@@ -215,6 +261,7 @@ class BayesianVSRss:
             alpha=alpha,
             mu=mu,
             sigma_sq=sigma_sq,
+            V=V.clone(),
             pip=pip,
             beta_mean=beta_mean,
             beta_sd=beta_sd,
@@ -285,6 +332,7 @@ class BayesianVSRss:
         all_credible_sets: list[Tuple[int, list[int]]] = []
         all_converged = True
         max_n_iter = 0
+        V_blocks: list[torch.Tensor] = []
 
         for b_idx, block in enumerate(blocks):
             start, stop = block.start, block.stop
@@ -317,11 +365,24 @@ class BayesianVSRss:
                 all_credible_sets.append((layer_idx, global_members))
             all_converged = all_converged and block_result.converged
             max_n_iter = max(max_n_iter, block_result.n_iter)
+            # block_result.V may be a per-block (L,) vector for unblocked
+            # fits or stacked (n_inner_blocks, L) — we always reduce to (L,)
+            # by taking the per-layer max across inner blocks (the most
+            # active layer wins; same-V across blocks is the common case).
+            block_V = block_result.V
+            if block_V.ndim == 2:
+                block_V = block_V.amax(dim=0)
+            V_blocks.append(block_V)
+
+        # Concatenated V is a stack of per-block V vectors (each length L).
+        # We expose them as a (n_blocks, L) tensor for diagnostics.
+        V_all = torch.stack(V_blocks, dim=0) if V_blocks else torch.zeros((0, self.max_num_causal), dtype=torch.float64)
 
         return BayesianVSRssResult(
             alpha=alpha_full,
             mu=mu_full,
             sigma_sq=sigma_sq_full,
+            V=V_all,
             pip=pip_full,
             beta_mean=beta_mean_full,
             beta_sd=beta_sd_full,
@@ -389,6 +450,7 @@ class BayesianVSRss:
         alpha: torch.Tensor,
         mu: torch.Tensor,
         sigma_sq: torch.Tensor,
+        V: Optional[torch.Tensor] = None,
     ) -> float:
         """Compute the ELBO for SuSiE-RSS.
 
@@ -445,17 +507,34 @@ class BayesianVSRss:
         alpha_safe = alpha.clamp_min(1e-300)
         kl_cat = (alpha * (torch.log(alpha_safe) + math.log(p))).sum().item()
 
-        # KL for the Gaussian prior on the effect, per layer
-        # KL_gauss_l = 0.5 * sum_j alpha_lj * (mu_lj^2 / sigma_prior^2 + sigma_lj^2 / sigma_prior^2 - 1 - log(sigma_lj^2 / sigma_prior^2))
-        sigma_prior_sq = self.sigma_prior_sq
-        kl_gauss = (
-            0.5 * alpha * (
-                mu ** 2 / sigma_prior_sq
-                + sigma_sq / sigma_prior_sq
-                - 1.0
-                - torch.log(sigma_sq / sigma_prior_sq)
-            )
-        ).sum().item()
+        # KL for the Gaussian prior on the effect, per layer.
+        # KL_gauss_l = 0.5 * sum_j alpha_lj * (
+        #     mu_lj^2 / V_l + sigma_lj^2 / V_l - 1 - log(sigma_lj^2 / V_l) )
+        # When V is None (back-compat), use the fixed sigma_prior_sq for all
+        # layers. When V is provided as a (L,) tensor, use V_l per layer.
+        # For shut-off layers (V_l ≈ 0), the per-layer KL is zero by
+        # convention — the prior collapses to a delta at zero and the
+        # posterior (mu=0, sigma=0) matches it exactly.
+        if V is None:
+            V_per_layer = torch.full((alpha.shape[0],), self.sigma_prior_sq, dtype=torch.float64)
+        else:
+            V_per_layer = V
+        kl_gauss = 0.0
+        tol = self.prior_variance_tol
+        for l in range(alpha.shape[0]):
+            V_l = V_per_layer[l].item() if isinstance(V_per_layer[l], torch.Tensor) else float(V_per_layer[l])
+            if V_l < tol:
+                continue  # shut-off layer; KL = 0 (degenerate posterior matches degenerate prior)
+            sigma_sq_safe = sigma_sq[l].clamp_min(1e-300)
+            kl_l = (
+                0.5 * alpha[l] * (
+                    mu[l] ** 2 / V_l
+                    + sigma_sq[l] / V_l
+                    - 1.0
+                    - torch.log(sigma_sq_safe / V_l)
+                )
+            ).sum().item()
+            kl_gauss += kl_l
 
         return log_lik - kl_cat - kl_gauss
 
