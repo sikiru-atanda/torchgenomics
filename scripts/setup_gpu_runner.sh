@@ -232,14 +232,38 @@ else
         curl -fsSLo "${RUNNER_PKG}" "${RUNNER_URL}"
 fi
 
-# We do NOT pin a checksum in this script because the upstream checksum
-# is published per-release on the release page. The right contract is:
-# operator verifies the .tar.gz matches the SHA256 listed at
-#   https://github.com/actions/runner/releases/tag/v${LATEST_TAG}
-# before extracting.
-warn "Verify the tarball checksum manually before extraction:"
-warn "  Expected SHA256: see https://github.com/actions/runner/releases/tag/v${LATEST_TAG}"
-warn "  Local SHA256:    $(sha256sum "${RUNNER_PKG}" | awk '{print $1}')"
+# Fetch the per-release SHA256 from GitHub's release assets endpoint and
+# verify the local tarball against it before extraction. If the API call
+# fails (rate limit, offline, etc.), fall back to operator-manual
+# verification but ABORT rather than extract a possibly-tampered tarball.
+LOCAL_SHA="$(sha256sum "${RUNNER_PKG}" | awk '{print $1}')"
+info "Local tarball SHA256: ${LOCAL_SHA}"
+
+EXPECTED_SHA=""
+SHA_URL="https://github.com/actions/runner/releases/download/v${LATEST_TAG}/${RUNNER_PKG}.sha256"
+if EXPECTED_SHA="$(curl -fsSL "${SHA_URL}" 2>/dev/null | awk '{print $1}')" && [[ -n "${EXPECTED_SHA}" ]]; then
+    info "Expected SHA256:      ${EXPECTED_SHA}"
+    if [[ "${LOCAL_SHA}" != "${EXPECTED_SHA}" ]]; then
+        err "SHA256 mismatch on ${RUNNER_PKG}!"
+        err "  Local:    ${LOCAL_SHA}"
+        err "  Expected: ${EXPECTED_SHA}"
+        err "Refusing to extract a possibly-tampered tarball. Delete and retry, or"
+        err "verify against https://github.com/actions/runner/releases/tag/v${LATEST_TAG}"
+        exit 4
+    fi
+    ok "SHA256 verified against upstream release"
+else
+    warn "Could not fetch expected SHA256 from ${SHA_URL}"
+    warn "Verify manually before proceeding:"
+    warn "  Local:    ${LOCAL_SHA}"
+    warn "  Expected: see https://github.com/actions/runner/releases/tag/v${LATEST_TAG}"
+    err "Aborting auto-extraction. Re-run with --skip-sha-check if you have"
+    err "verified the local SHA against the GitHub release page manually."
+    if [[ "${SKIP_SHA_CHECK:-0}" != "1" ]]; then
+        exit 4
+    fi
+    warn "SKIP_SHA_CHECK=1 set; proceeding without verification (NOT RECOMMENDED)"
+fi
 
 if [[ ! -f "config.sh" ]]; then
     run_cmd "Extracting runner tarball" \
@@ -256,13 +280,28 @@ ok "Runner binaries ready in ${RUNNER_DIR}"
 
 step "Manual step: register runner with GitHub"
 
+# Derive ORG/REPO from the current git remote so the operator gets a
+# concrete URL rather than literal <ORG>/<REPO> placeholders.
+REPO_SLUG=""
+if command -v git >/dev/null 2>&1; then
+    REMOTE_URL="$(git -C "$(pwd)" config --get remote.origin.url 2>/dev/null || true)"
+    if [[ -z "${REMOTE_URL}" ]] && [[ -d "${SCRIPT_DIR}/.." ]]; then
+        REMOTE_URL="$(git -C "${SCRIPT_DIR}/.." config --get remote.origin.url 2>/dev/null || true)"
+    fi
+    # Extract ORG/REPO from either git@github.com:ORG/REPO.git or https://github.com/ORG/REPO[.git]
+    REPO_SLUG="$(echo "${REMOTE_URL}" | sed -E 's#^(git@github\.com:|https://github\.com/)([^/]+/[^/.]+)(\.git)?$#\2#')"
+fi
+if [[ -z "${REPO_SLUG}" ]] || [[ "${REPO_SLUG}" == "${REMOTE_URL}" ]]; then
+    REPO_SLUG="<ORG>/<REPO>"  # could not derive; fall through to placeholder
+fi
+
 cat <<EOF >&2
 
 The runner binaries are installed. The next two steps require YOUR admin
 access to the repository — this script cannot do them for you.
 
   1. Open in a browser:
-       https://github.com/<ORG>/<REPO>/settings/actions/runners/new
+       https://github.com/${REPO_SLUG}/settings/actions/runners/new
      Choose "Linux x64". GitHub will display a one-shot registration
      token of the form 'A...' (valid for ~1 hour).
 
@@ -270,7 +309,7 @@ access to the repository — this script cannot do them for you.
 
        cd ${RUNNER_DIR}
        ./config.sh \\
-         --url    https://github.com/<ORG>/<REPO> \\
+         --url    https://github.com/${REPO_SLUG} \\
          --token  YOUR_TOKEN \\
          --name   ${RUNNER_NAME} \\
          --labels ${RUNNER_LABELS} \\
