@@ -337,7 +337,10 @@ if (( INSTALL_SYSTEMD )); then
         warn "AFTER you have run config.sh per the manual step above."
     else
         info "Will run the upstream svc.sh installer to create a systemd unit."
-        info "This wraps `systemctl enable --now actions.runner.<org>.<host>.service`."
+        # NOTE: backticks inside a double-quoted string trigger command
+        # substitution in bash. Use literal single quotes for the embedded
+        # systemctl command snippet.
+        info "This wraps 'systemctl enable --now actions.runner.<org>.<host>.service'."
         if [[ ! -x "${RUNNER_DIR}/svc.sh" ]]; then
             err "${RUNNER_DIR}/svc.sh missing. Re-extract the tarball."
             exit 1

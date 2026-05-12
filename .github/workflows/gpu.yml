@@ -190,21 +190,31 @@ jobs:
           PY
 
       - name: Run GPU-marked tests + GPU test files (with JUnit XML)
-        # We invoke pytest twice so unmarked-but-CUDA-skipif tests under
-        # tests/test_gpu*.py also run. The `gpu` marker is registered in
+        # We pair the `gpu` pytest marker with a filename-glob so unmarked-
+        # but-CUDA-skipif tests also run. The `gpu` marker is registered in
         # pyproject.toml but not yet applied to every CUDA test (legacy
-        # convention is `@pytest.mark.skipif(not HAS_CUDA, ...)`); the
-        # explicit file path catches them. Duplicates are deduplicated by
-        # pytest's collection.
+        # convention is `@pytest.mark.skipif(not HAS_CUDA, ...)`); the file
+        # glob catches them and (importantly) any future tests/test_*gpu*.py
+        # files added later are picked up automatically — no workflow edit
+        # required. Pytest deduplicates files passed multiply.
+        #
+        # The shell expands the glob; if no GPU test files exist (e.g. on a
+        # fresh checkout) we let pytest fail loudly rather than silently
+        # collecting only the marked tests.
         run: |
           set -o pipefail
           mkdir -p artifacts
+          shopt -s nullglob
+          GPU_TEST_FILES=( tests/test_*gpu*.py )
+          shopt -u nullglob
+          if [ ${#GPU_TEST_FILES[@]} -eq 0 ]; then
+            echo "::error::No tests/test_*gpu*.py files found; expected at least one (test_gpu.py)."
+            exit 1
+          fi
+          echo "GPU test files matched: ${GPU_TEST_FILES[*]}"
           pytest \
             -m gpu \
-            tests/test_gpu.py \
-            tests/test_gpu_model_parity.py \
-            tests/test_impute_gpu.py \
-            tests/test_impute_gpu_kernels.py \
+            "${GPU_TEST_FILES[@]}" \
             -v --tb=short \
             --timeout=900 \
             --junitxml=artifacts/junit-gpu.xml \
