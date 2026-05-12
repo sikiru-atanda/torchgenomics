@@ -170,6 +170,24 @@ class BayesianVS:
             )
 
         G = G.to(STAT_DTYPE)
+
+        # NA1 Decision 5: warn on large materialized loci.  The
+        # ``bayes-scan-rss`` CLI / ``BayesianVSRss`` model operates on
+        # summary statistics + an LD reference and avoids the O(n*p)
+        # genotype materialization that this path requires.
+        if G.shape[1] > 10000:
+            import warnings
+
+            warnings.warn(
+                f"BayesianVS.fit called on locus with p={G.shape[1]} > 10000. "
+                f"This will materialize ~{G.shape[0] * G.shape[1] * 8 / 1e9:.1f} GB. "
+                f"For large loci, prefer 'torchgwas bayes-scan-rss' which operates "
+                f"on summary statistics + LD reference (per-locus memory ~O(p^2)). "
+                f"See docs/cli.md#bayes-scan-rss.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         nf = self.null_fit
         n, p = G.shape
 
