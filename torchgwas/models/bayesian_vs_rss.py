@@ -218,6 +218,113 @@ class BayesianVSRss:
             n_iter=iteration + 1,
         )
 
+    def fit_rss_blocked(
+        self,
+        z: torch.Tensor,
+        R: torch.Tensor,
+        n: int,
+        blocks: list,
+        prior_pi_per_snp: Optional[torch.Tensor] = None,
+    ) -> BayesianVSRssResult:
+        """Run SuSiE-RSS per block and concatenate results.
+
+        Per NA1 design spec section 2.6: block decomposition makes per-block
+        memory bounded by O(p_block_max^2) instead of O(p^2) total, enabling
+        biobank-scale fine-mapping where dense R does not fit in RAM.
+
+        IMPORTANT — divergence from dense fit is REAL, not just numerical:
+
+        Even on strictly block-diagonal R (zero off-block LD), `fit_rss_blocked`
+        does NOT exactly equal `fit_rss` because per-block IBSS recalibrates
+        its softmax denominator over a smaller candidate pool (p_block) than
+        dense IBSS does (p_total). Concretely, background-noise PIPs differ
+        by O(1/p_block) - O(1/p_total). The TRUE invariants that hold:
+
+        1. PIPs at high-signal variants (PIP > 0.5) agree between blocked and
+           dense to ~1e-2 absolute when L per block matches the per-block
+           causal count.
+        2. Credible-set membership of true causals matches between methods.
+        3. Per-block independence: variants in block A do not affect
+           posteriors of variants in block B (true by construction since
+           the off-block R is zero).
+
+        The Tier 2 parity test against susieR (NA1 plan Task 14) compares
+        against susieR's dense per-locus fit and absorbs the per-block
+        recalibration divergence under the spec section 5.2 tolerance
+        (floor + observed * 2 for MVP scope).
+
+        Args:
+            z: Per-variant z-scores, shape (p,).
+            R: LD correlation matrix, shape (p, p) — only the per-block
+                sub-matrices R[block][:, block] are accessed.
+            n: GWAS sample size.
+            blocks: List of BlockSpec defining the block partition.
+            prior_pi_per_snp: Optional per-SNP prior, shape (p,).
+
+        Returns:
+            BayesianVSRssResult covering all p variants, with per-block
+            results concatenated.
+        """
+        p = z.shape[0]
+        L = self.max_num_causal
+
+        alpha_full = torch.zeros(L, p, dtype=torch.float64)
+        mu_full = torch.zeros(L, p, dtype=torch.float64)
+        sigma_sq_full = torch.zeros(L, p, dtype=torch.float64)
+        pip_full = torch.zeros(p, dtype=torch.float64)
+        beta_mean_full = torch.zeros(p, dtype=torch.float64)
+        beta_sd_full = torch.zeros(p, dtype=torch.float64)
+        elbo_total = 0.0
+        all_credible_sets: list[Tuple[int, list[int]]] = []
+        all_converged = True
+        max_n_iter = 0
+
+        for b_idx, block in enumerate(blocks):
+            start, stop = block.start, block.stop
+            z_block = z[start:stop]
+            R_block = R[start:stop, start:stop]
+            prior_block = (
+                prior_pi_per_snp[start:stop]
+                if prior_pi_per_snp is not None
+                else None
+            )
+
+            # Run dense fit on the block
+            block_result = self.fit_rss(
+                z=z_block,
+                R=R_block,
+                n=n,
+                prior_pi_per_snp=prior_block,
+            )
+
+            alpha_full[:, start:stop] = block_result.alpha
+            mu_full[:, start:stop] = block_result.mu
+            sigma_sq_full[:, start:stop] = block_result.sigma_sq
+            pip_full[start:stop] = block_result.pip
+            beta_mean_full[start:stop] = block_result.beta_mean
+            beta_sd_full[start:stop] = block_result.beta_sd
+            elbo_total += block_result.elbo
+            # Re-index credible-set members from block-local to global indices
+            for layer_idx, members in block_result.credible_sets:
+                global_members = [m + start for m in members]
+                all_credible_sets.append((layer_idx, global_members))
+            all_converged = all_converged and block_result.converged
+            max_n_iter = max(max_n_iter, block_result.n_iter)
+
+        return BayesianVSRssResult(
+            alpha=alpha_full,
+            mu=mu_full,
+            sigma_sq=sigma_sq_full,
+            pip=pip_full,
+            beta_mean=beta_mean_full,
+            beta_sd=beta_sd_full,
+            elbo=elbo_total,
+            elbo_history=torch.tensor([elbo_total], dtype=torch.float64),
+            credible_sets=all_credible_sets,
+            converged=all_converged,
+            n_iter=max_n_iter,
+        )
+
     def _build_credible_sets(
         self,
         alpha: torch.Tensor,

@@ -295,3 +295,60 @@ def test_credible_set_sorted_by_pip():
     layers = {layer_idx: members for layer_idx, members in cs}
     assert layers[0] == [0, 1]  # 0.5 > 0.4
     assert layers[1] == [3]
+
+
+def test_block_decomp_recovers_planted_causals_and_credible_sets():
+    """Block-decomp on a block-diagonal R recovers the same planted causals
+    and credible-set memberships as dense fit, even though per-variant noise-
+    floor PIPs differ.
+
+    This is the realistic invariant for fit_rss_blocked vs fit_rss:
+    - PIPs at TRUE CAUSAL positions agree to atol=1.5e-2 (high-PIP regime;
+      observed-then-floored — empirical max delta on this seed is 0.013).
+    - Credible-set membership of true causals matches.
+
+    The naive "exact equivalence" claim from spec section 2.6 does NOT hold
+    at finite L / finite SNR because per-block IBSS recalibrates its softmax
+    over a smaller candidate pool than dense IBSS, producing different
+    background-noise PIPs (~O(1/p_block)). The Tier 2 parity test against
+    susieR (Task 14) absorbs this divergence under the spec's
+    floor + observed * 2 tolerance.
+    """
+    rng = np.random.default_rng(31)
+    p = 50
+    R = torch.zeros(p, p, dtype=torch.float64)
+    R[:25, :25] = torch.eye(25, dtype=torch.float64)
+    R[25:, 25:] = torch.eye(25, dtype=torch.float64)
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64))
+    z[10] += 4.0  # planted causal in block 0
+    z[35] += 4.0  # planted causal in block 1
+    n = 1000
+
+    from torchgwas.postgwas._ld_ref_loader import BlockSpec
+    blocks = [BlockSpec(start=0, stop=25), BlockSpec(start=25, stop=50)]
+
+    # Total L=2 in dense; L=1 per block in blocked (sum to 2 globally)
+    model_dense = BayesianVSRss(max_num_causal=2, max_iter=50, tol=1e-10)
+    model_blocked = BayesianVSRss(max_num_causal=1, max_iter=50, tol=1e-10)
+
+    result_blocked = model_blocked.fit_rss_blocked(z=z, R=R, n=n, blocks=blocks)
+    result_dense = model_dense.fit_rss(z=z, R=R, n=n)
+
+    # Invariant 1: both methods recover both planted causals at high PIP
+    assert result_dense.pip[10] > 0.9
+    assert result_dense.pip[35] > 0.9
+    assert result_blocked.pip[10] > 0.9
+    assert result_blocked.pip[35] > 0.9
+
+    # Invariant 2: PIPs at planted causals agree to atol=1.5e-2
+    # (observed-then-floored per project convention; empirical max on seed=31
+    # is 0.013, dominated by the L=2 vs L=1-per-block softmax recalibration
+    # at the weaker signal in block 1).
+    assert abs(result_blocked.pip[10] - result_dense.pip[10]) < 1.5e-2
+    assert abs(result_blocked.pip[35] - result_dense.pip[35]) < 1.5e-2
+
+    # Invariant 3: both planted causals are in some credible set in both fits
+    dense_cs_members = {m for _, members in result_dense.credible_sets for m in members}
+    blocked_cs_members = {m for _, members in result_blocked.credible_sets for m in members}
+    assert 10 in dense_cs_members and 35 in dense_cs_members
+    assert 10 in blocked_cs_members and 35 in blocked_cs_members
