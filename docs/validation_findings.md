@@ -83,3 +83,41 @@ All 3 planted causals correctly recovered by both implementations.
 - Reframe ELBO metric in `compare.py` from "absolute difference" to "monotonicity assertion"; the absolute values are not comparable by construction.
 
 **Findings filed**: 2026-05-12; commit on `research/na1-susie-streaming` adds fixture-builder + run-script fixes.
+
+### Investigation 2026-05-12: BETA_SD formula divergence — root cause + partial fix
+
+**Initial finding from parity (commit a1e6379)**: BETA_SD Pearson correlation 0.740, with our SDs ~10x larger than susieR's at noise variants.
+
+**Root cause** (after digging into susieR source `susie_get_posterior_sd` + step-by-step per-layer comparison):
+
+Two distinct bugs in `bayesian_vs_rss.py::fit_rss`:
+
+1. **Formula error in `beta_var` computation (FIXED in commit ____)**:
+   - Old: `(alpha * (mu^2 + sigma^2)).sum(0) - beta_mean^2`
+     i.e. `sum_l[alpha_l*(mu_l^2 + sigma_l^2)] - (sum_l alpha_l*mu_l)^2`
+   - Correct: `sum_l[alpha_l*(mu_l^2 + sigma_l^2) - (alpha_l*mu_l)^2]`
+     i.e. per-layer variance summed under mean-field independence.
+   - Difference is the cross-layer term `-2 sum_{l<l'} alpha_l*alpha_l'*mu_l*mu_l'`.
+   - susieR's `susie_get_posterior_sd` (CRAN source verified) uses the per-layer formula.
+   - Fix improves BETA_SD Pearson from 0.740 → 0.746 (small; second bug dominates).
+
+2. **MISSING per-layer prior variance EM update (Tier B work)**:
+   - susieR estimates V_l per layer via EM each iteration:
+     `V_l = sum_j alpha_l,j * (mu_l,j^2 + sigma_l,j^2)`
+   - When a layer doesn't fit a real signal, V_l → 0 and that layer effectively
+     turns off (mu2 → 0, contributions to posterior → 0).
+   - Empirical verification (synthetic n=500/p=200/3 causals fixture):
+     - susieR V per layer: [0.114, 0.119, 0.031, 0, 0, 0, 0, 0, 0, 0] —
+       only 3 active layers
+     - Ours: fixed sigma_prior_sq=0.04 in ALL 10 layers — all stay active
+   - Symptoms: spurious BETA_SD at noise variants (10x too large); spurious
+     low-PIP variants (we report 8 PIPs > 0.1 vs susieR's 3); extra credible
+     sets (we report 3 CSes vs susieR's 2).
+   - Fix requires algorithm extension: V update in IBSS loop + per-layer
+     `sigma_prior_sq` argument to `ser_posterior`. Estimated ~50 LOC change
+     + new regression tests.
+   - **Filed as Tier B follow-on**; not blocking the Tier A shipping unit
+     because the algorithm correctly recovers planted causals at high PIP
+     (the headline contract). The deltas are at noise floor.
+
+**Status**: formula fix landed; V-update Tier B work pending user direction.

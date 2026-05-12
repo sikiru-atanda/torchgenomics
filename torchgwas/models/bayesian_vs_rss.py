@@ -195,11 +195,18 @@ class BayesianVSRss:
         # Per-variant PIP, beta_mean, beta_sd
         pip = 1.0 - torch.prod(1.0 - alpha, dim=0)
         beta_mean = (alpha * mu).sum(dim=0)
-        # Per-variant variance: var(beta) = sum_l (alpha_lj * (mu_lj^2 + sigma_lj^2)) - beta_mean^2
-        # This is the law of total variance applied across the L single-effect components.
-        second_moment = (alpha * (mu ** 2 + sigma_sq)).sum(dim=0)
-        beta_var = second_moment - beta_mean ** 2
-        beta_var = beta_var.clamp_min(0.0)  # numerical floor
+        # Per-variant variance under SuSiE mean-field q (layers independent):
+        #     Var[beta_j] = sum_l Var[b_l,j]
+        # where Var[b_l,j] = alpha_lj * (mu_lj^2 + sigma_lj^2) - (alpha_lj * mu_lj)^2
+        # is the per-layer variance of the categorical Bernoulli * Normal mixture.
+        #
+        # Matches susieR's susie_get_posterior_sd() (CRAN), which computes
+        # sqrt(colSums(alpha*mu2 - (alpha*mu)^2)) on the per-layer matrices.
+        # See validation/external/susieR/ Tier 2 parity findings (2026-05-12)
+        # for the head-to-head investigation that surfaced the prior bug
+        # (sum-of-(squared-mean) instead of sum-of-per-layer-variance).
+        per_layer_var = alpha * (mu ** 2 + sigma_sq) - (alpha * mu) ** 2
+        beta_var = per_layer_var.sum(dim=0).clamp_min(0.0)
         beta_sd = beta_var.sqrt()
 
         credible_sets = self._build_credible_sets(alpha, R)
