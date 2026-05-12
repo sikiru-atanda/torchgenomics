@@ -86,14 +86,57 @@ esac
 echo "[ukb tg-run] (1/2) TorchGWAS lmm-scan on ${GENO_ARG}"
 echo "[ukb tg-run]   trait: ${UKB_TRAIT_COL}; covariates: ${UKB_COVAR_COLS}"
 
+# Slice the user's phenotype TSV into a separate covariate TSV that
+# lmm-scan can consume via --covariate (the real flag takes a FILE
+# path, not column names). UKB_COVAR_COLS is the comma-separated list
+# from the user; we extract FID + IID + those columns into a sibling
+# file.
+COVAR_TSV="${TG_OUT_DIR}/covar_subset.tsv"
+UKB_PHENO_PATH="${STAGED_PHENO}" \
+UKB_COVAR_COLS="${UKB_COVAR_COLS}" \
+COVAR_TSV_OUT="${COVAR_TSV}" \
+python3 - <<'PYEOF'
+import os
+import pandas as pd
+
+pheno_path = os.environ["UKB_PHENO_PATH"]
+covar_cols = os.environ.get("UKB_COVAR_COLS", "").strip()
+out_path = os.environ["COVAR_TSV_OUT"]
+
+df = pd.read_csv(pheno_path, sep=None, engine="python")
+
+required_id_cols = ["FID", "IID"]
+if not all(c in df.columns for c in required_id_cols):
+    raise SystemExit(
+        f"phenotype TSV must contain FID + IID columns; got {list(df.columns)}"
+    )
+
+if not covar_cols:
+    # No covariates declared; emit FID + IID only and let --covariate
+    # downstream just provide ID-aligned rows
+    keep = required_id_cols
+else:
+    requested = [c.strip() for c in covar_cols.split(",") if c.strip()]
+    missing = [c for c in requested if c not in df.columns]
+    if missing:
+        raise SystemExit(
+            f"phenotype TSV is missing covariate columns: {missing}; "
+            f"available: {list(df.columns)}"
+        )
+    keep = required_id_cols + requested
+
+df[keep].to_csv(out_path, sep="\t", index=False)
+print(f"Wrote covariate subset to {out_path} with columns: {keep}")
+PYEOF
+
 # `/usr/bin/time -v` records peak RSS in the time log; we strip it out
 # downstream in compare.py.
 /usr/bin/time -v -o "${LMM_TIME_LOG}" \
     torchgwas lmm-scan \
         --genotype "${GENO_ARG}" \
         --phenotype "${STAGED_PHENO}" \
-        --trait-col "${UKB_TRAIT_COL}" \
-        --covariate-cols "${UKB_COVAR_COLS}" \
+        --traits "${UKB_TRAIT_COL}" \
+        --covariate "${COVAR_TSV}" \
         --test wald \
         --output "${LMM_OUT}" \
     || {
