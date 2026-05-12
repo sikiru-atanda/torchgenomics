@@ -258,10 +258,23 @@ Path(args.out_json).write_text(json.dumps(payload, indent=2))
 print(json.dumps(payload, indent=2))
 PY
 
-# Sample size N = number of FID lines in the staged phenotype (drops header)
+# Sample size N = number of FID lines in the staged phenotype (drops header).
+#
+# Assumption: the staged TSV has EXACTLY one header line and no comment
+# lines, no trailing blank lines. If your fixture is non-conforming
+# (e.g. has '#' comment rows, or trailing newlines), `wc -l` will
+# over-count and N will not match what REGENIE / TG actually consumed.
+# We do a defensive sanity check below: N must lie between 100 and
+# 1_000_000 (UKB-plausible). The harness exits 1 if not.
 N_SAMPLES="$(( $(wc -l < "${STAGED_PHENO}") - 1 ))"
 if (( N_SAMPLES <= 0 )); then
     echo "[ukb tg-run] ABORT: phenotype file ${STAGED_PHENO} has zero data rows."
+    exit 1
+fi
+if (( N_SAMPLES < 100 )) || (( N_SAMPLES > 1000000 )); then
+    echo "[ukb tg-run] ABORT: N_SAMPLES=${N_SAMPLES} from ${STAGED_PHENO} is outside the"
+    echo "  UKB-plausible range [100, 1000000]. Check for comment lines, trailing"
+    echo "  blank lines, or a missing/extra header row in your phenotype TSV."
     exit 1
 fi
 

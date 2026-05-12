@@ -134,11 +134,39 @@ STEP2_TIME_LOG="${REF_OUT_DIR}/regenie_step2.time.log"
         exit 1
     }
 
+# REGENIE v4.x writes Step 2 results to `${prefix}_${trait}.regenie` by
+# default (https://rgcgithub.github.io/regenie/options/#output). With
+# `--gz` the suffix becomes `.regenie.gz`; with `--no-split` it collapses
+# to `${prefix}.regenie`. We try the canonical name first, then fall back
+# to a glob so this script does not break if a future REGENIE release
+# tweaks the convention or a maintainer adds `--gz`.
 REGENIE_OUT="${REF_OUT_DIR}/regenie_step2_${UKB_TRAIT_COL}.regenie"
 if [[ ! -f "${REGENIE_OUT}" ]]; then
-    echo "[ukb ref-run] ABORT: expected ${REGENIE_OUT} not produced."
-    ls "${REF_OUT_DIR}"
-    exit 1
+    # Glob fallback: any file matching the prefix + trait + extension
+    # variants. Prefer .regenie over .regenie.gz so downstream parsers
+    # don't have to handle gzip.
+    shopt -s nullglob
+    candidates=(
+        "${REF_OUT_DIR}/regenie_step2_${UKB_TRAIT_COL}".regenie
+        "${REF_OUT_DIR}/regenie_step2_${UKB_TRAIT_COL}"*.regenie
+        "${REF_OUT_DIR}/regenie_step2.regenie"
+    )
+    shopt -u nullglob
+    REGENIE_OUT=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -f "${candidate}" ]]; then
+            REGENIE_OUT="${candidate}"
+            break
+        fi
+    done
+    if [[ -z "${REGENIE_OUT}" ]]; then
+        echo "[ukb ref-run] ABORT: no REGENIE Step 2 output matching"
+        echo "  ${REF_OUT_DIR}/regenie_step2_${UKB_TRAIT_COL}.regenie (or glob fallbacks)."
+        echo "  ls ${REF_OUT_DIR}:"
+        ls "${REF_OUT_DIR}"
+        exit 1
+    fi
+    echo "[ukb ref-run]   Step 2 output (via glob fallback): ${REGENIE_OUT}"
 fi
 echo "[ukb ref-run]   Step 2 output: ${REGENIE_OUT} ($(wc -l < "${REGENIE_OUT}") lines)"
 echo "[ukb ref-run]   Step 2 peak RSS:"
