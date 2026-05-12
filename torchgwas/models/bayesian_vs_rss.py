@@ -511,3 +511,58 @@ def ibss_residual_update(
     mask[layer_idx] = False
     other_layers_sum = b[mask].sum(dim=0)  # shape (p,)
     return z - R @ other_layers_sum
+
+
+import csv
+from pathlib import Path
+
+
+def write_results_tsv(
+    path: Path | str,
+    result: BayesianVSRssResult,
+    snp_meta: dict,
+) -> None:
+    """Write SuSiE-RSS results to a Phase 59 PolyFun-compatible TSV.
+
+    Output columns (per NA1 design spec section 6):
+        SNP, CHR, BP, A1, A2, Z, N, PIP, BETA_MEAN, BETA_SD, CREDIBLE_SET
+
+    CREDIBLE_SET = integer index of the credible set the variant belongs to
+    (0 = not in any CS; 1, 2, ... for first, second, ... CS in returned order).
+    Matches PolyFun convention for downstream aggregation compatibility.
+
+    Args:
+        path: Output TSV path.
+        result: BayesianVSRssResult to serialize.
+        snp_meta: Dict with keys snp, chr, bp, a1, a2, z, n; each a list of
+            length p in variant order matching result tensors.
+    """
+    p = result.pip.shape[0]
+    # Build a SNP -> CS index map
+    cs_index = [0] * p
+    for cs_id, (layer_idx, members) in enumerate(result.credible_sets, start=1):
+        for m in members:
+            # If a variant appears in multiple CSes (rare), keep the first
+            if cs_index[m] == 0:
+                cs_index[m] = cs_id
+
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f, delimiter="\t")
+        writer.writerow(
+            ["SNP", "CHR", "BP", "A1", "A2", "Z", "N",
+             "PIP", "BETA_MEAN", "BETA_SD", "CREDIBLE_SET"]
+        )
+        for j in range(p):
+            writer.writerow([
+                snp_meta["snp"][j],
+                snp_meta["chr"][j],
+                snp_meta["bp"][j],
+                snp_meta["a1"][j],
+                snp_meta["a2"][j],
+                f"{snp_meta['z'][j]:.6g}",
+                snp_meta["n"][j],
+                f"{float(result.pip[j]):.6g}",
+                f"{float(result.beta_mean[j]):.6g}",
+                f"{float(result.beta_sd[j]):.6g}",
+                cs_index[j],
+            ])

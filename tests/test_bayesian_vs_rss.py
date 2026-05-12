@@ -352,3 +352,45 @@ def test_block_decomp_recovers_planted_causals_and_credible_sets():
     blocked_cs_members = {m for _, members in result_blocked.credible_sets for m in members}
     assert 10 in dense_cs_members and 35 in dense_cs_members
     assert 10 in blocked_cs_members and 35 in blocked_cs_members
+
+
+def test_output_writer_matches_polyfun_schema(tmp_path):
+    """Output TSV matches Phase 59 PolyFun column schema exactly."""
+    from torchgwas.models.bayesian_vs_rss import write_results_tsv
+
+    rng = np.random.default_rng(41)
+    p = 5
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64))
+    R = torch.eye(p, dtype=torch.float64)
+    n = 500
+
+    model = BayesianVSRss(max_num_causal=2)
+    result = model.fit_rss(z=z, R=R, n=n)
+
+    snp_meta = {
+        "snp": [f"rs{i}" for i in range(p)],
+        "chr": [22] * p,
+        "bp": [1000 + i * 10 for i in range(p)],
+        "a1": ["A"] * p,
+        "a2": ["G"] * p,
+        "z": z.tolist(),
+        "n": [n] * p,
+    }
+
+    out_path = tmp_path / "finemap.tsv"
+    write_results_tsv(out_path, result, snp_meta)
+
+    # Read back and verify column order
+    import pandas as pd
+    df = pd.read_csv(out_path, sep="\t")
+    expected_cols = [
+        "SNP", "CHR", "BP", "A1", "A2", "Z", "N",
+        "PIP", "BETA_MEAN", "BETA_SD", "CREDIBLE_SET",
+    ]
+    assert list(df.columns) == expected_cols
+    assert len(df) == p
+    # CREDIBLE_SET column: 0 for variants not in any CS
+    # PIP column: matches result.pip
+    assert np.allclose(df["PIP"].values, result.pip.numpy(), atol=1e-12)
+    assert np.allclose(df["BETA_MEAN"].values, result.beta_mean.numpy(), atol=1e-12)
+    assert np.allclose(df["BETA_SD"].values, result.beta_sd.numpy(), atol=1e-12)
