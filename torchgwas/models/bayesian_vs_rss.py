@@ -91,6 +91,39 @@ def ser_posterior(
     return sigma_sq, mu, log_bf
 
 
+def apply_z_score_adjustment(z: torch.Tensor, n: int) -> torch.Tensor:
+    """Map sample-based marginal z-scores onto SuSiE-RSS's assumed Var(y)=1 scale.
+
+    The SuSiE-RSS likelihood (Zhu & Stephens 2017; Zou et al. 2022 [C4]) is
+    derived under the assumption that the marginal z-scores are on the
+    asymptotic-normal scale with Var(y) = 1. When the user supplies z-scores
+    computed from a finite-sample marginal regression where Var(y) is
+    estimated from the data (so the underlying statistic follows a
+    t-distribution with df = n - 2), the marginal z is on a slightly
+    inflated scale relative to what the model assumes. The canonical
+    correction (susieR `susie_rss()`, lines ~36-39 in source 0.14.2) is
+
+        adj   = (n - 1) / (z^2 + n - 2)
+        z_adj = sqrt(adj) * z
+
+    For large n the factor approaches 1 and the correction vanishes; for
+    finite n with large |z| the correction shrinks z toward 0 by a small
+    amount (e.g., ~5 percent for |z| = 5, n = 279). On the MDP real-data
+    fixture this single correction takes the β_sd Pearson vs susieR from
+    0.99441 to 0.999999 (see docs/validation_findings.md, "Update
+    2026-05-12: structural-residual investigation").
+
+    Args:
+        z: Per-variant z-scores, shape (p,).
+        n: GWAS sample size used to compute z.
+
+    Returns:
+        z_adj: Adjusted z-scores on the assumed-Var(y)=1 scale, same shape as z.
+    """
+    adj = (n - 1.0) / (z ** 2 + n - 2.0)
+    return torch.sqrt(adj) * z
+
+
 def find_optimal_V(
     z: torch.Tensor,
     R: torch.Tensor,
@@ -196,6 +229,7 @@ class BayesianVSRss:
         estimate_prior_variance: bool = True,
         estimate_prior_method: str = "optim",
         prior_variance_tol: float = 1e-3,
+        z_adjustment: bool = True,
     ):
         self.max_num_causal = max_num_causal
         self.coverage = coverage
@@ -222,6 +256,12 @@ class BayesianVSRss:
                 f"{estimate_prior_method!r}"
             )
         self.estimate_prior_method = estimate_prior_method
+        # Apply the canonical SuSiE-RSS z-score adjustment (Zhu & Stephens
+        # 2017 / Zou 2022 [C4]; mirrors susieR `susie_rss()` default). See
+        # `apply_z_score_adjustment()` for the formula and rationale. Default
+        # True matches susieR. Set False to operate on raw z (e.g., when z
+        # is already on the assumed-Var(y)=1 scale).
+        self.z_adjustment = z_adjustment
         # Threshold below which a layer's V is snapped to zero (layer "shuts off").
         # The pure EM update has a non-zero fixed point at ~p^{-1} * sigma^2_l,j
         # for noise-floor layers (because uniform alpha + small mu still
@@ -262,6 +302,10 @@ class BayesianVSRss:
         """
         z = z.to(torch.float64)
         R = R.to(torch.float64)
+        # Map z onto SuSiE-RSS's assumed Var(y)=1 scale (Zou 2022 [C4]).
+        # Default-on; mirrors susieR. Vanishes for large n.
+        if self.z_adjustment:
+            z = apply_z_score_adjustment(z, n)
         p = z.shape[0]
         L = self.max_num_causal
         sqrt_n = math.sqrt(n)

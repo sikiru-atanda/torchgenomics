@@ -548,6 +548,78 @@ def test_estimate_prior_method_optim_is_default():
     )
 
 
+# --- Tier C+: input z-score adjustment (canonical SuSiE-RSS, Zou 2022) ---
+# The summary-statistics likelihood derived in Zhu & Stephens 2017 / Zou 2022
+# assumes z = beta_hat / sqrt(Var(y)/n) on the asymptotic-normal scale with
+# Var(y)=1. When z is computed from external GWAS where Var(y) is estimated
+# from the data (df = n-2), the marginal z is on a slightly inflated scale.
+# susieR applies the saddlepoint-style correction
+#     adj   = (n-1) / (z^2 + n - 2)
+#     z_adj = sqrt(adj) * z
+# to map back to the assumed-Var(y)=1 scale before fitting. We adopt the
+# same default (z_adjustment=True). For large n this vanishes (adj -> 1).
+
+
+def test_apply_z_score_adjustment_matches_susieR_formula():
+    """Direct formula check vs the susieR 0.14.2 source (susie_rss.R lines ~36-39)."""
+    from torchgwas.models.bayesian_vs_rss import apply_z_score_adjustment
+
+    z = torch.tensor([0.0, 1.0, 5.27, 8.0, -3.5], dtype=torch.float64)
+    n = 279
+    z_adj = apply_z_score_adjustment(z, n)
+    # Expected per the formula
+    expected_adj = (n - 1.0) / (z ** 2 + n - 2.0)
+    expected_z = torch.sqrt(expected_adj) * z
+    assert torch.allclose(z_adj, expected_z, atol=1e-12), (
+        f"z-adjustment formula deviation: got {z_adj.tolist()}, "
+        f"expected {expected_z.tolist()}"
+    )
+
+
+def test_z_adjustment_vanishes_for_large_n():
+    """For large n, the adjustment factor ~ 1 and z is essentially unchanged."""
+    from torchgwas.models.bayesian_vs_rss import apply_z_score_adjustment
+
+    z = torch.tensor([0.0, 1.0, 5.0, 8.0], dtype=torch.float64)
+    z_adj = apply_z_score_adjustment(z, n=1_000_000)
+    # adj for |z|=8, n=1e6: (999999)/(64 + 999998) = 0.999937 → sqrt ≈ 0.999968
+    assert torch.allclose(z_adj, z, atol=1e-3), (
+        f"Adjustment should vanish for large n; got max |delta| = "
+        f"{(z_adj - z).abs().max().item()}"
+    )
+
+
+def test_z_adjustment_default_is_on():
+    """Default `z_adjustment=True` mirrors susie_rss canonical behavior."""
+    model = BayesianVSRss()
+    assert model.z_adjustment is True, (
+        f"Expected default z_adjustment=True (matches susieR); got "
+        f"{model.z_adjustment!r}"
+    )
+
+
+def test_z_adjustment_off_preserves_unadjusted_behavior():
+    """With z_adjustment=False, fit_rss uses raw z (back-compat path)."""
+    rng = np.random.default_rng(33)
+    p = 100
+    n = 300
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64) * 0.4)
+    z[15] = 6.0
+    R = torch.eye(p, dtype=torch.float64)
+
+    model_on = BayesianVSRss(max_num_causal=5, z_adjustment=True, max_iter=30)
+    model_off = BayesianVSRss(max_num_causal=5, z_adjustment=False, max_iter=30)
+
+    res_on = model_on.fit_rss(z=z, R=R, n=n)
+    res_off = model_off.fit_rss(z=z, R=R, n=n)
+
+    # The two should differ measurably for n=300 (adj for |z|=6: 299/(36+298)=0.895).
+    assert not torch.allclose(res_on.beta_mean, res_off.beta_mean, atol=1e-6), (
+        "z_adjustment=True vs False produced identical beta_mean — adjustment path "
+        "may not be wired in"
+    )
+
+
 def test_optim_path_zeros_unused_layers_exactly():
     """With optim + L>true_causals, surplus layers get V=0 EXACTLY (not floored).
 

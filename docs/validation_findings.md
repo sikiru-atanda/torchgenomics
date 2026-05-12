@@ -378,3 +378,63 @@ remaining MDP β_sd Pearson gap (0.994 vs 1.000) is structurally explained
 rather than algorithmic. Per F3 severity policy: this is a *post-V1 documented*
 finding, not a fix-now production bug — high_confidence_pip_jaccard=1.0 and
 β_mean Pearson=0.99987 demonstrate full biology-facing equivalence.
+
+### Update 2026-05-12: structural-residual investigation → z-adjustment fix
+
+**Root cause identified**. The MDP β_sd structural residual (0.994 vs 1.000)
+was not initialization, convergence tolerance, or n vs n-1 — it was a missing
+input z-score adjustment that susieR applies but we did not. Per Zhu &
+Stephens 2017 / Zou et al. 2022 [C4], the SuSiE-RSS likelihood assumes the
+input z is on the asymptotic-normal Var(y)=1 scale; a finite-sample marginal-
+regression z (where Var(y) is estimated from data, df = n-2) is on a slightly
+inflated scale and must be remapped via
+
+    adj   = (n - 1) / (z^2 + n - 2)
+    z_adj = sqrt(adj) * z
+
+before the SuSiE-RSS model is applied. susieR's `susie_rss()` (lines ~36-39
+in source 0.14.2) applies this; we did not. For large n the factor → 1 and
+the adjustment is a no-op (synthetic strong-signal fixtures were
+already at ceiling); for finite n with appreciable |z| (the MDP regime,
+n=279, top |z|=5.27) the correction is a ~5% shrinkage that the model is
+quite sensitive to.
+
+**Hypothesis sweep on MDP (β_sd Pearson vs susieR, all run with optim V)**:
+
+| Config | β_sd Pearson | β_sd[top hit] vs susieR 0.086882 |
+|---|---|---|
+| baseline (no z-adj, n in σ², V_init=0.04) | 0.994229 | 0.073207 |
+| H1: z-adjustment ON | **0.999999** | **0.086689** |
+| H2: n-1 in SER formula (no z-adj) | 0.994229 | 0.073338 (no change) |
+| H3: V_init=0.2 (no z-adj) | 0.994229 | 0.073207 (no change) |
+| H1+H2+H3 (all 3 changes) | 0.999999 | 0.086901 |
+
+H1 alone explains 100% of the gap. H2 and H3 are red herrings.
+
+**Fix landed**. Module-level helper `apply_z_score_adjustment(z, n)` in
+`torchgwas/models/bayesian_vs_rss.py`. New `BayesianVSRss.__init__` parameter
+`z_adjustment: bool = True` (default on, mirrors susieR; opt-out preserved
+for callers passing pre-adjusted z). 4 new tests in `test_bayesian_vs_rss.py`
+covering formula correctness, vanishing for large n, default-on, and opt-out
+preserves unadjusted behavior.
+
+**Final 3-fixture parity (z_adjustment=True default)**:
+
+| Metric | Threshold | SMALL synth | LARGE synth | **MDP real** |
+|---|---|---|---|---|
+| Credible-set Jaccard | ≥ 0.95 | **1.000** | **1.000** | **1.000** (boundary case resolved!) |
+| High-confidence PIP Jaccard | ≥ 0.95 | 1.000 | 1.000 | 1.000 |
+| PIP correlation | ≥ 0.99 | **1.000** | **1.000** | **1.000** |
+| β_mean Pearson | ≥ 0.999 | **1.000** | **1.000** | **1.000** |
+| **β_sd Pearson** | ≥ 0.993 | **1.000** | **1.000** | **1.000** |
+| Wall-time ratio | ≤ 2× | 1.61× | 0.67× | 1.61× |
+| Convergence (both) | True | True/True | True/True | True/True |
+
+The MDP credible_set_jaccard ALSO went 0 → 1.0 because both implementations
+now produce identical PIPs at the top hit (no longer straddling the 0.95
+coverage threshold by 0.04 — they collapse to the exact same PIP).
+
+**Status**: full numerical parity vs susieR 0.14.2 across 3 fixtures (synthetic
+small, synthetic large, and real maize MDP). The structural residual is
+closed. The implementation now exactly matches the susieR canonical algorithm
+on (V update, input scaling, posterior formula). NA1 ships at this state.
