@@ -2,11 +2,11 @@
 
 Subcommands: validate, convert, impute, dosage-call, phase-poly, glm-scan,
 lmm-scan, mvlmm-scan, poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan,
-met-scan, farmcpu-scan, blink-scan, threshold-scan, family-scan,
-conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan, lro-scan,
-glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan, ld-blocks,
-ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate, mediate,
-mediate-scan, pipeline.
+bayes-scan-rss, met-scan, farmcpu-scan, blink-scan, threshold-scan,
+family-scan, conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan,
+lro-scan, glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan,
+ld-blocks, ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate,
+mediate, mediate-scan, pipeline.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_gxe_scan_parser(subparsers)
     _add_set_scan_parser(subparsers)
     _add_bayes_scan_parser(subparsers)
+    _add_bayes_scan_rss_parser(subparsers)  # NA1 Task 11
     _add_met_scan_parser(subparsers)
     _add_farmcpu_scan_parser(subparsers)
     _add_blink_scan_parser(subparsers)
@@ -109,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         "gxe-scan": _cmd_gxe_scan,
         "set-scan": _cmd_set_scan,
         "bayes-scan": _cmd_bayes_scan,
+        "bayes-scan-rss": _cmd_bayes_scan_rss,  # NA1 Task 11
         "met-scan": _cmd_met_scan,
         "farmcpu-scan": _cmd_farmcpu_scan,
         "blink-scan": _cmd_blink_scan,
@@ -6014,6 +6016,247 @@ def _cmd_mediate_scan(args: argparse.Namespace) -> int:
     top = result.top_hits(0.05)
     top.to_csv(top_path, sep="\t", index=False)
     print(f"Wrote {result.n_pairs} pairs to {flat_path}; {len(top)} BH-significant to {top_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# NA1 Task 11: bayes-scan-rss subcommand
+# ---------------------------------------------------------------------------
+
+def _add_bayes_scan_rss_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Register the bayes-scan-rss subparser.
+
+    SuSiE-RSS fine-mapping on summary statistics + LD reference (NA1 plan).
+    """
+    p = subparsers.add_parser(
+        "bayes-scan-rss",
+        help="SuSiE-RSS fine-mapping on summary statistics + LD reference",
+    )
+    p.add_argument("--sumstats", required=True, help="Sumstats TSV")
+    ld_group = p.add_mutually_exclusive_group(required=True)
+    ld_group.add_argument(
+        "--ld-ref",
+        help="Pre-built LD reference (.pt or .npz)",
+    )
+    ld_group.add_argument(
+        "--geno",
+        help="Genotype panel for in-sample LD computation (Tier B; not yet wired)",
+    )
+    p.add_argument(
+        "--regions",
+        help="Block regions TSV with start, stop columns (overrides auto block decomposition)",
+    )
+    p.add_argument(
+        "--max-num-causal",
+        type=int,
+        default=10,
+        help="Maximum number of causal variants per locus (L; default 10)",
+    )
+    p.add_argument(
+        "--coverage",
+        type=float,
+        default=0.95,
+        help="Credible-set coverage threshold (default 0.95)",
+    )
+    p.add_argument(
+        "--purity",
+        type=float,
+        default=0.5,
+        help="Minimum |R_jk| within a credible set (default 0.5)",
+    )
+    p.add_argument(
+        "--prior-pi",
+        help="Scalar prior inclusion probability OR path to per-SNP prior file (PRIOR_PI column)",
+    )
+    p.add_argument(
+        "--block-size-threshold",
+        type=int,
+        default=5000,
+        help="Maximum p per block before block decomposition kicks in (default 5000)",
+    )
+    p.add_argument("--output", required=True, help="Output TSV path")
+    p.add_argument(
+        "--threads",
+        type=int,
+        default=4,
+        help="Number of CPU threads for torch ops (default 4)",
+    )
+
+
+def _cmd_bayes_scan_rss(args: argparse.Namespace) -> int:
+    """Handler for the bayes-scan-rss subcommand.
+
+    Runs SuSiE-RSS fine-mapping per the NA1 design spec (Task 11).
+    """
+    import pandas as pd
+    import torch
+
+    from .models.bayesian_vs_rss import (
+        BayesianVSRss,
+        write_results_tsv,
+    )
+    from .postgwas._ld_ref_loader import (
+        BlockSpec,
+        compute_in_sample_ld,
+        decompose_into_blocks,
+        load_ld_reference,
+    )
+    from .postgwas._ld_ref_metadata import check_metadata_compatibility
+
+    # Honor user-requested torch thread count for CPU ops
+    if args.threads and args.threads > 0:
+        try:
+            torch.set_num_threads(int(args.threads))
+        except RuntimeError:
+            # set_num_threads can fail if intra-op pool already initialized;
+            # not fatal for correctness.
+            pass
+
+    # --- Load sumstats ---------------------------------------------------
+    sumstats = pd.read_csv(args.sumstats, sep=None, engine="python")
+    required_cols = {"SNP", "CHR", "BP", "A1", "A2"}
+    if not required_cols.issubset(sumstats.columns):
+        missing = required_cols - set(sumstats.columns)
+        raise ValueError(f"sumstats missing columns: {missing}")
+    if "Z" in sumstats.columns:
+        z = torch.tensor(sumstats["Z"].values, dtype=torch.float64)
+        if "N" in sumstats.columns:
+            n_per_variant = sumstats["N"].values
+        else:
+            n_per_variant = pd.Series([0] * len(sumstats)).values
+    elif {"BETA", "SE", "N"}.issubset(sumstats.columns):
+        z = torch.tensor(
+            (sumstats["BETA"] / sumstats["SE"]).values,
+            dtype=torch.float64,
+        )
+        n_per_variant = sumstats["N"].values
+    else:
+        raise ValueError(
+            "sumstats must have either Z column OR BETA + SE + N columns"
+        )
+    n = int(n_per_variant.max()) if len(n_per_variant) else 0
+
+    # --- Load / compute LD reference ------------------------------------
+    if args.ld_ref:
+        R, ld_snp_ids, ld_meta = load_ld_reference(args.ld_ref)
+        # Cohort-mismatch check; sumstats may not carry metadata in MVP, so
+        # pass an empty dict and rely on the soft-warn path.
+        ss_meta: dict = {}
+        check_metadata_compatibility(ld_meta, ss_meta)
+        # Verify SNP order alignment between sumstats and LD reference; if
+        # they differ, reorder R to match the sumstats variant order.
+        if ld_snp_ids != sumstats["SNP"].tolist():
+            id_to_idx = {snp: i for i, snp in enumerate(ld_snp_ids)}
+            order = [
+                id_to_idx[snp]
+                for snp in sumstats["SNP"]
+                if snp in id_to_idx
+            ]
+            R = R[order][:, order]
+    elif args.geno:
+        # Tier A scope: --geno mode requires a genotype loader in
+        # torchgwas.io that is not yet wired. Per NA1 plan Task 11
+        # adaptation guidance, raise NotImplementedError pointing the
+        # user at --ld-ref instead of partially executing.
+        raise NotImplementedError(
+            "--geno mode is not wired in this Tier A release. Build the LD "
+            "reference upstream (e.g. via torchgwas.postgwas._ld_ref_loader."
+            "compute_in_sample_ld + save_ld_reference) and pass it via "
+            "--ld-ref."
+        )
+        # Reachable only if the NotImplementedError is removed in a later
+        # task; kept for forward-compat reference.
+        # G = ...
+        # R = compute_in_sample_ld(G)
+    else:  # pragma: no cover - argparse mutually-exclusive group enforces this
+        raise ValueError("Either --ld-ref or --geno must be supplied")
+
+    # Silence unused-import warnings for the forward-compat hooks above.
+    _ = compute_in_sample_ld
+
+    # --- Block decomposition -------------------------------------------
+    snp_ids = sumstats["SNP"].tolist()
+    if args.regions:
+        regions = pd.read_csv(args.regions, sep=None, engine="python")
+        blocks = [
+            BlockSpec(start=int(row["start"]), stop=int(row["stop"]))
+            for _, row in regions.iterrows()
+        ]
+    else:
+        blocks = decompose_into_blocks(
+            R,
+            snp_ids,
+            regions=None,
+            max_block_size=args.block_size_threshold,
+        )
+
+    # --- Per-SNP prior (D3 shim) ---------------------------------------
+    prior_pi_per_snp = None
+    if args.prior_pi:
+        try:
+            # Scalar form -> uniform prior (BayesianVSRss treats None as uniform)
+            float(args.prior_pi)
+            prior_pi_per_snp = None
+        except ValueError:
+            prior_df = pd.read_csv(args.prior_pi, sep=None, engine="python")
+            if "PRIOR_PI" not in prior_df.columns:
+                raise ValueError(
+                    "--prior-pi file must have a PRIOR_PI column"
+                )
+            prior_pi_per_snp = torch.tensor(
+                prior_df["PRIOR_PI"].values, dtype=torch.float64
+            )
+
+    # --- Run SuSiE-RSS --------------------------------------------------
+    model = BayesianVSRss(
+        max_num_causal=args.max_num_causal,
+        coverage=args.coverage,
+        purity=args.purity,
+        block_size_threshold=args.block_size_threshold,
+    )
+
+    use_dense = (
+        len(blocks) == 1
+        and (blocks[0].stop - blocks[0].start) <= args.block_size_threshold
+    )
+    if use_dense:
+        result = model.fit_rss(
+            z=z, R=R, n=n, prior_pi_per_snp=prior_pi_per_snp,
+        )
+    else:
+        result = model.fit_rss_blocked(
+            z=z,
+            R=R,
+            n=n,
+            blocks=blocks,
+            prior_pi_per_snp=prior_pi_per_snp,
+        )
+
+    # --- Write output ---------------------------------------------------
+    n_list = (
+        n_per_variant.tolist()
+        if hasattr(n_per_variant, "tolist")
+        else list(n_per_variant)
+    )
+    snp_meta = {
+        "snp": sumstats["SNP"].tolist(),
+        "chr": sumstats["CHR"].tolist(),
+        "bp": sumstats["BP"].tolist(),
+        "a1": sumstats["A1"].tolist(),
+        "a2": sumstats["A2"].tolist(),
+        "z": z.tolist(),
+        "n": n_list,
+    }
+    write_results_tsv(args.output, result, snp_meta)
+    logger.info(
+        "SuSiE-RSS fine-mapping complete: %d variants, %d credible sets, "
+        "converged=%s, n_iter=%d -> %s",
+        len(snp_meta["snp"]),
+        len(result.credible_sets),
+        result.converged,
+        result.n_iter,
+        args.output,
+    )
     return 0
 
 
