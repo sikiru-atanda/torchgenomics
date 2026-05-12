@@ -488,3 +488,98 @@ def test_estimate_prior_variance_false_keeps_all_layers_active():
     expected_V = torch.full((10,), 0.04, dtype=torch.float64)
     assert torch.allclose(result.V, expected_V, atol=1e-12), \
         f"Expected V == 0.04 everywhere with estimate_prior_variance=False; got {result.V.tolist()}"
+
+
+# --- Tier C: per-layer marginal-evidence optim path (susieR's "optim") ---
+# Per Wang 2020 [C1] §3.2 and Zou 2022 [C4]: the marginal log-likelihood for a
+# single SER layer at prior variance V is L(V) = logsumexp_j(log_BF_j(V) + log pi_j),
+# with L(0) = 0. The optim path computes V_l = argmax_V L(V) directly via 1D
+# bounded optimization, snapping to V=0 when the null hypothesis maximizes.
+
+
+def test_find_optimal_V_returns_zero_for_pure_noise():
+    """Pure-noise z (no signal) → optim picks V=0 (null layer)."""
+    from torchgwas.models.bayesian_vs_rss import find_optimal_V
+
+    rng = np.random.default_rng(2026)
+    p = 200
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64) * 0.3)
+    R = torch.eye(p, dtype=torch.float64)
+    n = 500
+
+    V_opt = find_optimal_V(z=z, R=R, n=n, V_init=0.04)
+    assert V_opt == 0.0, (
+        f"Expected V=0 for pure-noise input (null hypothesis favored); got {V_opt}"
+    )
+
+
+def test_find_optimal_V_recovers_signal_when_present():
+    """A planted causal with |z|=8 → optim picks V > 0 close to data-driven scale."""
+    from torchgwas.models.bayesian_vs_rss import find_optimal_V
+
+    rng = np.random.default_rng(2026)
+    p = 200
+    n = 500
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64) * 0.3)
+    z[42] = 8.0  # strong signal
+    R = torch.eye(p, dtype=torch.float64)
+
+    V_opt = find_optimal_V(z=z, R=R, n=n, V_init=0.04)
+    # Expected V ~ z^2 / n - 1/n = 64/500 - 1/500 = 0.126 for the strong variant
+    # under uniform prior the optimum lies in [0.01, 1.0] (data-driven scale).
+    assert V_opt > 1e-3, (
+        f"Expected V > 1e-3 for planted-signal input; got {V_opt}"
+    )
+    assert V_opt < 10.0, (
+        f"Expected V < 10 (within reasonable scale); got {V_opt}"
+    )
+
+
+def test_estimate_prior_method_optim_is_default():
+    """Default estimate_prior_method is 'optim' (mirrors susieR default).
+
+    Documented in NA1 design ledger 2026-05-12 (Tier C optim path):
+    matching susieR's per-layer marginal-evidence comparison eliminates the
+    EM floor + snap-threshold tradeoff for fixtures with weak secondary signals.
+    """
+    model = BayesianVSRss()
+    assert model.estimate_prior_method == "optim", (
+        f"Expected default 'optim' (matches susieR); got {model.estimate_prior_method!r}"
+    )
+
+
+def test_optim_path_zeros_unused_layers_exactly():
+    """With optim + L>true_causals, surplus layers get V=0 EXACTLY (not floored).
+
+    Contrast with the EM path, whose noise-floor V settles at the fixed point
+    ~p^{-1}/n rather than reaching 0. Optim's snap-to-zero is structural
+    (driven by L(V_opt) <= L(0) = 0), not threshold-based.
+    """
+    rng = np.random.default_rng(42)
+    p = 200
+    n = 500
+    z = torch.from_numpy(rng.standard_normal(p).astype(np.float64) * 0.3)
+    z[42] = 8.0
+    z[87] = 5.0
+    z[153] = 8.0
+    R = torch.eye(p, dtype=torch.float64)
+
+    model = BayesianVSRss(
+        max_num_causal=10,
+        max_iter=50,
+        tol=1e-8,
+        estimate_prior_variance=True,
+        estimate_prior_method="optim",
+    )
+    result = model.fit_rss(z=z, R=R, n=n)
+
+    # 3 strong layers should be active; the remaining 7 should be EXACTLY zero.
+    active = (result.V > 1e-6).sum().item()
+    zero_layers = (result.V == 0.0).sum().item()
+    assert active == 3, (
+        f"Expected 3 active layers; got {active}. V = {result.V.tolist()}"
+    )
+    assert zero_layers == 7, (
+        f"Expected 7 layers at V=0 exactly under optim; got {zero_layers}. "
+        f"V = {result.V.tolist()}"
+    )

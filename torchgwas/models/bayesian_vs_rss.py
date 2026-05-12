@@ -91,6 +91,81 @@ def ser_posterior(
     return sigma_sq, mu, log_bf
 
 
+def find_optimal_V(
+    z: torch.Tensor,
+    R: torch.Tensor,
+    n: int,
+    V_init: float,
+    prior_pi: Optional[torch.Tensor] = None,
+    upper_bound_factor: float = 100.0,
+) -> float:
+    """Find V that maximizes the marginal log-likelihood for one SER layer.
+
+    Mirrors susieR's `estimate_prior_variance="optim"` path. Per Wang et al.
+    2020 [C1] §3.2 and Zou et al. 2022 [C4] eq. 8-10, the marginal log-
+    likelihood for a single-effect layer at prior variance V is
+
+        L(V) = log( sum_j pi_j * BF_j(V) )
+             = logsumexp_j( log_BF_j(V) + log pi_j )
+
+    with the convention L(0) = 0 (BF_j(0) = 1 since the prior collapses to
+    a delta at zero). The optim path computes V_l = argmax_V L(V) directly
+    via 1D bounded optimization on log V and snaps to V = 0 when the null
+    hypothesis maximizes (L(V_opt) <= 0). This is an exact-evidence test
+    and avoids the snap-threshold tradeoff of the EM path: noise-floor V
+    fixed points around p^{-1}/n still register positive marginal evidence
+    under EM but lose to V = 0 under optim.
+
+    Args:
+        z: Residual z-scores for this layer, shape (p,).
+        R: LD correlation matrix, shape (p, p). Only diag(R) is read here.
+        n: GWAS sample size.
+        V_init: Initial V scale (e.g., previous-iteration V_l, or
+            `sigma_prior_sq`). Sets the search upper bound.
+        prior_pi: Optional per-SNP prior, shape (p,). Defaults to uniform 1/p.
+        upper_bound_factor: Search [eps, V_init * factor]. Default 100x is
+            generous yet keeps the 1D optim well-conditioned.
+
+    Returns:
+        V_opt: argmax of L(V). Returns 0.0 when V = 0 maximizes L (null layer).
+    """
+    from scipy.optimize import minimize_scalar
+
+    p = z.shape[0]
+    if prior_pi is None:
+        log_prior = torch.full((p,), -math.log(p), dtype=z.dtype)
+    else:
+        log_prior = torch.log(prior_pi.to(z.dtype).clamp_min(1e-300))
+
+    # Search a NARROW log-V window around V_init, mirroring susieR's
+    # `optimize_prior_variance()` which uses `optim(method="Brent",
+    # lower=log(V0)-10, upper=log(V0)+10)`. A wider range (e.g., down to
+    # log(1e-12)) confuses Brent's bracketing because L(V) is flat at zero
+    # for V << V_init and the optimizer misidentifies the flat region as a
+    # converged minimum at the lower bound.
+    log_V_init = math.log(max(float(V_init), 1e-12))
+    log_V_lo = log_V_init - 10.0
+    log_V_hi = log_V_init + math.log(upper_bound_factor)
+
+    def neg_log_marginal(log_V: float) -> float:
+        V = math.exp(log_V)
+        _, _, log_bf = ser_posterior(z, R, n, V)
+        return -float(torch.logsumexp(log_bf + log_prior, dim=0))
+
+    # xatol matches susieR's default `tol = .Machine$double.eps^0.25 ≈ 1.2e-4`.
+    result = minimize_scalar(
+        neg_log_marginal,
+        bounds=(log_V_lo, log_V_hi),
+        method="bounded",
+        options={"xatol": 1e-4},
+    )
+    L_opt = -float(result.fun)
+    V_opt = math.exp(float(result.x))
+
+    # Compare against L(V=0) = 0 (the null). Snap to 0 when null is favored.
+    return V_opt if L_opt > 0.0 else 0.0
+
+
 class BayesianVSRss:
     """SuSiE-RSS fine-mapping on summary statistics.
 
@@ -119,6 +194,7 @@ class BayesianVSRss:
         tol: float = 1e-6,
         block_size_threshold: int = 5000,
         estimate_prior_variance: bool = True,
+        estimate_prior_method: str = "optim",
         prior_variance_tol: float = 1e-3,
     ):
         self.max_num_causal = max_num_causal
@@ -128,10 +204,24 @@ class BayesianVSRss:
         self.max_iter = max_iter
         self.tol = tol
         self.block_size_threshold = block_size_threshold
-        # Per-layer prior-variance EM update (matches susieR default).
+        # Per-layer prior-variance update (matches susieR default).
         # When False, all layers use the fixed sigma_prior_sq for all iterations
         # (the pre-V-update behavior; useful for back-compat tests).
         self.estimate_prior_variance = estimate_prior_variance
+        # Method for the V update when estimate_prior_variance=True:
+        #   "optim" — per-layer 1D maximization of L(V) (susieR default; the
+        #     principled fix that mirrors the upstream implementation; gives
+        #     V=0 EXACTLY for null layers without a snap threshold).
+        #   "EM"    — closed-form M-step plus snap-to-zero at prior_variance_tol
+        #     (cheaper but introduces a noise-floor V fixed point on realistic
+        #     LD that registers as a small β_sd Pearson residual vs susieR;
+        #     see findings ledger 2026-05-12).
+        if estimate_prior_method not in ("optim", "EM"):
+            raise ValueError(
+                f"estimate_prior_method must be 'optim' or 'EM'; got "
+                f"{estimate_prior_method!r}"
+            )
+        self.estimate_prior_method = estimate_prior_method
         # Threshold below which a layer's V is snapped to zero (layer "shuts off").
         # The pure EM update has a non-zero fixed point at ~p^{-1} * sigma^2_l,j
         # for noise-floor layers (because uniform alpha + small mu still
@@ -206,9 +296,29 @@ class BayesianVSRss:
 
         for iteration in range(self.max_iter):
             for l in range(L):
-                # Skip computation if this layer is shut off (V_l == 0).
-                # Once V snaps to zero (below prior_variance_tol), it stays
-                # at zero and the layer contributes nothing.
+                # Residual on z-scale: tilde_z_l = z - R @ sum_{l'!=l} b_eff_{l'}
+                tilde_z_l = ibss_residual_update(z, R, b_eff, layer_idx=l)
+
+                # V update — two methods, both mirror susieR options:
+                #   "optim": per-layer 1D maximization of L(V) BEFORE the SER.
+                #     Returns V=0 EXACTLY when null is favored. No snap threshold.
+                #   "EM":    closed-form M-step AFTER the SER (uses this layer's
+                #     fresh alpha/mu/sigma_sq) with snap-to-zero at
+                #     prior_variance_tol. Cheaper but has noise-floor fixed point.
+                if (
+                    self.estimate_prior_variance
+                    and self.estimate_prior_method == "optim"
+                ):
+                    V[l] = find_optimal_V(
+                        z=tilde_z_l,
+                        R=R,
+                        n=n,
+                        V_init=max(V[l].item(), self.sigma_prior_sq),
+                        prior_pi=prior_pi_per_snp,
+                    )
+
+                # Layer is null (V_l == 0): SER posterior collapses to a delta
+                # at zero. Skip computation.
                 if self.estimate_prior_variance and V[l].item() == 0.0:
                     alpha[l] = 1.0 / p  # uniform (irrelevant; mu is zero)
                     mu[l] = 0.0
@@ -216,8 +326,6 @@ class BayesianVSRss:
                     b_eff[l] = 0.0
                     continue
 
-                # Residual on z-scale: tilde_z_l = z - R @ sum_{l'!=l} b_eff_{l'}
-                tilde_z_l = ibss_residual_update(z, R, b_eff, layer_idx=l)
                 # SER posterior (beta-scale) using PER-LAYER prior variance V_l
                 sigma_sq_l, mu_l, log_bf_l = ser_posterior(
                     tilde_z_l, R, n, V[l].item()
@@ -232,21 +340,15 @@ class BayesianVSRss:
                 b_eff[l] = alpha_l * (sqrt_n * mu_l)
 
                 # EM M-step for V_l: posterior expected squared effect.
-                # Mirrors susieR's estimate_prior_variance="EM" path.
-                #
-                # Snap-to-zero: when V drops below prior_variance_tol (default 1e-3),
-                # set V_l to exactly 0 — the layer "turns off". This matches
-                # susieR's noise-floor behavior (V_l = 0 for layers without signal)
-                # and closes the β_sd parity gap on noise variants (Pearson 1.0
-                # vs susieR; the pure-EM fixed point at ~p^{-1}/n produces a tiny
-                # but Pearson-detectable residual at noise floor).
-                #
-                # Tradeoff: snap-to-zero introduces a one-time ELBO discontinuity
-                # when V switches (~0.2 in our test fixtures). Monotonicity becomes
-                # "in expectation" rather than strict per-iteration. The PIP-
-                # stability convergence criterion handles this naturally and the
-                # algorithm still converges to the correct posterior.
-                if self.estimate_prior_variance:
+                # Mirrors susieR's estimate_prior_variance="EM" path. Snap-to-
+                # zero closes the β_sd parity gap on noise variants but breaks
+                # strict ELBO monotonicity at the snap (PIP-stability
+                # convergence handles it). For the cleaner null treatment use
+                # estimate_prior_method="optim" (default).
+                if (
+                    self.estimate_prior_variance
+                    and self.estimate_prior_method == "EM"
+                ):
                     V_new = (alpha_l * (mu_l ** 2 + sigma_sq_l)).sum().clamp_min(0.0).item()
                     V[l] = 0.0 if V_new < self.prior_variance_tol else V_new
 
