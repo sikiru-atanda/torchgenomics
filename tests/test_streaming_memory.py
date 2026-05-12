@@ -2431,3 +2431,112 @@ class TestMediateScanStreamingMemory:
         assert peak < budget_kib, (
             f"mediate-scan streaming peak ({peak:.0f} KiB) exceeds 32 MiB."
         )
+
+
+# ---------------------------------------------------------------------------
+# NA1 — bayes-scan-rss block-decomposed SuSiE memory regression
+# ---------------------------------------------------------------------------
+
+
+class TestBayesScanRssMemory:
+    """Memory regression net for ``bayes-scan-rss`` (NA1 SuSiE-RSS).
+
+    Per NA1 design spec section 4.5: ``BayesianVSRss.fit_rss_blocked`` must
+    bound peak allocation by ``O(p_block_max^2 + L * p_total)`` — never by
+    ``O(n * p)`` (which is what the raw-G ``bayes-scan`` path costs at
+    biobank scale: ~800 GB at p=200K / n=500K).
+
+    Two guards:
+
+    1. **Absolute peak budget** — at p=2000 / block=500 / L=3 the
+       tracemalloc-measured peak is well under 1 MiB. The 8 MiB ceiling
+       below is a generous bound that catches a regression to
+       materializing R or stacking per-block residuals across blocks.
+    2. **Block-vs-total scaling** — holding ``block_size`` fixed and
+       quintupling ``p`` should leave the peak roughly unchanged. A
+       regression to dense-R IBSS would scale the peak with ``p^2``.
+
+    We use ``tracemalloc`` (not OS-level RSS) to match the rest of this
+    file: it's deterministic, captures Python-managed allocations only,
+    and reads the lifetime peak from ``start()`` to ``stop()``.
+    """
+
+    @staticmethod
+    def _build_blocked_fixture(p: int, block_size: int, n: int = 1000):
+        """Build a block-diagonal R with a fixed block size, plus blocks list."""
+        rng = torch.Generator()
+        rng.manual_seed(0)
+        z = torch.randn(p, generator=rng, dtype=torch.float64)
+        R = torch.zeros(p, p, dtype=torch.float64)
+        for i in range(0, p, block_size):
+            R[i:i + block_size, i:i + block_size] = torch.eye(
+                block_size, dtype=torch.float64,
+            )
+        from torchgwas.postgwas._ld_ref_loader import BlockSpec
+        blocks = [
+            BlockSpec(start=i, stop=i + block_size)
+            for i in range(0, p, block_size)
+        ]
+        return z, R, n, blocks
+
+    def test_peak_under_explicit_budget(self):
+        """Hard ceiling: <8 MiB at p=2000 / block=500 / L=3.
+
+        With ``tracemalloc`` we observe ~28 KiB on this fixture; the
+        8 MiB ceiling provides ample margin while still tripping on
+        any regression that materializes a full ``p x p`` working buffer
+        or stacks all per-block IBSS state simultaneously.
+        """
+        from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+
+        z, R, n, blocks = self._build_blocked_fixture(p=2000, block_size=500)
+
+        def _run():
+            model = BayesianVSRss(max_num_causal=3, max_iter=20)
+            return model.fit_rss_blocked(z=z, R=R, n=n, blocks=blocks)
+
+        _, peak_kib = _peak_kib(_run)
+        budget_kib = 8 * 1024  # 8 MiB
+        assert peak_kib < budget_kib, (
+            f"bayes-scan-rss peak ({peak_kib:.0f} KiB) exceeds the "
+            f"8 MiB budget at p=2000 / block=500. At biobank scale this "
+            "would translate to multi-TB regression."
+        )
+
+    def test_peak_scales_with_block_not_total_p(self):
+        """Peak should scale with ``p_block_max``, not total ``p``.
+
+        Construct two scenarios with the same block size (500) but very
+        different ``p``: 1000 vs 5000. Per spec section 2.6 the per-block
+        IBSS allocations dominate and per-block sub-R is sliced (not
+        copied for new memory beyond the block); the streaming peak
+        should be roughly the same.
+
+        A regression to dense-R IBSS would make the peak scale with
+        ``p^2`` — at p=200K this is the difference between a 200 MB and
+        a 320 GB working set.
+        """
+        from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+
+        def _run(p):
+            z, R, n, blocks = self._build_blocked_fixture(
+                p=p, block_size=500,
+            )
+
+            def _inner():
+                model = BayesianVSRss(max_num_causal=3, max_iter=20)
+                return model.fit_rss_blocked(z=z, R=R, n=n, blocks=blocks)
+
+            _, peak = _peak_kib(_inner)
+            return peak
+
+        peak_small = _run(p=1000)
+        peak_large = _run(p=5000)
+
+        # Allow 3× growth for per-block scratch / Python-object overhead;
+        # 5× p -> 5× peak would mean we're scaling with p, not block.
+        assert peak_large <= 3.0 * peak_small + 64, (
+            f"bayes-scan-rss peak grew from {peak_small:.0f} KiB (p=1000) "
+            f"to {peak_large:.0f} KiB (p=5000) at fixed block_size=500. "
+            "fit_rss_blocked likely regressed to scale with total p."
+        )

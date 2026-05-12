@@ -708,6 +708,62 @@ def _run_grm_vanraden(G):
     return grm_vanraden(G, ploidy=2)
 
 
+# ---------- NA1: bayes-scan-rss SuSiE-RSS ---------------------------
+
+def bench_bayes_scan_rss(p: int = 1000, n: int = 5000) -> dict[str, Any]:
+    """Wall-time benchmark for ``bayes-scan-rss`` on a synthetic single locus.
+
+    Pair with the memory regression net in
+    ``tests/test_streaming_memory.py::TestBayesScanRssMemory`` (per
+    ``feedback_regression_nets``: every perf-sensitive path needs paired
+    memory + wall-time guards). The memory test asserts the
+    ``O(p_block_max^2 + L * p_total)`` bound from NA1 design spec
+    section 4.5; this function records the end-to-end IBSS wall time so
+    a follow-on diff against a baseline (mirroring the
+    ``bench/diff_perf.py`` flow for the BENCHES registry) can flag
+    regressions in the SuSiE-RSS hot path.
+
+    Standalone callable (not registered in ``BENCHES``) because
+    ``BayesianVSRss.fit_rss`` does not have a native-vs-python toggle —
+    it's pure-torch — so the ``run_bench`` python/native split would be
+    redundant. Callers (CI / ad-hoc) invoke it directly with the
+    ``p`` and ``n`` of interest.
+
+    Args:
+        p: number of variants in the locus (default 1000).
+        n: GWAS sample size used inside the SuSiE-RSS likelihood
+            (default 5000). Only enters ``BayesianVSRss.fit_rss`` as a
+            scalar; doesn't allocate.
+
+    Returns:
+        ``dict`` with keys ``name``, ``p``, ``n``, ``wall_time_sec``,
+        ``n_iter``, ``converged`` — same schema as one row of the JSON
+        emitted by the main ``bench/native_speedups.py`` flow, so it can
+        be appended to a regression record.
+    """
+    from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+
+    rng = torch.Generator()
+    rng.manual_seed(0)
+    z = torch.randn(p, generator=rng, dtype=torch.float64)
+    R = torch.eye(p, dtype=torch.float64)
+
+    model = BayesianVSRss(max_num_causal=10, max_iter=50)
+
+    start = time.perf_counter()
+    result = model.fit_rss(z=z, R=R, n=n)
+    elapsed = time.perf_counter() - start
+
+    return {
+        "name": "bayes-scan-rss",
+        "p": p,
+        "n": n,
+        "wall_time_sec": elapsed,
+        "n_iter": result.n_iter,
+        "converged": result.converged,
+    }
+
+
 # =====================================================================
 # Bench registry
 # =====================================================================
