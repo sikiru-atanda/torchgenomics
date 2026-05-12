@@ -130,6 +130,54 @@ torchgwas farmcpu-scan  --genotype data.bed --phenotype pheno.txt
 torchgwas blink-scan    --genotype data.bed --phenotype pheno.txt
 ```
 
+## `bayes-scan-rss`
+
+SuSiE-RSS fine-mapping on summary statistics + LD reference. Per Zou et al.
+2022 PLOS Genet 18(7):e1010299. Memory bound is per-locus `O(p_block_max^2)`,
+typically ~200 MB per LD block at p_block ≤ 5000; vs `bayes-scan` which is
+`O(n × p)` and materializes the full genotype matrix.
+
+```bash
+torchgwas bayes-scan-rss \
+    --sumstats hits.tsv \
+    --ld-ref ld_chr22.pt \
+    --max-num-causal 10 \
+    --coverage 0.95 \
+    --purity 0.5 \
+    --output out/finemap.tsv
+```
+
+### Required arguments
+
+- `--sumstats PATH` — TSV with columns SNP, CHR, BP, A1, A2 + (BETA + SE + N) or Z + N.
+- One of:
+  - `--ld-ref PATH` — pre-built LD reference file (`.pt` or `.npz`).
+  - `--geno PATH` — genotype panel (BED/PGEN); LD computed in-sample per locus. *Tier B — not yet wired.*
+- `--output PATH` — output TSV path.
+
+### Optional arguments
+
+- `--regions PATH` — TSV with start, stop columns for explicit block boundaries.
+  Default: auto-detect (fixed-size tiling at the block-size threshold; full
+  ldetect-based detection requires --geno mode which is Tier B).
+- `--max-num-causal INT` — Number of single-effect layers (L). Default: 10.
+- `--coverage FLOAT` — Credible-set coverage threshold. Default: 0.95.
+- `--purity FLOAT` — Minimum |R_jk| within a credible set. Default: 0.5
+  (matches susieR `min_abs_corr`).
+- `--prior-pi VALUE` — Scalar (e.g., `0.01`) OR path to a per-SNP prior
+  TSV file (column `PRIOR_PI`). D3 shim from Phase 59 PolyFun spec.
+- `--block-size-threshold INT` — Block-decomposition trigger. Default: 5000.
+- `--threads INT` — Number of CPU threads. Default: 4.
+
+### Output schema (PolyFun-compatible)
+
+```
+SNP   CHR   BP   A1   A2   Z   N   PIP   BETA_MEAN   BETA_SD   CREDIBLE_SET
+```
+
+`CREDIBLE_SET` = integer index of the credible set the variant belongs to
+(0 = not in any credible set).
+
 ## Multi-environment & MT-MET
 
 ```bash
