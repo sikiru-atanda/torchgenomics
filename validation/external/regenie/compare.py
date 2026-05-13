@@ -250,7 +250,13 @@ def _build_loco_offset(
 def _flip_dosage(G: torch.Tensor, ploidy: int = 2) -> torch.Tensor:
     """Flip dosage convention: count the *other* allele.
 
-    PlinkBedReader counts BIM A2; regenie counts ALLELE1 = BIM A1 here.
+    Historical: PlinkBedReader used to count BIM A2 while regenie counts
+    ALLELE1 = BIM A1, so this comparison harness applied a manual flip.
+    After 2026-05-13 (`_GENO_DECODE` fix in torchgwas/io/plink.py),
+    PlinkBedReader counts BIM A1 = regenie ALLELE1 — both tools are on
+    the same convention. Callers should NOT apply this flip anymore; it
+    is preserved here only to make the historical workaround visible in
+    git blame. New code: pass G directly.
     """
     return float(ploidy) - G
 
@@ -319,7 +325,9 @@ def compare_step2_qt(data_dir: Path, out_dir: Path) -> ComparisonReport:
     rg["CHROM_int"] = rg["CHROM"].astype(int)
 
     G, sample_ids, vmeta = _load_mdp(data_dir)
-    G_alt = _flip_dosage(G, ploidy=2)  # count BIM A1 = regenie ALLELE1
+    # Post-fix (2026-05-13): PlinkBedReader counts BIM A1 = regenie ALLELE1
+    # natively; no convention flip needed here.
+    G_alt = G
 
     pheno = pd.read_csv(data_dir / "regenie_pheno.tsv", sep="\t", na_values=["NA"])
     pheno["IID"] = pheno["IID"].astype(str)
@@ -443,7 +451,8 @@ def compare_step2_binary(data_dir: Path, out_dir: Path) -> ComparisonReport:
     rg = rg[rg["TEST"] == "ADD"].copy()
 
     G, sample_ids, vmeta = _load_mdp(data_dir)
-    G_alt = _flip_dosage(G, ploidy=2)
+    # Post-fix (2026-05-13): no manual dosage flip needed (see _flip_dosage docstring).
+    G_alt = G
 
     pheno = pd.read_csv(data_dir / "regenie_pheno.tsv", sep="\t", na_values=["NA"])
     pheno["IID"] = pheno["IID"].astype(str)

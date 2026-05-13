@@ -691,6 +691,43 @@ class TestSeparableKronReml:
 class TestSparseRemlFit:
     """PCG-based REML for sparse-GRM path."""
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    @pytest.mark.gpu
+    def test_runs_on_cuda_without_scipy_tensor_leak(self):
+        """Regression: sparse_reml_fit on CUDA must not leak a CUDA tensor
+        into scipy.optimize.minimize_scalar.
+
+        Bug history (2026-05-13): _eval_reml_neg2ll() returned a CUDA tensor
+        because logdet_V from stochastic_logdet was on CUDA. scipy then
+        raised:
+            TypeError: can't convert cuda:0 device type tensor to numpy.
+                       Use Tensor.cpu() to copy the tensor to host memory first.
+
+        This test runs the sparse path on CUDA inputs end-to-end and asserts
+        a real NullFit is returned. Surfaced by NA3 sparse-GRM benchmark.
+        """
+        device = torch.device("cuda")
+        n, c = 40, 1
+        g = torch.Generator(device="cpu").manual_seed(9)
+        Y = torch.randn(n, generator=g, dtype=torch.float64).to(device)
+        X0 = torch.ones(n, c, dtype=torch.float64, device=device)
+        Z = torch.randn(n, 5, generator=g, dtype=torch.float64).to(device)
+        K_full = (Z @ Z.T) / 5.0 + 0.1 * torch.eye(n, dtype=torch.float64, device=device)
+
+        def K_matvec(x: torch.Tensor) -> torch.Tensor:
+            return K_full @ x
+
+        K_diag = K_full.diag()
+        result = sparse_reml_fit(
+            Y, X0, K_matvec, K_diag, n=n,
+            n_probes=5, lanczos_iters=15, pcg_max_iter=200, seed=42,
+        )
+        from torchgwas.models.base import NullFit
+        assert isinstance(result, NullFit)
+        # Sanity: REML scalar estimates are finite Python floats, not tensors
+        assert isinstance(result.sig2_g, float) and np.isfinite(result.sig2_g)
+        assert isinstance(result.sig2_e, float) and np.isfinite(result.sig2_e)
+
     def test_runs_to_completion(self):
         n, c = 40, 1
         g = torch.Generator().manual_seed(9)

@@ -27,16 +27,16 @@ import numpy as np
 
 
 PLINK_BED_MAGIC = bytes([0x6C, 0x1B, 0x01])
-# PLINK 2-bit genotype codes (per byte; LSB-first within byte):
-#   homozygous A1   = 00 (binary 0)
+# PLINK 1.9 BED 2-bit genotype codes (per byte; LSB-first within byte):
+#   homozygous A1   = 00 (binary 0) — 2 copies of A1
 #   missing         = 01 (binary 1)
-#   heterozygous    = 10 (binary 2)
-#   homozygous A2   = 11 (binary 3)
-# Mapping additive-dosage 0/1/2 → PLINK code:
-#   dosage 0 → A1A1 → 00
-#   dosage 1 → het  → 10
-#   dosage 2 → A2A2 → 11
-DOSAGE_TO_PLINK = np.array([0b00, 0b10, 0b11], dtype=np.uint8)
+#   heterozygous    = 10 (binary 2) — 1 copy of A1
+#   homozygous A2   = 11 (binary 3) — 0 copies of A1
+# Mapping additive count-of-A1 dosage 0/1/2 → PLINK code:
+#   dosage 0 (homo A2) → 11
+#   dosage 1 (het)     → 10
+#   dosage 2 (homo A1) → 00
+DOSAGE_TO_PLINK = np.array([0b11, 0b10, 0b00], dtype=np.uint8)
 
 
 def preflight(n: int, p: int, out: Path) -> None:

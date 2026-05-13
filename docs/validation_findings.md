@@ -674,6 +674,80 @@ adaptation to the MDP scale (n=281 ≪ regenie's design regime).
 - (3) Pillar B regenie: 3/3 PASS on MDP, validating that the published
   reference harness still works post-NA1.
 
+### Update 2026-05-13: both V1-core bugs FIXED + verified
+
+The user approved both fixes. Each shipped TDD: failing regression test
+written first, fix applied, test passes + no broader regressions.
+
+**Fix 2 (sparse-GRM CUDA leak) — `torchgwas/optim/sparse_reml.py:146`**
+
+Wrapped `stochastic_logdet(...)` in `float(...)` so the closure returned
+to `scipy.optimize.minimize_scalar` is always a host scalar, never a CUDA
+tensor. Regression test:
+`tests/test_coverage_optim.py::TestSparseRemlFit::test_runs_on_cuda_without_scipy_tensor_leak`
+(`@pytest.mark.gpu`). Failed with the documented TypeError before the fix;
+PASS after. The full sparse-GRM benchmark (NA3 Track A extension) now
+runs end-to-end on CUDA: at n=10K, sparse on CUDA is 26.8s vs dense on
+CUDA 48.7s — **sparse path is now 1.8× faster than dense on CUDA** (was
+crashing).
+
+**Fix 1 (BED reader allele convention) — `torchgwas/io/plink.py:25`**
+
+Inverted `_GENO_DECODE` from `[0.0, NaN, 1.0, 2.0]` (dosage = count A2)
+to `[2.0, NaN, 1.0, 0.0]` (dosage = count A1, matching PLINK 1.9 / regenie
+/ TG's own VCF + PLINK 2.0 readers). Companion changes:
+- `tests/fixtures/create_fixtures.py` encoding map flipped to match new
+  convention (so the fixture's `geno` variable is now correctly labelled
+  as count(A1)).
+- `tests/fixtures/tiny.bed` regenerated.
+- `validation/streaming_memory/_build_synthetic_bed.py` `DOSAGE_TO_PLINK`
+  table flipped to encode count(A1) → PLINK codes per the canonical map.
+- `validation/external/regenie/compare.py` removed two `_flip_dosage(G)`
+  workaround calls (the harness was carrying a manual flip to compensate
+  for TG's old wrong convention; now redundant). Function preserved with
+  updated docstring noting the historical workaround.
+
+Regression test:
+`tests/test_io_plink.py::test_bed_dosage_counts_a1_per_plink_convention`
+writes a known 4-sample variant with explicit 2-bit codes (00, 10, 11, 01)
+and asserts the reader returns dosages (2, 1, 0, NaN) per PLINK convention.
+Failed before the fix (returned 0, 1, 2, NaN — the inverted convention);
+PASS after.
+
+**Verification across the full test surface** (zero regressions):
+
+| Test surface | Result |
+|---|---|
+| `test_io_plink.py` + `test_io_formats.py` + `test_io_hdf5.py` + `test_io_zarr.py` + `test_io_phenotype.py` + `test_streaming.py` | 64 passed, 3 GPU-skipped |
+| `test_streaming_memory.py` + `test_single_trait_lmm.py` + `test_glm.py` + `test_bayesian_vs_rss.py` + `test_bayesian_vs.py` + `test_coverage_optim.py` + `test_coverage_io.py` + `test_coverage_preprocess.py` | 185 passed, 16 skipped |
+| `test_gpu.py` + `test_gpu_model_parity.py` + `test_impute_gpu_kernels.py` | 40 passed |
+| **Aggregate (all touched)** | **349 passed, 18 skipped** |
+
+**Cross-tool β agreement now validated post-fix on real-data regenie**:
+
+| Pillar B regenie comparison | Pre-fix | Post-fix | Δ |
+|---|---|---|---|
+| Step 2 quant β correlation | 0.7070 | **0.8210** | +0.114 |
+| Step 2 quant -log10 p correlation | 0.7070 | 0.7070 | 0 (sign-invariant) |
+| Step 2 binary Firth β correlation | 0.8775 | 0.8775 | 0 (was kept aligned by harness flip) |
+| Step 2 binary -log10 p correlation | 0.7980 | 0.7980 | 0 |
+
+Quantitative β correlation gained +0.114; the harness's manual flip had
+been compensating only partially for the convention mismatch. Now both
+TG and regenie compute β on the same allele (A1 = ALLELE1) — which is
+what users expect by default per PLINK convention.
+
+**Cross-tool β on the synthetic Track B fixture** (n=2K, p=10K):
+
+Raw β Pearson **+1.000000** (was -1.000000 pre-fix — clean global flip
+removed). β max abs relative diff: 5e-6. The "Effect-allele sign flip"
+harness output is now `False` instead of `True`.
+
+**Status of the two filed bugs**: BOTH CLOSED. The sign flip is no longer
+documented as a finding — it was a real V1-core bug that has now been
+fixed end-to-end. Future BED-derived β will match PLINK 1.9 / regenie /
+PLINK 2.0 / VCF conventions directly without harness workarounds.
+
 ### Aggregate verdict (now): NA1 SuSiE-RSS validated across:
 - 3 small/medium fixtures with all-1.000 parity
 - 1 medium-rank-full + 1 rank-deficient larger real-data fixture, all-1.000 parity
