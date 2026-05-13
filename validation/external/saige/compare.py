@@ -286,8 +286,12 @@ def compare_step2(data_dir: Path, out_dir: Path) -> ComparisonReport:
     rg["MarkerID"] = rg["MarkerID"].astype(str)
 
     G_a2, sample_ids, vmeta = _load_mdp(data_dir)
-    # Flip dosage so TG counts BIM A1 = SAIGE Allele2 = A:
-    G_alt = 2.0 - G_a2
+    # Post-fix (2026-05-13): PlinkBedReader counts BIM A1 = SAIGE Allele2 = A
+    # natively (torchgwas/io/plink.py:_GENO_DECODE was fixed to PLINK 1.9
+    # canonical convention). Pre-fix this line was `2.0 - G_a2` to flip from
+    # the old A2-counting convention. The variable name `G_a2` is now a
+    # historical misnomer; it actually contains count(A1).
+    G_alt = G_a2  # already counts A1 = SAIGE Allele2 post-fix
 
     pheno = pd.read_csv(data_dir / "saige_pheno.tsv", sep="\t")
     pheno["IID"] = pheno["IID"].astype(str)

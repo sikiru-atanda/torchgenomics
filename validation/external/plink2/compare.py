@@ -203,13 +203,14 @@ def compare_glm(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
     # PLINK 2's A1 is the *minor* allele by default — sometimes "A", sometimes
     # "G" depending on which is rarer at that SNP. TorchGWAS' PlinkBedReader
-    # decodes raw 2-bit codes via _GENO_DECODE=[0, NaN, 1, 2], i.e. PLINK code
-    # 0b11 (homozygous-for-second-allele = .bim A2 = "G") -> TG dosage 2.
-    # So TG dosage *counts the .bim A2 allele = "G"*.
-    # To align PLINK β with TG's convention (count of "G"):
-    #   - PLINK A1 == "G": same counted allele → no flip
-    #   - PLINK A1 == "A": opposite counted allele → flip β
-    flip = (merged["A1"] == "A").to_numpy()
+    # decodes raw 2-bit codes via _GENO_DECODE=[2, NaN, 1, 0] (post-fix
+    # 2026-05-13), i.e. PLINK code 0b00 (homozygous-for-first-allele = .bim A1
+    # = "A") -> TG dosage 2. So TG dosage *counts the .bim A1 allele = "A"*,
+    # matching PLINK 1.9 / regenie / VCF conventions.
+    # To align PLINK β with TG's convention (count of "A"):
+    #   - PLINK A1 == "A": same counted allele → no flip
+    #   - PLINK A1 == "G": opposite counted allele → flip β
+    flip = (merged["A1"] == "G").to_numpy()
     plink_beta_aligned = np.where(flip, -merged["BETA"].to_numpy(), merged["BETA"].to_numpy())
     plink_af_aligned = np.where(flip, 1.0 - merged["A1_FREQ"].to_numpy(), merged["A1_FREQ"].to_numpy())
     merged = merged.assign(BETA_aligned=plink_beta_aligned, AF_aligned=plink_af_aligned)

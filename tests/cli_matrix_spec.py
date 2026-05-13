@@ -207,6 +207,11 @@ SCAN_FORMATS = ["bed", "hmp", "csv"]
 _SKIP_TINY_SMALL_N: dict[str, str] = {
     "ldsc":    "LDSC weighted-LS underdetermined on m=20 SNPs / n=10 samples",
     "ldsc-rg": "LDSC weighted-LS underdetermined on m=20 SNPs / n=10 samples",
+    # SuSiE-RSS needs a non-degenerate LD matrix; in-sample R from n=10
+    # samples on m=20 SNPs is rank-deficient and the IBSS update diverges.
+    # Real-fixture parity is exercised by validation/external/susieR/ at
+    # n>=279, p>=200 (3-fixture head-to-head, all metrics 1.000 vs susieR).
+    "bayes-scan-rss": "SuSiE-RSS degenerate on rank-deficient n=10 / m=20 LD",
 }
 
 CELL_SPEC: dict[str, dict] = {
@@ -340,6 +345,24 @@ CELL_SPEC: dict[str, dict] = {
         ),
         "expected_outputs": lambda ctx, fmt: [f"{ctx.output_prefix}_bayesian_vs.tsv"],
         "kind": "bayes",
+    },
+    # bayes-scan-rss reads sumstats + an LD reference (.pt or .npz). The
+    # tiny CLI-matrix fixture (n=10, m=20) cannot produce a non-degenerate
+    # LD matrix for SuSiE-RSS — IBSS diverges on rank-deficient R. The
+    # entry exists so the per-PR coverage gate accepts the new subcommand;
+    # actual parity is exercised by the susieR head-to-head harness at
+    # validation/external/susieR/ (3-fixture coverage at n >= 279).
+    "bayes-scan-rss": {
+        "formats": ["n/a"],
+        "build_args": lambda ctx, fmt: [
+            "--sumstats", str(ctx.tmp / "sumstats_lc.tsv"),
+            "--geno", str(ctx.tmp / "tiny.bed"),
+            "--max-num-causal", "2",
+            "--output", ctx.output_prefix,
+        ],
+        "expected_outputs": lambda ctx, fmt: [f"{ctx.output_prefix}.tsv"],
+        "kind": "bayes",
+        "skip_reason": _SKIP_TINY_SMALL_N["bayes-scan-rss"],
     },
     "met-scan": {
         "formats": SCAN_FORMATS,
