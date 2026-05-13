@@ -125,7 +125,11 @@ def _write_plink_bed(reader, output_prefix: str) -> None:
 
 
 def _write_zarr(reader, output_path: str) -> None:
-    """Write genotype data to Zarr store."""
+    """Write genotype data to Zarr store.
+
+    Compatible with both zarr v2 (``create_dataset(name, data=...)``) and
+    zarr v3 (``create_array(name, shape=..., dtype=...)`` + slice-assign).
+    """
     try:
         import zarr
     except ImportError:
@@ -136,12 +140,26 @@ def _write_zarr(reader, output_path: str) -> None:
         all_dosage.append(G_chunk.numpy())
 
     dosage = np.concatenate(all_dosage, axis=1)  # (n, m)
+    chunks = (min(1000, dosage.shape[0]), min(1000, dosage.shape[1]))
 
-    store = zarr.open(output_path, mode="w")
-    store.create_dataset("dosage", data=dosage, chunks=(min(1000, dosage.shape[0]), min(1000, dosage.shape[1])))
-    store.attrs["n_samples"] = dosage.shape[0]
-    store.attrs["n_variants"] = dosage.shape[1]
-    store.attrs["sample_ids"] = reader.sample_ids
+    store = zarr.open_group(output_path, mode="w")
+
+    # Zarr v3 API: create_array(name, shape, dtype, chunks); assign data via slice
+    if hasattr(store, "create_array"):
+        arr = store.create_array(
+            name="dosage",
+            shape=dosage.shape,
+            dtype=dosage.dtype,
+            chunks=chunks,
+        )
+        arr[:] = dosage
+    else:  # zarr v2 fallback
+        store.create_dataset(
+            "dosage", data=dosage, chunks=chunks,
+        )
+    store.attrs["n_samples"] = int(dosage.shape[0])
+    store.attrs["n_variants"] = int(dosage.shape[1])
+    store.attrs["sample_ids"] = list(reader.sample_ids)
 
     logger.info("Wrote Zarr store: %s, %d samples × %d variants", output_path, *dosage.shape)
 

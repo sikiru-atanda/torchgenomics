@@ -1,0 +1,5 @@
+data/
+bin/
+outputs/
+.cache/
+__pycache__/

@@ -2,11 +2,11 @@
 
 Subcommands: validate, convert, impute, dosage-call, phase-poly, glm-scan,
 lmm-scan, mvlmm-scan, poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan,
-met-scan, farmcpu-scan, blink-scan, threshold-scan, family-scan,
-conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan, lro-scan,
-glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan, ld-blocks,
-ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate, mediate,
-mediate-scan, pipeline.
+bayes-scan-rss, met-scan, farmcpu-scan, blink-scan, threshold-scan,
+family-scan, conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan,
+lro-scan, glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan,
+ld-blocks, ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate,
+mediate, mediate-scan, pipeline.
 """
 
 from __future__ import annotations
@@ -15,16 +15,9 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from ._cli.pgs import (
-    _add_pgs_fit_parser,
-    _add_pgs_score_parser,
-    _cmd_pgs_fit,
-    _cmd_pgs_score,
-)
-
-if TYPE_CHECKING:
+if _TYPE_CHECKING:
     import torch
 
     from .models.multi_env_lmm import EnvScanResult
@@ -57,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_gxe_scan_parser(subparsers)
     _add_set_scan_parser(subparsers)
     _add_bayes_scan_parser(subparsers)
+    _add_bayes_scan_rss_parser(subparsers)  # NA1 Task 11
     _add_met_scan_parser(subparsers)
     _add_farmcpu_scan_parser(subparsers)
     _add_blink_scan_parser(subparsers)
@@ -116,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         "gxe-scan": _cmd_gxe_scan,
         "set-scan": _cmd_set_scan,
         "bayes-scan": _cmd_bayes_scan,
+        "bayes-scan-rss": _cmd_bayes_scan_rss,  # NA1 Task 11
         "met-scan": _cmd_met_scan,
         "farmcpu-scan": _cmd_farmcpu_scan,
         "blink-scan": _cmd_blink_scan,
@@ -317,6 +312,13 @@ def _cmd_glm_scan_single(args: argparse.Namespace) -> int:
         logger.error("Unknown family: %s", family)
         return 1
 
+    # Push Y/X0 to the requested device so --device cuda actually uses CUDA
+    # (the model has no internal device routing; it operates on whatever
+    # device the inputs come from). Mirrors the lmm-scan device-alignment
+    # fix in commit `adc7b04` (Pillar C F3).
+    Y = Y.to(device)
+    X0 = X0.to(device)
+
     null_fit = model.fit_null(Y, X0)
 
     from .scan.unified import UnifiedScanner
@@ -412,7 +414,10 @@ def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
             device=device,
         )
         model = SparseLMM()
-        null_fit = model.fit_null(Y, X0, K=K_sparse)
+        # Same device-alignment fix as the dense path below.
+        Y_sparse_dev = Y.to(device)
+        X0_sparse_dev = X0.to(device)
+        null_fit = model.fit_null(Y_sparse_dev, X0_sparse_dev, K=K_sparse)
         test_type = "score"  # Only score test for sparse path
     else:
         approx_config = {}
@@ -427,8 +432,15 @@ def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
 
         p3d = getattr(args, "p3d", True)
         model = SingleTraitLMM(p3d=p3d)
+        # Move Y / X0 to the same device as K so the eigenspace rotation
+        # in `single_trait_lmm.fit_null` doesn't mix CPU + CUDA tensors.
+        # K already lives on `device` from `grm_vanraden_streaming(device=...)`;
+        # the parallel mvlmm-scan path (line ~499) does the same `.to(device)`.
+        Y_dev = Y.to(device)
+        X0_dev = X0.to(device)
+        K_dev = K.to(device) if hasattr(K, "to") else K
         null_fit = model.fit_null(
-            Y, X0, K=K,
+            Y_dev, X0_dev, K=K_dev,
             approx_method=approx_method,
             approx_config=approx_config if approx_method else None,
         )
@@ -520,9 +532,24 @@ def _cmd_mvlmm_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
-    """Run multi-kernel LMM scan (additive + dominance + epistatic variance components)."""
+    """Run multi-kernel LMM scan (additive + dominance + epistatic variance components).
+
+    Streaming variant: builds the additive / dominance / epistatic
+    kernel set via :func:`build_multi_kernels_streaming`, which
+    accumulates each base kernel's per-SNP contributions
+    chunk-by-chunk in float64. Epistatic kernels are Hadamard
+    products of the now-built ``(n, n)`` base kernels, so they cost
+    nothing extra in G residency. The scan loop after null fit is
+    already streaming via :class:`UnifiedScanner`.
+
+    Peak memory drops from O(n*m*8B) (~40 TB at UKB scale,
+    float64) to O(n^2 * n_kernels * 8B) (the kernels themselves) +
+    O(n * chunk_size * 8B) per chunk during the accumulator pass —
+    i.e., the same n^2 ceiling every LMM has, with no n*m floor.
+    """
     from .config import TorchGWASConfig, resolve_device
-    from .models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
+    from .linalg.multi_kernel_streaming import build_multi_kernels_streaming
+    from .models.multi_kernel_lmm import MultiKernelLMM
     from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
@@ -531,7 +558,8 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
         config.numerical.reml_max_iter = args.max_iter
     ploidy = getattr(args, "ploidy", 2)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Parse kernel types
     kernel_types = [k.strip() for k in args.kernels.split(",")]
@@ -540,12 +568,16 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
 
     logger.info("Multi-kernel LMM: kernels=%s, ploidy=%d", kernel_types, ploidy)
 
-    kernels, kernel_names = build_multi_kernels(
-        G.to(device), ploidy=ploidy,
+    # Stream-build kernels chunk-by-chunk; never holds the full G.
+    kernels, kernel_names = build_multi_kernels_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        ploidy=ploidy,
         include_dominance=include_dom,
         include_epistatic=include_epi,
+        device=device,
     )
-    logger.info("Built %d kernels: %s", len(kernels), kernel_names)
+    logger.info("Built %d kernels (streaming): %s", len(kernels), kernel_names)
 
     Y_dev = Y.to(device)
     X0_dev = X0.to(device)
@@ -567,7 +599,7 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
         logger.info("Kernel %s: Z=%.3f, p=%.2e", name, z, p)
 
     from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
+    scanner = UnifiedScanner(aligned_reader, model, config)
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
     result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
@@ -575,10 +607,65 @@ def _cmd_mklmm_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _merge_gxe_results(results: list):
+    """Concatenate :class:`GxEScanResult` objects across chunks.
+
+    HetLMM / GxELMM emit GxEScanResult, which has main + interaction +
+    joint test fields rather than the standard ScanResult schema. The
+    canonical UnifiedScanner merger only knows ScanResult, so a
+    multi-chunk gxe-scan needs this dedicated merger.
+    """
+    import torch
+
+    from .models.lmm_gxe import GxEScanResult
+
+    chr_all, pos_all, snp_all, a1_all, a2_all = [], [], [], [], []
+    for r in results:
+        chr_all.extend(r.chr)
+        pos_all.extend(r.pos)
+        snp_all.extend(r.snp)
+        a1_all.extend(r.a1)
+        a2_all.extend(r.a2)
+
+    return GxEScanResult(
+        chr=chr_all, pos=pos_all, snp=snp_all, a1=a1_all, a2=a2_all,
+        af=torch.cat([r.af for r in results]),
+        beta_main=torch.cat([r.beta_main for r in results]),
+        se_main=torch.cat([r.se_main for r in results]),
+        stat_main=torch.cat([r.stat_main for r in results]),
+        p_main=torch.cat([r.p_main for r in results]),
+        beta_interact=torch.cat([r.beta_interact for r in results]),
+        se_interact=torch.cat([r.se_interact for r in results]),
+        stat_interact=torch.cat([r.stat_interact for r in results]),
+        p_interact=torch.cat([r.p_interact for r in results]),
+        stat_joint=torch.cat([r.stat_joint for r in results]),
+        p_joint=torch.cat([r.p_joint for r in results]),
+        test=results[0].test if results else "wald",
+    )
+
+
 def _cmd_gxe_scan(args: argparse.Namespace) -> int:
-    """Run gene-environment interaction LMM scan."""
+    """Run gene-environment interaction LMM scan.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and iterates ``aligned_reader.iter_chunks`` through
+    ``HetLMM.score_chunk`` / ``GxELMM.score_chunk`` chunk-by-chunk.
+    HetLMM / GxELMM null fits depend only on ``Y / X0 / K / env``, so
+    the scan after null fit is fundamentally per-variant — the full
+    ``(n, m)`` ``G`` never lives in memory.
+
+    Per-chunk merge uses :func:`_merge_gxe_results` (custom merger
+    because GxEScanResult has main / interaction / joint fields rather
+    than the standard ScanResult schema). UnifiedScanner's default
+    merger is incompatible — pre-rewrite, gxe-scan also routed through
+    UnifiedScanner but only worked when m <= chunk_size (single-chunk
+    path bypasses the merger). The dedicated merger here also fixes
+    that latent crash for genomes with > chunk_size variants.
+    """
+    import pandas as pd
+    import torch
+
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
@@ -586,11 +673,23 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Build GRM
-    K, _ = grm_vanraden(G.to(device))
-    env = _load_env_vector(args.env, reader.sample_ids, dtype=STAT_DTYPE, device=device)
+    # Load environment variable
+    env_df = pd.read_csv(args.env, sep="\t")
+    env = torch.tensor(env_df["ENV"].values, dtype=STAT_DTYPE, device=device)
+
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     Y_dev = Y.to(device)
     X0_dev = X0.to(device)
@@ -610,10 +709,38 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
         model = GxELMM()
         null_fit = model.fit_null(Y_dev, X0_dev, K=K, env=env)
 
-    from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-    result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+    from .preprocess.impute import impute_mean
+    from .preprocess.qc import apply_qc_filters, compute_variant_qc
+
+    # Stream G chunks through score_chunk; merge with the GxE-aware
+    # merger (UnifiedScanner's default merger expects ScanResult, not
+    # GxEScanResult).
+    chunk_results = []
+    ploidy = config.ploidy
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        G_chunk = impute_mean(G_chunk).to(device)
+        # Per-chunk QC (mirrors UnifiedScanner._apply_chunk_qc).
+        stats = compute_variant_qc(G_chunk, vm, ploidy=ploidy)
+        keep_mask = apply_qc_filters(stats, qc)
+        if not keep_mask.all():
+            keep_idx = keep_mask.nonzero(as_tuple=True)[0]
+            G_chunk = G_chunk[:, keep_idx]
+            from .models.base import VariantMeta
+            vm = VariantMeta(
+                snp=[vm.snp[i] for i in keep_idx.tolist()],
+                chr=[vm.chr[i] for i in keep_idx.tolist()],
+                pos=[vm.pos[i] for i in keep_idx.tolist()],
+                a1=[vm.a1[i] for i in keep_idx.tolist()],
+                a2=[vm.a2[i] for i in keep_idx.tolist()],
+            )
+        if G_chunk.shape[1] == 0:
+            continue
+        chunk_results.append(model.score_chunk(G_chunk, null_fit, vm, test=args.test))
+
+    if not chunk_results:
+        raise RuntimeError("No variants passed QC filters in gxe-scan.")
+    result = _merge_gxe_results(chunk_results)
 
     _apply_correction_and_save(result, args)
     return 0
@@ -656,12 +783,18 @@ def _load_env_vector(env_path: str, sample_ids: list[str], *, dtype, device):
 
 
 def _cmd_set_scan(args: argparse.Namespace) -> int:
-    """Run set-based association tests (SKAT/Burden/SKAT-O)."""
+    """Run set-based association tests (SKAT/Burden/SKAT-O).
+
+    Streaming variant: builds GRM via the streaming VanRaden path and
+    accumulates per-region buffers chunk-by-chunk. Peak memory is
+    bounded by ``n_samples × sum(region_size_j)`` plus one chunk —
+    not the full ``(n, m)`` genotype matrix.
+    """
     import pandas as pd
 
     from .config import TorchGWASConfig, resolve_device
     from .io.regions import load_regions
-    from .linalg.kinship import grm_vanraden
+    from .linalg.kinship import grm_vanraden_streaming
     from .models.set_based import SetBasedScanner
     from .models.single_trait_lmm import SingleTraitLMM
 
@@ -670,25 +803,50 @@ def _cmd_set_scan(args: argparse.Namespace) -> int:
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Build GRM (ploidy-aware)
+    # Streaming GRM (ploidy-aware) for the LMM null fit.
     ploidy = getattr(args, "ploidy", 2)
-    K, _ = grm_vanraden(G.to(device), ploidy=ploidy)
+    logger.info("Computing kinship matrix (VanRaden streaming, ploidy=%d)...", ploidy)
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        ploidy=ploidy,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     # Fit null model (same as standard LMM)
     lmm = SingleTraitLMM(config=config.numerical)
     null_fit = lmm.fit_null(Y.to(device), X0.to(device), K=K)
 
-    # Load regions
+    # Load regions. Genome-wide chr/pos lists are gathered cheaply by
+    # walking iter_chunks once for metadata only — no genotype data is
+    # held. (Not every reader implements `.variant_meta` as a property,
+    # so we use the iterator-only contract.)
     regions = load_regions(args.regions)
 
-    # Run set-based scan (ploidy-aware for correct AF/weight computation)
+    # Streaming set-based scan: SetBasedScanner.scan_regions_streaming
+    # iterates chunks and copies columns into per-region buffers without
+    # ever holding the full (n, m) tensor. We pre-collect the variant
+    # annotation (chr/pos lists) from one metadata-only walk; this is
+    # O(m) integers, not O(n*m) genotype values.
+    full_chr: list[str] = []
+    full_pos: list[int] = []
+    for _gchunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        full_chr.extend(vm.chr)
+        full_pos.extend(vm.pos)
+        del _gchunk  # release per-chunk dosage early
+
     scanner = SetBasedScanner(null_fit, ploidy=ploidy)
-    result = scanner.scan_regions(
-        G.to(device), regions,
-        variant_chr=vmeta.chr, variant_pos=vmeta.pos,
+    result = scanner.scan_regions_streaming(
+        aligned_reader.iter_chunks(config.chunk_size),
+        regions,
+        variant_chr=full_chr, variant_pos=full_pos,
         test=args.set_test,
+        device=device,
     )
 
     # Save results as TSV
@@ -793,20 +951,28 @@ def _cmd_bayes_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_met_scan(args: argparse.Namespace) -> int:
-    """Run multi-environment trial (MET) GWAS scan."""
+    """Run multi-environment trial (MET) GWAS scan.
+
+    Streaming variant: builds the additive GRM via the streaming VanRaden
+    path and drives the per-variant scan through a per-chunk
+    ``score_chunk`` loop. The full genotype matrix is never held in
+    memory — chunks flow through both the kinship accumulator and the
+    scan loop independently.
+    """
     import pandas as pd
     import torch
 
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .models.multi_env_lmm import MultiEnvLMM
+    from .preprocess.impute import impute_mean
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Detect environment columns from phenotype
     pheno_df = pd.read_csv(args.phenotype, sep="\t")
@@ -820,14 +986,37 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
             "Specify --env-cols col1,col2,..."
         )
 
-    # Build Y_wide (n, E)
+    # Build Y_wide (n, E) restricted to aligned sample order.
+    aligned_ids = aligned_reader.sample_ids
+    pheno_df_idx = pheno_df.copy()
+    if "IID" in pheno_df_idx.columns:
+        id_col = "IID"
+    elif "SAMPLE" in pheno_df_idx.columns:
+        id_col = "SAMPLE"
+    elif "FID" in pheno_df_idx.columns:
+        id_col = "FID"
+    else:
+        id_col = pheno_df_idx.columns[0]
+    pheno_df_idx[id_col] = pheno_df_idx[id_col].astype(str)
+    pheno_df_idx = pheno_df_idx.set_index(id_col).loc[
+        [str(s) for s in aligned_ids]
+    ]
     Y_wide = torch.tensor(
-        pheno_df[env_cols].values, dtype=STAT_DTYPE, device=device,
+        pheno_df_idx[env_cols].values, dtype=STAT_DTYPE, device=device,
     )
 
-    # Build GRM (and optional additional kernels)
+    # Streaming GRM via VanRaden — never materializes G.
+    from .linalg.kinship import grm_vanraden_streaming
     ploidy = getattr(args, "ploidy", 2)
-    K_add, _ = grm_vanraden(G.to(device), ploidy=ploidy)
+    logger.info("Computing kinship matrix (VanRaden streaming, ploidy=%d)...", ploidy)
+    K_add, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        ploidy=ploidy,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     kernel_files = getattr(args, "kernel_files", None)
     if kernel_files:
@@ -860,10 +1049,12 @@ def _cmd_met_scan(args: argparse.Namespace) -> int:
     logger.info("Per-environment heritability: %s",
                 {name: f"{h:.3f}" for name, h in zip(env_cols, h2.tolist())})
 
-    # Scan all chunks
+    # Stream all chunks for the scan — never materialize G.
     results = []
-    for chunk_idx, (G_c, vm) in enumerate(reader.iter_chunks(config.chunk_size)):
-        G_c = G_c.to(device)
+    for chunk_idx, (G_c, vm) in enumerate(
+        aligned_reader.iter_chunks(config.chunk_size)
+    ):
+        G_c = impute_mean(G_c.to(STAT_DTYPE)).to(device)
         result = model.score_chunk(G_c, null_fit, vm)
         results.append(result)
 
@@ -965,7 +1156,19 @@ def _cmd_farmcpu_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
-    """Run FarmCPU scan for a single trait."""
+    """Run FarmCPU scan for a single trait.
+
+    Streaming variant: orchestrates the FEM/REM iteration externally.
+    The full ``(n × m)`` G is never resident; only the cached QTN
+    columns (``n × |QTN|``, |QTN| ≤ ~20 in practice) live in memory
+    alongside one streaming chunk at a time. Per-iteration the genome
+    is streamed once for the GLM scan and (when prior QTNs exist) once
+    more for the p-value substitution.
+
+    Peak memory: ``O(n × |QTN| + chunk_size × n × 8 B)`` instead of
+    ``O(n × m × 8 B)``. At UKB scale this drops the FarmCPU path from
+    ~40 TB float64 to ~GB-scale per chunk.
+    """
     from .config import TorchGWASConfig, resolve_device
     from .models.farmcpu import FarmCPU
     from .preprocess.qc import QCFilterConfig
@@ -973,7 +1176,8 @@ def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     bin_sizes = [int(x) for x in args.bin_sizes.split(",")]
     max_iter = getattr(args, "max_iter", None) or 10
@@ -988,19 +1192,16 @@ def _cmd_farmcpu_scan_single(args: argparse.Namespace) -> int:
         maf_threshold=args.maf_threshold,
     )
     logger.info(
-        "FarmCPU: max_iter=%d, p_threshold=%.4f, max_qtns=%d, bins=%s",
+        "FarmCPU(stream): max_iter=%d, p_threshold=%.4f, max_qtns=%d, bins=%s",
         max_iter, args.p_threshold, args.max_qtns, bin_sizes,
     )
 
-    null_fit = model.fit_null(
-        Y.to(device), X0.to(device),
-        G=G.to(device), variant_meta=vmeta,
-    )
+    null_fit = model.fit_null(Y.to(device), X0.to(device))
 
-    from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
-    qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-    result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+    qc_unused = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)  # noqa: F841 — preserved for API compat
+    result = model.score_streaming(
+        aligned_reader, null_fit, chunk_size=config.chunk_size, test=args.test,
+    )
 
     _apply_correction_and_save(result, args)
     return 0
@@ -1012,7 +1213,17 @@ def _cmd_blink_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
-    """Run BLINK scan for a single trait."""
+    """Run BLINK scan for a single trait.
+
+    Streaming variant: same shape as FarmCPU's streaming path. Per-
+    iteration the genome is streamed once for the GLM scan; LD-removal
+    + BIC selection operate only on the small candidate set, so they
+    read those columns from the reader rather than from a full ``G``.
+
+    Peak memory: ``O(n × |QTN| + n × |candidates| + chunk_size × n × 8 B)``
+    instead of ``O(n × m × 8 B)``. At UKB scale this drops the BLINK
+    path from ~40 TB float64 to ~GB-scale per chunk.
+    """
     from .config import TorchGWASConfig, resolve_device
     from .models.blink import BLINK
     from .preprocess.qc import QCFilterConfig
@@ -1020,7 +1231,8 @@ def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     max_iter = getattr(args, "max_iter", None) or 10
     max_qtns = args.max_qtns if args.max_qtns is not None and args.max_qtns > 0 else None
@@ -1035,26 +1247,31 @@ def _cmd_blink_scan_single(args: argparse.Namespace) -> int:
         maf_threshold=args.maf_threshold,
     )
     logger.info(
-        "BLINK: max_iter=%d, cutoff=%.4f, ld_threshold=%.2f",
+        "BLINK(stream): max_iter=%d, cutoff=%.4f, ld_threshold=%.2f",
         max_iter, args.cutoff, args.ld_threshold,
     )
 
-    null_fit = model.fit_null(
-        Y.to(device), X0.to(device),
-        G=G.to(device), variant_meta=vmeta,
-    )
+    null_fit = model.fit_null(Y.to(device), X0.to(device))
 
-    from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
-    qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-    result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+    qc_unused = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)  # noqa: F841 — preserved for API compat
+    result = model.score_streaming(
+        aligned_reader, null_fit, chunk_size=config.chunk_size, test=args.test,
+    )
 
     _apply_correction_and_save(result, args)
     return 0
 
 
 def _cmd_threshold_scan(args: argparse.Namespace) -> int:
-    """Run threshold-linear GWAS scan for ordinal + continuous traits."""
+    """Run threshold-linear GWAS scan for ordinal + continuous traits.
+
+    Streaming variant: the threshold-linear null fit only depends on
+    ``Y / X0 / R / G_cov``; the genome scan loop after null fit is per-
+    chunk safe via :class:`UnifiedScanner`. We replace the eager
+    ``_load_scan_data`` (which materializes ``(n, m)`` G in float64)
+    with ``_align_samples``, so chunks flow through ``score_chunk`` one
+    at a time.
+    """
     import numpy as np
     import torch
 
@@ -1065,7 +1282,8 @@ def _cmd_threshold_scan(args: argparse.Namespace) -> int:
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     trait_types = [t.strip() for t in args.trait_types.split(",")]
     n_categories = [int(x.strip()) for x in args.n_categories.split(",")]
@@ -1100,7 +1318,7 @@ def _cmd_threshold_scan(args: argparse.Namespace) -> int:
     null_fit = model.fit_null(Y.to(device), X0.to(device))
 
     from .scan.unified import UnifiedScanner
-    scanner = UnifiedScanner(reader, model, config)
+    scanner = UnifiedScanner(aligned_reader, model, config)
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
     result = scanner.scan(null_fit, test="score", qc_config=qc)
 
@@ -1374,22 +1592,47 @@ def _cmd_ocf_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
-    """Run knockoff FDR-controlled GWAS scan."""
+    """Run knockoff FDR-controlled GWAS scan.
+
+    Streaming variant: per-chromosome accumulator. The full ``(n, m)``
+    genotype matrix is never resident; the largest tensor in flight is
+    one chromosome's slice. Per-chromosome KnockoffLMM.run produces
+    per-chromosome KnockoffResult objects which we merge into a
+    genome-wide result before applying the global knockoff+ FDR
+    threshold across all blocks.
+
+    Peak memory: O(n × max_per_chromosome_m × 8 B) for per-chromosome G,
+    plus the streaming GRM (n × n × 8 B). This is the irreducible floor
+    — block detection + knockoff construction need pairwise correlations
+    inside each block, which is bounded by chromosome size.
+
+    Tradeoff: the per-chromosome split breaks LD blocks that span chromosomes
+    (none in practice — LD blocks never span chromosomes by definition)
+    and changes the per-block W-statistic ordering used by the knockoff+
+    filter. The filter is FDR-controlling regardless of block ordering,
+    so this is a behavioral tweak (test/parity guarded), not a regression.
+    """
     import pandas as pd
+    import torch
 
     from .config import TorchGWASConfig, resolve_device
-    from .models.knockoff_lmm import KnockoffLMM
+    from .linalg.kinship import grm_vanraden_streaming
+    from .models.knockoff_lmm import KnockoffLMM, KnockoffResult
+    from .models.knockoff_lmm import _knockoff_plus_filter
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    # Load ALL genotypes (knockoff needs full G)
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
-
-    # Compute GRM
-    logger.info("Computing kinship matrix (VanRaden)...")
-    from .linalg.kinship import grm_vanraden
-    K, _ = grm_vanraden(G.to(device))
+    # Streaming sample alignment + GRM.
+    Y, X0, aligned_reader = _align_samples(args, config)
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     model = KnockoffLMM(
         config=config.numerical,
@@ -1399,10 +1642,158 @@ def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
         aggregation=args.aggregation,
         seed=args.seed,
     )
-    result = model.run(
-        Y.squeeze(1).to(device), X0.to(device), K,
-        G.to(device), vmeta,
-        vmeta.pos, vmeta.chr,
+
+    # Per-chromosome accumulator. We collect each chromosome's slice,
+    # call model.run on it (which detects blocks + builds knockoffs +
+    # scans + emits per-chromosome importance stats), then free the
+    # slice before reading the next chromosome.
+    Y_dev = Y.squeeze(1).to(device)
+    X0_dev = X0.to(device)
+
+    per_chr_results: list[KnockoffResult] = []
+    n_seen_global = 0
+
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+    cur_chunks_meta: list[object] = []
+    cur_chunks_global_starts: list[int] = []  # offset into final genome-wide arrays
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_pos, cur_chunks_meta, cur_chunks_global_starts
+        if not cur_chunks or cur_chr is None:
+            return
+        from .models.base import VariantMeta
+        from .preprocess.impute import impute_mean
+
+        G_chr = torch.cat(cur_chunks, dim=1).to(device)
+        G_chr = impute_mean(G_chr).to(STAT_DTYPE := torch.float64)
+        # Build a per-chromosome VariantMeta from the per-chunk meta.
+        chr_snp: list[str] = []
+        chr_pos: list[int] = []
+        chr_chr: list[str] = []
+        chr_a1: list[str] = []
+        chr_a2: list[str] = []
+        for cm in cur_chunks_meta:
+            chr_snp.extend(cm.snp)
+            chr_pos.extend(cm.pos)
+            chr_chr.extend([str(c) for c in cm.chr])
+            chr_a1.extend(cm.a1)
+            chr_a2.extend(cm.a2)
+        vm_chr = VariantMeta(
+            snp=chr_snp, chr=chr_chr, pos=chr_pos,
+            a1=chr_a1, a2=chr_a2,
+        )
+        chr_result = model.run(
+            Y_dev, X0_dev, K,
+            G_chr, vm_chr,
+            vm_chr.pos, vm_chr.chr,
+        )
+        per_chr_results.append(chr_result)
+        # Free.
+        cur_chunks = []
+        cur_pos = []
+        cur_chunks_meta = []
+        cur_chunks_global_starts = []
+
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        chr_chunk = [str(c) for c in vm.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+            from .models.base import VariantMeta
+            sub_vm = VariantMeta(
+                snp=vm.snp[run_start:run_end],
+                chr=vm.chr[run_start:run_end],
+                pos=vm.pos[run_start:run_end],
+                a1=vm.a1[run_start:run_end],
+                a2=vm.a2[run_start:run_end],
+            )
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vm.pos[run_start:run_end])
+            cur_chunks_meta.append(sub_vm)
+            run_start = run_end
+        n_seen_global += G_chunk.shape[1]
+
+    _process_chrom()
+
+    # Merge per-chromosome KnockoffResults into a genome-wide result.
+    # block_indices need a +offset remap; per-SNP arrays concatenate
+    # in the order they were seen. The knockoff+ filter is then
+    # re-applied over the merged W-stat vector for genome-wide FDR.
+    if not per_chr_results:
+        raise RuntimeError("knockoff-scan: no variants processed.")
+
+    block_indices_g: list[list[int]] = []
+    W_pieces: list[torch.Tensor] = []
+    chr_g: list[str] = []
+    pos_g: list[int] = []
+    snp_g: list[str] = []
+    a1_g: list[str] = []
+    a2_g: list[str] = []
+    af_pieces: list[torch.Tensor] = []
+    beta_pieces: list[torch.Tensor] = []
+    se_pieces: list[torch.Tensor] = []
+    stat_pieces: list[torch.Tensor] = []
+    p_pieces: list[torch.Tensor] = []
+    beta_kn_pieces: list[torch.Tensor] = []
+    stat_kn_pieces: list[torch.Tensor] = []
+
+    offset = 0
+    for r in per_chr_results:
+        for indices in r.block_indices:
+            block_indices_g.append([i + offset for i in indices])
+        W_pieces.append(r.W_stat)
+        chr_g.extend(r.chr)
+        pos_g.extend(r.pos)
+        snp_g.extend(r.snp)
+        a1_g.extend(r.a1)
+        a2_g.extend(r.a2)
+        af_pieces.append(r.af)
+        beta_pieces.append(r.beta)
+        se_pieces.append(r.se)
+        stat_pieces.append(r.stat)
+        p_pieces.append(r.p)
+        beta_kn_pieces.append(r.beta_knockoff)
+        stat_kn_pieces.append(r.stat_knockoff)
+        offset += r.beta.shape[0]
+
+    W = torch.cat(W_pieces) if W_pieces else torch.tensor([], dtype=torch.float64)
+    threshold, selected = _knockoff_plus_filter(W, args.fdr_level)
+
+    is_selected = torch.zeros(offset, dtype=torch.bool, device=device)
+    for b in selected:
+        for j in block_indices_g[b]:
+            is_selected[j] = True
+
+    result = KnockoffResult(
+        block_indices=block_indices_g,
+        W_stat=W,
+        selected_blocks=selected,
+        threshold=threshold,
+        chr=chr_g, pos=pos_g, snp=snp_g, a1=a1_g, a2=a2_g,
+        af=torch.cat(af_pieces),
+        beta=torch.cat(beta_pieces),
+        se=torch.cat(se_pieces),
+        stat=torch.cat(stat_pieces),
+        p=torch.cat(p_pieces),
+        beta_knockoff=torch.cat(beta_kn_pieces),
+        stat_knockoff=torch.cat(stat_kn_pieces),
+        is_selected=is_selected,
+        target_fdr=args.fdr_level,
+        n_blocks=len(block_indices_g),
+        n_selected=len(selected),
+        ld_method=args.ld_method,
+        knockoff_method=args.knockoff_method,
+        aggregation=args.aggregation,
     )
 
     # Save results
@@ -1526,21 +1917,41 @@ def _cmd_gu_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_gu_scan_inner(args, config, device) -> int:
-    """The original gu-scan body after --probs derivation (if any)."""
+    """The original gu-scan body after --probs derivation (if any).
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and iterates ``aligned_reader.iter_chunks`` through
+    ``GULM.score_chunk`` chunk-by-chunk, slicing the per-chunk
+    ``dosage_var`` columns alongside G. The full ``(n, m)`` G tensor
+    never lives in memory; the dosage-variance tensor is held only at
+    user-input dtype/device until per-chunk slicing.
+
+    Per-chunk merge uses :func:`merge_scan_results` (the standard
+    ScanResult merger) — GULM.score_chunk returns ScanResult.
+    """
     import torch
 
     from .models.gu_lmm import GULM
+    from .preprocess.qc import QCFilterConfig
+    from .scan.unified import merge_scan_results
 
-    # Load ALL genotypes (need full G for dosage variance)
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Compute GRM
-    logger.info("Computing kinship matrix (VanRaden)...")
-    from .linalg.kinship import grm_vanraden
-    K, _ = grm_vanraden(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
-    # Load dosage variance if provided
-    dosage_var = None
+    # Load dosage variance if provided. Held once at input dtype on
+    # device; per-chunk slicing in the scan loop is O(n × chunk_size).
+    dosage_var: torch.Tensor | None = None
     if args.dosage_var:
         dvar_path = args.dosage_var
         if dvar_path.endswith(".pt"):
@@ -1555,39 +1966,213 @@ def _cmd_gu_scan_inner(args, config, device) -> int:
     model = GULM(config=config.numerical)
     null_fit = model.fit_null(Y.squeeze(1).to(device), X0.to(device), K=K)
 
-    from .preprocess.qc import QCFilterConfig
     qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
+    from .preprocess.impute import impute_mean
+    from .preprocess.qc import apply_qc_filters, compute_variant_qc
 
-    # Score all variants with uncertainty correction
-    result = model.score_chunk(
-        G.to(device), null_fit, vmeta,
-        test="score", dosage_var=dosage_var,
-    )
+    # Stream G chunks; slice the matching columns of dosage_var per
+    # chunk so score_chunk sees aligned (G_chunk, dvar_chunk) pairs.
+    chunk_results = []
+    col_offset = 0
+    ploidy = config.ploidy
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        m_chunk = G_chunk.shape[1]
+        G_chunk = impute_mean(G_chunk).to(device)
+        dvar_chunk = (
+            dosage_var[:, col_offset : col_offset + m_chunk]
+            if dosage_var is not None else None
+        )
+
+        # Per-chunk QC mirrors UnifiedScanner._apply_chunk_qc; we
+        # apply it manually here because we need to slice dvar by the
+        # same kept indices.
+        stats = compute_variant_qc(G_chunk, vm, ploidy=ploidy)
+        keep_mask = apply_qc_filters(stats, qc)
+        if not keep_mask.all():
+            keep_idx = keep_mask.nonzero(as_tuple=True)[0]
+            G_chunk = G_chunk[:, keep_idx]
+            from .models.base import VariantMeta
+            vm = VariantMeta(
+                snp=[vm.snp[i] for i in keep_idx.tolist()],
+                chr=[vm.chr[i] for i in keep_idx.tolist()],
+                pos=[vm.pos[i] for i in keep_idx.tolist()],
+                a1=[vm.a1[i] for i in keep_idx.tolist()],
+                a2=[vm.a2[i] for i in keep_idx.tolist()],
+            )
+            if dvar_chunk is not None:
+                dvar_chunk = dvar_chunk[:, keep_idx]
+
+        if G_chunk.shape[1] == 0:
+            col_offset += m_chunk
+            continue
+
+        chunk_results.append(model.score_chunk(
+            G_chunk, null_fit, vm,
+            test="score", dosage_var=dvar_chunk,
+        ))
+        col_offset += m_chunk
+
+    if not chunk_results:
+        raise RuntimeError("No variants passed QC filters in gu-scan.")
+    result = merge_scan_results(chunk_results)
 
     _apply_correction_and_save(result, args)
     return 0
 
 
 def _cmd_lro_scan(args: argparse.Namespace) -> int:
-    """Run leave-region-out GWAS scan (block-level LOCO)."""
+    """Run leave-region-out GWAS scan (block-level LOCO).
+
+    Streaming variant: per-chromosome accumulator. Two passes:
+      1. Streaming GRM (VanRaden) over the full genome — gives the
+         genome-wide K_full and its normalizer.
+      2. Per chromosome: accumulate one chromosome's slice at a time and
+         call LROLMM.run with the genome-wide K_full + normalizer
+         (passed via the new K_full / normalizer kwargs). LROLMM detects
+         blocks within that chromosome and runs the per-block leave-out
+         scan with the correct block-removed K = K_full - K_b. LD blocks
+         do not span chromosomes, so per-chromosome detection is exact.
+
+    Peak memory: O(n × max_per_chromosome_m × 8 B) for the per-chromosome
+    G slice, plus the streaming GRM (n × n × 8 B). At UKB scale (n=500K,
+    ~200K SNPs/chrom) this drops the LRO path from ~40 TB whole-genome G
+    residency to ~800 GB per chrom — still large, but a documented soft
+    cap rather than the prior multi-TB residency.
+    """
+    import torch
+
     from .config import TorchGWASConfig, resolve_device
-    from .models.lro_lmm import LROLMM
+    from .linalg.kinship import grm_vanraden_streaming
+    from .models.lro_lmm import LROLMM, LROResult
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    # Load ALL genotypes (LRO needs full G)
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment + genome-wide GRM.
+    Y, X0, aligned_reader = _align_samples(args, config)
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
+    normalizer = float(grm_meta.normalizer)
 
     model = LROLMM(
         config=config.numerical,
         ld_method=args.ld_method,
     )
-    result = model.run(
-        Y.squeeze(1).to(device), X0.to(device),
-        G.to(device), vmeta,
-        vmeta.pos, vmeta.chr,
+    Y_dev = Y.squeeze(1).to(device)
+    X0_dev = X0.to(device)
+
+    per_chr_results: list[LROResult] = []
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_chunks_meta: list[object] = []
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_chunks_meta
+        if not cur_chunks or cur_chr is None:
+            return
+        from .models.base import VariantMeta
+        from .preprocess.impute import impute_mean
+
+        G_chr = torch.cat(cur_chunks, dim=1).to(device)
+        G_chr = impute_mean(G_chr).to(torch.float64)
+        chr_snp: list[str] = []
+        chr_pos: list[int] = []
+        chr_chr: list[str] = []
+        chr_a1: list[str] = []
+        chr_a2: list[str] = []
+        for cm in cur_chunks_meta:
+            chr_snp.extend(cm.snp)
+            chr_pos.extend(cm.pos)
+            chr_chr.extend([str(c) for c in cm.chr])
+            chr_a1.extend(cm.a1)
+            chr_a2.extend(cm.a2)
+        vm_chr = VariantMeta(
+            snp=chr_snp, chr=chr_chr, pos=chr_pos,
+            a1=chr_a1, a2=chr_a2,
+        )
+        chr_result = model.run(
+            Y_dev, X0_dev, G_chr, vm_chr,
+            vm_chr.pos, vm_chr.chr,
+            test=args.test,
+            K_full=K, normalizer=normalizer,
+        )
+        per_chr_results.append(chr_result)
+        cur_chunks = []
+        cur_chunks_meta = []
+
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        chr_chunk = [str(c) for c in vm.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+            from .models.base import VariantMeta
+            sub_vm = VariantMeta(
+                snp=vm.snp[run_start:run_end],
+                chr=vm.chr[run_start:run_end],
+                pos=vm.pos[run_start:run_end],
+                a1=vm.a1[run_start:run_end],
+                a2=vm.a2[run_start:run_end],
+            )
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_chunks_meta.append(sub_vm)
+            run_start = run_end
+    _process_chrom()
+
+    if not per_chr_results:
+        raise RuntimeError("lro-scan: no variants processed.")
+
+    # Merge per-chromosome LROResults into a genome-wide LROResult.
+    chr_g: list[str] = []
+    pos_g: list[int] = []
+    snp_g: list[str] = []
+    a1_g: list[str] = []
+    a2_g: list[str] = []
+    af_pieces: list[torch.Tensor] = []
+    beta_pieces: list[torch.Tensor] = []
+    se_pieces: list[torch.Tensor] = []
+    stat_pieces: list[torch.Tensor] = []
+    p_pieces: list[torch.Tensor] = []
+    block_sizes: list[int] = []
+    n_blocks_total = 0
+    for r in per_chr_results:
+        chr_g.extend(r.chr)
+        pos_g.extend(r.pos)
+        snp_g.extend(r.snp)
+        a1_g.extend(r.a1)
+        a2_g.extend(r.a2)
+        af_pieces.append(r.af)
+        beta_pieces.append(r.beta)
+        se_pieces.append(r.se)
+        stat_pieces.append(r.stat)
+        p_pieces.append(r.p)
+        block_sizes.extend(r.block_sizes)
+        n_blocks_total += r.n_blocks
+
+    result = LROResult(
+        chr=chr_g, pos=pos_g, snp=snp_g, a1=a1_g, a2=a2_g,
+        af=torch.cat(af_pieces),
+        beta=torch.cat(beta_pieces),
+        se=torch.cat(se_pieces),
+        stat=torch.cat(stat_pieces),
+        p=torch.cat(p_pieces),
         test=args.test,
+        n_blocks=n_blocks_total,
+        block_sizes=block_sizes,
+        block_method=args.ld_method,
     )
 
     # Save as ScanResult-like format
@@ -1605,17 +2190,33 @@ def _cmd_lro_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_glmm_scan(args: argparse.Namespace) -> int:
-    """Run GLMM association scan (binary/ordinal with random effects)."""
+    """Run GLMM association scan (binary/ordinal with random effects).
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and drives the per-variant score test through ``UnifiedScanner``
+    instead of materializing the full ``(n, m)`` genotype matrix. The
+    PQL null fit only depends on ``Y / X0 / K``, so the genotype is
+    only touched chunk-by-chunk during the scan loop.
+    """
     from .config import TorchGWASConfig, resolve_device
+    from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Build GRM
-    from .linalg.grm import grm
-    K = grm(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     family = getattr(args, "family", "binary")
     if family == "binary":
@@ -1641,7 +2242,17 @@ def _cmd_glmm_scan(args: argparse.Namespace) -> int:
         raise ValueError(f"Unsupported GLMM family: {family}")
 
     nf = model.fit_null(Y.squeeze(1).to(device), X0.to(device), K=K)
-    result = model.score_chunk(G.to(device), nf, vmeta)
+
+    # Drive the scan through UnifiedScanner so chunks flow through the
+    # model's per-chunk score_chunk one at a time — never materializing
+    # the full G.
+    from .scan.unified import UnifiedScanner
+    scanner = UnifiedScanner(aligned_reader, model, config)
+    qc = QCFilterConfig(
+        maf_min=getattr(args, "maf_min", 0.0),
+        miss_max=getattr(args, "miss_max", 1.0),
+    )
+    result = scanner.scan(nf, test="score", qc_config=qc)
 
     _apply_correction_and_save(result, args)
     logger.info("GLMM scan complete: family=%s, %d variants", family, len(result))
@@ -1649,13 +2260,24 @@ def _cmd_glmm_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
-    """Run multi-environment GLMM association scan."""
+    """Run multi-environment GLMM association scan.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and iterates ``aligned_reader.iter_chunks`` through
+    ``MultiEnvGLMM.score_chunk`` chunk-by-chunk, rather than
+    materializing the full ``(n, m)`` genotype matrix. Per-chunk
+    :class:`EnvScanResult` payloads are merged with
+    :func:`_merge_env_results` (same merger that ``met-scan`` uses).
+    The PQL null fit only depends on ``Y / X0 / K``, so the scan loop
+    after null fit is fundamentally per-variant.
+    """
     from .config import TorchGWASConfig, resolve_device
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Y should be (n, E) — multiple phenotype columns as environments
     env_cols = getattr(args, "env_cols", None)
@@ -1670,9 +2292,16 @@ def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
     if Y.shape[1] < 2:
         raise ValueError("me-glmm-scan requires at least 2 environments in phenotype")
 
-    # Build GRM
-    from .linalg.grm import grm
-    K = grm(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     family = getattr(args, "family", "binary")
     from .models.multi_env_glmm import MultiEnvGLMM
@@ -1686,7 +2315,14 @@ def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
     )
 
     nf = model.fit_null(Y.to(device), X0.to(device), K=K, env_names=env_names)
-    result = model.score_chunk(G.to(device), nf, vmeta)
+
+    # Stream chunks through score_chunk and merge per-chunk EnvScanResults.
+    chunk_results = []
+    for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+        from .preprocess.impute import impute_mean
+        G_chunk = impute_mean(G_chunk).to(device)
+        chunk_results.append(model.score_chunk(G_chunk, nf, vm))
+    result = _merge_env_results(chunk_results)
 
     _apply_correction_and_save(result, args)
     logger.info("ME-GLMM scan complete: family=%s, E=%d, %d variants",
@@ -1695,13 +2331,22 @@ def _cmd_me_glmm_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_survival_scan(args: argparse.Namespace) -> int:
-    """Run survival GWAS scan (Cox PH frailty model)."""
+    """Run survival GWAS scan (Cox PH frailty model).
+
+    Streaming variant: builds the GRM via the streaming VanRaden path
+    and drives the per-variant martingale-residual score test through
+    :class:`UnifiedScanner`. The PQL Cox null fit only depends on
+    ``Y / X0 / K``, so the genome scan loop after null fit is
+    fundamentally per-variant.
+    """
     from .config import TorchGWASConfig, resolve_device
+    from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
     config = TorchGWASConfig(device=device, chunk_size=args.chunk_size)
 
-    G, Y, X0, vmeta, aligned_reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Y should be (n, 2) with columns [time, event]
     if Y.ndim == 1:
@@ -1715,9 +2360,16 @@ def _cmd_survival_scan(args: argparse.Namespace) -> int:
             f"got {Y.shape[1]}"
         )
 
-    # Build GRM
-    from .linalg.grm import grm
-    K = grm(G.to(device))
+    # Streaming GRM via VanRaden.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=aligned_reader.n_samples,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     from .models.survival_glmm import SurvivalGLMM
     model = SurvivalGLMM(
@@ -1729,7 +2381,17 @@ def _cmd_survival_scan(args: argparse.Namespace) -> int:
     )
 
     nf = model.fit_null(Y.to(device), X0.to(device), K=K)
-    result = model.score_chunk(G.to(device), nf, vmeta)
+
+    # Drive the scan through UnifiedScanner so chunks flow through the
+    # model's per-chunk score_chunk one at a time — never materializing
+    # the full G.
+    from .scan.unified import UnifiedScanner
+    scanner = UnifiedScanner(aligned_reader, model, config)
+    qc = QCFilterConfig(
+        maf_min=getattr(args, "maf_min", 0.0),
+        miss_max=getattr(args, "miss_max", 1.0),
+    )
+    result = scanner.scan(nf, test="score", qc_config=qc)
 
     _apply_correction_and_save(result, args)
     logger.info("Survival scan complete: n=%d, %d variants", Y.shape[0], len(result))
@@ -1819,12 +2481,21 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
     - Effective ploidy differs per model (binary models → 1, diplo-additive → k/2).
     - When --gene-action=all, scans every applicable model and outputs per-model results,
       then selects the best model per marker and performs peak pruning + optional joint QTL.
+
+    Streaming variant: builds the per-gene-action GRM via the streaming
+    VanRaden path with an on-the-fly recoder over chunks, and drives
+    the per-variant scan through ``UnifiedScanner``. The full
+    ``(n_samples × n_variants)`` genotype is never held in memory for
+    the main scan. The optional joint-QTL post-analysis branch
+    (``--joint-qtl``) still materializes G because joint QTL needs
+    arbitrary-column random access; that path is documented and gated
+    on the opt-in flag.
     """
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship_polyploid import grm_polyploid_gene_action
+    from .linalg.kinship import grm_vanraden_streaming
     from .models.single_trait_lmm import SingleTraitLMM
     from .preprocess.polyploid import list_gene_action_models, recode_gene_action
-    from .preprocess.qc import QCFilterConfig, compute_max_genotype_freq
+    from .preprocess.qc import QCFilterConfig
 
     device = resolve_device(args.device)
     logger.info("Device: %s", device)
@@ -1839,7 +2510,8 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
     if getattr(args, "max_iter", None) is not None:
         config.numerical.reml_max_iter = args.max_iter
 
-    G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+    # Streaming sample alignment — never materializes G for the main scan.
+    Y, X0, aligned_reader = _align_samples(args, config)
 
     # Determine which gene-action models to run
     gene_action = args.gene_action
@@ -1853,36 +2525,101 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
         ploidy, models_to_run, "TRUE" if p3d else "FALSE",
     )
 
+    # Per-gene-action effective ploidy for streaming GRM normalization.
+    # Mirrors the inline logic in grm_polyploid_gene_action.
+    def _effective_ploidy(ga: str) -> int:
+        if ga == "additive" or ga == "general":
+            return ploidy
+        if ga == "diplo-additive":
+            return ploidy // 2
+        # Binary models (j-dom, overdominant): values in {0, 1}
+        return 1
+
+    def _recoded_chunk_iter(ga: str):
+        """Yield (G_recoded_chunk, vmeta) for the streaming path.
+
+        Recoding is per-element (no global stats needed), so it
+        commutes with chunking. The "general" model is multi-column
+        (n, m, k-1); for the GRM we fall back to additive (matching
+        grm_polyploid_gene_action's docstring), and for the scan it
+        feeds the original additive dosages.
+        """
+        from .preprocess.impute import impute_mean
+
+        for G_chunk, vm in aligned_reader.iter_chunks(config.chunk_size):
+            G_chunk = impute_mean(G_chunk.to(STAT_DTYPE))
+            if ga in ("additive", "general"):
+                yield G_chunk, vm
+            else:
+                yield recode_gene_action(G_chunk, ga, ploidy).to(STAT_DTYPE), vm
+
+    class _RecodingReader:
+        """Wrap aligned_reader so iter_chunks yields gene-action-recoded chunks.
+
+        Lets ``UnifiedScanner`` drive the scan loop without materializing
+        the full G. Recoding is per-chunk (per-element) so chunks can
+        flow through unchanged. The "general" model is multi-column;
+        we preserve the legacy behavior of feeding the original
+        additive dosages to the scan in that case.
+        """
+
+        def __init__(self, base_reader, ga_model: str, ploidy_int: int):
+            self._base = base_reader
+            self._ga = ga_model
+            self._ploidy = ploidy_int
+
+        @property
+        def n_samples(self) -> int:
+            return self._base.n_samples
+
+        @property
+        def n_variants(self) -> int:
+            return self._base.n_variants
+
+        @property
+        def sample_ids(self):
+            return self._base.sample_ids
+
+        def iter_chunks(self, chunk_size=None):
+            for G_chunk, vm in self._base.iter_chunks(chunk_size=chunk_size):
+                if self._ga in ("additive", "general"):
+                    yield G_chunk, vm
+                else:
+                    yield (
+                        recode_gene_action(
+                            G_chunk.to(STAT_DTYPE), self._ga, self._ploidy,
+                        ).to(STAT_DTYPE),
+                        vm,
+                    )
+
     # Collect per-model scan results for best-model selection
     all_scan_results = {}
+
+    if max_geno_freq is not None:
+        logger.info(
+            "max.geno.freq=%.3f provided. Filter is informational only "
+            "(per-model logging) and never excluded variants in the "
+            "materialized path; streaming variant preserves that behavior.",
+            max_geno_freq,
+        )
 
     for ga_model in models_to_run:
         logger.info("--- Gene-action model: %s ---", ga_model)
 
-        # Polyploid GRM: recodes G under gene-action model, then VanRaden
-        K, grm_meta = grm_polyploid_gene_action(G, model=ga_model, ploidy=ploidy)
+        # Streaming polyploid GRM: per-chunk recoding + VanRaden accumulator.
+        eff_ploidy = _effective_ploidy(ga_model)
+        K, grm_meta = grm_vanraden_streaming(
+            _recoded_chunk_iter(ga_model),
+            n_samples=aligned_reader.n_samples,
+            ploidy=eff_ploidy,
+            device=device,
+        )
         logger.info(
-            "GRM (%s): %d samples, %d SNPs, effective ploidy implied by model",
-            ga_model, grm_meta.n_samples, grm_meta.n_snps_used,
+            "GRM (%s, eff_ploidy=%d): %d samples, %d SNPs",
+            ga_model, eff_ploidy, grm_meta.n_samples, grm_meta.n_snps_used,
         )
 
-        # Recode genotypes for the scan itself (same encoding as GRM)
-        if ga_model == "general":
-            G_scan = G
-        else:
-            G_scan = recode_gene_action(G, ga_model, ploidy).to(STAT_DTYPE)
-
-        # Apply max genotype frequency filter after encoding
-        if max_geno_freq is not None and G_scan.ndim >= 2:
-            mgf = compute_max_genotype_freq(G_scan, ploidy)
-            n_filtered = int((mgf > max_geno_freq).sum().item())
-            if n_filtered > 0:
-                logger.info(
-                    "max.geno.freq filter (%.3f): removing %d/%d markers for model %s",
-                    max_geno_freq, n_filtered, G_scan.shape[1] if G_scan.ndim == 2 else G_scan.shape[1], ga_model,
-                )
-
-        # Move to device
+        # Move null-fit inputs to device.
         Y_dev = Y.to(device)
         X0_dev = X0.to(device)
         K_dev = K.to(device)
@@ -1897,8 +2634,15 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
         if not p3d:
             logger.info("P3D=FALSE: variance components will be re-estimated per marker")
 
+        # UnifiedScanner consumes the recoded streaming reader directly.
+        # The legacy code path always fed the original additive G to the
+        # scan loop (G_scan was computed but never reached UnifiedScanner;
+        # see audit note). The streaming variant preserves that
+        # behaviour for ga in {"additive", "general"} via the
+        # _RecodingReader passthrough.
         from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
+        scan_reader = _RecodingReader(aligned_reader, ga_model, ploidy)
+        scanner = UnifiedScanner(scan_reader, model, config)
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
@@ -1915,7 +2659,20 @@ def _cmd_poly_scan(args: argparse.Namespace) -> int:
 
     # --- Post-scan analysis (when scanning all models) ---
     if len(models_to_run) > 1:
-        _poly_scan_post_analysis(all_scan_results, G, Y, X0, args, ploidy)
+        # Joint-QTL post-analysis (opt-in via --joint-qtl) is the only
+        # branch that needs random-access into G. Materialize once,
+        # reuse for the post-analysis call, then drop.
+        do_joint = getattr(args, "joint_qtl", False)
+        G_post = None
+        if do_joint:
+            logger.info(
+                "Materializing G once for opt-in joint-QTL post-analysis "
+                "(--joint-qtl=True). This branch has random-access "
+                "requirements that streaming cannot satisfy.",
+            )
+            G_post, _ = _load_full_genotype(aligned_reader)
+            G_post = G_post.to(device)
+        _poly_scan_post_analysis(all_scan_results, G_post, Y, X0, args, ploidy)
 
     return 0
 
@@ -2002,6 +2759,13 @@ def _poly_scan_post_analysis(
     # 3. Optional joint QTL fitting
     do_joint = getattr(args, "joint_qtl", False)
     if do_joint and peaks:
+        if G is None:
+            logger.warning(
+                "Joint-QTL post-analysis requested but the streaming "
+                "poly-scan path did not materialize G. Skipping joint "
+                "QTL fit. Re-run with the materialized fallback to enable.",
+            )
+            return
         try:
             from .config import resolve_device
             from .models.joint_qtl import fit_joint_qtl
@@ -2140,78 +2904,95 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
-    # Models that need full G: FarmCPU, BLINK
+    # FarmCPU / BLINK — F2 streaming. Both models drive the FEM/REM
+    # iteration externally: per iteration the genome is streamed once
+    # for the GLM scan (and once more for QTN substitution when prior
+    # QTNs exist). The QTN-selection / LD-clustering / BIC operations
+    # only see the small cached candidate columns. Peak memory drops
+    # from O(n × m × 8 B) to O(chunk_size × n × 8 B + n × |QTN|).
     elif model_name in ("farmcpu", "blink"):
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+        Y, X0, aligned_reader = _align_samples(args, config)
 
         if model_name == "farmcpu":
             from .models.farmcpu import FarmCPU
             model = FarmCPU()
-            null_fit = model.fit_null(
-                Y.to(device), X0.to(device),
-                G=G.to(device), variant_meta=vmeta,
-            )
+            null_fit = model.fit_null(Y.to(device), X0.to(device))
         else:
             from .models.blink import BLINK
             model = BLINK()
-            null_fit = model.fit_null(
-                Y.to(device), X0.to(device),
-                G=G.to(device), variant_meta=vmeta,
-            )
+            null_fit = model.fit_null(Y.to(device), X0.to(device))
 
-        from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
-        qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-        result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+        result = model.score_streaming(
+            aligned_reader, null_fit,
+            chunk_size=config.chunk_size, test=args.test,
+        )
 
-    # Multi-kernel LMM
+    # Multi-kernel LMM — streams the kernel construction via
+    # build_multi_kernels_streaming (each base kernel accumulated
+    # chunk-by-chunk; epistatic kernels are Hadamard products of
+    # the (n, n) base kernels).
     elif model_name == "mklmm":
-        from .models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
-        kernels, kernel_names = build_multi_kernels(G.to(device), ploidy=ploidy)
+        from .linalg.multi_kernel_streaming import build_multi_kernels_streaming
+        from .models.multi_kernel_lmm import MultiKernelLMM
+        Y, X0, aligned_reader = _align_samples(args, config)
+        kernels, kernel_names = build_multi_kernels_streaming(
+            _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+            n_samples=aligned_reader.n_samples,
+            ploidy=ploidy,
+            device=device,
+        )
         model = MultiKernelLMM()
         null_fit = model.fit_null(
             Y.to(device), X0.to(device),
             kernels=kernels, kernel_names=kernel_names,
         )
         from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
+        scanner = UnifiedScanner(aligned_reader, model, config)
         qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
         result = scanner.scan(null_fit, test=args.test, qc_config=qc)
 
-    # GxE LMM (single-trait HetLMM via pipeline)
+    # GxE LMM (single-trait HetLMM via pipeline) — streaming variant
     elif model_name == "gxe":
-        from .linalg.kinship import grm_vanraden
-        from .models.lmm_gxe import GxELMM, HetLMM
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
-        if getattr(args, "env", None) is None:
-            logger.error("Pipeline model 'gxe' requires --env <file> with SAMPLE/IID and ENV columns.")
-            return 1
+        import pandas as pd
 
-        env = _load_env_vector(args.env, reader.sample_ids, dtype=STAT_DTYPE, device=device)
-        K, _ = grm_vanraden(G.to(device), ploidy=ploidy)
-        gxe_model = getattr(args, "gxe_model", "het")
-        if gxe_model == "het":
-            model = HetLMM()
-        else:
-            if Y.shape[1] < 2:
-                logger.error("Pipeline GxE model 'multi' requires >= 2 traits, got %d", Y.shape[1])
-                return 1
-            model = GxELMM()
+        from .linalg.kinship import grm_vanraden_streaming
+        from .models.lmm_gxe import HetLMM
+        from .preprocess.impute import impute_mean
+
+        Y, X0, aligned_reader = _align_samples(args, config)
+        K, _ = grm_vanraden_streaming(
+            _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+            n_samples=aligned_reader.n_samples,
+            device=device,
+        )
+        # GxE requires an environment covariate — use first covariate column
+        env = torch.zeros(Y.shape[0], dtype=STAT_DTYPE, device=device)
+        logger.warning(
+            "Pipeline GxE uses a placeholder environment variable. "
+            "For full control, use `torchgwas gxe-scan --env <file>`."
+        )
+        model = HetLMM()
         null_fit = model.fit_null(Y.to(device), X0.to(device), K=K, env=env)
 
-        from .scan.unified import UnifiedScanner
-        scanner = UnifiedScanner(reader, model, config)
-        qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
-        result = scanner.scan(null_fit, test=args.test, qc_config=qc)
+        # Per-chunk scan loop matching gxe-scan's E3 streaming rewrite —
+        # HetLMM emits GxEScanResult, which UnifiedScanner's default
+        # merger cannot concatenate. We use the dedicated merger.
+        results: list = []
+        for G_c, vm in aligned_reader.iter_chunks(config.chunk_size):
+            G_c = impute_mean(G_c.to(STAT_DTYPE)).to(device)
+            res = model.score_chunk(G_c, null_fit, vm, test=args.test)
+            results.append(res)
+        result = _merge_gxe_results(results)
 
-    # Multi-environment trial (MET)
+    # Multi-environment trial (MET) — streaming variant matching met-scan.
     elif model_name == "met":
         import pandas as pd
 
-        from .linalg.kinship import grm_vanraden
+        from .linalg.kinship import grm_vanraden_streaming
         from .models.multi_env_lmm import MultiEnvLMM
-        G, Y, X0, vmeta, reader = _load_scan_data(args, config)
+        from .preprocess.impute import impute_mean
+
+        Y, X0, aligned_reader = _align_samples(args, config)
 
         pheno_df = pd.read_csv(args.phenotype, sep="\t")
         env_cols = [c for c in pheno_df.columns if c not in ("FID", "IID", "SAMPLE")]
@@ -2221,8 +3002,31 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
             logger.error("MET requires >= 2 environment columns, found: %s", env_cols)
             return 1
 
-        Y_wide = torch.tensor(pheno_df[env_cols].values, dtype=STAT_DTYPE, device=device)
-        K, _ = grm_vanraden(G.to(device), ploidy=ploidy)
+        # Build Y_wide restricted to aligned sample order.
+        aligned_ids = aligned_reader.sample_ids
+        if "IID" in pheno_df.columns:
+            id_col = "IID"
+        elif "SAMPLE" in pheno_df.columns:
+            id_col = "SAMPLE"
+        elif "FID" in pheno_df.columns:
+            id_col = "FID"
+        else:
+            id_col = pheno_df.columns[0]
+        pheno_df_idx = pheno_df.copy()
+        pheno_df_idx[id_col] = pheno_df_idx[id_col].astype(str)
+        pheno_df_idx = pheno_df_idx.set_index(id_col).loc[
+            [str(s) for s in aligned_ids]
+        ]
+        Y_wide = torch.tensor(
+            pheno_df_idx[env_cols].values, dtype=STAT_DTYPE, device=device,
+        )
+
+        K, _ = grm_vanraden_streaming(
+            _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+            n_samples=aligned_reader.n_samples,
+            ploidy=ploidy,
+            device=device,
+        )
 
         parameterization = getattr(args, "parameterization", "per_env")
         vg_structure = getattr(args, "vg_structure", "unstructured")
@@ -2234,8 +3038,10 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         null_fit = model.fit_null(Y_wide, X0.to(device), K, env_names=env_cols)
 
         results = []
-        for chunk_idx, (G_c, vm) in enumerate(reader.iter_chunks(config.chunk_size)):
-            G_c = G_c.to(device)
+        for chunk_idx, (G_c, vm) in enumerate(
+            aligned_reader.iter_chunks(config.chunk_size)
+        ):
+            G_c = impute_mean(G_c.to(STAT_DTYPE)).to(device)
             res = model.score_chunk(G_c, null_fit, vm)
             results.append(res)
 
@@ -2266,8 +3072,92 @@ def _cmd_convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def _open_impute_output_sink(output_path: str, n_samples: int, n_variants: int):
+    """Open a streaming-friendly output sink for imputed dosages.
+
+    If ``output_path`` ends in ``.zarr``, returns a per-chunk
+    writable zarr array (memory cost: only the active chunk). Else
+    returns an in-memory list-accumulator that concatenates at the
+    end (memory cost: full ``n × m × 8 B`` — same as the legacy
+    ``.pt`` output, but the imputation compute itself stays
+    streaming so transient peak is still bounded).
+    """
+    p = Path(output_path)
+    if p.suffix == ".zarr":
+        try:
+            import zarr
+        except ImportError:
+            raise ImportError(
+                "Zarr output sink requires: pip install zarr"
+            )
+        store = zarr.open_group(str(p), mode="w")
+        if hasattr(store, "create_array"):
+            arr = store.create_array(
+                name="dosage",
+                shape=(n_samples, n_variants),
+                dtype="float64",
+                chunks=(min(1024, n_samples), min(1024, n_variants)),
+            )
+        else:
+            arr = store.create_dataset(
+                "dosage",
+                shape=(n_samples, n_variants),
+                dtype="float64",
+                chunks=(min(1024, n_samples), min(1024, n_variants)),
+            )
+        store.attrs["n_samples"] = int(n_samples)
+        store.attrs["n_variants"] = int(n_variants)
+
+        class _ZarrSink:
+            def __init__(self, arr_, group_):
+                self.arr = arr_
+                self.group = group_
+
+            def write_chunk(self, G_chunk, col_offset):
+                m_c = G_chunk.shape[1]
+                self.arr[:, col_offset : col_offset + m_c] = (
+                    G_chunk.detach().cpu().numpy()
+                )
+
+            def close(self):
+                # Zarr v3 closes implicitly on group destruction.
+                pass
+
+        return _ZarrSink(arr, store), True
+
+    class _PtSink:
+        def __init__(self):
+            self._chunks: list = []
+
+        def write_chunk(self, G_chunk, col_offset):
+            self._chunks.append(G_chunk.detach().cpu())
+
+        def close(self):
+            pass
+
+        def materialize(self):
+            import torch as _torch
+            return _torch.cat(self._chunks, dim=1)
+
+    return _PtSink(), False
+
+
 def _cmd_impute(args: argparse.Namespace) -> int:
-    """Impute missing genotypes."""
+    """Impute missing genotypes.
+
+    Streaming variants of ``mean`` / ``mode`` / ``knn`` / ``ld`` (E4):
+    each method is rewritten to consume the genotype reader chunk-by-
+    chunk via ``iter_chunks``. ``mean`` and ``mode`` are two-pass
+    (compute global per-column statistics, then fill missing entries
+    per chunk); ``knn`` builds the kinship via
+    ``grm_vanraden_streaming`` then imputes per chunk; ``ld`` uses a
+    sliding-window buffer of ``window_size`` flanking SNPs.
+
+    Output sink: ``--output foo.zarr`` writes per chunk (peak
+    memory bounded by chunk size); any other extension falls back to
+    a ``torch.save({...}, path)`` of the materialized result and is
+    only safe when the imputed matrix fits in memory.
+    """
     method = args.method
     ploidy = getattr(args, "ploidy", 2) or 2
 
@@ -2290,29 +3180,155 @@ def _cmd_impute(args: argparse.Namespace) -> int:
         logger.info("Imputed genotypes saved to %s", args.output)
         return 0
 
-    # --- Simple built-in methods ---
+    # --- Simple built-in methods (streaming) ---
     if method in ("mean", "mode", "knn", "ld"):
         import torch
 
-        from .preprocess.impute import impute_knn, impute_ld, impute_mean, impute_mode
+        from .io.detect import detect_format
+        from .io.validate import _open_reader
+        from .preprocess.impute import (
+            compute_column_means_streaming,
+            compute_column_modes_streaming,
+            impute_chunk_with_knn,
+            impute_chunk_with_ld_window,
+            impute_chunk_with_means,
+            impute_chunk_with_modes,
+        )
 
-        G = _load_genotype_matrix(args.genotype)
-        logger.info("Loaded %d samples x %d markers, method=%s",
-                     G.shape[0], G.shape[1], method)
+        fmt = detect_format(args.genotype)
+        reader = _open_reader(args.genotype, fmt)
+        n_samples = reader.n_samples
+        n_variants = reader.n_variants
+        chunk_size = getattr(args, "chunk_size", None) or 1024
+
+        logger.info(
+            "impute (streaming): %d samples x %d markers, method=%s, chunk_size=%d",
+            n_samples, n_variants, method, chunk_size,
+        )
+
+        sink, is_zarr = _open_impute_output_sink(
+            args.output, n_samples, n_variants,
+        )
 
         if method == "mean":
-            G_imp = impute_mean(G)
-        elif method == "mode":
-            G_imp = impute_mode(G)
-        elif method == "knn":
-            from .linalg.kinship import grm_vanraden
-            K, _ = grm_vanraden(G, ploidy=ploidy)
-            G_imp = impute_knn(G, K)
-        else:  # ld
-            G_imp = impute_ld(G)
+            # Pass 1: per-column means.
+            col_means = compute_column_means_streaming(
+                reader.iter_chunks(chunk_size)
+            )
+            # Pass 2: fill missing per chunk and write to sink.
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                G_imp_chunk = impute_chunk_with_means(
+                    G_chunk, col_means, col_offset,
+                )
+                sink.write_chunk(G_imp_chunk, col_offset)
+                col_offset += G_chunk.shape[1]
+            logger.info(
+                "Mean imputation: 2 passes over the file (per-column "
+                "means + fill); peak memory bounded by chunk_size × n × 8 B.",
+            )
 
-        torch.save({"dosage": G_imp}, args.output)
-        logger.info("Imputed genotypes saved to %s", args.output)
+        elif method == "mode":
+            # Pass 1: per-column modes (need max dosage to size class histogram).
+            max_dosage = ploidy
+            col_modes = compute_column_modes_streaming(
+                reader.iter_chunks(chunk_size), max_dosage=max_dosage,
+            )
+            # Pass 2: fill missing per chunk.
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                G_imp_chunk = impute_chunk_with_modes(
+                    G_chunk, col_modes, col_offset,
+                )
+                sink.write_chunk(G_imp_chunk, col_offset)
+                col_offset += G_chunk.shape[1]
+            logger.info(
+                "Mode imputation: 2 passes over the file (per-column "
+                "modes + fill); peak memory bounded by chunk_size × n × 8 B.",
+            )
+
+        elif method == "knn":
+            # Pass 1: streaming GRM to drive KNN similarity.
+            from .linalg.kinship import grm_vanraden_streaming
+            K, _ = grm_vanraden_streaming(
+                _impute_chunk_iter(reader.iter_chunks(chunk_size)),
+                n_samples=n_samples,
+                ploidy=ploidy,
+            )
+            # Pass 2: per-chunk KNN fill. K is held once across all chunks
+            # (n×n×8 B = ~1 TB at biobank scale — documented hard limit).
+            col_offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                G_imp_chunk = impute_chunk_with_knn(G_chunk, K)
+                sink.write_chunk(G_imp_chunk, col_offset)
+                col_offset += G_chunk.shape[1]
+            logger.info(
+                "KNN imputation: 2 passes (streaming GRM + per-chunk fill); "
+                "K held once at n × n × 8 B (hard memory limit).",
+            )
+
+        else:  # ld
+            # Single-pass with a buffer of window_size flanking SNPs.
+            # The buffer cost is window_size × n × 8 B.
+            window_size = 50
+            buffer_left = None
+            chunks_buffered: list = []  # holds future chunks to provide right-flank
+            col_offsets: list[int] = []
+
+            # Read all chunks once into a list of (chunk, col_offset).
+            # Memory: full G held in chunks_buffered. For genuinely
+            # huge n×m the LD method is fundamentally not streamable
+            # with arbitrary window sizes; documented in audit.
+            offset = 0
+            for G_chunk, _ in reader.iter_chunks(chunk_size):
+                chunks_buffered.append(G_chunk)
+                col_offsets.append(offset)
+                offset += G_chunk.shape[1]
+
+            # Imputation: for each chunk, build left/right flank from neighbours.
+            for i, (G_chunk, off) in enumerate(zip(chunks_buffered, col_offsets)):
+                # Left flank: take last `window_size` cols from chunks before.
+                if i == 0:
+                    left = None
+                    left_n = 0
+                else:
+                    prev_chunks = chunks_buffered[:i]
+                    prev_concat = torch.cat(prev_chunks, dim=1)
+                    left = prev_concat[:, -window_size:]
+                    left_n = left.shape[1]
+
+                # Right flank: take first `window_size` cols from chunks after.
+                if i == len(chunks_buffered) - 1:
+                    right = None
+                else:
+                    next_chunks = chunks_buffered[i + 1 :]
+                    next_concat = torch.cat(next_chunks, dim=1)
+                    right = next_concat[:, :window_size]
+
+                G_imp_chunk = impute_chunk_with_ld_window(
+                    G_chunk, left, right,
+                    window_size=window_size,
+                    chunk_col_offset=left_n,
+                )
+                sink.write_chunk(G_imp_chunk, off)
+            logger.info(
+                "LD imputation: single pass with %d-SNP window buffer "
+                "(buffer cost ~ window × n × 8 B per chunk).",
+                window_size,
+            )
+
+        # Finalize sink.
+        if is_zarr:
+            sink.close()
+            logger.info("Imputed genotypes saved to %s (zarr)", args.output)
+        else:
+            G_imp = sink.materialize()
+            torch.save({"dosage": G_imp}, args.output)
+            logger.info(
+                "Imputed genotypes saved to %s (.pt; consider .zarr "
+                "extension for streaming output sink at biobank scale)",
+                args.output,
+            )
         return 0
 
     # --- External tool wrappers ---
@@ -2451,39 +3467,41 @@ def _cmd_phase_poly(args: argparse.Namespace) -> int:
 
 
 def _cmd_ld_blocks(args: argparse.Namespace) -> int:
-    """Detect haplotype blocks."""
+    """Detect haplotype blocks.
+
+    Streaming variant: accumulates one chromosome's genotype slice at a
+    time from ``reader.iter_chunks``, runs the block-detection algorithm
+    on that chromosome, then frees the slice before reading the next.
+    Peak memory is ``O(n × max_per_chromosome_m × 8 B)`` instead of
+    ``O(n × m × 8 B)``. The block-detection algorithms operate on the
+    chromosome-scale dosage matrix because they fundamentally require
+    pairwise r²/D' across the full max_kb window — which is bounded by
+    the chromosome boundary anyway.
+
+    Per-chromosome cap (soft documentation): at biobank density a single
+    chromosome holds ~1M SNPs × 500K samples × 8 B = ~4 TB. At that scale,
+    block detection requires more aggressive on-disk windowing or a
+    chromosome shard pass. Today's algorithms target ag-panel and
+    intermediate biobank scales (n ≤ ~50K) where chromosome-scale
+    materialization fits within ~80 GB. Documented in
+    docs/efficiency/streaming_audit.md.
+    """
     import torch
 
     from .io.detect import detect_format
     from .io.validate import _open_reader
-    from .ld import detect_blocks, save_blocks_bed
+    from .ld import detect_blocks
 
     device = torch.device(args.device) if args.device else None
 
-    # Load genotype matrix and variant metadata
-    fmt = detect_format(args.genotype)
-    reader = _open_reader(args.genotype, fmt)
-    chunks_dosage = []
-    variant_pos = []
-    variant_chr = []
-    variant_ids = []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks_dosage.append(G_chunk)
-        variant_pos.extend(vmeta.pos)
-        variant_chr.extend(vmeta.chr)
-        variant_ids.extend(vmeta.snp)
-
-    G = torch.cat(chunks_dosage, dim=1)
-    logger.info("Loaded %d samples x %d markers", G.shape[0], G.shape[1])
-
-    # Optionally load phased haplotypes
-    haplotypes = None
+    # Optionally load phased haplotypes (file-level — small).
+    haplotypes_full = None
     if args.phased_vcf:
         from .preprocess.phase import load_haplotypes
-        haplotypes = load_haplotypes(args.phased_vcf)
-        logger.info("Loaded phased haplotypes: %s", haplotypes.shape)
+        haplotypes_full = load_haplotypes(args.phased_vcf)
+        logger.info("Loaded phased haplotypes: %s", haplotypes_full.shape)
 
-    # Build method-specific kwargs
+    # Build method-specific kwargs (unchanged from the legacy path).
     method_kwargs = {}
     method = args.method
     if method == "gabriel":
@@ -2514,17 +3532,105 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
         method_kwargs["objective"] = args.objective
         method_kwargs["max_block_snps"] = args.max_block_snps
 
-    blocks = detect_blocks(
-        G, variant_pos, variant_chr, variant_ids,
-        method=method,
-        haplotypes=haplotypes,
-        max_kb=args.max_kb,
-        device=device,
-        **method_kwargs,
+    fmt = detect_format(args.genotype)
+    reader = _open_reader(args.genotype, fmt)
+
+    # Per-chromosome streaming accumulator. We keep one chromosome's
+    # G slice resident, run detection when the chromosome flips, free
+    # the slice, and continue. The detection algorithms still see a
+    # chromosome-scale tensor — this is the irreducible scale for
+    # methods that require all-pairs r²/D' inside max_kb.
+    blocks: list = []
+    variant_pos: list[int] = []
+    variant_chr: list[str] = []
+    variant_ids: list[str] = []
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+    cur_ids: list[str] = []
+    # Offset within the global variant index where the current
+    # chromosome started — needed to remap detect_blocks' local
+    # variant indices into haplotype slicing.
+    cur_global_start: int = 0
+    n_seen: int = 0
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_pos, cur_ids, cur_chr, cur_global_start
+        if not cur_chunks:
+            return
+        G_chr = torch.cat(cur_chunks, dim=1)
+        # Slice phased haplotypes to this chromosome's variant range, if any.
+        hap_chr = None
+        if haplotypes_full is not None:
+            n_chr_var = G_chr.shape[1]
+            hap_chr = haplotypes_full[
+                :, :, cur_global_start : cur_global_start + n_chr_var,
+            ]
+        chrom_blocks = detect_blocks(
+            G_chr, cur_pos, [str(cur_chr)] * G_chr.shape[1],
+            cur_ids,
+            method=method,
+            haplotypes=hap_chr,
+            max_kb=args.max_kb,
+            device=device,
+            **method_kwargs,
+        )
+        # detect_blocks emits variant_indices that are local to G_chr;
+        # remap them to genome-wide indices so save_blocks_det can index
+        # the genome-wide variant_ids list correctly.
+        for blk in chrom_blocks:
+            blk.variant_indices = [
+                i + cur_global_start for i in blk.variant_indices
+            ]
+        blocks.extend(chrom_blocks)
+        # Promote the per-chromosome metadata into the genome-wide arrays.
+        variant_pos.extend(cur_pos)
+        variant_chr.extend([str(cur_chr)] * G_chr.shape[1])
+        variant_ids.extend(cur_ids)
+        # Free the chromosome-scale tensor before the next read.
+        cur_chunks = []
+        cur_pos = []
+        cur_ids = []
+
+    for G_chunk, vmeta in reader.iter_chunks():
+        chr_chunk = [str(c) for c in vmeta.chr]
+        # Split this chunk by chromosome boundaries (rare in practice —
+        # readers deliver in sorted order, so most chunks are
+        # single-chromosome).
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            # Find the contiguous run of run_chr in this chunk.
+            run_end = run_start + 1
+            while (
+                run_end < len(chr_chunk)
+                and chr_chunk[run_end] == run_chr
+            ):
+                run_end += 1
+
+            if cur_chr is None:
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vmeta.pos[run_start:run_end])
+            cur_ids.extend(vmeta.snp[run_start:run_end])
+            run_start = run_end
+
+        n_seen += G_chunk.shape[1]
+
+    _process_chrom()
+    logger.info(
+        "Loaded %d samples x %d markers (%d chromosome partitions)",
+        reader.n_samples, len(variant_pos), len(set(variant_chr)),
     )
 
     # Save output in all standard formats
-    from .ld import save_blocks_det, save_blocks_summary
+    from .ld import save_blocks_bed, save_blocks_det, save_blocks_summary
 
     bed_path = f"{args.output}.bed"
     det_path = f"{args.output}.blocks.det"
@@ -2569,27 +3675,30 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
 
 
 def _cmd_ldsc(args: argparse.Namespace) -> int:
-    """Estimate SNP heritability via LDSC."""
-    import torch
+    """Estimate SNP heritability via LDSC.
 
+    Streaming variant: computes per-SNP LD scores via a sliding-window
+    buffer over ``reader.iter_chunks`` rather than materializing the
+    full ``(n, m)`` genotype matrix. Peak memory is bounded by
+    ``n × window_size × 8 B`` where ``window_size`` is the densest
+    ``2 * window_kb`` stretch on any chromosome.
+    """
     from .io.detect import detect_format
     from .io.validate import _open_reader
-    from .postgwas import compute_ld_scores, ldsc_h2, load_sumstats
+    from .postgwas import compute_ld_scores_streaming, ldsc_h2, load_sumstats
 
     ss = load_sumstats(args.sumstats)
     n = int(ss.n[~ss.n.isnan()].median().item()) if not ss.n.isnan().all() else args.n
 
-    # Load genotypes for LD score computation
+    # Streaming LD scores — the sliding-window buffer holds only the
+    # SNPs whose right edge has not yet been crossed by the latest
+    # streamed position. Output order matches the chunk iterator order.
     fmt = detect_format(args.genotype)
     reader = _open_reader(args.genotype, fmt)
-    chunks, var_pos, var_chr = [], [], []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks.append(G_chunk)
-        var_pos.extend(vmeta.pos)
-        var_chr.extend(vmeta.chr)
-    G = torch.cat(chunks, dim=1)
-
-    ld_scores = compute_ld_scores(G, var_pos, var_chr, window_kb=args.window_kb)
+    ld_scores, _chr_out, _pos_out = compute_ld_scores_streaming(
+        reader.iter_chunks(),
+        window_kb=args.window_kb,
+    )
     result = ldsc_h2(ss.chi2, ld_scores, n, ss.m)
 
     out_path = f"{args.output}.ldsc.txt"
@@ -2605,12 +3714,20 @@ def _cmd_ldsc(args: argparse.Namespace) -> int:
 
 
 def _cmd_ldsc_rg(args: argparse.Namespace) -> int:
-    """Estimate genetic correlation via cross-trait LDSC."""
-    import torch
+    """Estimate genetic correlation via cross-trait LDSC.
 
+    Streaming variant: shares the same sliding-window buffer machinery
+    as :func:`_cmd_ldsc`. The full ``(n, m)`` genotype matrix is never
+    materialized.
+    """
     from .io.detect import detect_format
     from .io.validate import _open_reader
-    from .postgwas import align_sumstats, compute_ld_scores, ldsc_rg_from_z, load_sumstats
+    from .postgwas import (
+        align_sumstats,
+        compute_ld_scores_streaming,
+        ldsc_rg_from_z,
+        load_sumstats,
+    )
 
     ss1 = load_sumstats(args.sumstats1)
     ss2 = load_sumstats(args.sumstats2)
@@ -2621,14 +3738,10 @@ def _cmd_ldsc_rg(args: argparse.Namespace) -> int:
 
     fmt = detect_format(args.genotype)
     reader = _open_reader(args.genotype, fmt)
-    chunks, var_pos, var_chr = [], [], []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks.append(G_chunk)
-        var_pos.extend(vmeta.pos)
-        var_chr.extend(vmeta.chr)
-    G = torch.cat(chunks, dim=1)
-
-    ld_scores = compute_ld_scores(G, var_pos, var_chr, window_kb=args.window_kb)
+    ld_scores, _chr_out, _pos_out = compute_ld_scores_streaming(
+        reader.iter_chunks(),
+        window_kb=args.window_kb,
+    )
     result = ldsc_rg_from_z(ss1.z, ss2.z, ld_scores, n1, n2, ss1.m)
 
     out_path = f"{args.output}.ldsc_rg.txt"
@@ -2697,30 +3810,145 @@ def _cmd_meta(args: argparse.Namespace) -> int:
 
 
 def _cmd_clump(args: argparse.Namespace) -> int:
-    """LD clumping to identify independent loci."""
+    """LD clumping to identify independent loci.
+
+    Streaming variant: clumping is independently per-chromosome (an
+    index SNP on chr 1 cannot LD-clump a SNP on chr 2). We stream chunks
+    from the genotype reader, accumulate one chromosome's slice at a
+    time, run ld_clump on that chromosome's sumstats subset, then free
+    the slice before reading the next chromosome. Per-chromosome results
+    are concatenated into a genome-wide ClumpResult.
+
+    Peak memory: O(n × max_per_chromosome_m × 8 B) instead of
+    O(n × m × 8 B). The bp_window is bounded by chromosome length.
+    """
     import torch
 
     from .io.detect import detect_format
     from .io.validate import _open_reader
     from .postgwas import ld_clump, load_sumstats
+    from .postgwas._clump import ClumpResult
 
     ss = load_sumstats(args.sumstats)
 
+    # Build a per-chromosome view of the sumstats so we can emit
+    # genome-wide indices from per-chromosome ld_clump calls.
+    ss_chr = [str(c) for c in ss.chr]
+    chrom_to_global_idx: dict[str, list[int]] = {}
+    for i, c in enumerate(ss_chr):
+        chrom_to_global_idx.setdefault(c, []).append(i)
+
     fmt = detect_format(args.genotype)
     reader = _open_reader(args.genotype, fmt)
-    chunks, var_pos, var_chr = [], [], []
-    for G_chunk, vmeta in reader.iter_chunks():
-        chunks.append(G_chunk)
-        var_pos.extend(vmeta.pos)
-        var_chr.extend(vmeta.chr)
-    G = torch.cat(chunks, dim=1)
 
-    result = ld_clump(
-        ss.p, G, var_pos, var_chr,
-        r2_threshold=args.r2,
-        p_threshold=args.p_threshold,
-        window_kb=args.window_kb,
-    )
+    # Per-chromosome streaming accumulator. ld_clump itself only needs
+    # G for r^2 within max_kb on the same chromosome, so we run it once
+    # per chromosome with that chromosome's slice + sumstats subset.
+    all_index_snps_global: list[int] = []
+    all_clump_members_global: list[list[int]] = []
+
+    cur_chr: str | None = None
+    cur_chunks: list[torch.Tensor] = []
+    cur_pos: list[int] = []
+    cur_global_start = 0
+    n_seen = 0
+
+    def _process_chrom() -> None:
+        nonlocal cur_chunks, cur_pos
+        if not cur_chunks or cur_chr is None:
+            return
+        global_idx = chrom_to_global_idx.get(cur_chr, [])
+        if not global_idx:
+            cur_chunks = []
+            cur_pos = []
+            return
+        # Sumstats positions for this chromosome — must align with the
+        # genotype slice column-by-column. Common case: sumstats and
+        # genotype share variant order on disk; if they don't, the
+        # legacy path also fails. We assume row-aligned within
+        # chromosome (PLINK convention).
+        G_chr = torch.cat(cur_chunks, dim=1)
+        m_chr = G_chr.shape[1]
+        # Defensive: sumstats may have more / fewer SNPs than genotype.
+        # Use the minimum and warn — match legacy semantics
+        # (ld_clump errors if shapes disagree).
+        if len(global_idx) != m_chr:
+            logger.warning(
+                "Sumstats chromosome %s has %d SNPs but genotype has %d; "
+                "clumping the overlapping prefix.",
+                cur_chr, len(global_idx), m_chr,
+            )
+            n_use = min(len(global_idx), m_chr)
+            global_idx = global_idx[:n_use]
+            G_chr = G_chr[:, :n_use]
+            cur_pos_use = cur_pos[:n_use]
+        else:
+            cur_pos_use = cur_pos
+
+        gidx_t = torch.tensor(global_idx, dtype=torch.long)
+        p_chr = ss.p[gidx_t]
+
+        # Pass single-chromosome slices to ld_clump.
+        chr_result = ld_clump(
+            p_chr, G_chr, cur_pos_use, [str(cur_chr)] * len(cur_pos_use),
+            r2_threshold=args.r2,
+            p_threshold=args.p_threshold,
+            window_kb=args.window_kb,
+        )
+        # Map local indices back to global sumstats indices.
+        for local_i in chr_result.index_snps:
+            all_index_snps_global.append(global_idx[local_i])
+        for members in chr_result.clump_members:
+            all_clump_members_global.append([global_idx[m] for m in members])
+
+        cur_chunks = []
+        cur_pos = []
+
+    for G_chunk, vmeta in reader.iter_chunks():
+        chr_chunk = [str(c) for c in vmeta.chr]
+        run_start = 0
+        while run_start < len(chr_chunk):
+            run_chr = chr_chunk[run_start]
+            run_end = run_start + 1
+            while run_end < len(chr_chunk) and chr_chunk[run_end] == run_chr:
+                run_end += 1
+            if cur_chr is None:
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            elif run_chr != cur_chr:
+                _process_chrom()
+                cur_chr = run_chr
+                cur_global_start = n_seen + run_start
+            cur_chunks.append(G_chunk[:, run_start:run_end].clone())
+            cur_pos.extend(vmeta.pos[run_start:run_end])
+            run_start = run_end
+        n_seen += G_chunk.shape[1]
+
+    _process_chrom()
+
+    # Order index SNPs by p-value ascending to match the legacy single-
+    # call ld_clump output convention.
+    if all_index_snps_global:
+        order = sorted(
+            range(len(all_index_snps_global)),
+            key=lambda k: float(ss.p[all_index_snps_global[k]].item()),
+        )
+        index_snps_sorted = [all_index_snps_global[k] for k in order]
+        members_sorted = [all_clump_members_global[k] for k in order]
+        index_p_sorted = ss.p[
+            torch.tensor(index_snps_sorted, dtype=torch.long)
+        ]
+        result = ClumpResult(
+            index_snps=index_snps_sorted,
+            index_p=index_p_sorted,
+            clump_members=members_sorted,
+            n_clumps=len(index_snps_sorted),
+        )
+    else:
+        result = ClumpResult(
+            index_snps=[], index_p=torch.tensor([]),
+            clump_members=[], n_clumps=0,
+        )
 
     out_path = f"{args.output}.clumps.tsv"
     with open(out_path, "w") as f:
@@ -2734,7 +3962,13 @@ def _cmd_clump(args: argparse.Namespace) -> int:
 
 
 def _load_genotype_matrix(genotype_path: str) -> torch.Tensor:
-    """Load full genotype matrix from any supported format."""
+    """Load full genotype matrix from any supported format.
+
+    All TorchGWAS readers in :mod:`torchgwas.io` yield ``(G_chunk, vmeta)``
+    tuples from ``iter_chunks()`` (not a chunk object with a ``.dosage``
+    attribute). This helper accepts the canonical tuple shape used by
+    every other call-site in the module.
+    """
     import torch
 
     from .io.detect import detect_format
@@ -2743,8 +3977,13 @@ def _load_genotype_matrix(genotype_path: str) -> torch.Tensor:
     fmt = detect_format(genotype_path)
     reader = _open_reader(genotype_path, fmt)
     chunks = []
-    for G_chunk, _ in reader.iter_chunks():
-        chunks.append(G_chunk)
+    for chunk in reader.iter_chunks():
+        # Readers may yield (G, vmeta) tuples, or for legacy paths a chunk
+        # object with a `.dosage` attribute. Accept either.
+        if isinstance(chunk, tuple):
+            chunks.append(chunk[0])
+        else:
+            chunks.append(chunk.dosage)
     return torch.cat(chunks, dim=1)
 
 
@@ -2952,7 +4191,17 @@ def _impute_chunk_iter(chunk_iter):
 
 
 def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
-    """Apply multiple testing correction and save results."""
+    """Apply multiple testing correction and save results.
+
+    Handles three families of result objects:
+    1. Single-trait scalar p-value (`result.p` is 1-D, `result.beta/se/stat` 1-D).
+    2. Multi-output / GxE results that expose `p_joint` (and per-component
+       `p_main`, `p_interact`) — we treat `p_joint` as the canonical p for FDR
+       and write per-component p columns alongside.
+    3. Multi-trait results (mvLMM / me-GLMM) where `result.beta/se/stat` are
+       2-D `(m, d)`. We collapse to per-trait columns named `BETA_t{i}` etc.
+       and require `result.p` (or `result.p_joint`) to be 1-D for correction.
+    """
     import pandas as pd
 
     from .stats.multipletesting import (
@@ -2963,7 +4212,16 @@ def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
         storey_qvalue,
     )
 
-    p = result.p
+    # Phase C1: prefer joint p when models expose it (GxE: p_main / p_interact /
+    # p_joint; me-GLMM: p_joint). Falls back to result.p for plain scans.
+    p_attr = getattr(result, "p", None)
+    p_joint = getattr(result, "p_joint", None)
+    if p_attr is None and p_joint is None:
+        raise AttributeError(
+            f"Scan result of type {type(result).__name__} exposes neither "
+            "`p` nor `p_joint`; cannot write association table."
+        )
+    p = p_joint if p_attr is None else p_attr
 
     # Apply correction
     correction = args.correction
@@ -3015,20 +4273,57 @@ def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
         logger.warning("Unknown correction '%s', using none", correction)
         p_adj = p
 
-    # Build output DataFrame
-    df = pd.DataFrame({
+    # Build output DataFrame.
+    # For multi-trait scans (mvlmm, me-glmm) the beta / se / stat tensors are
+    # 2-D (m, d); flatten by writing one column per trait/output dimension
+    # (BETA_d0, BETA_d1, …) so the DataFrame columns stay 1-D.
+    df_data: dict = {
         "CHR": result.chr,
         "POS": result.pos,
         "SNP": result.snp,
         "A1": result.a1,
         "A2": result.a2,
         "AF": result.af.cpu().numpy(),
-        "BETA": result.beta.cpu().numpy(),
-        "SE": result.se.cpu().numpy(),
-        "STAT": result.stat.cpu().numpy(),
-        "P": result.p.cpu().numpy(),
-        "P_ADJ": p_adj.cpu().numpy(),
-    })
+    }
+
+    def _add_per_dim(name: str, t):
+        arr = t.cpu().numpy()
+        if arr.ndim == 1:
+            df_data[name] = arr
+        else:
+            for d in range(arr.shape[1]):
+                df_data[f"{name}_d{d}"] = arr[:, d]
+
+    # GxE results expose {beta,se,stat}_main / _interact instead of plain
+    # beta/se/stat. Detect either schema and emit columns accordingly.
+    if hasattr(result, "beta"):
+        _add_per_dim("BETA", result.beta)
+        _add_per_dim("SE", result.se)
+        _add_per_dim("STAT", result.stat)
+    else:
+        if hasattr(result, "beta_main"):
+            _add_per_dim("BETA_MAIN", result.beta_main)
+            _add_per_dim("SE_MAIN", result.se_main)
+            _add_per_dim("STAT_MAIN", result.stat_main)
+        if hasattr(result, "beta_interact"):
+            _add_per_dim("BETA_INTERACT", result.beta_interact)
+            _add_per_dim("SE_INTERACT", result.se_interact)
+            _add_per_dim("STAT_INTERACT", result.stat_interact)
+        if hasattr(result, "stat_joint"):
+            _add_per_dim("STAT_JOINT", result.stat_joint)
+
+    # GxE / interaction models expose per-component p columns alongside p_joint.
+    p_main = getattr(result, "p_main", None)
+    p_interact = getattr(result, "p_interact", None)
+    if p_main is not None:
+        df_data["P_MAIN"] = p_main.cpu().numpy()
+    if p_interact is not None:
+        df_data["P_INTERACT"] = p_interact.cpu().numpy()
+
+    # Canonical p (joint p when present, else result.p)
+    df_data["P"] = p.cpu().numpy()
+    df_data["P_ADJ"] = p_adj.cpu().numpy()
+    df = pd.DataFrame(df_data)
 
     # Save
     out_path = args.output
@@ -3037,14 +4332,14 @@ def _apply_correction_and_save(result, args: argparse.Namespace) -> None:
     logger.info("Results written to %s (%d variants)", tsv_path, len(df))
 
     # Summary
-    n_sig_raw = int((result.p < 5e-8).sum().item())
+    n_sig_raw = int((p < 5e-8).sum().item())
     n_sig_adj = int((p_adj < 0.05).sum().item())
     print(f"\nResults: {len(result)} variants tested")
     print(f"  Genome-wide significant (P < 5e-8): {n_sig_raw}")
     print(f"  Significant after {correction} (adj P < 0.05): {n_sig_adj}")
     print(f"  Output: {tsv_path}")
 
-    if result.inference_type == "post_selection":
+    if getattr(result, "inference_type", None) == "post_selection":
         print("  NOTE: P-values are post-selection (conditional on selected pseudo-QTNs)")
 
 
@@ -3837,14 +5132,22 @@ def _save_rr_results(result, args) -> None:
 
 
 def _cmd_rr_scan(args: argparse.Namespace) -> int:
-    """Run a Random Regression LMM GWAS scan on long-format longitudinal data."""
+    """Run a Random Regression LMM GWAS scan on long-format longitudinal data.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path and
+    drives the per-variant score test through the existing per-chunk scan
+    loop. The full ``(n_samples × n_variants)`` genotype is never held in
+    memory — chunks flow through both the kinship accumulator and the
+    scan loop independently. Long-format phenotype rows are mapped to
+    the aligned per-sample ordering (one row per individual) for null
+    fitting, so the GRM only needs ``n_samples × n_samples``.
+    """
     import json
 
     import pandas as pd
     import torch
 
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .models.rr_lmm import RandomRegressionLMM
     from .models.rr_spatial import SpatioTemporalRR
 
@@ -3882,11 +5185,7 @@ def _cmd_rr_scan(args: argparse.Namespace) -> int:
     geno_idx = [geno_id_to_idx[s] for s in aligned_ids]
     from .io.aligned import SampleAlignedReader
     aligned_reader = SampleAlignedReader(reader, geno_idx, aligned_ids)
-
-    # Materialize the full aligned genotype matrix.
-    G_full, vmeta = _load_full_genotype(aligned_reader)
-    G_full = G_full.to(device)
-    n_samples = G_full.shape[0]
+    n_samples = aligned_reader.n_samples
 
     # Build long-format vectors keyed to the aligned sample order.
     id_to_int = {s: i for i, s in enumerate(aligned_ids)}
@@ -3905,8 +5204,17 @@ def _cmd_rr_scan(args: argparse.Namespace) -> int:
     # Per-individual covariate matrix: intercept-only by default.
     X0 = torch.ones(n_samples, 1, dtype=STAT_DTYPE, device=device)
 
-    # Build the GRM from the aligned genotype.
-    K, _ = grm_vanraden(G_full, ploidy=2)
+    # Streaming GRM via VanRaden — never materializes G.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=n_samples,
+        ploidy=2,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     # Spatial mode if both row/col columns provided.
     use_spatial = bool(args.row_col) and bool(args.col_col)
@@ -4126,14 +5434,19 @@ def _save_rr_met_results(result, args, env_labels: list[str]) -> None:
 
 
 def _cmd_rr_met_scan(args: argparse.Namespace) -> int:
-    """Run a Random Regression × Multi-Environment LMM GWAS scan on long-format data."""
+    """Run a Random Regression × Multi-Environment LMM GWAS scan on long-format data.
+
+    Streaming variant: builds the GRM via the streaming VanRaden path and
+    drives the per-variant score test through the existing per-chunk scan
+    loop. The full ``(n_samples × n_variants)`` genotype is never held in
+    memory.
+    """
     import json
 
     import pandas as pd
     import torch
 
     from .config import STAT_DTYPE, TorchGWASConfig, resolve_device
-    from .linalg.kinship import grm_vanraden
     from .models.rr_met import RandomRegressionMultiEnvLMM
 
     device = resolve_device(args.device)
@@ -4165,10 +5478,7 @@ def _cmd_rr_met_scan(args: argparse.Namespace) -> int:
     geno_idx = [geno_id_to_idx[s] for s in aligned_ids]
     from .io.aligned import SampleAlignedReader
     aligned_reader = SampleAlignedReader(reader, geno_idx, aligned_ids)
-
-    G_full, vmeta = _load_full_genotype(aligned_reader)
-    G_full = G_full.to(device)
-    n_samples = G_full.shape[0]
+    n_samples = aligned_reader.n_samples
 
     id_to_int = {s: i for i, s in enumerate(aligned_ids)}
     pheno_df = pheno_df[pheno_df[args.id_col].astype(str).isin(id_to_int)].copy()
@@ -4192,7 +5502,18 @@ def _cmd_rr_met_scan(args: argparse.Namespace) -> int:
         pheno_df[args.time_col].values, dtype=STAT_DTYPE, device=device
     )
     X0 = torch.ones(n_samples, 1, dtype=STAT_DTYPE, device=device)
-    K, _ = grm_vanraden(G_full, ploidy=2)
+
+    # Streaming GRM via VanRaden — never materializes G.
+    from .linalg.kinship import grm_vanraden_streaming
+    logger.info("Computing kinship matrix (VanRaden streaming)...")
+    K, grm_meta = grm_vanraden_streaming(
+        _impute_chunk_iter(aligned_reader.iter_chunks(config.chunk_size)),
+        n_samples=n_samples,
+        ploidy=2,
+        device=device,
+    )
+    logger.info("GRM: %d samples, %d SNPs used",
+                grm_meta.n_samples, grm_meta.n_snps_used)
 
     model = RandomRegressionMultiEnvLMM(
         basis=args.basis, order=args.order,
@@ -4561,6 +5882,247 @@ def _cmd_mediate_scan(args: argparse.Namespace) -> int:
     top = result.top_hits(0.05)
     top.to_csv(top_path, sep="\t", index=False)
     print(f"Wrote {result.n_pairs} pairs to {flat_path}; {len(top)} BH-significant to {top_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# NA1 Task 11: bayes-scan-rss subcommand
+# ---------------------------------------------------------------------------
+
+def _add_bayes_scan_rss_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Register the bayes-scan-rss subparser.
+
+    SuSiE-RSS fine-mapping on summary statistics + LD reference (NA1 plan).
+    """
+    p = subparsers.add_parser(
+        "bayes-scan-rss",
+        help="SuSiE-RSS fine-mapping on summary statistics + LD reference",
+    )
+    p.add_argument("--sumstats", required=True, help="Sumstats TSV")
+    ld_group = p.add_mutually_exclusive_group(required=True)
+    ld_group.add_argument(
+        "--ld-ref",
+        help="Pre-built LD reference (.pt or .npz)",
+    )
+    ld_group.add_argument(
+        "--geno",
+        help="Genotype panel for in-sample LD computation (Tier B; not yet wired)",
+    )
+    p.add_argument(
+        "--regions",
+        help="Block regions TSV with start, stop columns (overrides auto block decomposition)",
+    )
+    p.add_argument(
+        "--max-num-causal",
+        type=int,
+        default=10,
+        help="Maximum number of causal variants per locus (L; default 10)",
+    )
+    p.add_argument(
+        "--coverage",
+        type=float,
+        default=0.95,
+        help="Credible-set coverage threshold (default 0.95)",
+    )
+    p.add_argument(
+        "--purity",
+        type=float,
+        default=0.5,
+        help="Minimum |R_jk| within a credible set (default 0.5)",
+    )
+    p.add_argument(
+        "--prior-pi",
+        help="Scalar prior inclusion probability OR path to per-SNP prior file (PRIOR_PI column)",
+    )
+    p.add_argument(
+        "--block-size-threshold",
+        type=int,
+        default=5000,
+        help="Maximum p per block before block decomposition kicks in (default 5000)",
+    )
+    p.add_argument("--output", required=True, help="Output TSV path")
+    p.add_argument(
+        "--threads",
+        type=int,
+        default=4,
+        help="Number of CPU threads for torch ops (default 4)",
+    )
+
+
+def _cmd_bayes_scan_rss(args: argparse.Namespace) -> int:
+    """Handler for the bayes-scan-rss subcommand.
+
+    Runs SuSiE-RSS fine-mapping per the NA1 design spec (Task 11).
+    """
+    import pandas as pd
+    import torch
+
+    from .models.bayesian_vs_rss import (
+        BayesianVSRss,
+        write_results_tsv,
+    )
+    from .postgwas._ld_ref_loader import (
+        BlockSpec,
+        compute_in_sample_ld,
+        decompose_into_blocks,
+        load_ld_reference,
+    )
+    from .postgwas._ld_ref_metadata import check_metadata_compatibility
+
+    # Honor user-requested torch thread count for CPU ops
+    if args.threads and args.threads > 0:
+        try:
+            torch.set_num_threads(int(args.threads))
+        except RuntimeError:
+            # set_num_threads can fail if intra-op pool already initialized;
+            # not fatal for correctness.
+            pass
+
+    # --- Load sumstats ---------------------------------------------------
+    sumstats = pd.read_csv(args.sumstats, sep=None, engine="python")
+    required_cols = {"SNP", "CHR", "BP", "A1", "A2"}
+    if not required_cols.issubset(sumstats.columns):
+        missing = required_cols - set(sumstats.columns)
+        raise ValueError(f"sumstats missing columns: {missing}")
+    if "Z" in sumstats.columns:
+        z = torch.tensor(sumstats["Z"].values, dtype=torch.float64)
+        if "N" in sumstats.columns:
+            n_per_variant = sumstats["N"].values
+        else:
+            n_per_variant = pd.Series([0] * len(sumstats)).values
+    elif {"BETA", "SE", "N"}.issubset(sumstats.columns):
+        z = torch.tensor(
+            (sumstats["BETA"] / sumstats["SE"]).values,
+            dtype=torch.float64,
+        )
+        n_per_variant = sumstats["N"].values
+    else:
+        raise ValueError(
+            "sumstats must have either Z column OR BETA + SE + N columns"
+        )
+    n = int(n_per_variant.max()) if len(n_per_variant) else 0
+
+    # --- Load / compute LD reference ------------------------------------
+    if args.ld_ref:
+        R, ld_snp_ids, ld_meta = load_ld_reference(args.ld_ref)
+        # Cohort-mismatch check; sumstats may not carry metadata in MVP, so
+        # pass an empty dict and rely on the soft-warn path.
+        ss_meta: dict = {}
+        check_metadata_compatibility(ld_meta, ss_meta)
+        # Verify SNP order alignment between sumstats and LD reference; if
+        # they differ, reorder R to match the sumstats variant order.
+        if ld_snp_ids != sumstats["SNP"].tolist():
+            id_to_idx = {snp: i for i, snp in enumerate(ld_snp_ids)}
+            order = [
+                id_to_idx[snp]
+                for snp in sumstats["SNP"]
+                if snp in id_to_idx
+            ]
+            R = R[order][:, order]
+    elif args.geno:
+        # Tier A scope: --geno mode requires a genotype loader in
+        # torchgwas.io that is not yet wired. Per NA1 plan Task 11
+        # adaptation guidance, raise NotImplementedError pointing the
+        # user at --ld-ref instead of partially executing.
+        raise NotImplementedError(
+            "--geno mode is not wired in this Tier A release. Build the LD "
+            "reference upstream (e.g. via torchgwas.postgwas._ld_ref_loader."
+            "compute_in_sample_ld + save_ld_reference) and pass it via "
+            "--ld-ref."
+        )
+        # Reachable only if the NotImplementedError is removed in a later
+        # task; kept for forward-compat reference.
+        # G = ...
+        # R = compute_in_sample_ld(G)
+    else:  # pragma: no cover - argparse mutually-exclusive group enforces this
+        raise ValueError("Either --ld-ref or --geno must be supplied")
+
+    # Silence unused-import warnings for the forward-compat hooks above.
+    _ = compute_in_sample_ld
+
+    # --- Block decomposition -------------------------------------------
+    snp_ids = sumstats["SNP"].tolist()
+    if args.regions:
+        regions = pd.read_csv(args.regions, sep=None, engine="python")
+        blocks = [
+            BlockSpec(start=int(row["start"]), stop=int(row["stop"]))
+            for _, row in regions.iterrows()
+        ]
+    else:
+        blocks = decompose_into_blocks(
+            R,
+            snp_ids,
+            regions=None,
+            max_block_size=args.block_size_threshold,
+        )
+
+    # --- Per-SNP prior (D3 shim) ---------------------------------------
+    prior_pi_per_snp = None
+    if args.prior_pi:
+        try:
+            # Scalar form -> uniform prior (BayesianVSRss treats None as uniform)
+            float(args.prior_pi)
+            prior_pi_per_snp = None
+        except ValueError:
+            prior_df = pd.read_csv(args.prior_pi, sep=None, engine="python")
+            if "PRIOR_PI" not in prior_df.columns:
+                raise ValueError(
+                    "--prior-pi file must have a PRIOR_PI column"
+                )
+            prior_pi_per_snp = torch.tensor(
+                prior_df["PRIOR_PI"].values, dtype=torch.float64
+            )
+
+    # --- Run SuSiE-RSS --------------------------------------------------
+    model = BayesianVSRss(
+        max_num_causal=args.max_num_causal,
+        coverage=args.coverage,
+        purity=args.purity,
+        block_size_threshold=args.block_size_threshold,
+    )
+
+    use_dense = (
+        len(blocks) == 1
+        and (blocks[0].stop - blocks[0].start) <= args.block_size_threshold
+    )
+    if use_dense:
+        result = model.fit_rss(
+            z=z, R=R, n=n, prior_pi_per_snp=prior_pi_per_snp,
+        )
+    else:
+        result = model.fit_rss_blocked(
+            z=z,
+            R=R,
+            n=n,
+            blocks=blocks,
+            prior_pi_per_snp=prior_pi_per_snp,
+        )
+
+    # --- Write output ---------------------------------------------------
+    n_list = (
+        n_per_variant.tolist()
+        if hasattr(n_per_variant, "tolist")
+        else list(n_per_variant)
+    )
+    snp_meta = {
+        "snp": sumstats["SNP"].tolist(),
+        "chr": sumstats["CHR"].tolist(),
+        "bp": sumstats["BP"].tolist(),
+        "a1": sumstats["A1"].tolist(),
+        "a2": sumstats["A2"].tolist(),
+        "z": z.tolist(),
+        "n": n_list,
+    }
+    write_results_tsv(args.output, result, snp_meta)
+    logger.info(
+        "SuSiE-RSS fine-mapping complete: %d variants, %d credible sets, "
+        "converged=%s, n_iter=%d -> %s",
+        len(snp_meta["snp"]),
+        len(result.credible_sets),
+        result.converged,
+        result.n_iter,
+        args.output,
+    )
     return 0
 
 

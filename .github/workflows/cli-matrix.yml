@@ -1,0 +1,47 @@
+name: CLI matrix (Pillar C)
+
+# Pillar C of the validation campaign — exercises every CLI subcommand
+# end-to-end across supported genotype formats × CPU (and GPU when available).
+#
+# Skipped from the default test suite via the `cli_matrix` pytest marker.
+# This workflow opts in via `-m cli_matrix`.
+#
+# Wall time: ~3 min on ubuntu-latest. Runs nightly + manual.
+
+on:
+  schedule:
+    - cron: "27 6 * * *"  # 06:27 UTC every day
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+    paths:
+      - "torchgwas/cli.py"
+      - "tests/test_cli_matrix.py"
+      - "tests/cli_matrix_spec.py"
+      - "tests/conftest.py"
+      - ".github/workflows/cli-matrix.yml"
+
+jobs:
+  cli-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
+          pip install -e ".[dev]"
+
+      - name: Run CLI smoke matrix
+        run: |
+          pytest tests/test_cli_matrix.py -m cli_matrix -v --tb=short --timeout=300
+        env:
+          TORCHGWAS_DISABLE_NATIVE: "1"

@@ -172,3 +172,78 @@ class TestDeviceFallback:
         from torchgwas.config import resolve_device
         with pytest.raises(RuntimeError):
             resolve_device("nonexistent_device_xyz")
+
+
+# ---------------------------------------------------------------------------
+# NA1 Task 11: bayes-scan-rss subcommand
+# ---------------------------------------------------------------------------
+
+def test_bayes_scan_rss_help(capsys):
+    """`torchgwas bayes-scan-rss --help` prints usage with expected flags."""
+    from torchgwas.cli import main
+    with pytest.raises(SystemExit) as exc_info:
+        main(["bayes-scan-rss", "--help"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "--sumstats" in captured.out
+    assert "--ld-ref" in captured.out
+    assert "--geno" in captured.out
+    assert "--max-num-causal" in captured.out
+    assert "--coverage" in captured.out
+    assert "--purity" in captured.out
+    assert "--output" in captured.out
+
+
+def test_bayes_scan_rss_smoke_runs_end_to_end(tmp_path):
+    """End-to-end smoke run on a tiny synthetic fixture.
+
+    Builds sumstats + LD reference in tmp_path, invokes the CLI, asserts
+    output file exists and has the expected columns.
+    """
+    import pandas as pd
+    import torch
+    from torchgwas.postgwas._ld_ref_loader import save_ld_reference
+    from torchgwas.postgwas._ld_ref_metadata import LDReferenceMetadata
+    from torchgwas.cli import main
+
+    p = 5
+    sumstats_path = tmp_path / "sumstats.tsv"
+    sumstats = pd.DataFrame({
+        "SNP": [f"rs{i}" for i in range(p)],
+        "CHR": [22] * p,
+        "BP": [1000 + i * 10 for i in range(p)],
+        "A1": ["A"] * p,
+        "A2": ["G"] * p,
+        "BETA": [0.05, 0.03, 0.6, 0.02, 0.04],
+        "SE": [0.05, 0.04, 0.05, 0.04, 0.05],
+        "N": [1000] * p,
+    })
+    sumstats.to_csv(sumstats_path, sep="\t", index=False)
+
+    ld_path = tmp_path / "ld.pt"
+    R = torch.eye(p, dtype=torch.float64)
+    snp_ids = sumstats["SNP"].tolist()
+    meta = LDReferenceMetadata(
+        cohort_id="test", n=1000, build="GRCh38", panel_provenance="synthetic"
+    )
+    save_ld_reference(ld_path, R, snp_ids, meta)
+
+    out_path = tmp_path / "finemap.tsv"
+    rc = main([
+        "bayes-scan-rss",
+        "--sumstats", str(sumstats_path),
+        "--ld-ref", str(ld_path),
+        "--max-num-causal", "2",
+        "--output", str(out_path),
+    ])
+    assert rc == 0
+    assert out_path.exists()
+    df = pd.read_csv(out_path, sep="\t")
+    assert list(df.columns) == [
+        "SNP", "CHR", "BP", "A1", "A2", "Z", "N",
+        "PIP", "BETA_MEAN", "BETA_SD", "CREDIBLE_SET",
+    ]
+    assert len(df) == p
+    # SNP rs2 has the strongest BETA/SE -> highest PIP
+    pip_values = df["PIP"].values
+    assert pip_values[2] == pip_values.max()

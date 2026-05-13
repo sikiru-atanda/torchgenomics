@@ -26,6 +26,7 @@ from .kinship_polyploid import (  # noqa: F401
     grm_loco,
     grm_polyploid_gene_action,
 )
+from .multi_kernel_streaming import build_multi_kernels_streaming  # noqa: F401
 from .kronecker_eed import (  # noqa: F401
     KronEED,
     diagonal_precision,

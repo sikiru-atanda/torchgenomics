@@ -1,0 +1,6 @@
+data/
+outputs/
+.cache/
+src/
+.env_marker
+__pycache__/

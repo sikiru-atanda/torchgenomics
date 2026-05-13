@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torchgwas"
-version = "0.2.0"
+version = "0.3.8"
 description = "GPU-accelerated Genome-Wide Association Studies with PyTorch"
 readme = "README.md"
 license = {text = "MIT"}
@@ -86,6 +86,10 @@ markers = [
     "golden: golden reference tests against GEMMA/GAPIT/GWASpoly",
     "slow: tests that take more than 30 seconds",
     "gpu: tests that require a CUDA device",
+    "external: tests that install + run external reference tools (Pillar B)",
+    "timeout: per-test or per-module timeout (requires pytest-timeout)",
+    "cli_matrix: end-to-end CLI smoke matrix (Pillar C; opt-in via -m cli_matrix)",
+    "reproducibility: Pillar D fixture-drift audit (opt-in via -m reproducibility)",
 ]
 
 [tool.ruff]

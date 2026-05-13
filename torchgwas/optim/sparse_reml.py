@@ -142,11 +142,16 @@ def sparse_reml_fit(
         if sig2_e_hat <= 0:
             return float("inf")
 
-        # log|V/sig2_e| via stochastic Lanczos quadrature
-        logdet_V = stochastic_logdet(
+        # log|V/sig2_e| via stochastic Lanczos quadrature.
+        # stochastic_logdet returns a tensor on `device`; cast to Python
+        # float so the closure return value can flow into
+        # scipy.optimize.minimize_scalar (which requires a host scalar,
+        # not a CUDA tensor — that path raised TypeError historically;
+        # found via NA3 sparse-GRM benchmark 2026-05-13).
+        logdet_V = float(stochastic_logdet(
             V_matvec, n, n_probes=n_probes, lanczos_iters=lanczos_iters,
             seed=seed, device=device,
-        )
+        ))
 
         # log|X^T V^{-1} X| (small c x c matrix — exact)
         sign, logdet_XVX = torch.linalg.slogdet(XtVinvX)
@@ -154,7 +159,9 @@ def sparse_reml_fit(
             return float("inf")
         logdet_XVX_val = float(logdet_XVX)
 
-        # -2 LL_REML (up to constant)
+        # -2 LL_REML (up to constant). All terms are Python floats; the
+        # explicit float() above + float() on logdet_XVX guarantees the
+        # return value is a host scalar even when device=cuda.
         neg2ll = (
             (n - c) * math.log(sig2_e_hat)
             + logdet_V

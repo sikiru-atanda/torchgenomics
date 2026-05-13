@@ -511,3 +511,126 @@ class TestSuSiESpecific:
         assert n_detected >= 2, (
             f"SuSiE only detected {n_detected}/5 causal SNPs (PIPs={causal_pips})"
         )
+
+
+# ---------------------------------------------------------------
+# NA1 Task 12 — Soft warning on materialized bayes-scan
+# ---------------------------------------------------------------
+
+def test_bayes_scan_warns_on_large_p():
+    """BayesianVS.fit emits UserWarning when p > 10000 (NA1 Decision 5).
+
+    Per NA1 design spec section 6 / Decision 5: warn users with large loci
+    to use the new bayes-scan-rss subcommand instead of materializing G.
+
+    The warning must:
+    - Be a UserWarning.
+    - Mention the substring 'bayes-scan-rss' so users see the pointer to
+      the summary-statistics path.
+    - Fire only when p > 10000 (strict greater-than).
+    """
+    import warnings
+
+    from torchgwas.linalg.kinship import grm_vanraden
+
+    torch.manual_seed(0)
+    n = 30
+    p = 10001  # Strictly greater than the 10000 threshold.
+
+    # Build a tiny but valid LMM null so BayesianVS constructs cleanly.
+    # We use a small n with a real GRM/null fit so initialization succeeds;
+    # if the variational loop diverges on the degenerate (n << p) input
+    # that's fine — we only care that the warning fires before any heavy
+    # work begins.
+    G_null = torch.randint(0, 3, (n, 50), dtype=torch.float64)
+    K, _ = grm_vanraden(G_null)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    Y = torch.randn(n, dtype=torch.float64)
+
+    lmm = SingleTraitLMM()
+    nf = lmm.fit_null(Y, X0, K=K)
+
+    # Large-p genotype matrix to trigger the warning.
+    G_large = torch.zeros(n, p, dtype=torch.float64)
+    G_large[0, 0] = 1.0
+    vmeta = VariantMeta(
+        snp=[f"rs{i}" for i in range(p)],
+        chr=["1"] * p,
+        pos=list(range(p)),
+        a1=["A"] * p,
+        a2=["G"] * p,
+    )
+
+    model = BayesianVS(nf)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        try:
+            # max_iter=1 + small n keeps the call cheap; the assertion
+            # below only depends on the pre-loop warning being emitted.
+            model.fit(G_large, vmeta, max_iter=1, n_signals=1)
+        except Exception:
+            # The fit may fail on degenerate input; we only care the
+            # warning fires.
+            pass
+
+        warning_messages = [str(warning.message) for warning in w]
+        user_warnings = [
+            warning for warning in w
+            if issubclass(warning.category, UserWarning)
+        ]
+        matched = any("bayes-scan-rss" in str(uw.message) for uw in user_warnings)
+        assert matched, (
+            f"Expected UserWarning mentioning 'bayes-scan-rss'; "
+            f"got: {warning_messages}"
+        )
+
+
+def test_bayes_scan_no_warn_at_threshold():
+    """BayesianVS.fit must NOT warn when p == 10000 (boundary, > not >=).
+
+    Decision 5 specifies strict greater-than; this guards against an
+    off-by-one regression where the warning fires at the boundary.
+    """
+    import warnings
+
+    from torchgwas.linalg.kinship import grm_vanraden
+
+    torch.manual_seed(1)
+    n = 20
+    p = 10000  # Exactly at the threshold — should NOT warn.
+
+    G_null = torch.randint(0, 3, (n, 50), dtype=torch.float64)
+    K, _ = grm_vanraden(G_null)
+    X0 = torch.ones(n, 1, dtype=torch.float64)
+    Y = torch.randn(n, dtype=torch.float64)
+
+    lmm = SingleTraitLMM()
+    nf = lmm.fit_null(Y, X0, K=K)
+
+    G = torch.zeros(n, p, dtype=torch.float64)
+    G[0, 0] = 1.0
+    vmeta = VariantMeta(
+        snp=[f"rs{i}" for i in range(p)],
+        chr=["1"] * p,
+        pos=list(range(p)),
+        a1=["A"] * p,
+        a2=["G"] * p,
+    )
+
+    model = BayesianVS(nf)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        try:
+            model.fit(G, vmeta, max_iter=1, n_signals=1)
+        except Exception:
+            pass
+
+        rss_warnings = [
+            warning for warning in w
+            if issubclass(warning.category, UserWarning)
+            and "bayes-scan-rss" in str(warning.message)
+        ]
+        assert not rss_warnings, (
+            f"bayes-scan-rss UserWarning should not fire at p == 10000; "
+            f"got: {[str(uw.message) for uw in rss_warnings]}"
+        )

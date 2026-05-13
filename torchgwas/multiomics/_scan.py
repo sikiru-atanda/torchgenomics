@@ -15,7 +15,7 @@ from ..stats.multipletesting import (
     storey_qvalue,
 )
 from ._mediate import _mediate_from_nullfit, fit_mediation_null
-from ._scan_batched import batched_scan_pairs
+from ._scan_batched import batched_scan_pairs, batched_scan_pairs_streaming
 from ._types import MediationScanResult
 
 logger = logging.getLogger("torchgwas.multiomics")
@@ -95,11 +95,23 @@ def scan_mediation(
     device=None,
     block_size: tuple[int, int] = (256, 64),
     batched: bool | None = None,
+    streaming: bool | None = None,
 ) -> MediationScanResult:
     """Mediation scan over (SNP, feature) pairs filtered by a cis window.
 
     The null model on Y (eigendecomposition of K + variance components) is
     fit **once** and reused across all pairs.
+
+    Parameters
+    ----------
+    streaming : bool, optional
+        When True (or None on CPU with ``len(pairs) >= 1000``), the
+        SNP-block dispatch lazy-rotates one block at a time instead of
+        materializing the full ``G_r = U^T @ G`` rotated genotype
+        matrix. Peak memory drops from
+        ``2 × n × s_variants × 8 B`` (G + G_r) to
+        ``n × s_variants × 8 B + n × s_b × 8 B`` (G + one rotated
+        SNP-block). Behavioral parity to float64 tolerance.
     """
     Y_t = _as_tensor(Y).reshape(-1)
     G_t = _as_tensor(G)
@@ -153,9 +165,19 @@ def scan_mediation(
     # or when the pair count is large enough to amortise the fixed rotation cost.
     use_batched = batched if batched is not None else _should_batch(device, pairs)
 
+    # Streaming dispatch: default ON whenever batched is selected, since the
+    # streaming variant is exact (rotation is linear, output is bit-for-bit
+    # equal to the eager batched path on identical SE seeds) and saves
+    # 50 % peak memory by never materializing the full rotated genotype.
+    use_streaming = (
+        streaming if streaming is not None
+        else (use_batched and len(pairs) >= 1000)
+    )
+
     rows: list[dict] = []
     if use_batched and pairs:
-        scan_rows = batched_scan_pairs(
+        scan_fn = batched_scan_pairs_streaming if use_streaming else batched_scan_pairs
+        scan_rows = scan_fn(
             nf, G_t, M_t, pairs,
             se=se, n_mc_draws=n_mc_draws, n_boot=0,
             sensitivity=sensitivity, seed=seed,

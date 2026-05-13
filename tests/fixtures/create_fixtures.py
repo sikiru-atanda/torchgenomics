@@ -29,8 +29,9 @@ def create_plink():
             chrom = str((j % 3) + 1)
             fh.write(f"{chrom}\trs{j:04d}\t0\t{(j+1)*1000}\tA\tG\n")
 
-    # .bed: magic bytes + SNP-major encoded genotypes
-    # Generate random genotypes: 0, 1, 2 with one missing (NaN → code 01)
+    # .bed: magic bytes + SNP-major encoded genotypes.
+    # Generate random additive dosages: 0, 1, 2 = count of A1 (BIM col 5).
+    # PLINK 1.9 convention — what the reader will decode as.
     geno = np.random.randint(0, 3, size=(N_VARIANTS, N_SAMPLES))
     # Insert one missing value
     geno[2, 5] = -1  # will encode as missing
@@ -44,14 +45,19 @@ def create_plink():
             byte_arr = np.zeros(bytes_per_snp, dtype=np.uint8)
             for i in range(N_SAMPLES):
                 val = geno[j, i]
+                # PLINK 1.9 BED 2-bit codes (geno = count of A1):
+                #   geno=2 (homo A1) → 0b00
+                #   geno=1 (het)     → 0b10
+                #   geno=0 (homo A2) → 0b11
+                #   geno=-1 (missing)→ 0b01
                 if val == -1:
                     code = 0b01  # missing
-                elif val == 0:
-                    code = 0b00  # hom A1
+                elif val == 2:
+                    code = 0b00  # hom A1 (2 copies of A1)
                 elif val == 1:
-                    code = 0b10  # het
-                else:
-                    code = 0b11  # hom A2
+                    code = 0b10  # het (1 copy of A1)
+                else:  # val == 0
+                    code = 0b11  # hom A2 (0 copies of A1)
 
                 byte_idx = i // 4
                 bit_offset = (i % 4) * 2

@@ -31,7 +31,11 @@ from ._hyprcoloc import (  # noqa: F401
     coloc_pairwise,
     hyprcoloc,
 )
-from ._ld_scores import compute_cross_ld_scores, compute_ld_scores  # noqa: F401
+from ._ld_scores import (  # noqa: F401
+    compute_cross_ld_scores,
+    compute_ld_scores,
+    compute_ld_scores_streaming,
+)
 from ._ldsc import (  # noqa: F401
     LDSCResult,
     LDSCRgResult,

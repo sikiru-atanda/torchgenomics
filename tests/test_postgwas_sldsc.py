@@ -111,9 +111,14 @@ def test_sldsc_single_annotation_matches_univariate_ldsc():
     M_c = torch.tensor([float(m_total)], dtype=torch.float64)
 
     res_s = sldsc_h2_partitioned(chi2, total_ld, M_c, n, m_total)
-    res_u = ldsc_h2(chi2, total_ld.squeeze(1), n, m_total)
+    # S-LDSC still uses single-pass WLS internally (Phase 42); compare
+    # against the legacy single-pass LDSC by setting n_iter=0 — the
+    # default `ldsc_h2` now runs IRWLS (Phase 37 follow-up) and would not
+    # match this single-pass S-LDSC fit. Re-enabling IRWLS in
+    # ``sldsc_h2_partitioned`` is filed as a deferred S-LDSC follow-up.
+    res_u = ldsc_h2(chi2, total_ld.squeeze(1), n, m_total, n_iter=0)
 
-    # Numerical agreement: both solve the same WLS problem.
+    # Numerical agreement: both solve the same single-pass WLS problem.
     assert math.isclose(res_s.h2_total, res_u.h2, rel_tol=1e-6, abs_tol=1e-6)
     assert math.isclose(res_s.intercept, res_u.intercept, rel_tol=1e-6, abs_tol=1e-6)
 

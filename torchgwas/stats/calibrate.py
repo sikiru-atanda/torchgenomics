@@ -2,50 +2,105 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import Tensor
 
 
-def compare_pvalues(ours: Tensor, reference: Tensor, tolerance: float = 1e-4) -> dict[str, float | int]:
-    """Compare p-values against a reference tool.
+def compare_pvalues(ours: Tensor, reference: Tensor, tolerance: float = 1e-4) -> dict:
+    """Compare a vector of p-values against a reference tool's output.
 
-    Non-finite pairs are dropped before computing metrics. The returned
-    dictionary is intentionally plain Python scalars so it can be serialized
-    directly in validation reports.
+    Reports concordance metrics on the original p-value scale and on the
+    -log10 scale (the latter is what the GWAS literature uses for plot
+    agreement: Manhattan / QQ comparisons).
+
+    Parameters
+    ----------
+    ours : Tensor, shape (m,)
+        TorchGWAS p-values.
+    reference : Tensor, shape (m,)
+        Reference tool's p-values, paired index-by-index with ``ours``.
+    tolerance : float
+        Absolute tolerance on raw p-values for the
+        ``frac_within_tolerance`` summary. Default 1e-4 (the charter
+        section 4 reference-equivalence target).
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+
+        - ``n``: int — number of paired markers compared.
+        - ``mean_abs_diff``: float — mean |ours - reference|.
+        - ``max_abs_diff``: float — max |ours - reference|.
+        - ``frac_within_tolerance``: float — fraction with
+          ``|ours - reference| <= tolerance``.
+        - ``corr_neglog10``: float — Pearson correlation of -log10(p)
+          (NaN-safe; returns 1.0 when both vectors are constant and
+          equal). Reflects QQ / Manhattan agreement.
+        - ``mean_abs_diff_neglog10``: float — mean |ΔlogP| on the
+          -log10 scale.
+        - ``tolerance``: float — echo of the tolerance argument.
     """
-    ours_t = torch.as_tensor(ours, dtype=torch.float64).reshape(-1)
-    ref_t = torch.as_tensor(reference, dtype=torch.float64).reshape(-1)
-    if ours_t.numel() != ref_t.numel():
+    o = ours.detach().to(torch.float64).reshape(-1)
+    r = reference.detach().to(torch.float64).reshape(-1)
+    if o.shape != r.shape:
         raise ValueError(
-            f"ours and reference must have the same number of p-values; "
-            f"got {ours_t.numel()} and {ref_t.numel()}."
+            f"compare_pvalues: shape mismatch ours={tuple(o.shape)} "
+            f"reference={tuple(r.shape)}"
         )
 
-    finite = torch.isfinite(ours_t) & torch.isfinite(ref_t)
-    n_total = int(ours_t.numel())
-    n = int(finite.sum().item())
+    n = int(o.numel())
     if n == 0:
-        raise ValueError("No finite p-value pairs to compare.")
+        return {
+            "n": 0,
+            "mean_abs_diff": 0.0,
+            "max_abs_diff": 0.0,
+            "frac_within_tolerance": 1.0,
+            "corr_neglog10": 1.0,
+            "mean_abs_diff_neglog10": 0.0,
+            "tolerance": float(tolerance),
+        }
 
-    diff = (ours_t[finite] - ref_t[finite]).abs()
-    within = diff <= float(tolerance)
-    ours_f = ours_t[finite]
-    ref_f = ref_t[finite]
-    ours_has_variance = float(ours_f.std(unbiased=False).item()) > 0.0
-    ref_has_variance = float(ref_f.std(unbiased=False).item()) > 0.0
-    if n > 1 and ours_has_variance and ref_has_variance:
-        corr = float(torch.corrcoef(torch.stack([ours_f, ref_f]))[0, 1].item())
+    abs_diff = (o - r).abs()
+    mean_abs_diff = float(abs_diff.mean().item())
+    max_abs_diff = float(abs_diff.max().item())
+    frac_within = float((abs_diff <= tolerance).to(torch.float64).mean().item())
+
+    # -log10 scale: clamp to floor so a 0 p-value does not wreck the
+    # correlation. The floor matches the canonical chi2_sf clamp of 1e-300.
+    floor = 1e-300
+    nl_o = -torch.log10(o.clamp_min(floor))
+    nl_r = -torch.log10(r.clamp_min(floor))
+
+    nl_diff = (nl_o - nl_r).abs()
+    mean_abs_diff_nl = float(nl_diff.mean().item())
+
+    if n == 1:
+        # Pearson correlation undefined for a single point; report 1.0
+        # iff the values match, else NaN.
+        corr_nl = 1.0 if math.isclose(nl_o.item(), nl_r.item()) else float("nan")
     else:
-        corr = float("nan")
+        var_o = float(nl_o.var(unbiased=False).item())
+        var_r = float(nl_r.var(unbiased=False).item())
+        if var_o == 0.0 and var_r == 0.0:
+            # Both constant on the -log10 scale.
+            corr_nl = 1.0 if math.isclose(
+                float(nl_o.mean().item()), float(nl_r.mean().item())
+            ) else float("nan")
+        elif var_o == 0.0 or var_r == 0.0:
+            corr_nl = float("nan")
+        else:
+            cov = float(((nl_o - nl_o.mean()) * (nl_r - nl_r.mean())).mean().item())
+            corr_nl = cov / math.sqrt(var_o * var_r)
 
     return {
-        "n_total": n_total,
-        "n_finite": n,
-        "n_within_tolerance": int(within.sum().item()),
-        "fraction_within_tolerance": float(within.to(torch.float64).mean().item()),
-        "max_abs_diff": float(diff.max().item()),
-        "mean_abs_diff": float(diff.mean().item()),
-        "rmse": float(torch.sqrt(torch.mean(diff.square())).item()),
-        "pearson_r": corr,
+        "n": n,
+        "mean_abs_diff": mean_abs_diff,
+        "max_abs_diff": max_abs_diff,
+        "frac_within_tolerance": frac_within,
+        "corr_neglog10": corr_nl,
+        "mean_abs_diff_neglog10": mean_abs_diff_nl,
         "tolerance": float(tolerance),
     }

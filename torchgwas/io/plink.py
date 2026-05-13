@@ -17,12 +17,22 @@ logger = logging.getLogger(__name__)
 # PLINK BED magic bytes: 0x6C 0x1B 0x01 (SNP-major mode)
 _BED_MAGIC = bytes([0x6C, 0x1B, 0x01])
 
-# 2-bit genotype decoding table:
-#   0b00 -> 0 (homozygous A1/A1)
+# PLINK 1.9 BED 2-bit decoding — dosage = count of A1 (BIM column 5),
+# matching PLINK 1.9 `--glm` and regenie, which both report BETA on the A1
+# effect-allele convention.
+#
+#   0b00 -> 2.0 (homozygous A1 / 2 copies of A1)
 #   0b01 -> NaN (missing)
-#   0b10 -> 1 (heterozygous)
-#   0b11 -> 2 (homozygous A2/A2)
-_GENO_DECODE = np.array([0.0, np.nan, 1.0, 2.0], dtype=np.float64)
+#   0b10 -> 1.0 (heterozygous)
+#   0b11 -> 0.0 (homozygous A2 / 0 copies of A1)
+#
+# Prior to 2026-05-13 this table was [0.0, NaN, 1.0, 2.0] (counting A2),
+# which produced sign-flipped BETA on every BED-derived sumstats output
+# vs PLINK / regenie. NA3 Track B parity vs regenie surfaced the bug
+# (raw β Pearson = -1.000). VCF (`vcf.py:74`) and PLINK 2.0 (`plink2.py`)
+# readers were already on the correct convention; only the BED reader
+# was inverted.
+_GENO_DECODE = np.array([2.0, np.nan, 1.0, 0.0], dtype=np.float64)
 
 
 class PlinkBedReader:

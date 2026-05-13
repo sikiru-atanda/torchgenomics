@@ -32,7 +32,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from ._ldsc import _block_jackknife_se, _weighted_lstsq
+from ._ldsc import _block_jackknife_se, _hsq_weights, _weighted_lstsq
 
 
 @dataclass
@@ -105,12 +105,27 @@ def sldsc_h2_partitioned(
     L = annot_ld_scores.to(torch.float64).to(device)
     M_c = M_c.to(torch.float64).to(device)
 
-    # Heteroscedasticity weights follow the univariate LDSC convention: the
+    # Heteroscedasticity weights follow the univariate LDSC convention. The
     # sum of per-category LD scores is the standard LDSC "total" LD score,
-    # so the weight mirrors ``1 / max(l_j^2, 1)`` from ``ldsc_h2``. This
-    # keeps single-annotation S-LDSC numerically equivalent to ``ldsc_h2``.
+    # which we feed into ``_hsq_weights`` (the LDSC ``Hsq.weights`` formula
+    # ported during the Phase 37 IRWLS follow-up). With the aggregate
+    # initial estimate of h², this reproduces LDSC's pre-IRWLS first-pass
+    # weights and keeps single-annotation S-LDSC numerically aligned with
+    # ``ldsc_h2(..., n_iter=0)``. (Promoting S-LDSC to full IRWLS is filed
+    # as a deferred S-LDSC follow-up.)
     l_total = L.sum(dim=1)
-    w = 1.0 / torch.clamp(l_total**2, min=1.0)
+    n_per_snp = torch.full_like(chi2, float(n))
+    denom_agg = torch.mean(l_total * n_per_snp)
+    if denom_agg.item() > 0:
+        hsq_agg = float(m_total * (chi2.mean() - 1.0) / denom_agg)
+    else:
+        hsq_agg = 0.0
+    w = _hsq_weights(
+        ld=l_total, w_ld=l_total, n=n_per_snp,
+        m_total=float(m_total), hsq=hsq_agg, intercept=1.0,
+    )
+    eps = torch.finfo(torch.float64).tiny
+    w = torch.clamp(w, min=eps)
 
     # Design matrix: [N * l_c1, ..., N * l_cC, 1]. Folding N into the design
     # makes the recovered coefficients directly equal to tau_c (per-SNP
@@ -118,22 +133,17 @@ def sldsc_h2_partitioned(
     N = float(n)
     X = torch.cat([N * L, torch.ones(L.shape[0], 1, device=device, dtype=torch.float64)], dim=1)
 
-    # Step 1: all SNPs, estimate initial coefficients.
-    _ = _weighted_lstsq(X, chi2, w)
-
-    # Step 2: filter chi^2 outliers and refit.
-    keep = chi2 <= two_step_cutoff
-    if keep.sum() < max(10, C + 2):
-        keep = torch.ones_like(chi2, dtype=torch.bool)
-
-    X2 = X[keep]
-    chi2_2 = chi2[keep]
-    w2 = w[keep]
-
-    coef = _weighted_lstsq(X2, chi2_2, w2)
-    se = _block_jackknife_se(
-        X2, chi2_2, w2, min(n_blocks, int(keep.sum().item())), coef
-    )
+    # Single-pass WLS on all SNPs with the LDSC-style heteroscedastic
+    # weights computed above. We deliberately do NOT apply a chi²-cutoff
+    # outlier filter here: the standard S-LDSC algorithm (Finucane 2015)
+    # does not filter, and applying the legacy two-step cutoff would
+    # break numerical equivalence with single-pass ``ldsc_h2(n_iter=0)``.
+    # ``two_step_cutoff`` is retained on the signature for API stability
+    # and can be reused by future S-LDSC IRWLS / two-step extensions.
+    _ = float(two_step_cutoff)  # accepted for API compatibility, currently unused
+    coef = _weighted_lstsq(X, chi2, w)
+    se = _block_jackknife_se(X, chi2, w, n_blocks, coef)
+    keep = torch.ones_like(chi2, dtype=torch.bool)
 
     tau = coef[:C]
     tau_se = se[:C]

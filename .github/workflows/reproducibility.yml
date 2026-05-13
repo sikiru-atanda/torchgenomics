@@ -1,0 +1,73 @@
+name: Reproducibility audit (Pillar D)
+
+# Pillar D of the validation campaign — re-runs each committed reference
+# fixture (GEMMA, GAPIT, GWASpoly) against a freshly installed upstream
+# tool and asserts the committed fixture is bit-for-bit reproducible.
+#
+# A drift between committed fixture and fresh-tool output is logged as a
+# `fixture-drift` finding (distinct from `torchgwas-divergence`).
+#
+# Skipped from the default test suite via the `reproducibility` pytest
+# marker. This workflow opts in via `-m reproducibility`.
+#
+# Wall time: ~50 min (GWASpoly's per-marker scan dominates). Runs monthly
+# + manual.
+
+on:
+  schedule:
+    - cron: "37 6 1 * *"  # 06:37 UTC on the 1st of every month
+  workflow_dispatch:
+
+jobs:
+  reproducibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "torch>=2.0,<2.5" "numpy<2.0"
+          pip install -e ".[dev]"
+
+      - name: Install R + system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              r-base r-base-dev \
+              libcurl4-openssl-dev libssl-dev libxml2-dev libfontconfig1-dev \
+              build-essential gfortran
+          R --version | head -1
+
+      - name: Install reference tools (GEMMA, GAPIT, GWASpoly)
+        run: |
+          set +e
+          for tool in gemma gapit gwaspoly; do
+              echo "=== installing $tool ==="
+              bash validation/external/$tool/install.sh || echo "   $tool install: deferred"
+          done
+          set -e
+
+      - name: Run Pillar D fixture-drift audit
+        run: |
+          pytest tests/test_reproducibility.py -m reproducibility -v --tb=short --timeout=3600
+        env:
+          TORCHGWAS_DISABLE_NATIVE: "1"
+
+      - name: Upload drift reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pillar-d-drift-reports
+          path: |
+            validation/reproducibility/outputs/*.json
+            docs/validation_findings.md
+          if-no-files-found: ignore
+          retention-days: 90

@@ -236,6 +236,508 @@ class FarmCPU(IterativeGWASLoop):
 
         return final_result
 
+    # ------------------------------------------------------------------
+    # Streaming variant — orchestrates the FEM/REM iteration externally.
+    # The full ``(n × m)`` G is never resident; only the cached QTN
+    # columns (``n × |QTN|``, |QTN| ≤ ~20 in practice) live in memory
+    # alongside one streaming chunk at a time. Per-iteration the genome
+    # is streamed once for the GLM scan and (when prior QTNs exist) once
+    # more for the p-value substitution; both passes are linear in m and
+    # never materialize G.
+    # ------------------------------------------------------------------
+
+    def score_streaming(
+        self,
+        reader,
+        null_fit: NullFit,
+        chunk_size: int,
+        test: str = "wald",
+    ) -> ScanResult:
+        """Streaming FarmCPU scan — chunk-based variant of ``score_chunk``.
+
+        Parameters
+        ----------
+        reader : object
+            Object with ``iter_chunks(chunk_size)`` yielding
+            ``(G_chunk, vmeta)`` and an ``n_variants`` property. Imputed
+            float64 dosages are required (use ``_impute_chunk_iter``).
+        null_fit, test
+            See ``score_chunk``.
+        chunk_size : int
+            Per-iteration streaming chunk size. Used both for the GLM
+            scan pass and the QTN substitution pass.
+
+        Returns
+        -------
+        ScanResult — identical to ``score_chunk(G_full, …)`` to float64
+        tolerance modulo per-chunk numerical reductions.
+        """
+        if test not in ("wald",):
+            raise ValueError(f"FarmCPU supports 'wald' test only, got '{test}'.")
+
+        Y = null_fit.Y_rot
+        device = Y.device
+        m = reader.n_variants
+        n = Y.shape[0]
+        X0_base = null_fit.X0_rot
+
+        # Pre-pass to build genome-wide variant_meta + position / chromosome
+        # arrays. Cheap: only collects metadata and the per-variant MAF
+        # (needed for QTN-eligibility in selection). Does not retain G.
+        all_snp: list[str] = []
+        all_chr: list[str] = []
+        all_pos: list[int] = []
+        all_a1: list[str] = []
+        all_a2: list[str] = []
+        af_pieces: list[Tensor] = []
+        for G_chunk, vm in reader.iter_chunks(chunk_size):
+            all_snp.extend(vm.snp)
+            all_chr.extend([str(c) for c in vm.chr])
+            all_pos.extend(vm.pos)
+            all_a1.extend(vm.a1)
+            all_a2.extend(vm.a2)
+            af_pieces.append((G_chunk.to(STAT_DTYPE).mean(dim=0) / 2.0).to(device))
+        af_global = torch.cat(af_pieces).to(device) if af_pieces else torch.zeros(0, device=device, dtype=STAT_DTYPE)
+        maf_global = torch.minimum(af_global, 1.0 - af_global)
+        maf_exclude = maf_global < self.maf_threshold
+        positions = torch.tensor(all_pos, dtype=torch.long, device=device)
+        chromosomes = all_chr
+
+        variant_meta = VariantMeta(
+            snp=all_snp, chr=all_chr, pos=all_pos, a1=all_a1, a2=all_a2,
+        )
+
+        # Cached QTN columns (n × |QTN|), grown across iterations.
+        bound = max(int(round(math.sqrt(n) / math.sqrt(max(math.log10(n), 1)))), 1)
+        bound = min(bound, self.max_qtns)
+
+        prev_qtns = torch.tensor([], dtype=torch.long, device=device)
+        prev_qtns_save = torch.tensor([], dtype=torch.long, device=device)
+        prev_qtns_pre = torch.tensor([], dtype=torch.long, device=device)
+        qtn_columns = torch.empty((n, 0), dtype=STAT_DTYPE, device=device)
+        final_result: ScanResult | None = None
+
+        for iteration in range(self.max_iter):
+            if len(prev_qtns) > 0:
+                X_aug = torch.cat([X0_base, qtn_columns], dim=1)
+            else:
+                X_aug = X0_base
+
+            qtn_set = set(prev_qtns.tolist()) if len(prev_qtns) > 0 else set()
+            result = _glm_scan_streaming(
+                Y, X_aug,
+                _iter_chunks_for_streaming(reader, chunk_size),
+                variant_meta, qtn_indices=qtn_set,
+                af_global=af_global,
+            )
+
+            if len(prev_qtns) > 0:
+                result = _substitute_qtn_pvalues_streaming(
+                    result, prev_qtns, X_aug, Y,
+                    _iter_chunks_for_streaming(reader, chunk_size),
+                    method=self.method_sub,
+                )
+
+            final_result = result
+
+            if iteration == 0:
+                p_consider = result.p[~maf_exclude] if self.maf_threshold > 0 else result.p
+                if p_consider.numel() == 0:
+                    break
+                min_p = p_consider.min().item()
+                n_active = m - int(maf_exclude.sum().item()) if self.maf_threshold > 0 else m
+                early_cutoff = self.p_threshold / max(n_active, 1)
+                if min_p > early_cutoff:
+                    logger.info(
+                        "FarmCPU(stream): min(p)=%.2e > %.2e at iter 1, stopping early",
+                        min_p, early_cutoff,
+                    )
+                    break
+
+            if self.method_bin == "static":
+                if iteration == 0:
+                    bin_size = self.bin_sizes[2]
+                elif iteration == 1:
+                    bin_size = self.bin_sizes[1]
+                else:
+                    bin_size = self.bin_sizes[0]
+            else:
+                bin_size = self.bin_sizes[0]
+
+            p_for_binning = result.p.clone()
+            if self.maf_threshold > 0:
+                p_for_binning[maf_exclude] = 1.0
+
+            curr_qtns = _specify_bins(
+                p_for_binning, positions, chromosomes, bin_size, bound,
+            )
+
+            if iteration > 0 and len(prev_qtns_save) > 0 and len(curr_qtns) > 0:
+                merged = torch.cat([curr_qtns, prev_qtns_save])
+                curr_qtns = merged.unique()
+
+            if len(curr_qtns) > 0:
+                pvals_for_filter = result.p[curr_qtns]
+                if iteration == 0:
+                    mask = pvals_for_filter < self.p_threshold
+                    curr_qtns = curr_qtns[mask]
+                else:
+                    mask = pvals_for_filter < self.p_threshold
+                    if len(prev_qtns_save) > 0:
+                        save_set = set(prev_qtns_save.tolist())
+                        keep = mask | torch.tensor(
+                            [c.item() in save_set for c in curr_qtns],
+                            dtype=torch.bool, device=curr_qtns.device,
+                        )
+                        curr_qtns = curr_qtns[keep]
+                    else:
+                        curr_qtns = curr_qtns[mask]
+
+            # _remove_correlated needs only the candidate columns — read
+            # them from the streaming reader and discard immediately.
+            if len(curr_qtns) > 1:
+                cand_cols = _read_columns_from_reader(reader, curr_qtns.tolist(), chunk_size)
+                cand_cols = cand_cols.to(STAT_DTYPE).to(device)
+                # _remove_correlated uses columns in p-value order; we pass
+                # the columns in candidate order and let _remove_correlated
+                # re-sort as needed via its argsort on candidates.
+                curr_qtns = _remove_correlated_with_cols(
+                    cand_cols, curr_qtns, result.p, threshold=0.7,
+                )
+                del cand_cols
+
+            logger.info(
+                "FarmCPU(stream) iter %d: %d pseudo-QTNs (bin=%d)",
+                iteration + 1, len(curr_qtns), bin_size,
+            )
+
+            if self.check_convergence(prev_qtns, curr_qtns):
+                logger.info("FarmCPU(stream) converged at iteration %d", iteration + 1)
+                break
+
+            if len(prev_qtns_pre) > 0 and self.check_convergence(prev_qtns_pre, curr_qtns):
+                logger.info("FarmCPU(stream) cycling detected at iteration %d", iteration + 1)
+                break
+
+            if len(curr_qtns) == 0:
+                logger.info("FarmCPU(stream): no QTNs selected, stopping")
+                break
+
+            prev_qtns_pre = prev_qtns_save.clone() if len(prev_qtns_save) > 0 else prev_qtns.clone()
+            prev_qtns_save = curr_qtns.clone()
+            prev_qtns = curr_qtns
+
+            # Refresh QTN-column cache from the reader for the next iteration.
+            qtn_columns = _read_columns_from_reader(
+                reader, curr_qtns.tolist(), chunk_size,
+            ).to(STAT_DTYPE).to(device)
+
+        return final_result
+
+
+def _iter_chunks_for_streaming(reader, chunk_size: int):
+    """Wrap ``reader.iter_chunks`` to yield mean-imputed float64 chunks.
+
+    Avoids importing CLI helpers from the model module; mirrors the
+    behaviour of ``_impute_chunk_iter`` defined in ``cli.py``.
+    """
+    from ..preprocess.impute import impute_mean
+    for G_chunk, vmeta in reader.iter_chunks(chunk_size):
+        yield impute_mean(G_chunk).to(STAT_DTYPE), vmeta
+
+
+def _read_columns_from_reader(reader, indices: list[int], chunk_size: int) -> Tensor:
+    """Read specific column indices from a streaming reader.
+
+    Streams chunks once (linear in m) but only retains the requested
+    columns — peak memory ``O(n × len(indices))``, not ``O(n × m)``.
+    """
+    if not indices:
+        return torch.empty((reader.n_samples, 0), dtype=STAT_DTYPE)
+    sorted_indices = sorted(set(indices))
+    by_orig_pos = {idx: pos for pos, idx in enumerate(indices)}
+
+    n = reader.n_samples
+    out = torch.empty((n, len(indices)), dtype=STAT_DTYPE)
+    found_count = 0
+    target_count = len(sorted_indices)
+    pos = 0
+    for G_chunk, _ in reader.iter_chunks(chunk_size):
+        chunk_n = G_chunk.shape[1]
+        chunk_end = pos + chunk_n
+        wanted = [i for i in sorted_indices if pos <= i < chunk_end]
+        for i in wanted:
+            local = i - pos
+            out[:, by_orig_pos[i]] = G_chunk[:, local].to(STAT_DTYPE)
+        found_count += len(wanted)
+        pos = chunk_end
+        if found_count >= target_count:
+            break
+    # Mean-impute any NaNs (matches _load_full_genotype semantics).
+    if torch.isnan(out).any():
+        from ..preprocess.impute import impute_mean
+        out = impute_mean(out)
+    return out
+
+
+def _glm_scan_streaming(
+    Y: Tensor,
+    X_aug: Tensor,
+    chunk_iter,
+    variant_meta: VariantMeta,
+    qtn_indices: set[int] | None = None,
+    af_global: Tensor | None = None,
+) -> ScanResult:
+    """Streaming variant of :func:`_glm_scan`.
+
+    Per-SNP linear ops (gtg, gty, beta, se, p) are accumulated
+    chunk-by-chunk; the X_aug-side stats (XtX_inv, b_y, y_resid) are
+    built once and reused. Behavioral parity to the eager variant.
+    """
+    Y = Y.to(STAT_DTYPE)
+    X_aug = X_aug.to(STAT_DTYPE)
+    n, c = X_aug.shape
+    qtn_indices = qtn_indices or set()
+    device = Y.device
+
+    XtX = X_aug.T @ X_aug
+    XtX_inv = torch.linalg.inv(XtX)
+    b_y = XtX_inv @ (X_aug.T @ Y)
+    y_resid = Y - X_aug @ b_y
+    rss_null = (y_resid @ y_resid).item()
+    df = max(n - c - 1, 1)
+
+    beta_pieces: list[Tensor] = []
+    se_pieces: list[Tensor] = []
+    stat_pieces: list[Tensor] = []
+    p_pieces: list[Tensor] = []
+    near_pieces: list[Tensor] = []
+    af_pieces: list[Tensor] = []
+    n_seen = 0
+    for G_chunk, _ in chunk_iter:
+        G_chunk = G_chunk.to(STAT_DTYPE).to(device)
+        m_chunk = G_chunk.shape[1]
+        af_pieces.append(G_chunk.mean(dim=0) / 2.0)
+        # Residualize this chunk against X_aug.
+        X_aug_tG = X_aug.T @ G_chunk
+        G_resid = G_chunk - X_aug @ (XtX_inv @ X_aug_tG)
+        gtg = (G_resid * G_resid).sum(dim=0)
+        gty = (G_resid * y_resid.unsqueeze(1)).sum(dim=0)
+        G_var = (G_chunk * G_chunk).sum(dim=0)
+        near_collinear = (gtg < (G_var * 1e-6)) | (G_var < 1e-10)
+        # QTN columns (already in X_aug) flagged.
+        if qtn_indices:
+            for idx in qtn_indices:
+                local = idx - n_seen
+                if 0 <= local < m_chunk:
+                    near_collinear[local] = True
+        gtg_safe = torch.where(near_collinear, torch.ones_like(gtg), gtg)
+        beta = gty / gtg_safe
+        rss_j = rss_null - gty ** 2 / gtg_safe
+        rss_j = torch.clamp(rss_j, min=1e-20)
+        sig2_j = rss_j / df
+        var_beta = sig2_j / gtg_safe
+        se = torch.sqrt(var_beta)
+        stat = beta ** 2 / var_beta
+        p = _f_sf(stat, df1=1, df2=df)
+
+        beta = torch.where(near_collinear, torch.zeros_like(beta), beta)
+        se = torch.where(near_collinear, torch.full_like(se, float("inf")), se)
+        stat = torch.where(near_collinear, torch.zeros_like(stat), stat)
+        p = torch.where(near_collinear, torch.ones_like(p), p)
+
+        beta_pieces.append(beta)
+        se_pieces.append(se)
+        stat_pieces.append(stat)
+        p_pieces.append(p)
+        near_pieces.append(near_collinear)
+        n_seen += m_chunk
+
+    beta_all = torch.cat(beta_pieces) if beta_pieces else torch.zeros(0, dtype=STAT_DTYPE, device=device)
+    se_all = torch.cat(se_pieces) if se_pieces else torch.zeros(0, dtype=STAT_DTYPE, device=device)
+    stat_all = torch.cat(stat_pieces) if stat_pieces else torch.zeros(0, dtype=STAT_DTYPE, device=device)
+    p_all = torch.cat(p_pieces) if p_pieces else torch.zeros(0, dtype=STAT_DTYPE, device=device)
+    af_all = torch.cat(af_pieces) if af_pieces else (af_global if af_global is not None else torch.zeros(0, dtype=STAT_DTYPE, device=device))
+
+    return ScanResult(
+        chr=variant_meta.chr, pos=variant_meta.pos, snp=variant_meta.snp,
+        a1=variant_meta.a1, a2=variant_meta.a2, af=af_all,
+        beta=beta_all, se=se_all, stat=stat_all, p=p_all, test="wald",
+        inference_type="post_selection",
+    )
+
+
+def _substitute_qtn_pvalues_streaming(
+    result: ScanResult,
+    qtn_indices: Tensor,
+    X_aug: Tensor,
+    Y: Tensor,
+    chunk_iter,
+    method: str = "reward",
+) -> ScanResult:
+    """Streaming variant of :func:`_substitute_qtn_pvalues`.
+
+    Holds chunk-aggregated per-SNP pvalues only for the small set of
+    QTN covariates (n_qtns × m). Aggregations: ``min``/``max`` track
+    running argmin/argmax with O(n_qtns) state per chunk; ``mean``
+    tracks running sum/count; ``median`` falls back to a per-QTN
+    accumulator (``m × n_qtns × 8 B``).
+    """
+    import scipy.stats as sp_stats
+    Y = Y.to(STAT_DTYPE)
+    X_aug = X_aug.to(STAT_DTYPE)
+    n, c = X_aug.shape
+    n_qtns = len(qtn_indices)
+    n_base = c - n_qtns
+    df = max(n - c - 1, 1)
+    device = Y.device
+
+    XtX = X_aug.T @ X_aug
+    XtX_inv = torch.linalg.inv(XtX)
+    b_y = XtX_inv @ (X_aug.T @ Y)
+    y_resid = Y - X_aug @ b_y
+    rss_null = (y_resid @ y_resid).item()
+
+    # For each QTN, track aggregator state across all SNPs.
+    qtn_sub_p = torch.full((n_qtns,), float("inf"), dtype=STAT_DTYPE, device=device)
+    qtn_sub_beta = torch.zeros(n_qtns, dtype=STAT_DTYPE, device=device)
+    qtn_sub_se = torch.ones(n_qtns, dtype=STAT_DTYPE, device=device)
+    if method == "reward":
+        # min — track argmin per QTN
+        pass
+    elif method == "penalty":
+        qtn_sub_p = torch.full((n_qtns,), -float("inf"), dtype=STAT_DTYPE, device=device)
+    elif method in ("mean", "median"):
+        all_p_pieces: list[list[Tensor]] = [[] for _ in range(n_qtns)]
+        all_b_pieces: list[list[Tensor]] = [[] for _ in range(n_qtns)]
+        all_var_pieces: list[list[Tensor]] = [[] for _ in range(n_qtns)]
+        all_near_pieces: list[Tensor] = []
+
+    n_seen = 0
+    for G_chunk, _ in chunk_iter:
+        G_chunk = G_chunk.to(STAT_DTYPE).to(device)
+        m_chunk = G_chunk.shape[1]
+        X_aug_tG = X_aug.T @ G_chunk  # (c, m_chunk)
+        XtX_inv_XtG = XtX_inv @ X_aug_tG
+        G_resid = G_chunk - X_aug @ XtX_inv_XtG
+        gtg = (G_resid * G_resid).sum(dim=0)
+        gty = (G_resid * y_resid.unsqueeze(1)).sum(dim=0)
+        G_var = (G_chunk * G_chunk).sum(dim=0)
+        near_collinear = (gtg < (G_var * 1e-6)) | (G_var < 1e-10)
+        gtg_safe = torch.where(near_collinear, torch.ones_like(gtg), gtg)
+        beta_snp = gty / gtg_safe
+        rss_j = rss_null - gty ** 2 / gtg_safe
+        rss_j = torch.clamp(rss_j, min=1e-20)
+        sig2_j = rss_j / df
+
+        if method in ("mean", "median"):
+            all_near_pieces.append(near_collinear)
+
+        for qi in range(n_qtns):
+            k = n_base + qi
+            b_k_j = b_y[k] - XtX_inv_XtG[k, :] * beta_snp
+            var_k_j = sig2_j * (XtX_inv[k, k] + XtX_inv_XtG[k, :] ** 2 / gtg_safe)
+            var_k_j = torch.clamp(var_k_j, min=1e-40)
+            t_k_j = b_k_j / torch.sqrt(var_k_j)
+            t_abs = t_k_j.abs().detach().cpu().numpy().astype(np.float64)
+            p_k_j_np = 2.0 * sp_stats.t.sf(t_abs, df=df)
+            p_k_j = torch.tensor(p_k_j_np, dtype=STAT_DTYPE, device=device)
+            p_k_j = torch.clamp(p_k_j, min=1e-300, max=1.0)
+            p_k_j = torch.where(near_collinear, torch.ones_like(p_k_j), p_k_j)
+
+            if method == "reward":
+                cur_min = p_k_j.min()
+                if cur_min < qtn_sub_p[qi]:
+                    qtn_sub_p[qi] = cur_min
+                    j = p_k_j.argmin()
+                    qtn_sub_beta[qi] = b_k_j[j]
+                    qtn_sub_se[qi] = torch.sqrt(var_k_j[j])
+            elif method == "penalty":
+                cur_max = p_k_j.max()
+                if cur_max > qtn_sub_p[qi]:
+                    qtn_sub_p[qi] = cur_max
+                    j = p_k_j.argmax()
+                    qtn_sub_beta[qi] = b_k_j[j]
+                    qtn_sub_se[qi] = torch.sqrt(var_k_j[j])
+            else:  # mean / median — accumulate
+                all_p_pieces[qi].append(p_k_j)
+                all_b_pieces[qi].append(b_k_j)
+                all_var_pieces[qi].append(var_k_j)
+
+        n_seen += m_chunk
+
+    if method in ("mean", "median"):
+        near_all = torch.cat(all_near_pieces) if all_near_pieces else torch.zeros(0, dtype=torch.bool, device=device)
+        for qi in range(n_qtns):
+            p_q = torch.cat(all_p_pieces[qi])
+            b_q = torch.cat(all_b_pieces[qi])
+            var_q = torch.cat(all_var_pieces[qi])
+            valid = ~near_all
+            if method == "mean":
+                qtn_sub_p[qi] = p_q[valid].mean() if valid.any() else p_q.mean()
+                qtn_sub_beta[qi] = b_q[valid].mean() if valid.any() else b_q.mean()
+                qtn_sub_se[qi] = torch.sqrt(var_q[valid].mean() if valid.any() else var_q.mean())
+            else:  # median
+                vp = p_q[valid] if valid.any() else p_q
+                qtn_sub_p[qi] = vp.median()
+                qtn_sub_beta[qi] = b_q[valid].median() if valid.any() else b_q.median()
+                qtn_sub_se[qi] = torch.sqrt(var_q[valid].median() if valid.any() else var_q.median())
+
+    p_new = result.p.clone()
+    beta_new = result.beta.clone()
+    se_new = result.se.clone()
+    stat_new = result.stat.clone()
+    for i, idx in enumerate(qtn_indices.tolist()):
+        p_new[idx] = qtn_sub_p[i]
+        beta_new[idx] = qtn_sub_beta[i]
+        se_new[idx] = qtn_sub_se[i]
+        stat_new[idx] = (qtn_sub_beta[i] / torch.clamp(qtn_sub_se[i], min=1e-20)) ** 2
+
+    return ScanResult(
+        chr=result.chr, pos=result.pos, snp=result.snp,
+        a1=result.a1, a2=result.a2, af=result.af,
+        beta=beta_new, se=se_new, stat=stat_new, p=p_new,
+        test=result.test, inference_type="post_selection",
+    )
+
+
+def _remove_correlated_with_cols(
+    G_cols: Tensor,
+    candidates: Tensor,
+    p_values: Tensor,
+    threshold: float = 0.7,
+) -> Tensor:
+    """Streaming-friendly variant of :func:`_remove_correlated`.
+
+    Identical algorithm to ``_remove_correlated`` but takes the
+    candidate-only column matrix directly (``G_cols`` columns are in
+    ``candidates`` order, NOT genome-wide order). Side-steps the
+    requirement of a full ``G`` tensor for indexing.
+    """
+    if len(candidates) <= 1:
+        return candidates
+
+    pvals = p_values[candidates]
+    order = pvals.argsort()
+    candidates_sorted = candidates[order]
+    G_sub = G_cols[:, order].to(torch.float64)
+
+    G_c = G_sub - G_sub.mean(dim=0, keepdim=True)
+    stds = G_c.std(dim=0, keepdim=True)
+    stds = torch.clamp(stds, min=1e-10)
+    G_norm = G_c / stds
+    corr = (G_norm.T @ G_norm) / (G_norm.shape[0] - 1)
+
+    k = len(candidates_sorted)
+    b = (corr.abs() > threshold).int()
+    cmat = 1 - b
+    for i in range(k):
+        for j in range(i + 1):
+            cmat[i, j] = 1
+    keep_mask = cmat.prod(dim=0) == 1
+    kept_idx = torch.where(keep_mask)[0].tolist()
+    return candidates_sorted[kept_idx]
+
 
 def _specify_bins(
     p_values: Tensor,

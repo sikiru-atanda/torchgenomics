@@ -64,12 +64,26 @@ def ld_clump(
     G = G.to(torch.float64).to(device)
     m = p.shape[0]
 
+    if G.shape[1] != m:
+        raise ValueError(
+            f"G has {G.shape[1]} SNPs but p has {m}; sumstats and genotype "
+            f"matrix must agree on the SNP dimension"
+        )
+
     if isinstance(pos, Tensor):
         pos_arr = pos.cpu().tolist()
     else:
         pos_arr = list(pos)
 
     chr_arr = [str(c) for c in chr_labels]
+    if len(pos_arr) != m:
+        raise ValueError(
+            f"pos length ({len(pos_arr)}) must equal the number of SNPs ({m})"
+        )
+    if len(chr_arr) != m:
+        raise ValueError(
+            f"chr_labels length ({len(chr_arr)}) must equal the number of SNPs ({m})"
+        )
     window_bp = window_kb * 1000.0
 
     # Group SNPs by chromosome

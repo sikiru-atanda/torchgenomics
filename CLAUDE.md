@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TorchGWAS** is a modular Python library for GPU-accelerated Genome-Wide Association Studies (GWAS) using PyTorch. It replicates and extends functionality from established tools like GEMMA and GAPIT, targeting 4th-decimal-place agreement with their p-values. Supports both diploid and polyploid organisms.
 
-**Status**: Active development. Version 0.1.1 (Alpha). 2192 tests pass, 45 skipped. V1 core (Phases 0–13) complete with GEMMA/GAPIT reference equivalence; post-V1 extensions implemented through Phase 56. See the **Phase Index** below for scope, and `git log --grep="Phase NN"` for per-phase details (every phase was shipped as a labeled commit).
+**Status**: Active development. Version 0.3.8 (Alpha). 2801 tests pass, 544 skipped. V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions implemented through Phase 56. See the **Phase Index** below for scope, and `git log --grep="Phase NN"` for per-phase details (every phase was shipped as a labeled commit).
+
+**Post-V1 maturation (v0.3.0–v0.3.8, 2026-04-30 to 2026-05-05):** Multi-pillar validation campaign + streaming/efficiency campaign. 15 V1 production fixes shipped from validation work. 36 of 40 CLI scan subcommands now stream chunks at biobank scale (40 TB → 1-4 GB peak). Reference equivalence validated against 11 external tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, R `mediation`). Five CI workflows wire all four pillar's regression nets + native-kernel wall-time gate. See `docs/superpowers/SESSION_HANDOFF.md` for the full state.
 
 ## Planned Architecture
 
@@ -19,7 +21,7 @@ Data flow: **format detection → imputation/phasing → QC/preprocessing → ge
 - **`torchgwas.linalg`** — Kinship/GRM computation (diploid + polyploid, LOCO), EED, batched Cholesky.
 - **`torchgwas.models`** — `BaseModel` protocol with `fit_null()` and `score_chunk()`:
   - Core: `GLM`, `SingleTraitLMM`, `MultiTraitLMM`, `FarmCPU`, `BLINK`
-  - Mixed-model extensions: `MultiKernelLMM`, `GxELMM` / `HetLMM`, `SetBasedScanner`, `BayesianVS` (SuSiE + CAVI), `ThresholdLinearModel` (Bermann et al. 2026), `WithinFamilyLMM` (Young et al. 2022), `ConditionalLMM`, `MultiTraitMultiEnvLMM`, `OCFLMM` (DML cross-fit), `KnockoffLMM` (Sesia et al. 2020), `GULM` (dosage-variance score test), `LROLMM` (block-level LOCO)
+  - Mixed-model extensions: `MultiKernelLMM`, `GxELMM` / `HetLMM`, `SetBasedScanner`, `BayesianVS` (SuSiE + CAVI), `BayesianVSRss` (SuSiE-RSS sumstats fine-mapping), `ThresholdLinearModel` (Bermann et al. 2026), `WithinFamilyLMM` (Young et al. 2022), `ConditionalLMM`, `MultiTraitMultiEnvLMM`, `OCFLMM` (DML cross-fit), `KnockoffLMM` (Sesia et al. 2020), `GULM` (dosage-variance score test), `LROLMM` (block-level LOCO)
   - GLM / GLMM: `BinaryGLM`, `OrdinalGLM`, `MultinomialGLM`; `BinaryGLMM`, `OrdinalGLMM`, `MultinomialGLMM` (PQL null, SAIGE-style)
   - Specialty: `SurvivalGLMM` (Cox PH frailty), `RandomRegressionLMM` + `SpatioTemporalRR` (Phase 38), `RandomRegressionMultiEnvLMM` (Phase 39), `HaplotypeGWAS` (Phase 46), `HaplotypeMultiEnvGWAS` / `HaplotypeMultiTraitGWAS` / `HaplotypeMTMETGWAS` (Phase 47)
 - **`torchgwas.scan`** — `UnifiedScanner` streams chunks through any model via adapters.
@@ -53,7 +55,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 37 as of Phase 56 (adds `phase-poly`; see CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
+- **CLI subcommand count**: 38 as of Phase 56 (adds `phase-poly`; see CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
 
 ## Phase Index
 
@@ -112,75 +114,174 @@ torch (>=2.0), numpy, pandas, scipy, matplotlib, requests (>=2.28)
 
 Optional: zarr, h5py, pyarrow, seaborn
 
-## Development workflow
+## Validation campaign
+
+A function-by-function validation campaign runs out of `docs/superpowers/`. **All four pillars are COMPLETE (campaign closed 2026-05-04).** Each pillar lives on its own branch:
+
+- `validation/pillar-A-coverage` — coverage audit + tiered fill (Pillar A)
+- `validation/pillar-B-references` — external reference-tool comparisons (Pillar B)
+- `validation/pillar-C-cli-smoke` — CLI smoke matrix (Pillar C)
+- `validation/pillar-D-reproducibility` — fixture reproducibility audit (Pillar D)
+
+- **Spec:** `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`
+- **Per-pillar plans:** `docs/superpowers/plans/2026-04-30-pillar-{A,B,C,D}-plan.md`
+- **Findings ledger:** `docs/validation_findings.md` — every divergence with F3 classification + resolution.
+- **Reviewer prompt templates:** `docs/superpowers/reviewer_prompts/{code_review,rerun_verification}.md`
+- **Session handoff:** `docs/superpowers/SESSION_HANDOFF.md` — comprehensive resume document for next agent.
+- **External-tool harnesses:** `validation/external/<tool>/` for each of 11 reference tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, SoyMD).
+
+### Re-run paths
 
 ```bash
-pip install -e ".[dev]"                    # Editable install with dev tools
+# Coverage audit — which torchgwas symbols have direct tests:
+python3 scripts/audit_public_coverage.py
 
-# --- Tests (pytest config in pyproject.toml [tool.pytest.ini_options]) ---
-pytest tests/ -v                                    # Full suite (~2192 passing, 45 skipped)
-pytest tests/test_dosage_call.py                    # Single file
-pytest tests/test_dosage_call.py::test_norm_recovery -v   # Single test
-pytest tests/ -k "lmm and not gpu"                  # Keyword filter
-pytest tests/ -m golden                             # GEMMA/GAPIT/GWASpoly reference equivalence
-pytest tests/ -m "not slow"                         # Skip >30s tests
-pytest tests/ -m gpu                                # CUDA-only tests
+# Per-package, per-tier untested worklist:
+python3 scripts/build_tier_worklist.py --tier 1 --package linalg --output /tmp/worklist.json
 
-# --- Lint / typecheck (config in pyproject.toml; ruff has scientific-codebase ignores) ---
-ruff check torchgwas tests
-ruff format torchgwas tests
-mypy torchgwas
+# All Pillar B external-reference comparisons (skipped by default; opt-in):
+pytest -m external
 
-# --- Docs (mkdocs-material; deployed from master) ---
-mkdocs serve                                        # Live preview at :8000
-mkdocs build --strict
+# Pillar C CLI smoke matrix (skipped by default; opt-in):
+pytest -m cli_matrix
 
-# --- Native build / dispatch overrides (see Repo Conventions) ---
-TORCHGWAS_DISABLE_NATIVE=1 pytest tests/            # Force pure-torch reference paths
-TORCHGWAS_DISABLE_GPU=1 pytest tests/               # Force CPU dispatch
-TORCHGWAS_DISABLE_OPENMP=1 pip install -e .         # Build extensions without OpenMP
+# Pillar D fixture reproducibility (skipped by default; opt-in):
+pytest -m reproducibility
+
+# A single tool's harness end-to-end:
+bash validation/external/plink2/install.sh
+bash validation/external/plink2/fetch_data.sh
+bash validation/external/plink2/run_plink2.sh
+python3 validation/external/plink2/compare.py
 ```
 
-## CLI subcommands
+### Memory pre-flight (mandatory)
 
-`torchgwas <subcommand>` (37 total — see `docs/cli.md` for the canonical list with all flags). Representative examples:
+Every external-tool harness shell script sources `validation/external/_lib/preflight.sh` and asserts disk + RAM headroom before any download / install / run. This is the user's hard rule (spec §5.3) — no partial executions on insufficient resources.
+
+### Cumulative campaign findings: 13 V1 fix-now production fixes
+
+**Pillar A (8):** 3 unimplemented model stubs (`models.lmm_single`, `lmm_multi`, `lmm_multi_fit`), 1 unimplemented stats helper (`stats.calibrate.compare_pvalues`), 1 unimplemented optim solver (`optim.fisher_scoring.fisher_scoring_reml`), 1 zarr v3 API compat (`io.convert._write_zarr`), 2 silent shape-truncation guards in postgwas (`_ld_scores.compute_ld_scores`, `_clump.ld_clump`).
+
+**Pillar B (1):** `mr_egger` Bowden-2015 alignment (3 deviations: missing orientation flip, wrong overdispersion direction, normal vs Student's t for p-value). Post-fix agreement with TwoSampleMR R package: 5 sig figs.
+
+**Pillar C (4):** `cli.glmm-scan` / `me-glmm-scan` / `survival-scan` crashed on a non-existent `linalg.grm` import (now `linalg.kinship.grm_vanraden`); `_apply_correction_and_save` couldn't handle multi-output result schemas (gxe / mvlmm / me-glmm); `cli.impute` crashed on reader-chunk tuple unpacking; `cli.lmm-scan --device cuda` left Y/X0 on CPU when K was on CUDA.
+
+All 13 findings have separate fix commits + regression tests + ledger rows.
+
+## CLI Commands
 
 ```bash
-# Data management
+pip install -e ".[dev]"                    # Install in dev mode
+pytest tests/ -v                           # Run all tests
+
+# --- Data management ---
 torchgwas validate --genotype data.bed --phenotype pheno.txt
 torchgwas convert --input data.vcf.gz --output data --format bed
+torchgwas impute --genotype data.bed --method mean --output imp.pt
 torchgwas impute --genotype data.vcf.gz --method beagle --ref-panel 1000G.vcf.gz --output imp.vcf.gz
+torchgwas impute --genotype data.vcf.gz --method li-stephens --ploidy 4 --output imp.pt
+torchgwas impute --genotype data.vcf.gz --method deep-learning --output imp.pt
 
-# Quantitative-trait scans (V1 core)
-torchgwas glm-scan      --genotype data.bed --phenotype pheno.txt --output results
-torchgwas lmm-scan      --genotype data.bed --phenotype pheno.txt --test wald --correction bh
-torchgwas mvlmm-scan    --genotype data.bed --phenotype pheno.txt --traits Y1,Y2,Y3
-torchgwas farmcpu-scan  --genotype data.bed --phenotype pheno.txt --max-qtns 20
-torchgwas blink-scan    --genotype data.bed --phenotype pheno.txt --cutoff 0.01
-
-# Polyploid pipeline (Phases 55–56)
+# --- Polyploid allele dosage calling (Phase 55) ---
 torchgwas dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4 --model norm
-torchgwas phase-poly  --probs out/dcall.probs.pt --pedigree ped.tsv --map markers.tsv \
-                      --output out/phased --ploidy 4
-torchgwas poly-scan   --genotype data.csv --phenotype pheno.txt --ploidy 4 --gene-action all
 
-# Categorical / survival / longitudinal / haplotype: see docs/cli.md
-#   glmm-scan, threshold-scan, survival-scan, rr-scan, rr-met-scan, hap-scan, …
+# --- Polyploid F1 phasing (Phase 56) ---
+torchgwas phase-poly --probs out/dcall.probs.pt --pedigree ped.tsv \
+    --map markers.tsv --output out/phased --ploidy 4
 
-# Post-GWAS
-torchgwas pgs-fit    --sumstats ss.tsv --ld-ref ld.pt --method ldpred2-auto --output weights.tsv
-torchgwas pgs-score  --weights weights.tsv --genotype target.bed --output scores.tsv
-torchgwas annotate   --sumstats hits.tsv --crop maize --p-threshold 5e-8 --window-up 50000 --window-down 50000
+# --- GWAS scans ---
+torchgwas glm-scan --genotype data.bed --phenotype pheno.txt --output results
+torchgwas lmm-scan --genotype data.bed --phenotype pheno.txt --test wald --correction bh
+torchgwas mvlmm-scan --genotype data.bed --phenotype pheno.txt --traits Y1,Y2,Y3
+torchgwas poly-scan --genotype data.csv --phenotype pheno.txt --ploidy 4 --gene-action all
+torchgwas mklmm-scan --genotype data.bed --phenotype pheno.txt --kernels additive,dominance
+torchgwas gxe-scan --genotype data.bed --phenotype pheno.txt --env env.tsv --gxe-model het
+torchgwas set-scan --genotype data.bed --phenotype pheno.txt --regions genes.bed --set-test skat
+torchgwas bayes-scan --genotype data.bed --phenotype pheno.txt --method susie --n-signals 10
+torchgwas farmcpu-scan --genotype data.bed --phenotype pheno.txt --max-qtns 20
+torchgwas blink-scan --genotype data.bed --phenotype pheno.txt --cutoff 0.01
+
+# --- Multi-environment GWAS ---
+torchgwas met-scan --genotype data.bed --phenotype pheno_env.txt --parameterization reaction_norm
+torchgwas met-scan --genotype data.bed --phenotype pheno_env.txt --vg-structure "fa(2)"
+torchgwas met-scan --genotype data.bed --phenotype pheno_env.txt --kernel-files dominance.npy
+
+# --- Threshold-linear GWAS ---
+torchgwas threshold-scan --genotype data.bed --phenotype pheno.txt --trait-types ordinal,continuous --n-categories 3,0
+torchgwas threshold-scan --genotype data.bed --phenotype pheno.txt --trait-types ordinal,ordinal,continuous --n-categories 2,3,0 --solver em --R-matrix R.csv --G-matrix G.csv
+
+# --- Within-family GWAS ---
+torchgwas family-scan --genotype data.bed --phenotype pheno.txt --family-col FID
+torchgwas family-scan --genotype data.bed --phenotype pheno.txt --family-col FID --min-family-size 3 --confound-threshold 0.3
+
+# --- LD-conditional GWAS ---
+torchgwas conditional-scan --genotype data.bed --phenotype pheno.txt --ld-method r2
+torchgwas conditional-scan --genotype data.bed --phenotype pheno.txt --ld-method gabriel --max-conditioning 3 --sig-threshold 5e-8
+
+# --- Multi-trait multi-environment GWAS ---
+torchgwas mtmet-scan --genotype data.bed --phenotype pheno.txt --traits yield,protein --env-cols E1,E2,E3
+torchgwas mtmet-scan --genotype data.bed --phenotype pheno.txt --traits Y1,Y2 --env-cols E1,E2 --vg-structure unstructured
+torchgwas mtmet-scan --genotype data.bed --phenotype pheno.txt --traits Y1,Y2,Y3 --env-cols E1,E2,E3 --vg-structure "fa(2)"
+
+# --- Orthogonal Cross-Fit LMM (debiased inference) ---
+torchgwas ocf-scan --genotype data.bed --phenotype pheno.txt --n-folds 5
+torchgwas ocf-scan --genotype data.bed --phenotype pheno.txt --n-folds 10 --variance-type HC --seed 42
+
+# --- Knockoff FDR-controlled GWAS ---
+torchgwas knockoff-scan --genotype data.bed --phenotype pheno.txt --fdr-level 0.05
+torchgwas knockoff-scan --genotype data.bed --phenotype pheno.txt --fdr-level 0.1 --ld-method r2 --aggregation sum_sq
+
+# --- Genotype-Uncertainty LMM (GP-aware score test) ---
+torchgwas gu-scan --genotype data.bed --phenotype pheno.txt --dosage-var dosage_var.pt
+torchgwas gu-scan --genotype data.bed --phenotype pheno.txt --dosage-var dosage_var.npy --test score
+
+# --- Leave-Region-Out LMM (block-level LOCO) ---
+torchgwas lro-scan --genotype data.bed --phenotype pheno.txt --ld-method r2
+torchgwas lro-scan --genotype data.bed --phenotype pheno.txt --ld-method gabriel --test score
+
+# --- GLM family (binary/ordinal/multinomial, no random effects) ---
+torchgwas glm-scan --genotype data.bed --phenotype pheno.txt --family binary --firth
+torchgwas glm-scan --genotype data.bed --phenotype pheno.txt --family ordinal --n-categories 3
+torchgwas glm-scan --genotype data.bed --phenotype pheno.txt --family multinomial --n-categories 4
+
+# --- GLMM (binary/ordinal/multinomial with random effects) ---
+torchgwas glmm-scan --genotype data.bed --phenotype pheno.txt --family binary
+torchgwas glmm-scan --genotype data.bed --phenotype pheno.txt --family ordinal --n-categories 3
+torchgwas glmm-scan --genotype data.bed --phenotype pheno.txt --family multinomial --n-categories 4
+
+# --- Survival GWAS (Cox PH frailty model) ---
+torchgwas survival-scan --genotype data.bed --phenotype pheno_surv.txt
+torchgwas survival-scan --genotype data.bed --phenotype pheno_surv.txt --no-spa --pql-max-iter 50
+
+# --- Adaptive FDR (IHW / AdaPT via --correction) ---
+torchgwas lmm-scan --genotype data.bed --phenotype pheno.txt --correction ihw
+torchgwas lmm-scan --genotype data.bed --phenotype pheno.txt --correction adapt --fdr-covariate covariates.tsv
+
+# --- LD block detection ---
+torchgwas ld-blocks --genotype data.bed --method gabriel --output blocks
+torchgwas ld-blocks --genotype data.bed --method big_ld --r2-threshold 0.5
+torchgwas ld-blocks --genotype data.bed --method cc_graph --ld-window 100
+torchgwas ld-blocks --genotype data.bed --method changepoint --cp-penalty 0
+torchgwas ld-blocks --genotype data.bed --method graphical --l1-penalty 0.1
+torchgwas ld-blocks --genotype data.bed --method gabriel --compare-plink plink.blocks.det
+
+# --- Random regression (longitudinal) ---
+torchgwas rr-scan --genotype data.bed --phenotype pheno_long.txt --basis legendre --order 2
+torchgwas rr-met-scan --genotype data.bed --phenotype pheno_long.txt --env-col ENV --vg-structure separable
+
+# --- Polygenic scores (Phase 40) ---
+torchgwas pgs-fit --sumstats ss.tsv --ld-ref ld.pt --method ldpred2-auto --output weights.tsv
+torchgwas pgs-score --weights weights.tsv --genotype target.bed --output scores.tsv
+
+# --- Causal mediation (Phase 49) ---
+torchgwas mediate --y pheno.npy --snp snp.npy --mediator mediator.npy --kinship K.npy
 torchgwas mediate-scan --y pheno.npy --genotype data.bed --mediator-matrix mediators.npy --kinship K.npy --fdr bh
 
-# Full pipeline
+# --- NCBI gene annotation (Phase 48) ---
+torchgwas annotate --sumstats hits.tsv --crop maize --p-threshold 5e-8 --window-up 50000 --window-down 50000
+
+# --- Full pipeline ---
 torchgwas pipeline --genotype data.vcf.gz --impute beagle --model lmm --test wald
+torchgwas pipeline --genotype data.bed --phenotype pheno.txt --model met --env-cols E1,E2,E3
 ```
-
-## Adding a model or accelerator
-
-When extending the codebase, the patterns to mirror live in three predictable places:
-
-- **New GWAS model** — implement the `BaseModel` protocol (`fit_null`, `score_chunk`) in `torchgwas/models/`, register an adapter so `UnifiedScanner` can stream chunks through it, and add a CLI subcommand in `torchgwas/cli.py`. Existing models like `SingleTraitLMM` and `HaplotypeGWAS` are the structural references.
-- **New native accelerator** — write the C++ source under `csrc/`, mark the extension `optional=True` in `setup.py`, wire it at the top of the Python function via `torchgwas._dispatch.select_path` (never bypass it), and keep the pure-torch body intact below as the spec. Add a `tests/test_native_*.py` parity test and a row in `bench/native_speedups.md`.
-- **New phase** — every phase ships as a single commit titled `Phase N: …`; the commit body is the authoritative changelog. `git log --grep="Phase N"` recovers per-phase detail.

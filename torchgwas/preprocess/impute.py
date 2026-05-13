@@ -1,6 +1,17 @@
-"""Built-in imputation methods: mean, mode, KNN (using GRM), LD-based."""
+"""Built-in imputation methods: mean, mode, KNN (using GRM), LD-based.
+
+The flat in-memory entry points (``impute_mean`` / ``impute_mode`` /
+``impute_knn`` / ``impute_ld``) below are the algorithmic reference;
+the streaming-friendly variants (``compute_column_means_streaming``,
+``compute_column_modes_streaming``, ``impute_chunk_with_means``,
+``impute_chunk_with_modes``, etc.) at the bottom of this module are
+the building blocks the streaming CLI uses, and reduce to the same
+math chunk-by-chunk.
+"""
 
 from __future__ import annotations
+
+from typing import Iterator
 
 import torch
 from torch import Tensor
@@ -323,3 +334,229 @@ def impute_ld(G: Tensor, window_size: int = 50) -> Tensor:
             G_out[i, j] = G_complete[i, j]
 
     return G_out
+
+
+# ---------------------------------------------------------------------------
+# Streaming-friendly building blocks (Efficiency E4)
+# ---------------------------------------------------------------------------
+#
+# These helpers let the CLI ``impute`` subcommand do a two-pass scan
+# over the genotype reader without ever materializing the full
+# ``(n_samples × n_variants)`` tensor. Pass 1 accumulates per-column
+# statistics (sums for mean, integer-class histograms for mode); pass
+# 2 streams chunks again and writes per-chunk imputed dosages to a
+# streaming output sink.
+#
+# The math here is identical to the flat-tensor reference functions
+# above — we just split the column-statistic compute and the fill
+# step into two separate passes that consume an ``iter_chunks``
+# iterator. For mean/mode this is a clean two-pass; for KNN we do a
+# single pass with the full GRM (built streaming via
+# ``grm_vanraden_streaming``); for LD we do a sliding-window
+# buffered single pass with documented buffer cost.
+
+
+def compute_column_means_streaming(
+    chunk_iter: Iterator[tuple[Tensor, object]],
+) -> Tensor:
+    """Pass 1 of streaming mean imputation.
+
+    Accumulates per-column ``(sum, n_observed)`` over the chunk
+    iterator and returns the per-column means. Memory cost is
+    ``O(n_variants)`` for the running sums — independent of
+    ``n_samples`` — so this fits even at biobank scale.
+
+    Parameters
+    ----------
+    chunk_iter
+        Yields ``(G_chunk, vmeta)`` tuples. ``G_chunk`` may have NaN
+        for missing entries.
+
+    Returns
+    -------
+    Tensor, shape (m,)
+        Per-column means in the dtype of the first chunk seen.
+    """
+    sums_list: list[Tensor] = []
+    counts_list: list[Tensor] = []
+    dtype = None
+
+    for G_chunk, _ in chunk_iter:
+        if dtype is None:
+            dtype = G_chunk.dtype
+        mask = torch.isnan(G_chunk)
+        G_zero = torch.where(mask, torch.zeros_like(G_chunk), G_chunk)
+        sums_list.append(G_zero.sum(dim=0))
+        counts_list.append((~mask).sum(dim=0).to(dtype))
+
+    if not sums_list:
+        return torch.zeros(0, dtype=torch.float64)
+
+    sums = torch.cat(sums_list, dim=0)
+    counts = torch.cat(counts_list, dim=0).clamp(min=1.0)
+    return sums / counts
+
+
+def impute_chunk_with_means(
+    G_chunk: Tensor, col_means: Tensor, col_offset: int,
+) -> Tensor:
+    """Pass 2 of streaming mean imputation.
+
+    Takes a single chunk, slices the global ``col_means`` for the
+    chunk's column window, and replaces NaN entries with the
+    corresponding per-column mean. Returns the imputed chunk.
+
+    Parameters
+    ----------
+    G_chunk : Tensor, shape (n, m_chunk)
+    col_means : Tensor, shape (m_total,)
+        Global per-column means from
+        :func:`compute_column_means_streaming`.
+    col_offset : int
+        Starting column index in the global G this chunk represents.
+    """
+    mask = torch.isnan(G_chunk)
+    if not mask.any():
+        return G_chunk
+    out = G_chunk.clone()
+    m_chunk = G_chunk.shape[1]
+    means_slice = col_means[col_offset : col_offset + m_chunk]
+    fill = means_slice.unsqueeze(0).expand_as(G_chunk).to(G_chunk.dtype)
+    out[mask] = fill[mask]
+    return out
+
+
+def compute_column_modes_streaming(
+    chunk_iter: Iterator[tuple[Tensor, object]],
+    max_dosage: int,
+) -> Tensor:
+    """Pass 1 of streaming mode imputation.
+
+    Accumulates per-column class histograms (integer dosage classes
+    ``0..max_dosage``) across chunks and returns the per-column mode
+    (lowest-value tie-break, matching :func:`impute_mode`). Memory
+    cost is ``O(n_variants × (max_dosage + 1))`` — for diploid
+    (max_dosage=2) that's three times the column count, well within
+    biobank-scale memory.
+
+    Parameters
+    ----------
+    chunk_iter
+        Yields ``(G_chunk, vmeta)`` tuples.
+    max_dosage : int
+        Highest dosage value in the dataset. For ploidy-k organisms,
+        pass ``k``.
+    """
+    counts_per_class_list: list[Tensor] = []  # list of (max_dosage+1, m_chunk)
+    dtype = None
+
+    for G_chunk, _ in chunk_iter:
+        if dtype is None:
+            dtype = G_chunk.dtype
+        mask = torch.isnan(G_chunk)
+        G_int = torch.where(
+            mask,
+            torch.tensor(-1, dtype=torch.long, device=G_chunk.device),
+            torch.round(G_chunk).long(),
+        )
+        m_chunk = G_chunk.shape[1]
+        # Per-column class counts. (max_dosage+1, m_chunk).
+        cnts = torch.zeros(
+            max_dosage + 1, m_chunk, dtype=torch.long, device=G_chunk.device,
+        )
+        for c in range(max_dosage + 1):
+            cnts[c] = (G_int == c).sum(dim=0)
+        counts_per_class_list.append(cnts)
+
+    if not counts_per_class_list:
+        return torch.zeros(0, dtype=torch.float64)
+
+    # Concat along columns -> (max_dosage+1, m_total).
+    cnts_global = torch.cat(counts_per_class_list, dim=1)
+    # argmax over class axis. Lowest-index tie-break is the default.
+    modes = cnts_global.argmax(dim=0).to(dtype or torch.float64)
+    return modes
+
+
+def impute_chunk_with_modes(
+    G_chunk: Tensor, col_modes: Tensor, col_offset: int,
+) -> Tensor:
+    """Pass 2 of streaming mode imputation."""
+    mask = torch.isnan(G_chunk)
+    if not mask.any():
+        return G_chunk
+    out = G_chunk.clone()
+    m_chunk = G_chunk.shape[1]
+    modes_slice = col_modes[col_offset : col_offset + m_chunk]
+    fill = modes_slice.unsqueeze(0).expand_as(G_chunk).to(G_chunk.dtype)
+    out[mask] = fill[mask]
+    return out
+
+
+def impute_chunk_with_knn(
+    G_chunk: Tensor, K: Tensor, k: int = 5,
+) -> Tensor:
+    """KNN imputation applied to a single chunk.
+
+    Once the kinship matrix ``K`` (built once via
+    :func:`grm_vanraden_streaming`) is available, KNN imputation is
+    fundamentally per-chunk: each chunk's missing entries only need
+    other rows of the same chunk (column ``j`` is restricted to the
+    chunk's column window). We delegate to :func:`impute_knn`.
+
+    Memory cost: ``O(n_samples² × 8 B)`` for K (held once across the
+    whole imputation), plus ``O(n_samples × m_chunk × 8 B)`` for the
+    chunk. For biobank-scale (n=500K) the GRM is ~1 TB float64; this
+    is the documented hard limit for the KNN streaming path.
+
+    Parameters
+    ----------
+    G_chunk : Tensor, shape (n, m_chunk)
+    K : Tensor, shape (n, n)
+        Kinship matrix (held once across all chunks).
+    k : int
+        Neighbour count.
+    """
+    return impute_knn(G_chunk, K, k=k)
+
+
+def impute_chunk_with_ld_window(
+    G_chunk: Tensor,
+    G_left_buffer: Tensor | None,
+    G_right_buffer: Tensor | None,
+    window_size: int,
+    chunk_col_offset: int,
+) -> Tensor:
+    """LD-based imputation on a single chunk with buffered flanks.
+
+    The reference :func:`impute_ld` looks at each missing entry's
+    flanking ``window_size`` SNPs on each side. Streaming with
+    ``window_size > chunk_size`` requires holding ``window_size``
+    flanking SNPs in memory on each side of the active chunk —
+    documented as the buffer cost.
+
+    Parameters
+    ----------
+    G_chunk : Tensor, shape (n, m_chunk)
+        The active chunk (NaN allowed).
+    G_left_buffer, G_right_buffer : Tensor or None
+        Flanking SNPs from the previous / next chunks. Each of shape
+        ``(n, ≤ window_size)``. The caller is responsible for
+        windowing.
+    window_size : int
+    chunk_col_offset : int
+        Number of columns in ``G_left_buffer`` (used to remap target
+        column indices into the merged tensor).
+    """
+    pieces: list[Tensor] = []
+    if G_left_buffer is not None and G_left_buffer.shape[1] > 0:
+        pieces.append(G_left_buffer)
+    pieces.append(G_chunk)
+    if G_right_buffer is not None and G_right_buffer.shape[1] > 0:
+        pieces.append(G_right_buffer)
+
+    G_merged = torch.cat(pieces, dim=1) if len(pieces) > 1 else G_chunk
+    G_imp = impute_ld(G_merged, window_size=window_size)
+
+    # Slice out the chunk's range from the imputed merged tensor.
+    return G_imp[:, chunk_col_offset : chunk_col_offset + G_chunk.shape[1]].clone()
