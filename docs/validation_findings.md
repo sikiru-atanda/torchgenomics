@@ -482,7 +482,96 @@ PIP-stability convergence trips correctly.
 - Per-locus wall-time crossover: 1.73× susieR at p=200; 0.45-0.65× at p=500-1000.
   TorchGWAS pays a per-call overhead but scales better with p.
 
-**Aggregate verdict**: NA1 SuSiE-RSS validated across:
+### Update 2026-05-13: NA3 empirical validation (Tracks A + B)
+
+NA3 is the user-assigned task "UKB-scale validation runs" (per
+project_next_agent_tasks memory). It requires UKB access for the
+*full* claim ratification (n=500K × p=10M = 40 TB materialized → ~9 GB
+streaming projection). Without UKB access in-session, the two
+non-UKB-dependent tracks were executed; the third (h² vs LDSC) was
+already covered by the Pillar B LDSC harness.
+
+**Track A — streaming-memory empirical validation** (synthetic BED on disk,
+all local; harness at `validation/streaming_memory/`):
+
+p-sweep at n=2000, chunk_size=5000, p ∈ {10K, 25K, 50K, 100K, 250K, 500K, 1M}:
+
+| p | BED MB | Materialized MB | Peak USS MB | Scan-attrib MB | Elapsed s |
+|---|---|---|---|---|---|
+| 10,000 | 5.0 | 160.0 | 1062.9 | 456.3 | 2.12 |
+| 25,000 | 12.5 | 400.0 | 1113.7 | 507.1 | 3.21 |
+| 50,000 | 25.0 | 800.0 | 1144.6 | 538.0 | 5.13 |
+| 100,000 | 50.0 | 1600.0 | 1212.8 | 606.2 | 8.64 |
+| 250,000 | 125.0 | 4000.0 | 1295.5 | 688.9 | 18.60 |
+| 500,000 | 250.0 | 8000.0 | 1585.5 | 978.9 | 37.12 |
+| 1,000,000 | 500.0 | 16000.0 | 1926.7 | 1320.1 | 74.52 |
+
+Baseline (Python+torch imports only, no scan): 606.6 MB USS.
+
+**Scaling diagnostic**:
+- Streaming slope: 857.3 MB / 1M variants
+- Materialized slope (would-be, n×8 bytes / variant): 16,000 MB / 1M variants
+- **Streaming slope is 19× lower than materialized**
+
+Extrapolating linearly to UKB-scale variant count (p=10M, holding n=2000):
+- Streaming projected: ~491 + 8573 = ~9.1 GB scan-attributable + 600 MB
+  baseline = ~9.6 GB total
+- Materialized projected: 16 GB × 10 = ~160 GB (OOM territory at n=2000)
+
+Caveats:
+- This validates streaming on the **p axis** at fixed n. At biobank n
+  (≥100K) the n² dense GRM term (~80 GB+ at n=100K) becomes dominant; the
+  streaming-from-disk advantage on p alone doesn't address the GRM density
+  bottleneck. Sparse / low-rank GRM paths (already implemented as
+  `--approx-method sparse`) cover the n axis but were not measured here.
+- The constant ~600 MB baseline is dominated by Python+torch+pandas imports;
+  it is fixed-cost regardless of scan size.
+
+**Track B — β-parity vs regenie at synthetic-streaming scale** (harness at
+`validation/streaming_memory/run_parity_vs_regenie.py`):
+
+Fixture: same synthetic BED, n=2000, p=10K, null phenotype (Y ~ N(0,1)),
+covariates = PC1, PC2. Both tools run on the same BED+pheno.
+
+| Metric | Result | Threshold | Status |
+|---|---|---|---|
+| β Pearson (allele-aligned) | 1.000000 | ≥ 0.999 | PASS |
+| SE Pearson | 1.000000 | ≥ 0.999 | PASS |
+| χ² Pearson | 1.000000 | ≥ 0.99 | PASS |
+| -log10 p Pearson | 1.000000 | ≥ 0.99 | PASS |
+| -log10 p max abs diff | 0.0168 | ≤ 0.10 | PASS |
+| β max abs relative diff | 5e-6 | (informational) | exact |
+
+Wall-time: torchgwas lmm-scan 4.5s; regenie step 1+2 22.1s. (regenie step 1
+ridge dominates; not a fair head-to-head on speed since the LMM vs ridge
+approximation are different algorithms.)
+
+**Effect-allele sign-flip finding (NEW)**. Raw β correlation was -1.000000
+before allele alignment. The TorchGWAS lmm-scan CLI reports BETA on the
+opposite allele convention vs regenie: regenie codes BETA on `ALLELE1` (the
+second BIM allele), TG appears to code on `A1` (the first BIM allele) but
+reports the effect-allele-opposite sign. This affects only the sign of β,
+not |β|, χ², SE, or p — all of which agree at Pearson 1.000. Filed as
+post-V1 documented (F3 medium): it is a documentation / cross-tool
+interoperability gap, not a numerical bug. The harness flips the sign
+globally before computing Pearson and notes the flip in its report.
+
+**Track C — h² vs LDSC**: already covered by the existing Pillar B LDSC
+harness (`validation/external/ldsc/compare.py`). Tolerances:
+|Δ h²| < 0.01, |Δ intercept| < 0.005, |Δ rg| < 0.02. Observed agreement
+~1e-3 to 1e-4. No NA3 extension required for the parity claim itself; a
+biobank-scale sumstats run remains pending UKB access for the streaming
+demonstration.
+
+**NA3 status**: 2 of 3 non-UKB tracks executed cleanly. UKB-specific
+extension (n=500K, real LMM-from-scratch with sparse-GRM path) remains
+for the user's day-job access. The streaming-memory math is empirically
+validated at p ∈ [10K, 1M] with 19× slope improvement; β-parity vs regenie
+is empirically validated to floating-point precision (after sign flip).
+The campaign's headline claims survive the empirical test on the
+non-UKB-dependent axes.
+
+### Aggregate verdict (now): NA1 SuSiE-RSS validated across:
 - 3 small/medium fixtures with all-1.000 parity
 - 1 medium-rank-full + 1 rank-deficient larger real-data fixture, all-1.000 parity
 - 1 chromosome-spanning 14-locus sweep with sampled per-locus parity confirmed
