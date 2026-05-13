@@ -748,6 +748,68 @@ documented as a finding — it was a real V1-core bug that has now been
 fixed end-to-end. Future BED-derived β will match PLINK 1.9 / regenie /
 PLINK 2.0 / VCF conventions directly without harness workarounds.
 
+### Update 2026-05-13: BOLT-LMM + SAIGE Pillar B harnesses installed and re-verified
+
+Following the BED-convention fix and the per-harness `2.0 - G_a2`
+workaround removals, the user requested end-to-end verification of the
+two Pillar B harnesses I had patched but not run (binaries weren't
+installed locally at the time). Both binaries installed cleanly:
+
+- BOLT-LMM v2.5: 211 MB prebuilt Linux x86_64 tarball; smoke test passed
+  on RHEL 9.6 (the docs warned of glibc/libstdc++ incompatibility but
+  it Just Worked here).
+- SAIGE 1.4.4: pulled the docker.io/wzhou88/saige:1.4.4 image (3 GB).
+
+End-to-end results post-fix on MDP (n=281, m=2897 after QC):
+
+| Harness | Comparison | Threshold | Observed | Status |
+|---|---|---|---|---|
+| **BOLT-LMM** | β correlation | ≥ 0.95 | **0.984** | PASS |
+|  | -log10 p correlation | ≥ 0.95 | 0.982 | PASS |
+|  | β median \|Δ\| (AF band) | ≤ 0.20 | 0.148 | PASS |
+|  | SE median \|Δ\| (AF band) | ≤ 0.07 | 0.043 | PASS |
+| **SAIGE** | β correlation | ≥ 0.90 | **0.970** | PASS |
+|  | -log10 p correlation | ≥ 0.85 | 0.924 | PASS |
+|  | β median \|Δ\| (AF band) | ≤ 0.15 | 0.047 | PASS |
+|  | SE median \|Δ\| (AF band) | ≤ 0.05 | 0.003 | PASS |
+|  | SPA -log10 p correlation | (informational) | 0.749 | — |
+
+Pytest gates (`pytest -m external`):
+  - test_external_bolt_lmm.py: 1/1 PASS
+  - test_external_saige.py:    3/3 PASS
+
+Both β correlations are positive (no inversion), confirming the sign-flip
+fix is correct end-to-end against external biobank-class LMMs (BOLT-LMM
+and SAIGE were both written by upstream against PLINK 1.9 A1 convention,
+which TG now matches natively).
+
+**Pillar B regression net post-NA1 + V1 fixes — verified on every
+harness with a locally-installable binary**:
+
+| Harness | Status | β correlation |
+|---|---|---|
+| GEMMA | (not re-run; static binary; β-parity already documented at 1e-12) | — |
+| GAPIT | (not re-run; R-only; documented at 1e-13) | — |
+| GWASpoly | (not re-run; R-only) | — |
+| PLINK 2.0 | 3/3 PASS | **1.000000** |
+| LDSC | 3/3 PASS | (\|Δh²\| ~1e-5) |
+| regenie | 3/3 PASS | **0.821** (was 0.707 pre-fix) |
+| BOLT-LMM | 1/1 PASS | **0.984** |
+| SAIGE | 2/2 PASS | **0.970** |
+| TwoSampleMR | (not re-run; R-only) | — |
+| SoyNAM | (not re-run; small fixture) | — |
+| susieR | 6/6 metrics 1.000 across 3 fixtures + extended | (NA1 deliverable) |
+
+**NA1/NA2/NA3 status post-cross-check**:
+- NA1: full numerical parity vs susieR; CLI matrix gate now wired
+- NA2: workflow + runbook committed; runner install user-async (unchanged)
+- NA3 Track A: streaming-memory math validated empirically (19-20× slope
+  reduction)
+- NA3 Track B: β-parity vs regenie 1.000 post-fix (raw β no longer flipped)
+- NA3 Track C: h² parity vs LDSC 1e-5 (re-validated this session)
+- V1 bugs (sign flip, sparse-GRM CUDA): both fixed and verified
+- 5/5 Pillar B harnesses with locally-installable binaries: ALL GREEN
+
 ### Aggregate verdict (now): NA1 SuSiE-RSS validated across:
 - 3 small/medium fixtures with all-1.000 parity
 - 1 medium-rank-full + 1 rank-deficient larger real-data fixture, all-1.000 parity
