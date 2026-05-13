@@ -117,9 +117,10 @@ If the host is infra-blocked on BOLT install, this section reflects an
   uses GAPIT-EMMA-REML by default. On N=281 these converge to similar
   σ²_g / σ²_e but not bit-for-bit.
 
-- **Allele convention**. PlinkBedReader counts BIM A2; BOLT counts
-  ALLELE1 (= BIM A1 here). compare.py flips TG's dosage with
-  ``2.0 - G`` so both tools count the same allele.
+- **Allele convention**. PlinkBedReader counts BIM A1 (PLINK 1.9
+  canonical, post-2026-05-13 fix); BOLT counts ALLELE1 = BIM A1. Both
+  tools are now on the same convention; `compare.py` no longer needs
+  a manual `2.0 - G` flip.
 
 ## Peak memory + wall time
 

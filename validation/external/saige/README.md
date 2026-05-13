@@ -112,10 +112,11 @@ included to exercise SAIGE's `--covarColList` plumbing.
   Both override the standard chi-square p in the same direction; the
   SPA-subset correlation = 0.885 confirms agreement on the tail.
 
-- **Allele convention**: PlinkBedReader counts BIM A2 = G (on this
-  fixture); SAIGE's `Allele2 = A = BIM A1` and reports BETA on the A
-  allele. `compare.py` flips TG's dosage (`2.0 - G_a2`) before scoring
-  so both tools count the same allele.
+- **Allele convention**: PlinkBedReader counts BIM A1 (PLINK 1.9
+  canonical, post-2026-05-13 fix) = "A" on this fixture; SAIGE's
+  `Allele2 = A = BIM A1` and reports BETA on the A allele. Both tools
+  are now on the same convention; `compare.py` no longer applies a
+  `2.0 - G` flip.
 
 - **Firth penalty**: SAIGE's `--is_Firth_beta=TRUE` uses a one-step
   Firth approximation for the β estimate (analogous to regenie's

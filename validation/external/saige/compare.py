@@ -187,9 +187,10 @@ def _safe_corr(a: np.ndarray, b: np.ndarray) -> float:
 def _load_mdp(data_dir: Path) -> tuple[torch.Tensor, list[str], VariantMeta]:
     """Load `data/sample.{bed,bim,fam}` → (G, sample_ids, vmeta).
 
-    G is mean-imputed and returned in PlinkBedReader's native A2-counting
-    convention. Callers that want SAIGE's Allele2-counted dosage flip the
-    sign with `2.0 - G` (see notes in compare_step2()).
+    G is mean-imputed and returned in PlinkBedReader's native A1-counting
+    convention (PLINK 1.9 canonical, post-2026-05-13 fix). This matches
+    SAIGE's `Allele2` (which corresponds to BIM A1) directly; no manual
+    flip is needed (see notes in compare_step2()).
     """
     reader = PlinkBedReader(data_dir / "sample")
     chunks = []
@@ -270,15 +271,16 @@ def compare_step2(data_dir: Path, out_dir: Path) -> ComparisonReport:
       - Score the full SNP matrix in one chunk; collect β / SE / p.
       - Merge SNP-by-SNP with SAIGE step2.txt and assert tolerances.
 
-    Allele convention:
-      - PlinkBedReader counts the BIM A2 allele.
+    Allele convention (post-2026-05-13 fix):
+      - PlinkBedReader counts the BIM A1 allele (PLINK 1.9 canonical).
       - SAIGE's `Allele2` column matches BIM A1 (the bim files in the
         MDP fixture have A1=A, A2=G; SAIGE step2 prints `Allele1=G,
         Allele2=A`).
-      - SAIGE's BETA refers to the AC_Allele2 dosage (i.e. the A allele
-        = BIM A1).
-      - We therefore flip TG's dosage (`2.0 - G`) so both tools count
-        the same allele before scoring.
+      - SAIGE's BETA refers to the AC_Allele2 dosage = BIM A1 = the same
+        allele TG counts.
+      - No manual flip needed. Pre-fix, TG counted BIM A2 and this
+        harness applied a `2.0 - G` workaround; the workaround was
+        removed once `torchgwas/io/plink.py:_GENO_DECODE` was corrected.
     """
     rg = _read_saige_step2(out_dir / "step2.txt")
     # Drop any rows SAIGE marked failed-to-converge (BETA = NA).

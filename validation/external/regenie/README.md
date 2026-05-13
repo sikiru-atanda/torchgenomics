@@ -81,11 +81,10 @@ agreement, not LOCO algorithm port).
   correct linear-mixed-model approximations of the same null structure;
   the magnitude difference is the standardization round-trip.
 
-- **Allele convention**: PlinkBedReader counts the BIM A2 allele;
-  regenie counts ALLELE1. On the MDP fixture all rows have A1=A, A2=G,
-  so regenie's ALLELE1 = A = BIM A1 ≠ BIM A2. compare.py flips TG's
-  dosage with `2.0 - G` before scoring so both tools count the same
-  allele.
+- **Allele convention**: PlinkBedReader counts the BIM A1 allele
+  (PLINK 1.9 canonical, post-2026-05-13 fix); regenie counts ALLELE1
+  = BIM A1. Both tools are now on the same convention; `compare.py`
+  no longer needs a manual `2.0 - G` flip.
 
 - **Firth penalty (binary path)**: regenie's `--firth` is fast-Firth
   (one-step approximation; see Mbatchou 2021 §Methods). TG's

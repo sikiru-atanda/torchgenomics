@@ -184,9 +184,9 @@ def _load_mdp(data_dir: Path) -> tuple[torch.Tensor, list[str], VariantMeta]:
     """Load mdp PLINK fileset, mean-impute → (G, sample_ids, vmeta).
 
     G is returned with PlinkBedReader's native dosage convention: G[i,j]
-    is the count of the BIM A2 allele for sample i at SNP j. Callers
-    that want regenie's ALLELE1-counted dosage (== BIM A1 here) should
-    use `2.0 - G`.
+    is the count of the BIM A1 allele (PLINK 1.9 canonical, post-2026-05-13
+    fix). This matches regenie's ALLELE1 = BIM A1 directly; no manual flip
+    needed.
     """
     reader = PlinkBedReader(data_dir / "mdp")
     chunks = []
@@ -317,8 +317,8 @@ def compare_step2_qt(data_dir: Path, out_dir: Path) -> ComparisonReport:
       - Subtract LOCO offset from Y; fit TG GLM null on (Y - offset, X0).
       - Score the chrom's SNPs and collect β/SE/p.
       - Concatenate across chromosomes and merge with regenie's Step 2 output.
-      - Both tools count the same allele (we flip TG's dosage from BIM-A2
-        counting to BIM-A1 = regenie ALLELE1 counting).
+      - Both tools count the same allele natively (post-2026-05-13 BED
+        reader fix: PlinkBedReader counts BIM-A1 = regenie ALLELE1).
     """
     rg = _read_regenie_output(out_dir / "step2_qt_EarHT.regenie")
     rg = rg[rg["TEST"] == "ADD"].copy()

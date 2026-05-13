@@ -66,7 +66,7 @@ PLINK 2 refuses `--make-rel` on truly monomorphic variants (it cannot standardiz
 
 ## Allele-flip handling
 
-PLINK 2's `--glm` reports β per copy of the **minor** allele (it auto-picks A1). Our `convert_mdp_to_bed.py` writes the .bim with `A1 = "A"` and `A2 = "G"`, and TorchGWAS' `PlinkBedReader` decodes raw 2-bit code `0b11` to dosage 2 — i.e. TG dosage counts the .bim A2 ("G"). For SNPs where PLINK chose `A1 = "A"`, the reported β has opposite sign to TorchGWAS', so `compare.py` flips PLINK's β before comparing. This affects 1517/3093 SNPs on the MDP fixture.
+PLINK 2's `--glm` reports β per copy of the **minor** allele (it auto-picks A1). Our `convert_mdp_to_bed.py` writes the .bim with `A1 = "A"` and `A2 = "G"`, and TorchGWAS' `PlinkBedReader` decodes raw 2-bit code `0b00` to dosage 2 — i.e. TG dosage counts the .bim A1 ("A") per PLINK 1.9 canonical convention (post-2026-05-13 fix). For SNPs where PLINK chose `A1 = "G"` (the opposite of our BIM A1), the reported β has opposite sign to TorchGWAS', so `compare.py` flips PLINK's β before comparing. This affects ~half of MDP variants.
 
 ## Peak memory
 

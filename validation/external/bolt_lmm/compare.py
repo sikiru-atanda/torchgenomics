@@ -19,9 +19,11 @@ We aggregate per-chromosome results and merge with BOLT's stats by SNP ID.
 
 Allele convention
 -----------------
-PlinkBedReader counts the BIM A2 allele. BOLT-LMM, like PLINK 2 and regenie,
-counts ALLELE1 (=BIM A1 in our fixture). compare.py flips TG's dosage with
-``2.0 - G`` so both tools count the same allele before scoring.
+PlinkBedReader counts the BIM A1 allele (PLINK 1.9 canonical). BOLT-LMM
+counts ALLELE1 (= BIM A1 in our fixture). Both tools are now on the same
+convention; no manual dosage flip is needed. Pre-2026-05-13, TG counted
+BIM A2 and this harness applied a ``2.0 - G`` flip; the workaround was
+removed once `torchgwas/io/plink.py:_GENO_DECODE` was corrected.
 
 Tolerances (observed-then-floored, per Pillar B convention)
 ------------------------------------------------------------
@@ -185,8 +187,8 @@ def _load_mdp(data_dir: Path) -> tuple[torch.Tensor, list[str], VariantMeta]:
     """Load mdp PLINK fileset, mean-impute → (G, sample_ids, vmeta).
 
     G is returned with PlinkBedReader's native dosage convention: G[i,j]
-    counts the BIM A2 allele. Callers comparing against BOLT (which counts
-    ALLELE1 = BIM A1) should flip with ``2.0 - G``.
+    counts the BIM A1 allele (PLINK 1.9 canonical). This matches BOLT's
+    ALLELE1 = BIM A1 directly; no manual flip needed.
     """
     reader = PlinkBedReader(data_dir / "mdp")
     chunks = []
