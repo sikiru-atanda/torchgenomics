@@ -135,6 +135,110 @@ class TestHaplotypeConstruction:
         )
         assert len(labels) <= 5
 
+    def test_ld_aware_pruning_keeps_high_freq_haplotype_under_tight_ld(self):
+        """Regression for F2 finding (2026-05-15 Tier 1 A5): under tight LD,
+        the pruning step must keep the second-most-common haplotype even when
+        its marginal-allele-frequency product is small.
+
+        Construction: a 5-SNP block with two truly dominant haplotypes
+        ``00000`` (freq 0.5) and ``11111`` (freq 0.4) plus a low-frequency
+        scatter of mixed-allele haplotypes (each freq 0.025). The marginal
+        allele frequency at every locus is ~0.4, so the independence-prior
+        product score for ``11111`` is ``0.4^5 ≈ 0.010``, well below several
+        mixed-allele candidates like ``10101`` whose product is
+        ``0.4 * 0.6 * 0.4 * 0.6 * 0.4 ≈ 0.023``. With LD-aware ranking, the
+        actual frequency wins and ``11111`` survives the prune.
+        """
+        from itertools import product as iproduct
+
+        torch.manual_seed(42)
+        m = 5
+        n = 400
+
+        # True haplotype distribution
+        truth_haps = ["00000", "11111"]  # the two dominant haplotypes
+        truth_freqs = [0.5, 0.4]
+        # 4 background mixed-allele haplotypes at 0.025 each — picked to stress
+        # the independence prior (high marginal-product but low real frequency).
+        bg = ["10101", "01010", "11010", "00110"]
+        for h in bg:
+            truth_haps.append(h)
+            truth_freqs.append(0.025)
+        assert abs(sum(truth_freqs) - 1.0) < 1e-9
+
+        # Draw 2 haplotypes per individual, sum to genotype.
+        H = len(truth_haps)
+        hap_mat = torch.tensor(
+            [[int(c) for c in h] for h in truth_haps], dtype=torch.long,
+        )  # (H, m)
+        freq_tensor = torch.tensor(truth_freqs)
+        draws = torch.multinomial(freq_tensor, n * 2, replacement=True).view(n, 2)
+        G = (hap_mat[draws[:, 0]] + hap_mat[draws[:, 1]]).float()
+
+        # With max_haplotypes=4 the prune must trigger (candidate set easily
+        # exceeds 4 — every individual whose genotype has any heterozygous
+        # locus produces 2^h combinatorial candidates).
+        labels, freqs, dosage = _enumerate_haplotypes_unphased(
+            G, max_haplotypes=4, max_iter=50, tol=1e-8,
+        )
+
+        # The fix preserves both dominant haplotypes. The pre-fix
+        # independence-product ranking dropped ``11111`` under this
+        # construction.
+        assert "00000" in labels, (
+            "dominant reference haplotype 00000 missing from pruned set"
+        )
+        assert "11111" in labels, (
+            "LD-driven second-most-common haplotype 11111 was dropped — F2 "
+            "regression. The independence-prior pruning scored 11111 lower "
+            "than mixed-allele candidates with no observational support. "
+            "Reverting to the marginal-product fallback would reintroduce "
+            "the bug."
+        )
+
+        # Sanity: EM frequency of ``11111`` must be within 0.07 of its truth
+        # (0.4). With n=400, multinomial sampling variability is ~sqrt(0.4
+        # * 0.6 / 400) ≈ 0.024, so 0.07 floor is conservative.
+        idx_11111 = labels.index("11111")
+        assert abs(freqs[idx_11111].item() - 0.4) < 0.07, (
+            f"EM frequency for 11111 is {freqs[idx_11111].item():.3f}; "
+            f"expected ~0.4 ± 0.07."
+        )
+
+    def test_score_candidates_ld_aware_helper_ranks_observed_pairs_higher(
+        self,
+    ):
+        """Unit test for the LD-aware scoring helper: a candidate that
+        actually appears in many individuals' compatible-pair sets must
+        score higher than a candidate that appears in none, regardless of
+        its marginal-allele-frequency product.
+        """
+        from torchgwas.models.haplotype_gwas import (
+            _score_candidates_ld_aware,
+            STAT_DTYPE,
+        )
+
+        # Two individuals, both homozygous for haplotype ``111``:
+        #   genotype = [2, 2, 2] for both.
+        # Candidate set includes ``111`` (truth, observed in all individuals)
+        # and ``000`` (never compatible). Only ``111`` should accumulate
+        # any weight.
+        G_int = torch.tensor([[2, 2, 2], [2, 2, 2]], dtype=torch.long)
+        candidates = ["000", "001", "010", "011", "100", "101", "110", "111"]
+        scores = _score_candidates_ld_aware(
+            candidates, G_int, device=torch.device("cpu"), dtype=STAT_DTYPE,
+        )
+        # All-ones haplotype is the only compatible pair → weight 2 per
+        # individual × 2 individuals = 4 (each individual is `hom 111`,
+        # contributes 2*1.0 since the only pair is (111, 111)).
+        idx_111 = candidates.index("111")
+        assert scores[idx_111].item() == pytest.approx(4.0, abs=1e-9)
+        # All other candidates score 0 (never compatible with [2,2,2]).
+        for h, s in zip(candidates, scores.tolist()):
+            if h == "111":
+                continue
+            assert s == 0.0, f"unexpected non-zero score for {h}: {s}"
+
 
 # ── HTR tests ─────────────────────────────────────────────────────────
 
