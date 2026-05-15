@@ -1053,7 +1053,20 @@ violate the scientific-rigor + zero-error rule.
 
 ---
 
-### 2026-05-15 - Tier 1 A5: haplotype GWAS R harness (post-V1 F2 finding)
+## 2026-05-15 - Tier 1 A5: haplotype GWAS R harness (F2 finding — RESOLVED)
+
+**Status update 2026-05-15:** the F2 root cause documented below was
+fixed in commit `f601f20` ("F2 fix: LD-aware pruning in
+`_enumerate_haplotypes_unphased`"). The marginal-allele-frequency
+product fallback was replaced with an LD-aware fractional-count score
+that uses the same compatible-pair enumeration the downstream EM uses.
+A new regression test
+`tests/test_haplotype_gwas.py::TestHaplotypeConstruction::test_ld_aware_pruning_keeps_high_freq_haplotype_under_tight_ld`
+fails on the pre-fix code (red-green verified) and passes after the fix.
+The 88-test haplotype suite remains green pre- and post-fix. Re-running
+the hapref harness without the `max_haplotypes=32` workaround is
+deferred.
+
 
 **Harness:** `validation/external/hapref/`
 **Tools:** haplo.stats 1.9.8.7 (CRAN) + haplo.glm + jsonlite 2.0.0 + R 4.5.1
