@@ -1,0 +1,64 @@
+{
+  "name": "hyprcoloc (R hyprcoloc vs TorchGWAS hyprcoloc)",
+  "n_compared": 100,
+  "passed": false,
+  "checks": [
+    {
+      "name": "cluster membership (zero-based)",
+      "passed": false,
+      "observed": "[0, 2]",
+      "threshold": "[0, 1, 2]",
+      "direction": "exact",
+      "note": ""
+    },
+    {
+      "name": "|Delta regional_pp|",
+      "passed": false,
+      "observed": 0.9018045626665429,
+      "threshold": 0.001,
+      "direction": "max",
+      "note": ""
+    },
+    {
+      "name": "|Delta candidate_snp_pp|",
+      "passed": true,
+      "observed": 3.6871385115100352e-06,
+      "threshold": 0.001,
+      "direction": "max",
+      "note": ""
+    },
+    {
+      "name": "candidate SNP id",
+      "passed": true,
+      "observed": "rs00050",
+      "threshold": "rs00050",
+      "direction": "exact",
+      "note": ""
+    }
+  ],
+  "extras": {
+    "R cluster": "T1, T2, T3",
+    "TG cluster": "T1, T3",
+    "R regional_pp": 0.9764,
+    "TG regional_pp": 0.07459543733345717,
+    "R candidate SNP": "rs00050",
+    "TG candidate SNP": "rs00050",
+    "R per-SNP PP": 1.0,
+    "TG per-SNP PP": 0.9999963128614885,
+    "truth causal SNP": "rs00050",
+    "truth cluster (zero-based)": [
+      0,
+      1,
+      2
+    ],
+    "cluster-assignment agreement": "0.0%"
+  },
+  "tool_versions": {
+    "hyprcoloc": "0.0.2",
+    "Rmpfr": "1.1.2",
+    "gmp": "0.7.5.1",
+    "RcppEigen": "0.3.3.9.4",
+    "R": "R version 4.5.1 (2025-06-13)",
+    "seed": 42
+  }
+}

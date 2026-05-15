@@ -1,0 +1,5 @@
+metric	observed	threshold	direction	passed
+cluster membership (zero-based)	[0, 2]	[0, 1, 2]	exact	0
+|Delta regional_pp|	9.018046e-01	1.000000e-03	max	0
+|Delta candidate_snp_pp|	3.687139e-06	1.000000e-03	max	1
+candidate SNP id	rs00050	rs00050	exact	1
