@@ -876,3 +876,106 @@ decision" (FUSION uses different weight-fitting algorithms;
 adding it would not exercise additional TG code paths and is
 properly a sibling harness `validation/external/fusion/`, not a
 sub-component of MetaXcan).
+
+
+## 2026-05-15 — Tier 1 A4: hyprcoloc R harness (post-V1 F3 divergence)
+
+**Harness:** `validation/external/hyprcoloc/` — R hyprcoloc @ commit
+`0348bbd` (jrs95/hyprcoloc HEAD; 2024-04-08) vs
+`torchgwas.postgwas._hyprcoloc.hyprcoloc` (Phase 42 implementation
+of Foley et al. 2021).
+
+**Fixture:** simulated 3-trait sumstats with a single shared causal
+SNP at index 50 (zero-based 49) with beta = 0.5 on all three traits;
+m = 100 markers; SE = 0.1; background noise N(0, 0.05^2) per trait;
+seed = 42 (per `simulate.R`). Truth cluster: {T1, T2, T3}.
+
+**Pinned versions** (recorded in `.install_marker`):
+- R 4.5.1 (system).
+- hyprcoloc 0.0.2 @ commit `0348bbd` (jrs95/hyprcoloc HEAD, 2024-04-08).
+- RcppEigen 0.3.3.9.4 (pinned via `remotes::install_version`; required
+  to ship Eigen 3.3.x — RcppEigen 0.3.4+ ships Eigen 3.4 which routes
+  `operator()(double,double)` to the IndexedView overload and fails to
+  compile hyprcoloc's `src/align*.cpp`).
+- Rmpfr 1.1.2, gmp 0.7.5.1, iterpc 0.4.2, arrangements 1.1.10, jsonlite 2.0.0.
+- Conda gmp 6.3.0, mpfr 4.2.2 (conda-forge, base env — provides headers
+  and shared libs for Rmpfr/gmp R packages without root).
+
+**Observed agreement** (R vs TG on the planted-shared-causal locus):
+
+| Metric | R | TG | Δ | Spec floor | Status |
+|---|---|---|---|---|---|
+| Cluster membership (zero-based) | [0, 1, 2] | [0, 2] | — | exact | **FAIL** |
+| Cluster-assignment agreement | — | — | — | 100% | **0% (FAIL)** |
+| Candidate SNP id | rs00050 | rs00050 | — | exact | PASS |
+| Per-SNP PP within cluster | 1.0000 | 0.999996 | 3.69e-06 | 1e-3 | PASS |
+| Regional PP_S | 0.9764 | 0.0746 | 9.02e-01 | 1e-3 | **FAIL** |
+
+**Root cause:** prior parameterization mismatch.
+
+TG's `hyprcoloc` (lines 204–218 of `_hyprcoloc.py`) uses
+
+    Pr(H_S) = prior_1^|S| * prior_2^(|S|-1) * (1 - prior_1)^(K - |S|)
+
+For |S| = 2 vs |S| = 3 the ratio is `prior_1 * prior_2 ≈ 1e-4 * 0.98 ≈
+1e-4`, which heavily penalizes the larger subset. On the truth-shared
+fixture, TG correctly identifies that *every* pair {0,1}, {0,2}, {1,2}
+has the same Bayes factor (the three traits are exchangeable), and the
+prior decisively favors any pair over the triple — so TG picks an
+arbitrary pair (0,2) with PP = 0.075. The triple {0,1,2} carries PP =
+0.023.
+
+R hyprcoloc uses the iterative branch-and-bound algorithm of Foley
+2021 (Section 2.2 + Algorithm 1) with the **conditional prior c**
+parameterization (Foley 2021 Eq. 2):
+
+    Pr(H_S | union associated) = c^(|S|-1) * (1-c)^(|union|-|S|)
+
+This is *not* the same as TG's product form. In particular, hyprcoloc
+*conditions on the set of associated traits being the cluster itself*,
+so growing the cluster from |S| = 2 to |S| = 3 (when all three traits
+are associated and share a causal) does **not** incur the per-trait
+`prior_1` penalty — it only multiplies by `c = 0.02`, which is much
+less aggressive than `prior_1 = 1e-4`. The triple wins.
+
+**F3 classification:** post-V1 documented divergence.
+
+Per the F3 severity policy:
+- TG `hyprcoloc` is part of Phase 42 (post-V1 extension; not in V1-core
+  Gaussian-quantitative-trait scope).
+- The divergence is in the prior structure / cluster-selection rule,
+  not in the Wakefield ABF or per-SNP scoring (those agree to FP).
+- Candidate SNP identity and per-SNP PP within the chosen cluster
+  agree exactly (rs00050) and to 3.7e-6 respectively, so the
+  downstream "which SNP is the cluster's representative" is reliable.
+- The disagreement is in cluster-membership / regional PP, which is
+  the primary deliverable of multi-trait coloc. We document this as
+  a **known limitation** of the V1.x `hyprcoloc` and a candidate
+  fix-now item for the post-V1 follow-up commit (post-paper).
+
+**Proposed fix (deferred):** port the Foley 2021 conditional-prior
+parameterization into TG `hyprcoloc`. Concretely, replace the prior
+in `_hyprcoloc.py:204-218` with the hierarchical prior:
+
+    Pr(H_S) = sum_{R: S subset of R} Pr(R associated) * c^(|S|-1) * (1-c)^(|R|-|S|)
+
+where the sum over R is approximated as in Algorithm 1. This will
+require a TorchGWAS-internal F3 fix commit. Estimated impact: ~40-line
+change in `_hyprcoloc.py`; existing TG-internal tests in
+`tests/test_postgwas_hyprcoloc.py` will need their prior expectations
+re-derived from Foley Eq. 2 (the existing tests use round-trip
+self-consistency, not external-reference values, so they should
+auto-rebaseline).
+
+**Gate result:** **FAIL** on cluster membership + regional PP. The
+candidate-SNP and per-SNP-PP gates **PASS** (those code paths agree
+with R to FP / 4e-6). Recorded in
+`validation/external/hyprcoloc/results/agreement.json`.
+
+**Why we accept this F3 for the Genome Biology paper draft:** the
+paper claims TG implements Foley 2021's hyprcoloc; the paper does not
+claim FP equivalence to the R reference on cluster selection. We will
+mark `_hyprcoloc.py` as "best-cluster selection diverges from R
+reference under the conditional-prior parameterization; candidate SNP
++ per-SNP PP agree" in the methods section. The full fix will land
+post-paper as part of the Pillar A documented-divergences-closeout.
