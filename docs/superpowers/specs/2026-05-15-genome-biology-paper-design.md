@@ -3,7 +3,9 @@
 **Date**: 2026-05-15
 **Status**: Brainstorming complete; awaiting user review of this spec before transitioning to writing-plans.
 **Author**: Sikiru Atanda (corresponding); additional authors TBD.
-**Working title**: *TorchGWAS: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to sixteen established tools.*
+**Working title**: *TorchGWAS: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to fifteen reference tools.*
+
+**Verification status (2026-05-15)**: load-bearing counts in this spec were re-verified against the repo on commit `0a71207` of `modernization/specs` plus `validation/pillar-B-references`, `efficiency/streaming-scan-audit`, and `research/na1-susie-streaming`. Corrected numbers: 25 native `.cpp` extensions (`find csrc/ -name "*.cpp" \| wc -l` → 25); 40 CLI subcommands (dispatch dict in `cli.py` has 40 `"name": _cmd_*` keys); 10 existing algorithmic reference tools — `bolt_lmm`, `gapit`, `gemma`, `gwaspoly`, `ldsc`, `plink2`, `regenie`, `saige`, `susieR`, `twosamplemr` — plus 2 real-data fixtures (`soymd`, `soynam`) and 1 shared library (`_lib`); 13 LD-block-design methods (12 `detect_blocks_*` + 1 `compute_wall_pritchard_diagnostics`); 9 haplotype GWAS methods (HTR/window/block/SKAT + PCHT/HHCT/HSKAT/HapGxE/BayesHap). After Tier 1 the algorithmic-reference count rises to 15.
 
 ## 1. Origin
 
@@ -25,7 +27,7 @@ Per the brainstorming session (2026-05-15), we are switching venue to **Genome B
 
 ## 3. Lead thesis
 
-> TorchGWAS is the first single open-source toolkit to (i) **unify** variant-level, haplotype-level, and multi-omics GWAS in one runtime; (ii) treat **polyploidy** as first-class (arbitrary ploidy k; diploid is k=2); (iii) **stream** from biobank-scale data on commodity GPUs; (iv) ship with end-to-end **numerical equivalence** to sixteen established reference tools (eleven existing + five new harnesses), under observed-then-floored tolerances reproducible from a single shell command.
+> TorchGWAS is the first single open-source toolkit to (i) **unify** variant-level, haplotype-level, and multi-omics GWAS in one runtime; (ii) treat **polyploidy** as first-class (arbitrary ploidy k; diploid is k=2); (iii) **stream** from biobank-scale data on commodity GPUs; (iv) ship with end-to-end **numerical equivalence** to fifteen reference tools (ten existing + five new harnesses) plus two real-data fixtures (`soymd`, `soynam`), under observed-then-floored tolerances reproducible from a single shell command.
 
 To our knowledge, no prior toolkit combines all four properties.
 
@@ -37,12 +39,12 @@ Genome Biology Methods (Software) format: structured Abstract / Background / Res
 |---|---|---|---|
 | 1 | Background | ~700 | Biobank-scale GWAS landscape; gap = no toolkit unifies variant + haplotype + multi-omics + polyploid + streaming on GPU with reference equivalence. |
 | 2 | Results: Architecture & capability surface | ~600 | F1 — capability map (all ~50 features grouped by cluster). |
-| 3 | Results: Reference-tool equivalence (16 tools) | ~900 | F2 — 16-tool grid; observed-then-floored tolerances; all PASSING. |
+| 3 | Results: Reference-tool equivalence (15 tools) | ~900 | F2 — 15-tool grid + 2 real-data fixture columns; observed-then-floored tolerances; all PASSING. |
 | 4 | Results: Haplotype layer | ~1100 | F3 — 13 LD-block-design methods + 9 haplotype GWAS methods (HTR/window/block/SKAT + PCHT/HHCT/HSKAT/HapGxE/BayesHap) + multi-env/multi-trait extensions. |
 | 5 | Results: Multi-omics integration | ~1200 | F4 — TWAS + SMR/HEIDI + coloc + GRM-corrected mediation; three-panel (sim + GTEx/UKB + plant). |
 | 6 | Results: Polyploid pipeline | ~900 | F5 — dosage call → F1 phasing → polyploid GWAS → polyploid LD blocks → polyploid haplotype GWAS on potato F1 + autotetraploid + sim hexaploid/octoploid. |
 | 7 | Results: Specialty models | ~700 | F7 — survival, random regression, within-family, threshold-linear, knockoff, OCF, GU, LRO. |
-| 8 | Results: GPU + biobank streaming | ~800 | F6 — 24 native kernel speedup distribution + streaming memory slope (19×) + sparse-GRM PCG-REML. |
+| 8 | Results: GPU + biobank streaming | ~800 | F6 — 25 native kernel speedup distribution + streaming memory slope + sparse-GRM PCG-REML. The 19× slope figure is reported in `docs/efficiency/streaming_audit.md`; the canonical p-sweep script for figure regeneration is to be authored in Tier 4 (D2) on top of the existing `tests/test_streaming_memory.py` regression net. |
 | 9 | Methods (compressed) | ~800 | Streaming I/O; 6-mode optimizer; native dispatch; observed-then-floored tolerance protocol. |
 | 10 | Discussion + limitations + roadmap | ~500 | Limitations: no Windows GPU; phase-coherence check pending for polyploid haplotypes. |
 | 11 | Availability | ~200 | Repo, install, license, docs site, reproducibility script. |
@@ -53,18 +55,18 @@ Genome Biology Methods (Software) format: structured Abstract / Background / Res
 | F | Title | Panels | Data | Source path |
 |---|---|---|---|---|
 | 1 | Capability map | single sunburst / treemap grouping all ~50 capabilities by cluster | n/a | hand-rendered from CLI registry + module surface |
-| 2 | 16-tool numerical equivalence grid | one column per tool × rows for β / SE / p / PIP / etc. | 11 existing + 5 new harnesses | `validation/external/<tool>/compare.py` for each of 16 tools |
+| 2 | 15-tool numerical equivalence grid (+ 2 real-data fixture columns) | one column per tool × rows for β / SE / p / PIP / etc. | 10 existing algorithmic refs + 5 new harnesses + 2 fixtures | `validation/external/<tool>/compare.py` for each of 15 tools; `validation/external/{soymd,soynam}/compare.py` for the fixture columns |
 | 3 | Haplotype layer | A: 13 LD-block methods on MDP vs PLINK 1.9 `--blocks` (Gabriel); B: 9 haplotype GWAS methods on SoyMD; C: novel methods (PCHT / HHCT / BayesHap) on a real-data hit | MDP, SoyMD, simulated multi-locus | `validation/external/plink2`, new `validation/external/hapref` |
 | 4 | Multi-omics integration | A: simulated ground-truth (TWAS Z / SMR β / coloc PIP / mediation β recovery target ≥ 0.95); B: GTEx v8 + UKB worked example (LDL ↔ SORT1 in liver); C: plant multi-omics (maize WiDiv or Arabidopsis 1001G) | three datasets to stage | new `validation/multiomics/{sim,gtex_ukb,plant}/` |
 | 5 | Polyploid pipeline | A: dosage-call accuracy on simulated GBS reads; B: PolyOrigin F1 phasing recovery on potato F1; C: polyploid GWAS on tetraploid panel vs GWASpoly; D: arbitrary-ploidy demo (k=4,6,8) | GWASpoly potato F1 + autotetraploid + sim hexaploid/octoploid | reuse Phase 55/56 fixtures + new hexaploid sim |
-| 6 | GPU + biobank streaming | A: 24 native kernel speedup distribution (violin/box); B: streaming-vs-materialized memory slope p ∈ [10⁴, 10⁶]; C: sparse-GRM PCG-REML 1.8× speedup; D: CPU↔GPU parity scatter | existing benches | `bench/native_speedups.py` + `validation/streaming_memory/p_sweep.py` |
+| 6 | GPU + biobank streaming | A: 25 native kernel speedup distribution (violin/box); B: streaming-vs-materialized memory slope p ∈ [10⁴, 10⁶]; C: sparse-GRM PCG-REML 1.8× speedup; D: CPU↔GPU parity scatter | existing bench + new p-sweep script | `bench/native_speedups.py` (exists on `validation/pillar-B-references`); `tests/test_streaming_memory.py` + `docs/efficiency/streaming_audit.md` (exist on `efficiency/streaming-scan-audit`); new `bench/streaming_p_sweep.py` to be authored in Tier 4 D2 |
 | 7 | Specialty models | grid: survival (sim Cox); RR longitudinal (SoyNAM time-series); within-family (UKB siblings or sim); threshold-linear (ordinal sim); knockoff (FDR control sim); OCF (DML coverage sim) | mostly simulated; SoyNAM for RR | new `validation/specialty/{survival,rr,family,threshold,knockoff,ocf}/` |
 
 Supplementary figures: per-haplotype-method internals (S3.1–S3.9); extended multi-omics panels; per-ploidy parity scans; OpenMP-off / native-off / GPU-off parity scans.
 
 ## 6. Supplement scope
 
-- **S1** Full per-tool equivalence ledger (every metric, every fixture, 16 tools)
+- **S1** Full per-tool equivalence ledger (every metric, every fixture, 15 algorithmic reference tools + 2 real-data fixture sets)
 - **S2** Complete software-capability inventory (~50 capabilities × CLI × module × phase × test file × validation harness)
 - **S3** Validation findings ledger (copy of `docs/validation_findings.md`)
 - **S4** Reproducibility manifest (pinned versions, install scripts, run order)
@@ -108,7 +110,8 @@ Every numerical claim in the paper must be backed by a head-to-head run against 
 
 | Work item | Effort | Required for | Independent? |
 |---|---|---|---|
-| FUSION / MetaXcan harness | 2-3 d | F2, F4 | Yes |
+| **Tier 0**: branch consolidation + smoke test | 0.5-1 d | every later tier | No (serial prerequisite) |
+| MetaXcan / S-PrediXcan harness (FUSION optional sibling per A1 rationale) | 2-3 d | F2, F4 | Yes |
 | SMR-tool harness | 2 d | F2, F4 | Yes |
 | coloc R harness | 2 d | F2, F4 | Yes |
 | hyprcoloc R harness | 1-2 d | F2 | Yes |
@@ -117,27 +120,44 @@ Every numerical claim in the paper must be backed by a head-to-head run against 
 | Plant multi-omics fixture (maize WiDiv or Arabidopsis 1001G) | 3-5 d | F4 | Yes |
 | Simulated multi-omics ground-truth fixture | 2 d | F4 | Yes |
 | Specialty fixtures (survival, RR, family, threshold, knockoff, OCF) | 5-7 d | F7 | Yes (6 sub-tasks) |
-| Reproducibility script + figure-rendering code | ~1 w | all figures | No (waits on harnesses) |
-| Spec self-review + figure mock-ups | ~2 d | spec | n/a |
+| GU + LRO internal-consistency simulators | 1-2 d | F7 | No (Tier 4 main session) |
+| New `bench/streaming_p_sweep.py` (canonical F6 panel B script) | 1-2 d | F6 | No (Tier 4 D2) |
+| Reproducibility script + figure-rendering code | ~1 w | all figures | No (Tier 4; waits on harnesses) |
 | Full draft (~8400 words) | ~2 w | all | No (waits on figures) |
 | **Total serial wall-clock** | **~6-8 weeks** | full submission | — |
-| **Total with parallel agents** | **~3-4 weeks** | full submission | — |
+| **Total with parallel agents (post-Tier-0)** | **~3-4 weeks** | full submission | — |
 
 ## 10. Parallel-agent dispatch plan
 
-The work scope in §9 contains 14 independent sub-tasks that share no state and have no sequential dependency on each other. They are the canonical candidate set for parallel agent dispatch (`superpowers:dispatching-parallel-agents`).
+The work scope in §9 contains 14 independent sub-tasks that share no state and have no sequential dependency on each other, plus 1 serial prerequisite (Tier 0, branch consolidation) and 1 serial follow-on (Tier 4, reproducibility + manuscript). The 14 parallel tasks are the canonical candidate set for parallel agent dispatch (`superpowers:dispatching-parallel-agents`).
 
 ### 10.1 Dispatch tiers
 
-The work splits into four tiers. Tiers 1–3 are mutually independent (no shared state, no cross-tier dependency) and run concurrently. Tier 4 is serial; it waits on the audit pass over Tiers 1–3.
+The work splits into five tiers. Tier 0 is a single-task prerequisite that runs serially in the main session. Tiers 1–3 are mutually independent (no shared state, no cross-tier dependency) and run concurrently after Tier 0. Tier 4 is serial; it waits on the audit pass over Tiers 1–3.
 
-**Quick count**: Tier 1 = 5 agents · Tier 2 = 3 agents · Tier 3 = 6 agents · Tier 4 = serial (main session). Maximum concurrent agents at peak: 14. Plus two internal-only items (GU, LRO) handled inside Tier 4 — see §10.6.
+**Quick count**: Tier 0 = 1 main-session task · Tier 1 = 5 agents · Tier 2 = 3 agents · Tier 3 = 6 agents · Tier 4 = serial. Maximum concurrent agents at peak after Tier 0 lands: 14. Plus two internal-only specialty items (GU, LRO) handled inside Tier 4 — see §10.6.
+
+**Tier 0 — Branch consolidation (prerequisite; main session, not an agent)**
+
+The `validation/external/` tree lives on `validation/pillar-B-references` (10 algorithmic harnesses + 2 fixture dirs + `_lib`). The `susieR` harness lives on `research/na1-susie-streaming`. The streaming-memory regression net lives on `efficiency/streaming-scan-audit`. The paper scaffold (`paper/`) lives on a worktree of `research/na1-susie-streaming`. None of these are present on the current branch (`modernization/specs`).
+
+| Step | Action | Acceptance |
+|---|---|---|
+| T0.1 | Cut a working branch `paper/genome-biology-methods` from `modernization/specs` | Branch exists locally |
+| T0.2 | Merge `validation/pillar-B-references` into the working branch | `validation/external/{bolt_lmm,gapit,gemma,gwaspoly,ldsc,plink2,regenie,saige,soymd,soynam,twosamplemr,_lib}` present + `bench/native_speedups.py` + `docs/validation_findings.md` |
+| T0.3 | Merge `research/na1-susie-streaming` into the working branch | `validation/external/susieR/` present + `paper/{PLAN.md,drafts/abstract.md,references.bib}` present |
+| T0.4 | Merge `efficiency/streaming-scan-audit` into the working branch | `tests/test_streaming_memory.py` + `docs/efficiency/streaming_audit.md` present |
+| T0.5 | Resolve any conflicts; run `pytest -x --ignore=tests/test_streaming_memory.py` smoke pass | Smoke pass green; full streaming and external-tool suites remain opt-in |
+| T0.6 | Confirm `validation/external/`, `csrc/`, `paper/`, `bench/`, `docs/validation_findings.md`, and `validation/external/_lib/preflight.sh` are all present on the working branch | `ls` confirms each path |
+| T0.7 | No autonomous push (user gate per `memory/feedback_no_autonomous_push.md`) | Working branch is local only until user explicitly approves push |
+
+Tier 1–3 dispatch is blocked until Tier 0 is complete; agents need `validation/external/` and `paper/` to exist before they have a place to write.
 
 **Tier 1 — Reference-tool harnesses (5 agents in parallel)**
 
 | Agent | Output | Acceptance |
 |---|---|---|
-| A1 | `validation/external/metaxcan/{install.sh,fetch_data.sh,run.sh,compare.py}` | FUSION + S-PrediXcan installed under pinned version; pre-flight gate present; ≥1 fixture run head-to-head; agreement target documented |
+| A1 | `validation/external/metaxcan/{install.sh,fetch_data.sh,run.sh,compare.py}` | S-PrediXcan / MetaXcan installed under pinned version (FUSION may be added as a sibling under `validation/external/fusion/` only if the agent decides it; default: MetaXcan alone with rationale recorded in `validation/external/metaxcan/README.md`); pre-flight gate present; ≥1 fixture run head-to-head; agreement target documented |
 | A2 | `validation/external/smr/{install.sh,fetch_data.sh,run.sh,compare.py}` | Yang-lab SMR tool installed at pinned version; cis-eQTL fixture; HEIDI χ² agreement |
 | A3 | `validation/external/coloc/{install.sh,fetch_data.sh,run.R,compare.py}` | R `coloc` installed; H0–H4 posterior agreement |
 | A4 | `validation/external/hyprcoloc/{install.sh,fetch_data.sh,run.R,compare.py}` | R `hyprcoloc` installed; cluster-level PP agreement |
@@ -167,7 +187,7 @@ The work splits into four tiers. Tiers 1–3 are mutually independent (no shared
 | Step | Output |
 |---|---|
 | D1 | Reproducibility repo skeleton + `reproduce_paper.sh` + `preflight.sh` |
-| D2 | Figure-rendering scripts (one per F1–F7) reading from harness outputs |
+| D2 | Figure-rendering scripts (one per F1–F7) reading from harness outputs; includes new `bench/streaming_p_sweep.py` for F6 panel B and the GU + LRO internal-consistency simulators for F7 |
 | D3 | Manuscript draft (Background → Availability) |
 | D4 | Internal review + spec-aligned response |
 | D5 | bioRxiv submission, then Genome Biology submission |
@@ -197,8 +217,9 @@ The audit is non-negotiable. The user's standing rule (`memory/feedback_parallel
 
 ### 10.4 Dispatch ordering and rate
 
-- Tiers 1, 2, and 3 launch at session start in a single message (the dispatching-parallel-agents pattern). All 14 agents run concurrently.
-- Tier 4 is serial; the main session runs it after every Tier 1–3 agent has been audited.
+- **Tier 0 runs first**, serially, in the main session — no agents until the working branch exists with `validation/external/` and `paper/` populated.
+- **Tiers 1, 2, and 3 launch together** in a single message (the dispatching-parallel-agents pattern). All 14 agents run concurrently after Tier 0 lands.
+- **Tier 4 is serial**; the main session runs it after every Tier 1–3 agent has been audited.
 
 Where rate or token budget makes 14-way concurrency impractical, the main session may batch in waves (e.g. wave 1: Tier 1 + 2; wave 2: Tier 3). Sequencing is a budget decision, not a correctness one — every Tier 1–3 task is genuinely independent.
 
@@ -237,5 +258,7 @@ This spec is "complete" when:
 - Author list and affiliations beyond corresponding author.
 - Final selection of the haplotype reference tool (HaploREML vs PLINK 1.9 `--hap-*` vs both); resolved by Agent A5 with rationale.
 - Final selection of plant multi-omics dataset (maize WiDiv vs Arabidopsis 1001G); resolved by Agent B3 with rationale.
+- Whether Agent A1 ships MetaXcan alone or adds a sibling FUSION harness; the agent must pick one with rationale and may not silently combine both into a single tool dir.
+- Whether soymd / soynam appear as additional columns in F2 alongside the 15 algorithmic refs, or only in the supplement; depends on space when F2 is drawn.
 - Bioconda recipe state — confirm before claiming `conda install -c bioconda torchgwas` in Availability.
 - Docker image inclusion (yes / no; impact on reviewer experience).
