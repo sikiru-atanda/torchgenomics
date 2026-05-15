@@ -1,0 +1,9 @@
+.install_marker
+data/
+outputs/
+__pycache__/
+*.Rout
+.Rhistory
+_*.py
+_smoke*.txt
+_tg_*.py

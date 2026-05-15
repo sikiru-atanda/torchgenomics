@@ -1,0 +1,18 @@
+metric	observed	threshold	direction	passed
+reference haplotype identity	00000	00000	exact	1
+max |Delta freq| (per-haplotype EM freq)	1.139074e-04	2.000000e-04	max	1
+max relative |Delta beta|	4.382864e-03	5.000000e-03	max	1
+max relative |Delta pval| (per-hap)	5.773533e-03	1.000000e-02	max	1
+relative |Delta global F-test p|	7.567951e-02	1.000000e-01	max	1
+detail|hap=00010|abs_dfreq	8.149276e-08	2.000000e-04	max	1
+detail|hap=00010|rel_dbeta	2.181837e-05	5.000000e-03	max	1
+detail|hap=00010|rel_dpval	1.797577e-04	1.000000e-02	max	1
+detail|hap=11110|abs_dfreq	1.139074e-04	2.000000e-04	max	1
+detail|hap=11110|rel_dbeta	4.382864e-03	5.000000e-03	max	1
+detail|hap=11110|rel_dpval	1.091359e-03	1.000000e-02	max	1
+detail|hap=11111|abs_dfreq	1.138060e-04	2.000000e-04	max	1
+detail|hap=11111|rel_dbeta	2.334072e-05	5.000000e-03	max	1
+detail|hap=11111|rel_dpval	1.186659e-03	1.000000e-02	max	1
+detail|hap=OTHER|abs_dfreq	nan	2.000000e-04	max	1
+detail|hap=OTHER|rel_dbeta	2.791182e-03	5.000000e-03	max	1
+detail|hap=OTHER|rel_dpval	5.773533e-03	1.000000e-02	max	1

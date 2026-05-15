@@ -1,0 +1,238 @@
+{
+  "name": "haplo.stats (R) vs TorchGWAS HaplotypeGWAS (5-SNP chr1 MDP window)",
+  "n_compared": 4,
+  "passed": true,
+  "checks": [
+    {
+      "name": "reference haplotype identity",
+      "passed": true,
+      "observed": "00000",
+      "threshold": "00000",
+      "direction": "exact",
+      "note": ""
+    },
+    {
+      "name": "max |Delta freq| (per-haplotype EM freq)",
+      "passed": true,
+      "observed": 0.00011390738299625613,
+      "threshold": 0.0002,
+      "direction": "max",
+      "note": "over 4 aligned haplotypes"
+    },
+    {
+      "name": "max relative |Delta beta|",
+      "passed": true,
+      "observed": 0.004382863556827237,
+      "threshold": 0.005,
+      "direction": "max",
+      "note": "3 sig-fig target"
+    },
+    {
+      "name": "max relative |Delta pval| (per-hap)",
+      "passed": true,
+      "observed": 0.00577353312599673,
+      "threshold": 0.01,
+      "direction": "max",
+      "note": "2 sig-fig target"
+    },
+    {
+      "name": "relative |Delta global F-test p|",
+      "passed": true,
+      "observed": 0.07567950535051778,
+      "threshold": 0.1,
+      "direction": "max",
+      "note": ""
+    }
+  ],
+  "extras": {
+    "window_id": "chr1_win343",
+    "snp_ids": "id1.6, id1.3, id1.2, PZB02144.4, PZB02144.5",
+    "n_obs": 279,
+    "R em H": 15,
+    "TG (after pooling) n_haplotypes": 5,
+    "TG_MAX_HAPLOTYPES override": 32,
+    "R global F p": 0.02580399903,
+    "TG global F p": 0.02775683291265564,
+    "R reference": "00000",
+    "TG reference": "00000",
+    "haplotypes only in R (rare bin or unmatched)": [],
+    "haplotypes only in TG (not in R named set)": [
+      "OTHER"
+    ],
+    "rare_skipped": 0
+  },
+  "per_haplotype": [
+    {
+      "tg_label": "00010",
+      "r_freq": 0.023302554923,
+      "tg_freq": 0.02330247343024002,
+      "abs_dfreq": 8.149275997765271e-08,
+      "r_beta": -6.4797140394,
+      "tg_beta": -6.479572662613799,
+      "rel_dbeta": 2.181836811653654e-05,
+      "r_pval": 0.2600680087,
+      "tg_pval": 0.2601147579343608,
+      "rel_dpval": 0.00017975772796681398
+    },
+    {
+      "tg_label": "11110",
+      "r_freq": 0.074211014731,
+      "tg_freq": 0.07409710734800375,
+      "abs_dfreq": 0.00011390738299625613,
+      "r_beta": -0.54905959749,
+      "tg_beta": -0.5466531441896348,
+      "rel_dbeta": 0.004382863556827237,
+      "r_pval": 0.81903002242,
+      "tg_pval": 0.8199238783781015,
+      "rel_dpval": 0.0010913592098375738
+    },
+    {
+      "tg_label": "11111",
+      "r_freq": 0.1265005305,
+      "tg_freq": 0.12661433651751122,
+      "abs_dfreq": 0.00011380601751120878,
+      "r_beta": -5.7241409255,
+      "tg_beta": -5.724007319925532,
+      "rel_dbeta": 2.3340720678895772e-05,
+      "r_pval": 0.0027456197664,
+      "tg_pval": 0.0027423616510256093,
+      "rel_dpval": 0.0011866593525666803
+    },
+    {
+      "tg_label": "OTHER",
+      "r_freq": NaN,
+      "tg_freq": 0.03764023023657948,
+      "abs_dfreq": NaN,
+      "r_beta": 5.0340989864,
+      "tg_beta": 5.04815007352304,
+      "rel_dbeta": 0.002791182128321232,
+      "r_pval": 0.24765308658,
+      "tg_pval": 0.24622325328087502,
+      "rel_dpval": 0.00577353312599673
+    }
+  ],
+  "global_test": {
+    "r_p": 0.02580399903,
+    "tg_p": 0.02775683291265564,
+    "rel": 0.07567950535051778
+  },
+  "alignment": {
+    "rows": [
+      {
+        "tg_label": "00010",
+        "r_freq": 0.023302554923,
+        "tg_freq": 0.02330247343024002,
+        "abs_dfreq": 8.149275997765271e-08,
+        "r_beta": -6.4797140394,
+        "tg_beta": -6.479572662613799,
+        "rel_dbeta": 2.181836811653654e-05,
+        "r_pval": 0.2600680087,
+        "tg_pval": 0.2601147579343608,
+        "rel_dpval": 0.00017975772796681398
+      },
+      {
+        "tg_label": "11110",
+        "r_freq": 0.074211014731,
+        "tg_freq": 0.07409710734800375,
+        "abs_dfreq": 0.00011390738299625613,
+        "r_beta": -0.54905959749,
+        "tg_beta": -0.5466531441896348,
+        "rel_dbeta": 0.004382863556827237,
+        "r_pval": 0.81903002242,
+        "tg_pval": 0.8199238783781015,
+        "rel_dpval": 0.0010913592098375738
+      },
+      {
+        "tg_label": "11111",
+        "r_freq": 0.1265005305,
+        "tg_freq": 0.12661433651751122,
+        "abs_dfreq": 0.00011380601751120878,
+        "r_beta": -5.7241409255,
+        "tg_beta": -5.724007319925532,
+        "rel_dbeta": 2.3340720678895772e-05,
+        "r_pval": 0.0027456197664,
+        "tg_pval": 0.0027423616510256093,
+        "rel_dpval": 0.0011866593525666803
+      },
+      {
+        "tg_label": "OTHER",
+        "r_freq": NaN,
+        "tg_freq": 0.03764023023657948,
+        "abs_dfreq": NaN,
+        "r_beta": 5.0340989864,
+        "tg_beta": 5.04815007352304,
+        "rel_dbeta": 0.002791182128321232,
+        "r_pval": 0.24765308658,
+        "tg_pval": 0.24622325328087502,
+        "rel_dpval": 0.00577353312599673
+      }
+    ],
+    "aligned_named": 4,
+    "rare_skipped": 0,
+    "missing_in_tg": [],
+    "missing_in_r": [
+      "OTHER"
+    ],
+    "r_ref_label": "00000",
+    "tg_ref_label": "00000",
+    "ref_match": true
+  },
+  "tg_run": {
+    "block_id": "win_1_0",
+    "n_hap": 5,
+    "p_global": 0.02775683291265564,
+    "stat_global": 2.7686595569333594,
+    "labels": [
+      "00010",
+      "11110",
+      "11111",
+      "OTHER"
+    ],
+    "betas": [
+      -6.479572662613799,
+      -0.5466531441896348,
+      -5.724007319925532,
+      5.04815007352304
+    ],
+    "ses": [
+      5.74198427454602,
+      2.3990591282279086,
+      1.893665967827796,
+      4.344147717932701
+    ],
+    "pvals": [
+      0.2601147579343608,
+      0.8199238783781015,
+      0.0027423616510256093,
+      0.24622325328087502
+    ],
+    "all_labels": [
+      "00000",
+      "00010",
+      "11110",
+      "11111",
+      "OTHER"
+    ],
+    "all_freqs": [
+      0.7383458524676655,
+      0.02330247343024002,
+      0.07409710734800375,
+      0.12661433651751122,
+      0.03764023023657948
+    ],
+    "ref_label": "00000",
+    "ref_freq": 0.7383458524676655
+  },
+  "tool_versions": {
+    "haplo.stats": "1.9.8.7",
+    "jsonlite": "2.0.0",
+    "R": "R version 4.5.1 (2025-06-13)",
+    "seed": 42
+  },
+  "f3_finding": {
+    "summary": "TG _enumerate_haplotypes_unphased candidate-prune uses a marginal-allele-frequency product, which under-weights real haplotypes formed by LD.",
+    "observed": "max_haplotypes=20 (default) drops 11111 (EM freq ~ 0.127); max_haplotypes=32 recovers parity.",
+    "severity": "F2 (post-V1 documented; HaplotypeGWAS is Phase 46)",
+    "fix_sketch": "Replace the independence-prior product with an LD-aware score (e.g. the EM frequencies from a relaxed pre-pass) before applying the max_haplotypes cap."
+  }
+}
