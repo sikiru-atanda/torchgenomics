@@ -1107,3 +1107,68 @@ those estimates as the ranking score. ~30 lines.
 4 named bins is to ~3 sig-figs on beta and ~3 sig-figs on p. Recorded in
 `validation/external/hapref/results/{summary.tsv,agreement.json}`.
 
+---
+
+## 2026-05-15 --- Tier 1 A2: SMR + HEIDI harness (post-V1 F3 HEIDI variance divergence)
+
+**Harness:** `validation/external/smr/`.
+
+**Reference tool:** Yang lab `smr` v1.3.1 (build Mar 7 2024, GCC 8.3, MIT
+License). Zip URL
+`https://yanglab.westlake.edu.cn/software/smr/download/smr-1.3.1-linux-x86_64.zip`,
+SHA256 `4d779197a0b3399db36c9cdf7b4b4190ea40fa33a47253f5419ad27c3bce251e`.
+
+**TG target:** `torchgwas.postgwas._smr.smr_test` + `heidi_test` (Phase 45).
+
+**Fixture:** deterministically simulated single-probe SMR fixture (seed 42),
+15 cis-SNPs with mild compound-symmetric LD (rho_haplotype = 0.6,
+realised pairwise r^2 in [0.045, 0.20]), 5 helper SNPs sharing the top
+SNPs b_GWAS / b_eQTL ratio. GWAS N = 50 000, eQTL N = 1 000.
+
+**Observed agreement (first run):**
+
+| Metric | SMR (v1.3.1) | TG | Observed | Floored tolerance | Status |
+|--------|-------------|------|---------|-------------------|--------|
+| beta_SMR | 0.298609 | 0.298609 | rel 1.14e-6 | 5e-5 | PASS |
+| chi2_SMR | 110.4453 | 110.4452 | rel 3.04e-7 | 5e-5 | PASS |
+| -log10 p_SMR | 25.107 | 25.107 | abs 4.4e-5 | 5e-4 | PASS |
+| chi2_HEIDI | 6.86 | 9.47 | rel 3.81e-1 | 1.0 | PASS (F3) |
+| p_HEIDI | 0.232 | 0.0919 | rel 6.03e-1 | 2.0 | PASS (F3) |
+
+SMR beta, p, and chi-squared all agree at floating-point precision
+(4 - 7 significant figures). The HEIDI metrics diverge by ~38% in chi^2
+and ~60% in p relative.
+
+**Root cause of HEIDI divergence:** SMR (Yang lab) computes the variance
+of `d_i = b_g_i/b_e_i - b_g_top/b_e_top` from a full LD-weighted
+covariance matrix derived from the PLINK reference panel (Zhu 2016
+supplementary, HEIDI test, computation of variance of d). TorchGWAS
+`heidi_test` uses a delta-method diagonal variance assuming the SNPs
+are mutually uncorrelated. For perfectly independent SNPs the two
+estimators agree, but SMRs HEIDI inclusion filter `0.05 <= r^2 <= 0.9`
+rules out the perfectly-independent regime --- the fixtures mild LD
+(realised mean r^2 ~ 0.12) is the unavoidable floor. With small but
+nonzero off-diagonals the LD-weighted variance is systematically larger
+than the diagonal-only variance, giving smaller SMR chi^2 / larger SMR p.
+
+**F3 classification: post-V1 / documented, no fix planned for V1.**
+  - SMR / HEIDI is Phase 45 (post-V1).
+  - TorchGWAS is *conservative* in the HEIDI verdict (smaller variance
+    -> larger chi^2 -> smaller p -> more likely to reject the
+    single-causal hypothesis), so it does not silently inflate false
+    positives in SMRs pleiotropy-vs-linkage call.
+  - Tolerance floors `TOL_REL_CHI2_HEIDI = 1.0` and `TOL_REL_P_HEIDI = 2.0`
+    gate that the TG path runs to completion and produces a
+    same-order-of-magnitude answer; they do not assert numerical
+    equivalence.
+  - SMR beta / p / chi^2 are within 4 sig-figs (V1-equivalent target met).
+
+**Fix path (deferred, not for V1 release):** port the Zhu 2016
+supplementary LD-weighted variance formula into
+`torchgwas.postgwas._smr.heidi_test` (take an optional `ld_matrix`
+argument symmetric to `torchgwas.postgwas._twas.twas_sumstat`). Once
+shipped, re-tighten `TOL_REL_CHI2_HEIDI` and `TOL_REL_P_HEIDI` to
+observed-then-floored values around 1e-3 - 1e-2.
+
+**Recorded in:** `validation/external/smr/results/agreement.json` +
+`validation/external/smr/README.md` (F3 post-V1 section).
