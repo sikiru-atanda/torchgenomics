@@ -979,3 +979,74 @@ mark `_hyprcoloc.py` as "best-cluster selection diverges from R
 reference under the conditional-prior parameterization; candidate SNP
 + per-SNP PP agree" in the methods section. The full fix will land
 post-paper as part of the Pillar A documented-divergences-closeout.
+
+---
+
+## 2026-05-15 -- Pillar B coloc.abf vs torchgwas.postgwas.coloc_pairwise
+
+**Harness:** `validation/external/coloc/` (this dispatch, Genome Biology
+paper Section 10). Pinned R `coloc` 5.2.3 (CRAN). Three two-trait
+scenarios (shared / distinct / null) simulated with seed 42, M = 50
+SNPs, planted causal at 1-based idx 25. Both tools see the same
+per-scenario sumstats TSVs.
+
+**Tolerance:** TOL_PP = 5e-3 (asserted floor on max |Delta PP.H0..H4|).
+
+**Observed:**
+
+| Scenario | max |Delta PP| | Status |
+|---|---|---|
+| shared   | 2.06e-5 | PASS (near-FP) |
+| distinct | 1.43e-1 | FAIL (F3 finding) |
+| null     | 5.88e-3 | FAIL (small) |
+
+Candidate SNP id agrees exactly on all 3 scenarios. Cross-scenario
+Pearson r on the 5-vec PP = 0.9926.
+
+**Root cause (numerically confirmed by inline reproducer):** TG
+`coloc_pairwise` formula in `torchgwas/postgwas/_hyprcoloc.py:360-365`
+deviates from Giambartolomei 2014 / R `coloc::combine.abf` in two ways:
+
+1. **Spurious `-log m` normalization** on H1, H2, H3, H4. The `1/m`
+   factors do not cancel across hypotheses (H3 carries `1/m^2`, others
+   `1/m`), so the normalized posterior shifts mass from H3 to H1/H2
+   when H4 stops dominating. The 14% mass leak from H3 to H1 in the
+   distinct scenario is exactly this artefact.
+
+2. **Missing diagonal subtraction on H3.** The paper formula uses
+   `(SUM_j ABF1_j)(SUM_j ABF2_j) - SUM_j ABF1_j * ABF2_j` (sum over
+   distinct SNPs only); TG uses the full outer product, double-counting
+   the diagonal that already accrues to H4. The R source for
+   `coloc:::combine.abf` uses `logdiff(logsum(l1)+logsum(l2),
+   logsum(l1+l2))` for exactly this subtraction.
+
+**Numerical verification:** swapping in the R formula reproduces R
+`coloc.abf` output to FP precision on the distinct scenario
+(PP.H0=5.11e-10  H1=3.29e-3  H2=1.55e-7  H3=9.97e-1  H4=1.20e-4 matches
+the R reference). The per-SNP Wakefield `lABF` is bit-equal between TG
+and R (`approx.bf.estimates` and `_wakefield_log_abf` implement the
+same formula). The divergence is 100 percent in the H3 closed-form
+and the `log_m` normalization, not in the per-SNP ABF.
+
+**Severity:** F3 V1-platform-extension (Phase 42 post-V1 deliverable).
+Per the F3 policy: documented, not halt.
+
+**Proposed fix:** replace `_hyprcoloc.py:360-365` with the R formula
+(no `log m` terms; `logdiff` on H3). Estimated impact: ~10-line change
+to `coloc_pairwise`. The companion `hyprcoloc` function (same module)
+uses a different prior structure and is **not** affected by this fix.
+Existing TG-internal tests in `tests/test_postgwas_hyprcoloc.py` will
+need their tolerance bands re-derived from the paper formula.
+
+**Gate result:** **FAIL** on `max |Delta PP.H0..H4|` for distinct and
+null scenarios; **PASS** on shared and on candidate-SNP id across all
+3 scenarios. Recorded in
+`validation/external/coloc/results/agreement.json` and
+`validation/external/coloc/results/summary.tsv`.
+
+**Why we surface this F3 publicly:** the closed-form Wakefield ABF is
+a textbook formula with no implementation freedom -- two correct
+implementations must agree to FP. The harness is doing its job by
+flagging the gap; widening the tolerance to mask the bug would
+violate the scientific-rigor + zero-error rule.
+
