@@ -1,0 +1,98 @@
+{
+  "name": "S-PrediXcan sumstats (MetaXcan v0.8.1 vs torchgwas.postgwas.twas_sumstat)",
+  "n_compared": 5,
+  "passed": true,
+  "checks": [
+    {
+      "name": "|Delta z| max",
+      "passed": true,
+      "observed": 3.067808229673119e-08,
+      "threshold": 1e-06,
+      "direction": "max",
+      "note": ""
+    },
+    {
+      "name": "|Delta effect_size| max",
+      "passed": true,
+      "observed": 9.367506770274758e-17,
+      "threshold": 1e-06,
+      "direction": "max",
+      "note": ""
+    },
+    {
+      "name": "|Delta -log10 p| max",
+      "passed": true,
+      "observed": 1.5611945158866547e-07,
+      "threshold": 0.001,
+      "direction": "max",
+      "note": ""
+    },
+    {
+      "name": "Pearson r (z)",
+      "passed": true,
+      "observed": 1.0,
+      "threshold": 0.9999,
+      "direction": "min",
+      "note": ""
+    }
+  ],
+  "extras": {
+    "MetaXcan z (per gene)": [
+      11.633022151947769,
+      0.5766233560734408,
+      0.3785551634923302,
+      0.2613719341580375,
+      -0.0303388739826457
+    ],
+    "TorchGWAS z (per gene)": [
+      11.63302218262585,
+      0.5766233726880561,
+      0.37855516896040203,
+      0.26137192018504174,
+      -0.03033887301426786
+    ],
+    "MetaXcan effect_size": [
+      0.2277767982818573,
+      0.0127444900135092,
+      0.0045450962372619,
+      0.0042229422624704,
+      -0.0006613774152001
+    ],
+    "TorchGWAS effect_size": [
+      0.2277767982818573,
+      0.012744490013509293,
+      0.00454509623726192,
+      0.004222942262470415,
+      -0.0006613774152001774
+    ],
+    "MetaXcan -log10p": [
+      30.55283353790368,
+      0.2485715999112234,
+      0.15179965765331369,
+      0.10028578786868236,
+      0.010640613159602486
+    ],
+    "TorchGWAS -log10p": [
+      30.552833694023132,
+      0.24857160855266097,
+      0.15179966015504215,
+      0.10028578197393481,
+      0.010640612815878404
+    ],
+    "effect_size Pearson r": 1.0,
+    "-log10p Pearson r": 1.0,
+    "gene order (compared)": [
+      "ENSG0000001003",
+      "ENSG0000001004",
+      "ENSG0000001000",
+      "ENSG0000001002",
+      "ENSG0000001001"
+    ]
+  },
+  "tolerance_gates": {
+    "TOL_MAX_DZ": 1e-06,
+    "TOL_MAX_DBETA": 1e-06,
+    "TOL_MAX_DNEGLOG10P": 0.001,
+    "TOL_Z_CORR": 0.9999
+  }
+}

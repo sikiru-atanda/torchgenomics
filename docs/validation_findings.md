@@ -821,3 +821,58 @@ The implementation is biology-faithful, numerically equivalent to susieR
 across single-locus settings, scales correctly to the rank-deficient regime,
 and the blocked path delivers its design goal of biobank-scale memory
 reduction at signal-preserving fidelity.
+
+---
+
+## 2026-05-15 — Tier 1 A1: MetaXcan / S-PrediXcan harness (no F3 divergence)
+
+**Harness:** `validation/external/metaxcan/`
+
+**Reference tool:** MetaXcan / S-PrediXcan `software/SPrediXcan.py` at
+tag `v0.8.1`, commit `964f1fdb5bf9585585690e85bb0eca7b67663ddb`
+(GitHub: hakyimlab/MetaXcan; verified via GitHub Releases API on
+2026-05-15).
+
+**TorchGWAS target:** `torchgwas.postgwas.twas_sumstat`
+(`torchgwas/postgwas/_twas.py`).
+
+**Fixture:** deterministic simulated PrediXcan triple (model.db with 5
+genes × 8 cis-SNPs, model.txt.gz covariance in correlation form
+`Σ[i,j] = ρ^|i-j|`, ρ=0.3, GWAS sumstats over the cis-SNPs + 50
+background SNPs, seed=42, planted θ ∈ {0.0, 0.25} per gene).
+
+**Observed agreement (5 genes, first successful run):**
+
+| Metric | Observed | Floor | Status |
+|--------|----------|-------|--------|
+| max `|Δ z|` | 3.07e-08 | 1e-6 | PASS |
+| max `|Δ effect_size|` | 9.37e-17 | 1e-6 | PASS |
+| max `|Δ -log10 p|` | 1.56e-07 | 1e-3 | PASS |
+| Pearson r (z) | 1.0000 | 0.9999 | PASS |
+| Pearson r (effect_size) | 1.0000 | (info) | PASS |
+| Pearson r (-log10 p) | 1.0000 | (info) | PASS |
+
+**F3 classification:** None — agreement is FP-precision. The fixture's
+covariance is in correlation form (`diag(Σ) = 1`), so MetaXcan's
+`sum(w * z * σ_l) / sqrt(σ_g²)` and TG's `(w^T z) / sqrt(w^T Σ w)`
+collapse to the same closed-form sum. The 3.07e-08 z-gap is the
+float64 summation-order difference between `numpy.sum` and `torch.sum`.
+
+**Fixture-iteration note:** the first pre-fix run produced a sign-flip
+on z (Δz ~ 23, Pearson r = -1.0). Root cause was a fixture-side
+inconsistency in `simulate_fixture.py`: the model.db insert unpacked
+`alleles[j]` as `(ref, eff)` while the GWAS sumstats writer unpacked
+it as `(eff, ref)`. MetaXcan correctly detected the
+`model.eff_allele = GWAS.non_effect_allele` mismatch and flipped the
+z to model orientation; TG's `twas_sumstat` (by design) does not
+flip (the caller is expected to align alleles upstream). Both tools
+are correct given their inputs. Harness fix: harmonize the tuple
+convention to `alleles[j] = (effect_allele, ref_allele)` in both
+write paths. Post-fix: bit-precision agreement on all four gates.
+
+**FUSION sibling:** not added in this iteration. Rationale recorded
+in `validation/external/metaxcan/README.md` § "FUSION sibling
+decision" (FUSION uses different weight-fitting algorithms;
+adding it would not exercise additional TG code paths and is
+properly a sibling harness `validation/external/fusion/`, not a
+sub-component of MetaXcan).
