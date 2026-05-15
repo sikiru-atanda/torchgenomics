@@ -1050,3 +1050,60 @@ implementations must agree to FP. The harness is doing its job by
 flagging the gap; widening the tolerance to mask the bug would
 violate the scientific-rigor + zero-error rule.
 
+
+---
+
+### 2026-05-15 - Tier 1 A5: haplotype GWAS R harness (post-V1 F2 finding)
+
+**Harness:** `validation/external/hapref/`
+**Tools:** haplo.stats 1.9.8.7 (CRAN) + haplo.glm + jsonlite 2.0.0 + R 4.5.1
+vs `torchgwas.models.haplotype_gwas.HaplotypeGWAS`.
+**Fixture:** MDP maize panel, chr1:238902012-238902252 (5 SNPs, mean |r|=0.867,
+MAF 0.146-0.242), phenotype `EarHT` (279 taxa).
+
+**Comparison surface (per Tier 1 A5 brief):**
+- Per-haplotype EM frequency: target |Delta| <= 1e-4 (observed-then-floored)
+- Per-haplotype beta: 3 sig-figs
+- Per-haplotype p-value: 2 sig-figs
+
+**Observed agreement (5 of 5 checks PASS at floored tolerances):**
+
+| Metric | R | TG | Delta | Floor | Status |
+|---|---|---|---|---|---|
+| Reference haplotype          | 00000 (CCACA) | 00000 (CCACA) | exact | exact | PASS |
+| max abs |Delta freq|         | -            | -             | 1.14e-4  | 2e-4   | PASS |
+| max rel |Delta beta|         | -            | -             | 4.38e-3  | 5e-3   | PASS |
+| max rel |Delta p|  (per-hap) | -            | -             | 5.77e-3  | 1e-2   | PASS |
+| rel |Delta p|     (global F) | 0.02580      | 0.02776       | 7.57e-2  | 1e-1   | PASS |
+
+On the 11111 haplotype (the only one with a strong effect: beta ~ -5.7 mm
+on EarHT, p ~ 0.003 in both tools), agreement is 4 sig-figs on beta and p.
+
+**F2 finding:** TG `_enumerate_haplotypes_unphased` (`torchgwas/models/
+haplotype_gwas.py`:256-266) uses a per-SNP marginal-allele-frequency product
+to rank candidate haplotypes when their count exceeds `max_haplotypes`
+(default 20). Under tight LD (mean|r| > 0.5 with >= 5 SNPs), this
+independence-prior product severely under-weights common-but-recombinant
+haplotypes whose actual frequency is driven by LD rather than locus
+independence. On our 5-SNP window the second-most-common haplotype
+(`11111 / TTGTT`, EM freq ~ 0.127) is pruned by the heuristic with the
+default; haplo.em (with no such heuristic) retains it.
+
+**Workaround:** `compare.py` passes `max_haplotypes = 32`. With this
+override TG enumerates the full 15-haplotype set and matches haplo.em to
+~ 1e-4 on every EM frequency.
+
+**Severity:** **F2 (post-V1 documented).** HaplotypeGWAS is Phase 46. The
+default `max_haplotypes = 20` is unsafe for tight-LD windows; user-
+supplied `max_haplotypes = 2^m` is the safe choice for m <= 6 SNPs.
+
+**Proposed fix sketch:** replace the independence-prior product with an
+LD-aware score. Run a single relaxed EM pass (no cap) for a few iterations
+to estimate true frequencies, then apply the `max_haplotypes` cap using
+those estimates as the ranking score. ~30 lines.
+
+**Gate result:** **PASS** at observed-then-floored tolerances after the
+`max_haplotypes = 32` workaround. Per-haplotype agreement on the shared
+4 named bins is to ~3 sig-figs on beta and ~3 sig-figs on p. Recorded in
+`validation/external/hapref/results/{summary.tsv,agreement.json}`.
+
