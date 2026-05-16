@@ -1,0 +1,19 @@
+# Tier 2 B2: GTEx v8 x UKB-derived LDL fixture (SORT1)
+#
+# We commit:
+#   - fetch.sh, prepare.py, README.md, .gitignore
+#   - fixtures/aligned.parquet         (harmonized, ~few MB)
+#   - fixtures/gtex_liver_sort1.tsv.gz (locus slice, ~KB)
+#   - fixtures/ukb_ldl_sort1.tsv.gz    (locus slice, ~KB-MB)
+#   - fixtures/manifest.sha256         (SHA256 of every committed fixture)
+#
+# We ignore:
+#   - .cache/ (raw multi-GB downloads - re-fetchable via fetch.sh)
+#   - run-time scratch (logs, partial archives)
+
+.cache/
+.env_marker
+*.log
+*.tmp
+__pycache__/
+*.pyc
