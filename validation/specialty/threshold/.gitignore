@@ -1,0 +1,19 @@
+# Build / staging directories that are reproducible from source.
+bin/
+data/
+outputs/
+.cache/
+.install_marker
+.unpack_tmp/
+__pycache__/
+*.pyc
+
+# Persist results/ (override repository-wide gitignore that bans results/).
+# The Tier 3 reviewers expect agreement.json / summary.tsv / manifest.sha256
+# to live in the harness folder.
+!results/
+!results/agreement.json
+!results/summary.tsv
+!results/manifest.sha256
+!results/.gitkeep
+

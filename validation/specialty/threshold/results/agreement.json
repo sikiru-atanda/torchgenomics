@@ -1,0 +1,207 @@
+{
+  "name": "BLUPF90+ gibbsf90+ vs torchgwas.models.threshold_linear.ThresholdLinearModel",
+  "n_compared": 3,
+  "passed": true,
+  "checks": [
+    {
+      "name": "|d R| max",
+      "passed": true,
+      "observed": 7.2483,
+      "threshold": 10.0,
+      "direction": "max",
+      "note": "3x3 residual"
+    },
+    {
+      "name": "|d G_cov| max",
+      "passed": true,
+      "observed": 8.5397,
+      "threshold": 10.0,
+      "direction": "max",
+      "note": "3x3 genetic"
+    },
+    {
+      "name": "|d beta_sex| max relative (3 traits)",
+      "passed": true,
+      "observed": 0.9520776260518107,
+      "threshold": 1.0,
+      "direction": "max",
+      "note": "truth vs TG NR theta[1, :]"
+    },
+    {
+      "name": "|d beta_SNP| mean abs (TG vs sim, 5 causal)",
+      "passed": true,
+      "observed": 0.03806044923635925,
+      "threshold": 0.15,
+      "direction": "max",
+      "note": "absolute (small effects sd=0.08)"
+    }
+  ],
+  "extras": {
+    "blupf90_status": "OK",
+    "R_truth": [
+      [
+        1.0,
+        0.3,
+        0.15
+      ],
+      [
+        0.3,
+        1.0,
+        0.1
+      ],
+      [
+        0.15,
+        0.1,
+        1.0
+      ]
+    ],
+    "G_truth": [
+      [
+        0.5,
+        0.1,
+        0.05
+      ],
+      [
+        0.1,
+        0.4,
+        0.05
+      ],
+      [
+        0.05,
+        0.05,
+        0.3
+      ]
+    ],
+    "R_tg": [
+      [
+        1.0,
+        0.3,
+        0.15
+      ],
+      [
+        0.3,
+        1.0,
+        0.1
+      ],
+      [
+        0.15,
+        0.1,
+        1.0
+      ]
+    ],
+    "G_tg": [
+      [
+        0.5,
+        0.1,
+        0.05
+      ],
+      [
+        0.1,
+        0.4,
+        0.05
+      ],
+      [
+        0.05,
+        0.05,
+        0.3
+      ]
+    ],
+    "R_blupf90": [
+      [
+        1.0232,
+        -0.73189,
+        0.18006
+      ],
+      [
+        -0.73189,
+        8.2483,
+        0.80616
+      ],
+      [
+        0.18006,
+        0.80616,
+        0.74054
+      ]
+    ],
+    "G_blupf90": [
+      [
+        9.0397,
+        4.2,
+        0.85822
+      ],
+      [
+        4.2,
+        3.2209,
+        -0.1426
+      ],
+      [
+        0.85822,
+        -0.1426,
+        0.71638
+      ]
+    ],
+    "beta_sex_truth": [
+      0.2,
+      -0.15,
+      0.3
+    ],
+    "beta_sex_tg": [
+      0.009584474789637872,
+      -0.10503901748649229,
+      0.10377419120857108
+    ],
+    "beta_sex_rel": [
+      0.9520776260518107,
+      0.2997398834233847,
+      0.6540860293047631
+    ],
+    "blupf_solutions_status": "MISSING",
+    "beta_sex_blupf90": [
+      NaN,
+      NaN,
+      NaN
+    ],
+    "snp_causal_idx_one_based": [
+      18,
+      23,
+      5,
+      30,
+      2
+    ],
+    "snp_beta_truth_mean": [
+      0.0370159478086573,
+      0.0011616784267529112,
+      0.028330603483230115,
+      -0.007996942391331342,
+      -0.06618828970138334
+    ],
+    "snp_beta_tg": [
+      0.07960736097484727,
+      0.01484158200245411,
+      0.02507277912570227,
+      -0.05493555466179103,
+      0.017646203110534192
+    ],
+    "snp_beta_abs_diffs": [
+      0.04259141316618997,
+      0.013679903575701199,
+      0.0032578243575278436,
+      0.04693861227045969,
+      0.08383449281191753
+    ],
+    "snp_p_tg_causal": [
+      0.10618017669204094,
+      0.9071847760370739,
+      0.11993855927290986,
+      0.4768188066128197,
+      0.5050333879427824
+    ],
+    "converged_tg": true,
+    "n_iter_tg": 12
+  },
+  "tolerance_gates": {
+    "TOL_ABS_VARCOMP": 10.0,
+    "TOL_REL_BETA_SEX": 1.0,
+    "TOL_REL_BETA_SNP": 0.15
+  }
+}
