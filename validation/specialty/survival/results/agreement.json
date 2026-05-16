@@ -1,0 +1,78 @@
+{
+  "name": "Survival GWAS (TG SurvivalGLMM PQL+score vs R coxme Wald, n=500, m=20)",
+  "n_compared": 20,
+  "passed": true,
+  "checks": [
+    {
+      "name": "beta Pearson correlation (full set)",
+      "passed": true,
+      "observed": 0.9955782346760704,
+      "threshold": 0.95,
+      "direction": "min",
+      "note": ""
+    },
+    {
+      "name": "-log10(p) Spearman corr (TG score vs coxme Wald)",
+      "passed": true,
+      "observed": 0.9984962406015038,
+      "threshold": 0.85,
+      "direction": "min",
+      "note": ""
+    },
+    {
+      "name": "causal beta median rel |delta|",
+      "passed": true,
+      "observed": 0.1855199733674634,
+      "threshold": 0.3,
+      "direction": "max",
+      "note": "(n_causal=3)"
+    },
+    {
+      "name": "causal SNPs detected in top-K (TG)",
+      "passed": true,
+      "observed": 3.0,
+      "threshold": 2.0,
+      "direction": "min",
+      "note": "(K=5)"
+    },
+    {
+      "name": "causal SNPs detected in top-K (coxme)",
+      "passed": true,
+      "observed": 3.0,
+      "threshold": 2.0,
+      "direction": "min",
+      "note": "(K=5)"
+    },
+    {
+      "name": "causal beta sign agreement",
+      "passed": true,
+      "observed": 3.0,
+      "threshold": 2.0,
+      "direction": "min",
+      "note": "out of 3"
+    }
+  ],
+  "extras": {
+    "truth.n": 500,
+    "truth.events": 405,
+    "truth.censor_observed": 0.18999999999999995,
+    "truth.log_hr": 0.6,
+    "truth.causal_idx": [
+      0,
+      1,
+      2
+    ],
+    "tg.sig2_g": 4.128560089840569e-08,
+    "tg.converged": true,
+    "beta_corr_pearson": 0.9955782346760704,
+    "beta_corr_spearman": 1.0,
+    "se_corr_pearson": 0.9214310810446347,
+    "nlp_corr_pearson": 0.9999860947692467,
+    "nlp_corr_spearman": 0.9984962406015038,
+    "nlp_spa_corr_spearman": 0.9984962406015038,
+    "causal_med_abs_delta": 0.16109033748636437,
+    "causal_max_rel_delta": 0.3781107592219019,
+    "overlap_top_K": 5,
+    "spa_corrected_count": 1
+  }
+}

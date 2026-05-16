@@ -1,0 +1,16 @@
+# Build / staging directories that are reproducible from source.
+data/
+outputs/
+.cache/
+.install_marker
+.infra_blocker
+__pycache__/
+*.pyc
+
+# Persist results/ (override repository-wide gitignore that bans "results/").
+# Per Tier 3 acceptance gate, agreement.json / summary.tsv / manifest.sha256
+# must live in the harness folder for reviewer reproducibility.
+!results/
+!results/agreement.json
+!results/summary.tsv
+!results/manifest.sha256
