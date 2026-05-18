@@ -34,24 +34,38 @@
 
 ## Outstanding (for next session)
 
-1. **C6 OCF TG-side run** (30 seconds main-session work): the agent's `python3` invocations were sandboxed; stages 3+4 of `validation/specialty/ocf/run.sh` never ran. From a normal shell:
-   ```
-   bash validation/specialty/ocf/run.sh
-   git add -f validation/specialty/ocf/results/
-   git commit -m "Tier 3 C6: complete TG-side OCF coverage run"
-   ```
-
-2. **3 F3 patches available** (all post-V1, deferred per F3 policy but each documented with a proposed fix):
+1. **3 F3 patches available** (all post-V1, deferred per F3 policy but each documented with a proposed fix):
    - A3 coloc_pairwise formula (`torchgwas/postgwas/_hyprcoloc.py` lines 360-365) — ~10 lines. Smallest; numerically verified by A3 agent.
    - A4 hyprcoloc prior (`torchgwas/postgwas/_hyprcoloc.py` lines 204-218) — ~40 lines.
    - A2 SMR HEIDI variance (`torchgwas/postgwas/_smr.py heidi_test`) — medium-sized; port Zhu 2016 supplementary formula.
+   - **C6 OCF nuisance-learner non-linearity** (`torchgwas/models/ocf_lmm.py`) — F3 #4 from 2026-05-18; coverage 0.41 vs ref 0.91; documented fix: add `nuisance_learner` parameter accepting non-linear learners (mirror DoubleML's `ml_g` / `ml_m`).
 
-3. **Plan C (Tier 4)** — `docs/superpowers/plans/2026-05-15-paper-tier4-reproducibility-and-draft.md`:
-   - D1: reproducibility repo skeleton (`paper/reproducibility/reproduce_paper.sh` + stages + render_figures registry).
-   - D2: 10 figure-rendering + helper scripts. Parallelizable across F1–F7 + GU+LRO simulators + `bench/streaming_p_sweep.py`.
-   - D3: 12 manuscript sections + S1–S8 supplement.
-   - D4: internal review.
-   - D5: user-gated bioRxiv + Genome Biology submission.
+2. **Plan C remaining** — `docs/superpowers/plans/2026-05-15-paper-tier4-reproducibility-and-draft.md`:
+   - D1: ✓ Done (commit `1f8d089`) — reproducibility repo skeleton + 8-stage orchestrator.
+   - D2: **7 of 10 done**:
+     - ✓ D2.1 F1 capability map (commit `2613b5a`) — 11 clusters / 121 capabilities
+     - ✓ D2.2 F2 16-tool equivalence grid (commit `9b9c4da`) — 11 harnesses / 45 checks / 40 pass
+     - ✓ D2.3-D2.7 F3/F4/F5/F6/F7 (commit `44a064a`) — full pipeline reproducible
+     - **D2.8 `bench/streaming_p_sweep.py`** — pending (F6 panel B uses scaffolded slope until this lands)
+     - **D2.9 GU + LRO internal-consistency simulators** — pending (F7 GU/LRO panels are scaffold-only until these land)
+     - ✓ D2.10 manifest verification — verified via render pipeline run
+   - **D3**: 12 manuscript sections (abstract + 11 body + supplement S1-S8) — NOT STARTED
+   - **D4**: internal review — NOT STARTED
+   - **D5**: user-gated bioRxiv + Genome Biology submission — NOT STARTED
+
+## Running the figure pipeline
+
+```bash
+python3 paper/reproducibility/stages/08_render_figures.py
+# -> 7 PDFs in paper/reproducibility/output/F{1..7}.pdf
+# -> paper/reproducibility/manifest.json populated with per-figure numbers
+```
+
+Full pipeline (install + fetch + run + figures):
+
+```bash
+bash paper/reproducibility/reproduce_paper.sh
+```
 
 ## Key methodology learnings (encoded in memory)
 
