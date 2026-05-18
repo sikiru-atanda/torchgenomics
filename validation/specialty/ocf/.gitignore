@@ -1,0 +1,24 @@
+# OCF (Plan B C6) harness gitignore
+#
+# results/ is intentionally NOT ignored -- per the harness contract the
+# summary.tsv + agreement.json + manifest.sha256 are committed so reviewers
+# can audit numerical agreement without re-running the pipeline.  This
+# mirrors the policy set by Tier 1 hyprcoloc / coloc harnesses (see commit
+# d1b9a60 -- persist hyprcoloc results/ (override global gitignore)).
+# The repo-root .gitignore has a generic results/ rule (line 62); the
+# negation pattern below + an explicit -f on add is the standard escape hatch.
+!results/
+!results/**
+
+# Generated fixtures + intermediate outputs (never committed).
+data/
+outputs/
+
+# R / Python artefacts
+__pycache__/
+*.Rout
+.Rhistory
+.RData
+
+# Install marker (per-machine state)
+.install_marker

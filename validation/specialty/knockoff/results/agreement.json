@@ -1,0 +1,98 @@
+{
+  "comparison": "R knockoff::knockoff.filter  vs  torchgwas.KnockoffLMM",
+  "n_replicates": 100,
+  "target_fdr": 0.2,
+  "passed": true,
+  "checks": [
+    {
+      "name": "|Delta mean FDR|",
+      "passed": true,
+      "observed": 0.1548,
+      "threshold": 0.2,
+      "direction": "max",
+      "note": "head-to-head empirical FDR agreement"
+    },
+    {
+      "name": "|Delta mean power|",
+      "passed": true,
+      "observed": 0.10875000000000001,
+      "threshold": 0.15,
+      "direction": "max",
+      "note": "head-to-head empirical power agreement"
+    },
+    {
+      "name": "TG FDR overshoot above target",
+      "passed": true,
+      "observed": 0.0,
+      "threshold": 0.05,
+      "direction": "max",
+      "note": "TG must control FDR at target +/- MC slack"
+    },
+    {
+      "name": "R  FDR overshoot above target",
+      "passed": true,
+      "observed": 0.0,
+      "threshold": 0.05,
+      "direction": "max",
+      "note": "R must control FDR at target +/- MC slack"
+    }
+  ],
+  "extras": {
+    "target FDR": 0.2,
+    "R  mean FDR (SEM)": "0.1548 (0.0170)",
+    "TG mean FDR (SEM)": "0.0000 (0.0000)",
+    "R  mean power (SEM)": "0.9525 (0.0199)",
+    "TG mean power (SEM)": "0.8438 (0.0238)",
+    "R  mean elapsed s": 0.9325,
+    "TG mean elapsed s": 0.2028179669380188,
+    "R  package version": "0.3.6",
+    "truth k_causal": 8,
+    "truth causal_idx_zero_based": [
+      0,
+      20,
+      40,
+      60,
+      80,
+      100,
+      120,
+      140
+    ],
+    "truth seed": 42
+  },
+  "tg_summary": {
+    "tool": "torchgwas.KnockoffLMM",
+    "n_replicates": 100,
+    "target_fdr": 0.2,
+    "ld_method": "r2",
+    "aggregation": "max_stat",
+    "mean_fdr": 0.0,
+    "sd_fdr": 0.0,
+    "sem_fdr": 0.0,
+    "mean_power": 0.84375,
+    "sd_power": 0.23795145821080077,
+    "sem_power": 0.023795145821080076,
+    "mean_elapsed_s": 0.2028179669380188
+  },
+  "ref_summary": {
+    "tool": "R knockoff::knockoff.filter",
+    "package_version": "0.3.6",
+    "glmnet_version": "4.1.10",
+    "n_replicates": 100,
+    "target_fdr": 0.2,
+    "statistic": "stat.glmnet_coefdiff",
+    "knockoffs": "create.fixed",
+    "offset": 1,
+    "mean_fdr": 0.1548,
+    "sd_fdr": 0.1704,
+    "sem_fdr": 0.017,
+    "mean_power": 0.9525,
+    "sd_power": 0.1993,
+    "sem_power": 0.0199,
+    "mean_elapsed_s": 0.9325
+  },
+  "tolerances": {
+    "TOL_DELTA_FDR": 0.2,
+    "TOL_DELTA_POWER": 0.15,
+    "TOL_FDR_OVERSHOOT_ABS": 0.05
+  }
+}

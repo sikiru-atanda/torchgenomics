@@ -1,0 +1,5 @@
+metric	tg_value	r_value	delta	check_status
+target_fdr	0.2	0.2	0.0	info
+mean_fdr	0.0	0.1548	0.1548	PASS
+mean_power	0.8438	0.9525	0.10875000000000001	PASS
+fdr_overshoot_tg	0.0	0.0	0.0	PASS

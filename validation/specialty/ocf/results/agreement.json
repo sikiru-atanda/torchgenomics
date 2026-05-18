@@ -1,0 +1,92 @@
+{
+  "name": "OCF (Plan B C6) -- hand-coded DML2 vs TorchGWAS OCFLMM",
+  "reference_kind": "hand-coded DML2 (Chernozhukov 2018 Algorithm 2 / eq. 3.1, 3.3, 3.10)",
+  "n_reps": 100,
+  "passed": false,
+  "status": "PARTIAL: reference complete, torchgwas pending sandbox-allowed Python execution",
+  "checks": [
+    {
+      "name": "reference empirical coverage in [0.92, 0.98]",
+      "passed": false,
+      "observed": 0.91,
+      "threshold": [0.92, 0.98],
+      "direction": "range",
+      "note": "100 reps -> binomial MC SE ~0.022; 0.910 is ~1 SE below 0.950"
+    },
+    {
+      "name": "torchgwas empirical coverage in [0.92, 0.98]",
+      "passed": null,
+      "observed": null,
+      "threshold": [0.92, 0.98],
+      "direction": "range",
+      "note": "PENDING: python3 execution blocked in this sandbox; run.sh stage 3 + 4 not executed"
+    },
+    {
+      "name": "|Delta mean theta_hat| <= 5e-2",
+      "passed": null,
+      "observed": null,
+      "threshold": 0.05,
+      "direction": "max",
+      "note": "PENDING: requires torchgwas-side run (stage 3)"
+    }
+  ],
+  "extras": {
+    "theta0": 0.3,
+    "ref_mean_theta_hat": 0.3177,
+    "ref_mean_bias": 0.0177,
+    "ref_mean_se": 0.0772,
+    "ref_sd_theta_hat": 0.0842,
+    "ref_coverage_95": 0.91,
+    "tg_mean_theta_hat": null,
+    "tg_mean_bias": null,
+    "tg_mean_se": null,
+    "tg_sd_theta_hat": null,
+    "tg_coverage_95": null,
+    "delta_mean_theta": null
+  },
+  "tool_versions": {
+    "reference": {
+      "n_reps": 100,
+      "theta0": 0.3,
+      "mean_theta_hat": 0.3177,
+      "mean_bias": 0.0177,
+      "mean_se": 0.0772,
+      "sd_theta_hat": 0.0842,
+      "empirical_coverage_95": 0.91,
+      "median_p": 0.0001,
+      "k_folds": 5,
+      "ridge_lambda": 0.01,
+      "seed": 42,
+      "reference_kind": "hand-coded DML2 (Chernozhukov 2018 Algorithm 2 / eq. 3.1, 3.3, 3.10)",
+      "nuisance_learner": "quadratic-feature ridge",
+      "R_version": "R version 4.5.1 (2025-06-13)",
+      "timestamp": "2026-05-16T00:20:23Z"
+    },
+    "torchgwas": null,
+    "fixture_meta": {
+      "n": 400,
+      "m": 20,
+      "reps": 100,
+      "dW": 5,
+      "theta0": 0.3,
+      "causal_snp": 1,
+      "sigma_y": 1,
+      "sigma_g": 1,
+      "seed": 42,
+      "rep_seeds": [1781592037, 1228985497, 608797924, 1016144506, 674280576, 1965996056, 1866875236, 1985540261, 2053971476, 2040106866, 1735271299, 2099835481, 354059172, 1675945951, 1919735301, 1020514210, 1666953064, 16962874, 31470890, 1746377886, 1630171023, 160823610, 1854403876, 1665377238, 2022809197, 1432049861, 1711524066, 167231410, 761408472, 1121354673, 754252698, 1114738950, 1501900930, 1165218819, 829767061, 184624119, 929397434, 847886376, 33841185, 61866087, 350431341, 1542038857, 1184665676, 1003689737, 367676963, 719061008, 895807196, 1828174830, 1430553564, 1047895682, 542193560, 930112402, 1900344942, 1030208439, 153550997, 467916345, 1080259559, 153717138, 5921549, 481612854, 1532127520, 315594486, 943416605, 1800468076, 1003010425, 1733597822, 564850681, 1505334384, 1380392221, 1136041894, 637539469, 1993197445, 1003016503, 730853850, 1261053482, 942232312, 1197499643, 767084189, 806881139, 582921760, 1867549934, 437072495, 151334392, 1940803883, 498937765, 986671473, 1778350838, 1836065522, 1394513826, 1264436448, 1795546326, 1361396319, 1040564052, 1794886415, 572606890, 836159676, 553459980, 310316442, 136846529, 1044495160],
+      "dgp": {
+        "m_W_formula": "1 + W1 + 0.25 W2^2 + 0.5 W3 W4",
+        "l_W_formula": "-0.5 + 0.5 W1 + 0.25 W2 + 0.5 W3^2 + 0.25 sin(W5)",
+        "notes": "partially-linear, Chernozhukov et al. 2018 eq. 1.1"
+      },
+      "R_version": "R version 4.5.1 (2025-06-13)",
+      "package_versions": {
+        "data.table": "1.17.8",
+        "jsonlite": "2.0.0",
+        "MASS": "7.3.65"
+      },
+      "timestamp": "2026-05-16T00:20:20Z"
+    }
+  },
+  "sandbox_note": "This agent thread executed install.sh + generate.R + run_reference.R via Rscript. run_torchgwas.py and compare.py invocations were denied by the sandbox; the user can complete the run by invoking validation/specialty/ocf/run.sh (which is committed and exercises stages 3+4)."
+}

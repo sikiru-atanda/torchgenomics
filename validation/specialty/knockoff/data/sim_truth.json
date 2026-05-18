@@ -1,0 +1,32 @@
+{
+  "n_replicates": 100,
+  "n": 500,
+  "p": 200,
+  "n_blocks": 20,
+  "block_size": 10,
+  "k_causal": 8,
+  "effect": 1.0,
+  "noise_sd": 0.3,
+  "within_block_rho": 0.7,
+  "seed": 42,
+  "causal_idx_zero_based": [
+    0,
+    20,
+    40,
+    60,
+    80,
+    100,
+    120,
+    140
+  ],
+  "causal_block_idx_zero_based": [
+    0,
+    2,
+    4,
+    6,
+    8,
+    10,
+    12,
+    14
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "name": "WithinFamilyLMM vs paper-OLS (Young 2022) \u2014 n_sibs=1000, n_fam=500, n_snps=300",
+  "n_compared": 300,
+  "passed": true,
+  "checks": [
+    {
+      "name": "median |delta beta_direct| (causal, n=50)",
+      "passed": true,
+      "observed": 1.726166987126021e-10,
+      "threshold": 5e-05,
+      "direction": "max",
+      "note": "3 sig figs at planted beta_d=0.20"
+    },
+    {
+      "name": "median |delta beta_indirect| (causal, n=50)",
+      "passed": true,
+      "observed": 0.04562746873215224,
+      "threshold": 0.1,
+      "direction": "max",
+      "note": "TG indirect = beta_standard - beta_within"
+    },
+    {
+      "name": "median |delta attenuation| (finite, n=300)",
+      "passed": true,
+      "observed": 0.3963521299965171,
+      "threshold": 1.0,
+      "direction": "max",
+      "note": ""
+    }
+  ],
+  "extras": {
+    "beta_d_planted": 0.2,
+    "beta_i_planted": 0.1,
+    "mean beta_d_ref (causal)": 0.20406988079680002,
+    "mean beta_d_tg (causal)": 0.20406988069663004,
+    "mean beta_i_ref (causal)": 0.0419188908284,
+    "mean beta_i_tg (causal)": 0.06467431575745587,
+    "mean attenuation_ref (finite)": -1.3236350834386668,
+    "mean attenuation_tg (finite)": -0.14833763124773605,
+    "max |delta beta_direct| (causal)": 5.147415271800071e-10,
+    "max |delta beta_indirect| (causal)": 0.19686796667503254,
+    "max |delta attenuation| (finite)": 719.038267578599,
+    "wall_time_sec": 8.504503965377808
+  },
+  "tolerances": {
+    "beta_direct_3sf": 5e-05,
+    "beta_indirect_3sf": 0.1,
+    "attenuation": 1.0
+  }
+}
