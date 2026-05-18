@@ -1,4 +1,156 @@
 {
+  "F1": {
+    "file": "output/F1.pdf",
+    "numbers": {
+      "n_clusters": 11,
+      "n_capabilities": 121,
+      "cluster_summary": {
+        "Variant-level GWAS": [
+          "GLM",
+          "Single-trait LMM",
+          "Multi-trait mvLMM",
+          "FarmCPU",
+          "BLINK",
+          "GxE LMM",
+          "Multi-kernel LMM",
+          "Set-based (SKAT/Burden/SKAT-O)",
+          "Bayesian VS (SuSiE + CAVI)",
+          "Bayesian VS-RSS"
+        ],
+        "Haplotype layer": [
+          "LD blocks: Gabriel",
+          "LD blocks: 4-gamete",
+          "LD blocks: r2",
+          "LD blocks: spine",
+          "LD blocks: BigLD",
+          "LD blocks: CC-graph",
+          "LD blocks: DP-optimize",
+          "LD blocks: change-point",
+          "LD blocks: cross-pop",
+          "LD blocks: graphical",
+          "LD blocks: GWAS-aligned",
+          "LD blocks: uncertainty",
+          "LD blocks: Wall-Pritchard diag.",
+          "Haplotype HTR",
+          "Haplotype block",
+          "Haplotype window",
+          "Haplotype SKAT",
+          "PCHT (score test)",
+          "HHCT (hierarchical)",
+          "HSKAT (similarity kernel)",
+          "HapGxE",
+          "BayesHap"
+        ],
+        "Multi-omics integration": [
+          "TWAS (S-PrediXcan)",
+          "SMR + HEIDI",
+          "Coloc (2-trait)",
+          "Hyprcoloc",
+          "GRM-corrected mediation",
+          "Multi-kernel h2",
+          "Gene-set Wald",
+          "eigenMT FDR"
+        ],
+        "Polyploid pipeline": [
+          "Dosage call (updog/polyrad)",
+          "F1 phasing (PolyOrigin)",
+          "Polyploid GWAS scan",
+          "Polyploid LD blocks",
+          "Polyploid haplotype GWAS",
+          "Gene-action encoding"
+        ],
+        "Specialty models": [
+          "Survival (Cox PH frailty)",
+          "Random regression LMM",
+          "RR x multi-env",
+          "Spatio-temporal RR",
+          "Within-family LMM",
+          "Threshold-linear (multi-trait)",
+          "Knockoff LMM (FDR)",
+          "OCF LMM (DML)",
+          "Genotype-uncertainty LMM",
+          "Leave-region-out LMM",
+          "Conditional LMM (COJO)"
+        ],
+        "GLM / GLMM family": [
+          "Binary GLM",
+          "Ordinal GLM",
+          "Multinomial GLM",
+          "Binary GLMM (PQL)",
+          "Ordinal GLMM (PQL)",
+          "Multinomial GLMM (PQL)",
+          "Multi-env GLMM"
+        ],
+        "Multi-env / multi-trait": [
+          "MET (reaction-norm + FA(k))",
+          "MT-MET LMM (Kronecker)",
+          "Multi-env haplotype GWAS",
+          "Multi-trait haplotype GWAS",
+          "MT-MET haplotype GWAS"
+        ],
+        "Post-GWAS": [
+          "LDSC h2",
+          "LDSC genetic correlation",
+          "S-LDSC (partitioned)",
+          "Meta-analysis (IVW/DL/Stouffer/RE2)",
+          "LD clumping",
+          "Fine-mapping",
+          "MR (IVW/Egger/median/PRESSO)",
+          "HESS regional h2",
+          "Multi-ancestry (MR-MEGA/MANTRA)",
+          "Power analysis",
+          "Winners-curse correction",
+          "PGS: C+T",
+          "PGS: LDpred2-Inf/Grid/Auto",
+          "PGS: PRS-CS",
+          "PGS scoring + validation",
+          "NCBI gene annotation"
+        ],
+        "Multiple testing": [
+          "Bonferroni",
+          "Holm",
+          "Sidak",
+          "BH",
+          "BY",
+          "Storey q-value",
+          "simpleM / M_eff",
+          "eigenMT",
+          "IHW",
+          "AdaPT",
+          "Weighted FDR",
+          "Cauchy combination",
+          "Local FDR",
+          "Permutation max-T"
+        ],
+        "Visualization": [
+          "Manhattan (linear)",
+          "Circos Manhattan",
+          "QQ plot",
+          "Miami plot",
+          "Haploview LD triangle",
+          "Trumpet plot"
+        ],
+        "I/O + preprocessing": [
+          "PLINK BED reader",
+          "PLINK2 PGEN reader",
+          "VCF/BCF reader",
+          "BGEN reader",
+          "HapMap reader",
+          "Zarr/HDF5 reader",
+          "Numeric/CSV dosage reader",
+          "Format auto-detect + convert",
+          "Imputation: mean/KNN/LD",
+          "Imputation: GPU Li-Stephens",
+          "Imputation: deep autoencoder",
+          "Imputation: BEAGLE/IMPUTE5/Minimac4",
+          "Phasing",
+          "QC (MAF/HWE/call-rate)",
+          "Standardization (ploidy-aware)",
+          "Dosage uncertainty (R^2)"
+        ]
+      }
+    }
+  },
   "F2": {
     "file": "output/F2.pdf",
     "numbers": {
