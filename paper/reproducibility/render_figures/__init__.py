@@ -32,12 +32,10 @@ def register(fig_id: str) -> Callable[[Callable[..., tuple[Any, dict]]], Callabl
 # at package-import time.
 #
 # Tier 4 D2 populates this list as each renderer lands:
-from . import f1_capability_map  # noqa: F401  (Tier 4 D2.1)
-from . import f2_equivalence_grid   # noqa: F401  (Tier 4 D2.2)
-#
-# Pending in subsequent D2 sub-tasks:
-#   from . import f3_haplotype        # D2.3
-#   from . import f4_multiomics       # D2.4
-#   from . import f5_polyploid        # D2.5
-#   from . import f6_gpu_streaming    # D2.6
-#   from . import f7_specialty        # D2.7
+from . import f1_capability_map   # noqa: F401  (Tier 4 D2.1)
+from . import f2_equivalence_grid # noqa: F401  (Tier 4 D2.2)
+from . import f3_haplotype        # noqa: F401  (Tier 4 D2.3)
+from . import f4_multiomics       # noqa: F401  (Tier 4 D2.4)
+from . import f5_polyploid        # noqa: F401  (Tier 4 D2.5)
+from . import f6_gpu_streaming    # noqa: F401  (Tier 4 D2.6)
+from . import f7_specialty        # noqa: F401  (Tier 4 D2.7)
