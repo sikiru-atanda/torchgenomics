@@ -1,3 +1,342 @@
 {
-  "_comment": "Populated by paper/reproducibility/stages/08_render_figures.py once every Tier 4 D2 renderer is registered. Empty placeholder committed in Tier 4 D1."
+  "F2": {
+    "file": "output/F2.pdf",
+    "numbers": {
+      "n_harnesses": 11,
+      "n_total_checks": 45,
+      "n_pass_checks": 40,
+      "per_harness": {
+        "MetaXcan (TWAS)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|Delta z| max",
+              "observed": 3.067808229673119e-08,
+              "threshold": 1e-06,
+              "passed": true
+            },
+            {
+              "name": "|Delta effect_size| max",
+              "observed": 9.367506770274758e-17,
+              "threshold": 1e-06,
+              "passed": true
+            },
+            {
+              "name": "|Delta -log10 p| max",
+              "observed": 1.5611945158866547e-07,
+              "threshold": 0.001,
+              "passed": true
+            },
+            {
+              "name": "Pearson r (z)",
+              "observed": 1.0,
+              "threshold": 0.9999,
+              "passed": true
+            }
+          ]
+        },
+        "SMR + HEIDI": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|d beta_SMR| / |beta_SMR|",
+              "observed": 1.1449286640793994e-06,
+              "threshold": 5e-05,
+              "passed": true
+            },
+            {
+              "name": "|d chi2_SMR| / chi2_SMR",
+              "observed": 3.036624037885765e-07,
+              "threshold": 5e-05,
+              "passed": true
+            },
+            {
+              "name": "|d -log10 p_SMR|",
+              "observed": 4.3767468035582624e-05,
+              "threshold": 0.0005,
+              "passed": true
+            },
+            {
+              "name": "|d chi2_HEIDI| / chi2_HEIDI",
+              "observed": 0.3807517390565707,
+              "threshold": 1.0,
+              "passed": true
+            },
+            {
+              "name": "|d p_HEIDI| / p_HEIDI",
+              "observed": 0.6033380813491992,
+              "threshold": 2.0,
+              "passed": true
+            }
+          ]
+        },
+        "coloc R": {
+          "passed_overall": false,
+          "checks": []
+        },
+        "hyprcoloc R": {
+          "passed_overall": false,
+          "checks": [
+            {
+              "name": "cluster membership (zero-based)",
+              "observed": "[0, 2]",
+              "threshold": "[0, 1, 2]",
+              "passed": false
+            },
+            {
+              "name": "|Delta regional_pp|",
+              "observed": 0.9018045626665429,
+              "threshold": 0.001,
+              "passed": false
+            },
+            {
+              "name": "|Delta candidate_snp_pp|",
+              "observed": 3.6871385115100352e-06,
+              "threshold": 0.001,
+              "passed": true
+            },
+            {
+              "name": "candidate SNP id",
+              "observed": "rs00050",
+              "threshold": "rs00050",
+              "passed": true
+            }
+          ]
+        },
+        "haplo.stats (hapref)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "reference haplotype identity",
+              "observed": "00000",
+              "threshold": "00000",
+              "passed": true
+            },
+            {
+              "name": "max |Delta freq| (per-haplotype EM freq)",
+              "observed": 0.00011390738299625613,
+              "threshold": 0.0002,
+              "passed": true
+            },
+            {
+              "name": "max relative |Delta beta|",
+              "observed": 0.004382863556827237,
+              "threshold": 0.005,
+              "passed": true
+            },
+            {
+              "name": "max relative |Delta pval| (per-hap)",
+              "observed": 0.00577353312599673,
+              "threshold": 0.01,
+              "passed": true
+            },
+            {
+              "name": "relative |Delta global F-test p|",
+              "observed": 0.07567950535051778,
+              "threshold": 0.1,
+              "passed": true
+            }
+          ]
+        },
+        "Cox PH frailty (coxme)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "beta Pearson correlation (full set)",
+              "observed": 0.9955782346760704,
+              "threshold": 0.95,
+              "passed": true
+            },
+            {
+              "name": "-log10(p) Spearman corr (TG score vs coxme Wald)",
+              "observed": 0.9984962406015038,
+              "threshold": 0.85,
+              "passed": true
+            },
+            {
+              "name": "causal beta median rel |delta|",
+              "observed": 0.1855199733674634,
+              "threshold": 0.3,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs detected in top-K (TG)",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs detected in top-K (coxme)",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "causal beta sign agreement",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            }
+          ]
+        },
+        "Random regression (lme4)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|d var_ratio_basis[0]|",
+              "observed": 0.00248033390000002,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d var_ratio_basis[1]|",
+              "observed": 0.023039106700000034,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d var_ratio_basis[2]|",
+              "observed": 0.025519440699999993,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d beta_g_P1| / |beta_g_P1|",
+              "observed": 0.0,
+              "threshold": 1e-05,
+              "passed": true
+            },
+            {
+              "name": "|d beta_g_P2| / |beta_g_P2|",
+              "observed": 0.0,
+              "threshold": 1e-05,
+              "passed": true
+            },
+            {
+              "name": "|d -log10 p_g_P1|",
+              "observed": 1.1546697802807397,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "max |d beta(t)| / |beta(t)|",
+              "observed": 0.13364760177074939,
+              "threshold": 0.5,
+              "passed": true
+            }
+          ]
+        },
+        "Within-family (paper-OLS)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "median |delta beta_direct| (causal, n=50)",
+              "observed": 1.726166987126021e-10,
+              "threshold": 5e-05,
+              "passed": true
+            },
+            {
+              "name": "median |delta beta_indirect| (causal, n=50)",
+              "observed": 0.04562746873215224,
+              "threshold": 0.1,
+              "passed": true
+            },
+            {
+              "name": "median |delta attenuation| (finite, n=300)",
+              "observed": 0.3963521299965171,
+              "threshold": 1.0,
+              "passed": true
+            }
+          ]
+        },
+        "Threshold-linear (BLUPF90+)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|d R| max",
+              "observed": 7.2483,
+              "threshold": 10.0,
+              "passed": true
+            },
+            {
+              "name": "|d G_cov| max",
+              "observed": 8.5397,
+              "threshold": 10.0,
+              "passed": true
+            },
+            {
+              "name": "|d beta_sex| max relative (3 traits)",
+              "observed": 0.9520776260518107,
+              "threshold": 1.0,
+              "passed": true
+            },
+            {
+              "name": "|d beta_SNP| mean abs (TG vs sim, 5 causal)",
+              "observed": 0.03806044923635925,
+              "threshold": 0.15,
+              "passed": true
+            }
+          ]
+        },
+        "Knockoff FDR (R)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|Delta mean FDR|",
+              "observed": 0.1548,
+              "threshold": 0.2,
+              "passed": true
+            },
+            {
+              "name": "|Delta mean power|",
+              "observed": 0.10875000000000001,
+              "threshold": 0.15,
+              "passed": true
+            },
+            {
+              "name": "TG FDR overshoot above target",
+              "observed": 0.0,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "R  FDR overshoot above target",
+              "observed": 0.0,
+              "threshold": 0.05,
+              "passed": true
+            }
+          ]
+        },
+        "OCF DML": {
+          "passed_overall": false,
+          "checks": [
+            {
+              "name": "reference empirical coverage in [0.92, 0.98]",
+              "observed": 0.91,
+              "threshold": [
+                0.92,
+                0.98
+              ],
+              "passed": false
+            },
+            {
+              "name": "torchgwas empirical coverage in [0.92, 0.98]",
+              "observed": 0.41,
+              "threshold": [
+                0.92,
+                0.98
+              ],
+              "passed": false
+            },
+            {
+              "name": "|Delta mean theta_hat| <= 5e-2",
+              "observed": 0.1799129560159426,
+              "threshold": 0.05,
+              "passed": false
+            }
+          ]
+        }
+      }
+    }
+  }
 }
