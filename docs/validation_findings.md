@@ -1243,3 +1243,69 @@ text file, or hand-decode the Fortran record header from compare.py.
 
 **Recorded in:** validation/specialty/threshold/results/agreement.json + 
 validation/specialty/threshold/README.md (F3 findings section).
+
+
+---
+
+## 2026-05-18 --- Tier 3 C6: OCF DML coverage head-to-head (post-V1 F3 — bias divergence)
+
+**Harness:** `validation/specialty/ocf/`. Completes the earlier
+DONE_WITH_CONCERNS report (agent's `python3` was sandboxed; the
+TG-side stages 3+4 were re-run from the main session today).
+
+**Reference tool:** Hand-coded DML2 implementing Chernozhukov et al.
+2018 Algorithm 2 / eq. (3.1), (3.3), (3.10) with quadratic-feature
+ridge nuisance learner. (R `DoubleML` not installed in environment;
+fallback documented in `validation/specialty/ocf/README.md`.)
+
+**TG target:** `torchgwas.models.ocf_lmm.OCFLMM` (Phase 26).
+
+**Fixture:** 100 replicates of Chernozhukov 2018 partially-linear DGP
+(N=400, M=20, θ₀=0.30, K=5 folds, seed=42, non-linear confounders).
+
+**Observed agreement (full end-to-end, 100 reps):**
+
+| Metric | Reference DML2 | TorchGWAS OCFLMM | Gate | Status |
+|---|---|---|---|---|
+| Empirical 95% CI coverage | 0.910 | **0.410** | [0.92, 0.98] | FAIL |
+| Mean θ̂ | 0.3177 | **0.4976** | n/a | bias +0.198 (vs ref +0.018) |
+| Mean SE | 0.0772 | 0.0913 | n/a | similar magnitude |
+| Bias absolute | +0.0177 | **+0.1976** | n/a | **11× larger** |
+| Δ mean θ̂ | — | — | ≤ 5e-2 | **0.180 (FAIL by 3.6×)** |
+
+**Classification: F3 post-V1, DOCUMENTED — NOT FIX-NOW** (per
+`memory/feedback_f3.md`; OCFLMM is Phase 26 post-V1).
+
+**Root cause hypotheses (to investigate in a follow-up):**
+
+1. **`project_genotype=True` regression-onto-W may not properly orthogonalize
+   under the simulator's non-linear confounders.** TG's OCFLMM uses a
+   linear regression of G on W to construct the residualized treatment;
+   the reference DML2 uses a quadratic-feature ridge for the same step
+   (matching the DGP's known non-linearity). Linear-only residualization
+   leaves a systematic bias when E[G|W] is non-linear — exactly the
+   pattern observed here (mean bias 0.198 in TG vs 0.018 in reference,
+   on a DGP with non-linear confounder effects).
+
+2. **K=5 fold-splitting may interact with TG's GRM-based variance.**
+   The reference uses K-fold cross-fitting on the (Y, G, W) triple
+   directly; TG additionally accommodates a kinship matrix K (here set
+   to I), and the fold geometry on (Y - g(W), G - m(W)) may not align
+   with TG's variance-estimator design.
+
+**Numerical evidence:** see `validation/specialty/ocf/results/{summary.tsv,
+agreement.json}`. 100-replicate trace at one-decimal precision in
+`outputs/torchgwas_results.tsv` and `outputs/reference_results.tsv`.
+
+**Proposed fix path (deferred):**
+- Add a `nuisance_learner` argument to `torchgwas.models.ocf_lmm.OCFLMM`
+  that accepts non-linear learners (quadratic-feature ridge or
+  scikit-learn estimator), mirroring `DoubleML`'s `ml_g` / `ml_m`
+  parameters. Default to linear ridge for V1 release; users with
+  non-linear confounders can opt into a richer learner.
+- Add a "linear-confounder-only" warning in the docstring + a fixture
+  in `tests/test_ocf_lmm.py` covering both linear and non-linear
+  confounder regimes.
+
+**Recorded in:** `validation/specialty/ocf/results/agreement.json` +
+`validation/specialty/ocf/README.md`.
