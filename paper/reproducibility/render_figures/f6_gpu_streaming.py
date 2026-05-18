@@ -20,6 +20,7 @@ Tier 4 D2.6. Mirrors ``f2_equivalence_grid.py``.
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 from typing import Any
@@ -138,47 +139,88 @@ def _plot_panel_a(ax):
 
 
 def _plot_panel_b(ax):
-    p_values = np.array([1e4, 3e4, 1e5, 3e5, 1e6])
-    n = SLOPE_N
-    chunk_size = 1024
-    bytes_per_elem = 8
+    """Panel B: streaming vs materialized peak memory across a p-sweep.
 
-    mem_materialized = n * p_values * bytes_per_elem
-    accumulator_per_variant = 80
-    mem_streaming = n * chunk_size * bytes_per_elem + p_values * accumulator_per_variant
-
-    ratio_at_max = mem_materialized[-1] / mem_streaming[-1]
-
+    Reads ``bench/streaming_p_sweep.json`` when present (Tier 4 D2.8 output)
+    and renders the measured curve. Falls back to the analytical scaffold
+    if the bench has not run yet.
+    """
     GB = 1024 ** 3
+    bench_json = REPO_ROOT / "bench" / "streaming_p_sweep.json"
+
+    if bench_json.exists():
+        payload = json.loads(bench_json.read_text())
+        per_p = payload.get("per_p", [])
+        if per_p:
+            p_values = np.array([row["p"] for row in per_p])
+            mem_streaming = np.array([row["peak_bytes"] for row in per_p])
+            mem_materialized = np.array(
+                [row["materialized_peak_bytes"] for row in per_p],
+            )
+            ratio_at_max = float(payload.get("ratio_at_max_p", float("nan")))
+            n = int(payload.get("n_samples", SLOPE_N))
+            chunk_size = int(payload.get("chunk_size", 1024))
+            streaming_slope = float(payload.get("streaming_log_log_slope", float("nan")))
+            materialized_slope = float(payload.get("materialized_log_log_slope", float("nan")))
+            measured = True
+        else:
+            measured = False
+    else:
+        measured = False
+
+    if not measured:
+        p_values = np.array([1e4, 3e4, 1e5, 3e5, 1e6])
+        n = SLOPE_N
+        chunk_size = 1024
+        bytes_per_elem = 8
+        mem_materialized = n * p_values * bytes_per_elem
+        accumulator_per_variant = 80
+        mem_streaming = n * chunk_size * bytes_per_elem + p_values * accumulator_per_variant
+        ratio_at_max = float(mem_materialized[-1] / mem_streaming[-1])
+        streaming_slope = float("nan")
+        materialized_slope = float("nan")
+
     ax.loglog(p_values, mem_materialized / GB, marker="s", color="#d62728",
-              label="materialized (n * p * 8B)", linewidth=2)
+              label="materialized (n * p * 4B)", linewidth=2)
     ax.loglog(p_values, mem_streaming / GB, marker="o", color="#1f77b4",
               label="streaming (chunked)", linewidth=2)
 
     ax.annotate(
-        f"~{ratio_at_max:,.0f}x at p=1e6",
+        f"{ratio_at_max:.1f}x at p={int(p_values[-1]):,}",
         xy=(p_values[-1], mem_materialized[-1] / GB),
         xytext=(p_values[-1] * 0.25, mem_materialized[-1] / GB * 1.5),
         fontsize=8, color="#555555",
         arrowprops=dict(arrowstyle="->", color="#555555", lw=0.7),
     )
 
+    label = "B . streaming-vs-materialized memory"
+    label += f" . n={n:,}"
+    if measured:
+        label += " (measured)"
+    else:
+        label += " (scaffold)"
     ax.set_xlabel("variants (p)")
     ax.set_ylabel("peak memory (GB)")
-    ax.set_title(f"B . streaming-vs-materialized memory . n={n:,} (scaffold)",
-                 fontsize=10)
+    ax.set_title(label, fontsize=10)
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(True, which="both", alpha=0.25)
 
     return dict(
         slope_ratio=float(ratio_at_max),
         spec_headline_ratio=SPEC_SLOPE_RATIO,
-        scaffold=True,
-        scaffold_reason="definitive measurement requires bench/streaming_p_sweep.py (Tier 4 D2.8, not yet authored)",
+        scaffold=not measured,
+        scaffold_reason=(
+            None if measured
+            else "definitive measurement requires bench/streaming_p_sweep.py output"
+        ),
         p_sweep=[float(p) for p in p_values],
+        peak_streaming_bytes=[float(x) for x in mem_streaming.tolist()],
+        peak_materialized_bytes=[float(x) for x in mem_materialized.tolist()],
+        streaming_log_log_slope=streaming_slope,
+        materialized_log_log_slope=materialized_slope,
         n_samples=n,
         chunk_size=chunk_size,
-        source_doc=str(STREAMING_AUDIT_MD.relative_to(REPO_ROOT)),
+        source=str(bench_json.relative_to(REPO_ROOT)) if measured else str(STREAMING_AUDIT_MD.relative_to(REPO_ROOT)),
     )
 
 

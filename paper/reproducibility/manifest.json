@@ -836,10 +836,10 @@
           "source": "bench/native_speedups_realistic.md"
         },
         "B": {
-          "slope_ratio": 957.8544061302682,
+          "slope_ratio": 8.70972264087379,
           "spec_headline_ratio": 19.0,
-          "scaffold": true,
-          "scaffold_reason": "definitive measurement requires bench/streaming_p_sweep.py (Tier 4 D2.8, not yet authored)",
+          "scaffold": false,
+          "scaffold_reason": null,
           "p_sweep": [
             10000.0,
             30000.0,
@@ -847,9 +847,25 @@
             300000.0,
             1000000.0
           ],
-          "n_samples": 500000,
+          "peak_streaming_bytes": [
+            822599680.0,
+            924024832.0,
+            924024832.0,
+            924024832.0,
+            924024832.0
+          ],
+          "peak_materialized_bytes": [
+            112160000.0,
+            272480000.0,
+            833600000.0,
+            2436800000.0,
+            8048000000.0
+          ],
+          "streaming_log_log_slope": 0.020008173109363092,
+          "materialized_log_log_slope": 0.932927028019629,
+          "n_samples": 2000,
           "chunk_size": 1024,
-          "source_doc": "docs/efficiency/streaming_audit.md"
+          "source": "bench/streaming_p_sweep.json"
         },
         "C": {
           "speedup_x": 1.8,
