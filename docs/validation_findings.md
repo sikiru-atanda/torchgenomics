@@ -1309,3 +1309,69 @@ agreement.json}`. 100-replicate trace at one-decimal precision in
 
 **Recorded in:** `validation/specialty/ocf/results/agreement.json` +
 `validation/specialty/ocf/README.md`.
+
+---
+
+## 2026-05-21 --- F3 #4 PATCH APPLIED: OCFLMM nuisance_learner='ridge_quadratic'
+
+**Resolution of the 2026-05-18 Tier 3 C6 finding above.**
+
+**Patch:** `torchgwas/models/ocf_lmm.py` (+ `tests/test_ocf_lmm.py`)
+adds a `nuisance_learner` parameter to `OCFLMM.__init__`. Default
+remains `"linear"` (V1 backward-compatible); the new `"ridge_quadratic"`
+option augments the covariate block X0 = [1, W] with squared and
+pairwise-interaction terms and applies a constant ridge (λ = 1e-2,
+matching the reference DML2 in `validation/specialty/ocf/run_reference.R`)
+symmetrically to both the outcome-side LMM β̂ solve in `_fit_fold` and
+the treatment-side genotype projection in `_dml_score_batch`. Both
+nuisances are then o(n^{-1/4})-consistent under nonlinear E[y|W],
+E[g|W], satisfying Chernozhukov et al. (2018) eq. 3.3.
+
+**Closed-form verification (2026-05-21, in-session re-run of the
+harness DGP with AR(1) W block, K=5 folds, n=400, 100 reps):**
+
+| Metric | `linear` (V1 default) | `ridge_quadratic` (new) | Gate | Status |
+|---|---|---|---|---|
+| Empirical 95% coverage | 0.41 | **0.94** | [0.92, 0.98] | ✓ PASS |
+| Mean θ̂ | 0.5054 | 0.3214 | n/a | bias +0.205 → +0.021 (10× drop) |
+| Mean |bias| | 0.207 | 0.070 | n/a | 66% reduction |
+| Mean SE | 0.0919 | 0.0824 | n/a | comparable |
+
+The `linear` numbers reproduce the 2026-05-18 harness failure
+(0.41 coverage, ~0.2 bias) to within Monte Carlo noise; the
+`ridge_quadratic` numbers move both bias and coverage inside the
+reference DML2 target band.
+
+**Regression test:** `tests/test_ocf_lmm.py::TestNuisanceLearner` —
+five assertions: (a) the constructor rejects unknown learners, (b)
+`nuisance_learner='linear'` is the default and leaves the V1 code
+path's `OCFNullFit.X0` shape unchanged, (c) `ridge_quadratic`
+expands X0 to `1 + c_W + c_W + c_W*(c_W-1)/2` columns (intercept +
+linear + squares + upper-triangular pairs), (d) on the AR(1)-W DGP
+the new learner reduces mean |bias| by ≥ 50% relative to linear, and
+(e) lifts 95% Wald empirical coverage to ≥ 0.85 (floored 0.07 below
+the 0.92–0.98 harness band to absorb 40-rep Monte Carlo noise; the
+linear path is also asserted to undercover at < 0.70 so a regression
+that re-narrows it also fails the test).
+
+**Backward compatibility:** all 20 pre-existing OCFLMM tests pass
+bit-identically — the default code path is unchanged.
+
+**Files touched:**
+- `torchgwas/models/ocf_lmm.py` — added `_expand_quadratic_features`
+  helper, plumbed `nuisance_learner` through `OCFLMM.__init__`,
+  `OCFNullFit`, `_fit_fold`, `_dml_score_batch`, and the `fit_null` →
+  `score_chunk` boundary.
+- `tests/test_ocf_lmm.py` — added `TestNuisanceLearner` class (5
+  tests including the slow bias + coverage gate).
+
+**Reference:** Chernozhukov et al. (2018, *Econometrica*) eq. 3.1
+(orthogonal Neyman score), eq. 3.3 (DML2 estimator), eq. 3.10
+(sandwich variance). The closed-form ridge learner is the
+fixed-dim instance of their requirement that both nuisances
+converge at rate o(n^{-1/4}); for unbounded feature dim the user
+can substitute a scikit-learn estimator in a future revision.
+
+**Tolerance posture (observed-then-floored):** the test gates above
+were set after observing the 100-rep harness numbers, then floored
+below them so they tolerate 40-rep noise. They are not aspirational.
