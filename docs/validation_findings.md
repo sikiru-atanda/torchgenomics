@@ -1445,10 +1445,77 @@ S18; the multi-SNP HEIDI chi² is its natural matrix generalization.
 
 **Tolerance posture (observed-then-floored):** all assertion thresholds
 in the regression tests were calibrated after running both paths on
-the fixture, then floored to absorb FP noise. The harness-side
-tolerance tightening (`TOL_REL_CHI2_HEIDI`, `TOL_REL_P_HEIDI` currently
-floored at 1.0 / 2.0 to admit the pre-patch divergence) is deferred to
-a follow-up harness re-run that loads `validation/external/smr/data/ref.bed`
-into a torch LD matrix and passes it to ``smr_heidi``. The patch itself
-is independently testable and gated by the unit-test bias / shape
-assertions above.
+the fixture, then floored to absorb FP noise.
+
+---
+
+## 2026-05-21 --- F3 #3 HARNESS RE-RUN (LD-weighted vs upstream SMR v1.3.1)
+
+**Trigger:** user-requested re-run of `validation/external/smr/` with the
+F3 #3 patch threading the reference-panel LD r matrix into `heidi_test`.
+
+**Setup:**
+- Fixture regenerated deterministically from seed 42 (same as the
+  2026-05-15 SMR run): N_samples=500, n_cis=15, top_snp=rsCIS000.
+- `outputs/smr_results.smr` synthesized from the persisted SMR v1.3.1
+  numbers in `results/agreement.json` (SMR binary not re-installed; the
+  reference numbers are deterministic on the fixture seed).
+- `compare.py` extended with `--use-ld-matrix`: when set, loads `ref.bed`
+  via `torchgwas.io.PlinkBedReader`, computes the (15, 15) cis-block
+  Pearson r matrix, identity-pads to (M_gwas, M_gwas) where M_gwas=65
+  (15 cis + 50 background SNPs that HEIDI never selects), and passes to
+  `heidi_test(..., ld_matrix=R)`.
+
+**Critical mid-patch correction (committed in this entry):** the original
+F3 #3 commit used the full multivariate `T = d' Σ_d^{-1} d` form (Σ_d
+including d_i-d_j off-LD coupling AND the shared Var(b_top) rank-1
+contribution). That is mathematically more rigorous but produced TG
+chi² = 3.66 vs SMR = 6.86 (gap = −47%). Direct comparison of three
+candidate formulations on the harness fixture revealed that the
+published SMR tool implements the per-SNP-pair LD-corrected variance
+(Zhu 2016 sup. eq. 18) with sum-of-squares form, NOT the multivariate
+quadratic. Replacing the patch with the SMR convention closed the gap
+to 0.67% on chi². Both forms are now documented in the `heidi_test`
+docstring; the SMR convention is what users expect when they pass
+`ld_matrix`. (Unit tests updated accordingly: `test_ld_identity_reduces_to_diagonal`
+replaces the prior multivariate-only `test_ld_identity_correctly_shares_top_snp_variance`,
+and a new `test_ld_cross_term_sign_depends_on_effect_concordance` gates
+the directional behavior under matched / phase-flipped helper SNPs.)
+
+**End-to-end agreement (compare.py one-probe fixture):**
+
+| Metric | TG diagonal (V1 default) | TG LD-weighted (F3 #3) | SMR v1.3.1 reference | Gap (LD) |
+|---|---|---|---|---|
+| beta_SMR | 0.298609 | 0.298609 | 0.298609 | 1.14e-6 |
+| chi²_SMR | 110.4452 | 110.4452 | 110.4453 | 3.04e-7 |
+| p_SMR | 7.83e-26 | 7.83e-26 | 7.83e-26 | 4.38e-5 (on −log10 p) |
+| **chi²_HEIDI** | 9.4655 | **6.8092** | 6.8553 | **0.67%** (was 38.1%) |
+| **p_HEIDI** | 0.0919 | **0.2352** | 0.2316 | **1.55%** (was 60.3%) |
+
+`compare.py` returns `1/1 comparisons passed` in **both** modes:
+- diagonal (V1 default) passes back-compat floors `TOL_REL_CHI2_HEIDI_DIAG = 1.0`,
+  `TOL_REL_P_HEIDI_DIAG = 2.0` (the documented F3 divergence floors).
+- LD-weighted passes the tightened floors `TOL_REL_CHI2_HEIDI_LD = 5e-2`,
+  `TOL_REL_P_HEIDI_LD = 5e-2` (observed-then-floored above the 0.67%
+  and 1.55% measurements).
+
+**Harness changes (committed):**
+- `validation/external/smr/compare.py` — added `_build_ld_matrix` helper
+  (PlinkBedReader + Pearson r + identity padding for SNPs missing from
+  the BED), added `--use-ld-matrix` CLI flag, split HEIDI tolerance
+  gates into DIAG / LD variants, threaded the chosen tolerance + path
+  tag through the per-check label.
+
+**Source changes (committed in this commit):**
+- `torchgwas/postgwas/_smr.py` — replaced the multivariate Σ_d^{-1}
+  formulation with the SMR-convention per-SNP-pair LD-corrected
+  sum-of-squares (Zhu 2016 sup. eq. 18). Both formulations documented
+  in the docstring; the SMR convention is what users expect.
+- `tests/test_postgwas_smr.py` — updated regression tests for the new
+  semantics (identity LD now reduces to diagonal exactly; concordant /
+  discordant sign behavior gated separately).
+
+**Conclusion: F3 #3 RESOLVED.** TorchGWAS `heidi_test` with
+`ld_matrix=R` now agrees with the upstream SMR v1.3.1 tool to ~3 sig-
+figs on chi² and ~2 sig-figs on p_HEIDI on this fixture — well inside
+the floored harness tolerances.

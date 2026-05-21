@@ -39,6 +39,7 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
 from torchgwas.postgwas import SumStats, smr_test, heidi_test  # noqa: E402
+from torchgwas.io.plink import PlinkBedReader  # noqa: E402
 
 
 # ---- tolerance gates (observed-then-floored on first successful run) -------
@@ -53,8 +54,16 @@ from torchgwas.postgwas import SumStats, smr_test, heidi_test  # noqa: E402
 TOL_REL_BETA = 5e-5              # observed 1.14e-6 on first run; floor 5e-5
 TOL_REL_CHI2_SMR = 5e-5          # observed 3.04e-7; floor 5e-5
 TOL_ABS_DELTA_NEGLOG10_P_SMR = 5e-4   # observed 4.38e-5; floor 5e-4
-TOL_REL_CHI2_HEIDI = 1.0         # F3 post-V1 divergence (TG diagonal vs SMR LD-weighted variance); observed 3.81e-1; floor 1.0 same-order-of-magnitude check
-TOL_REL_P_HEIDI = 2.0            # F3 post-V1 (HEIDI p relative); observed 6.03e-1; floor 2.0 (functional, not numerical equivalence)
+# F3 #3 patch (2026-05-21): the LD-weighted heidi_test now matches the
+# SMR convention (Zhu 2016 sup. eq. 18 per-pair cross terms, NOT the full
+# multivariate Σ_d^{-1}). Observed gap on this fixture dropped from 38% /
+# 60% to 0.67% / 1.55%. Tolerances floored above the observed values.
+# When --use-ld-matrix is OFF the harness still tests the diagonal estimator
+# against SMR's LD-weighted output, so the wide back-compat floors remain.
+TOL_REL_CHI2_HEIDI_DIAG = 1.0    # diagonal vs SMR LD-weighted; observed 3.81e-1; floor 1.0
+TOL_REL_P_HEIDI_DIAG = 2.0       # diagonal vs SMR LD-weighted; observed 6.03e-1; floor 2.0
+TOL_REL_CHI2_HEIDI_LD = 5e-2     # LD-weighted vs SMR; observed 6.72e-3; floor 5e-2
+TOL_REL_P_HEIDI_LD = 5e-2        # LD-weighted vs SMR; observed 1.55e-2; floor 5e-2
 
 @dataclass
 class CheckResult:
@@ -149,6 +158,52 @@ def _build_gwas_sumstats(ma_df: pd.DataFrame) -> SumStats:
     )
 
 
+def _build_ld_matrix(bed_prefix: Path, gwas_snp_order: list[str]) -> torch.Tensor:
+    """Compute the Pearson r LD matrix from the PLINK reference panel,
+    aligned to ``gwas_snp_order`` (the GWAS SumStats SNP ordering).
+
+    The SMR harness reference panel only carries the cis SNPs (HEIDI is
+    cis-window-only); the GWAS .ma file additionally carries background
+    SNPs that are never selected by ``heidi_test`` (they fail the eQTL
+    inclusion filter because they're not in the .esd). Those background
+    SNPs get identity rows / columns in the returned LD matrix so the
+    shape matches ``len(gwas_snp_order)`` without inventing fake LD
+    information — the only requirement on ``heidi_test`` is that the
+    rows / columns for the *selected* SNPs carry the correct r values.
+    """
+    reader = PlinkBedReader(bed_prefix)
+    G_list, snp_list = [], []
+    for G_chunk, vmeta in reader.iter_chunks(chunk_size=1024):
+        G_list.append(G_chunk)
+        snp_list.extend(vmeta.snp)
+    G = torch.cat(G_list, dim=1)  # (n_samples, n_variants_bed)
+    bed_snp_idx = {s: i for i, s in enumerate(snp_list)}
+
+    M = len(gwas_snp_order)
+    R = torch.eye(M, dtype=torch.float64)
+
+    in_bed_positions = [i for i, s in enumerate(gwas_snp_order) if s in bed_snp_idx]
+    if not in_bed_positions:
+        raise RuntimeError(
+            f"ref.bed shares no SNPs with the GWAS SumStats; LD matrix "
+            "cannot be built."
+        )
+    bed_cols = torch.tensor(
+        [bed_snp_idx[gwas_snp_order[i]] for i in in_bed_positions],
+        dtype=torch.long,
+    )
+    G_aligned = G[:, bed_cols].to(torch.float64)
+    G_centered = G_aligned - G_aligned.mean(dim=0, keepdim=True)
+    sd = G_centered.std(dim=0, unbiased=False, keepdim=True).clamp(min=1e-30)
+    G_std = G_centered / sd
+    R_bed = (G_std.T @ G_std) / float(G_std.shape[0])
+    R_bed.fill_diagonal_(1.0)
+    # Scatter the BED-block r values back into the (M, M) identity-padded R.
+    pos_t = torch.tensor(in_bed_positions, dtype=torch.long)
+    R[pos_t.unsqueeze(1), pos_t.unsqueeze(0)] = R_bed
+    return R
+
+
 def _build_eqtl_sumstats(esd_df: pd.DataFrame, eqtl_n: int) -> SumStats:
     """Build a TG SumStats object from the per-probe .esd file."""
     m = len(esd_df)
@@ -168,8 +223,15 @@ def _build_eqtl_sumstats(esd_df: pd.DataFrame, eqtl_n: int) -> SumStats:
         beta=beta, se=se, p=p, n=n, af=af,
     )
 
-def compare_smr(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """SMR (Yang lab v1.3.1) vs TorchGWAS smr_test + heidi_test agreement."""
+def compare_smr(data_dir: Path, out_dir: Path,
+                use_ld_matrix: bool = False) -> ComparisonReport:
+    """SMR (Yang lab v1.3.1) vs TorchGWAS smr_test + heidi_test agreement.
+
+    ``use_ld_matrix=True`` loads the reference-panel LD r matrix from
+    ``data/ref.bed`` and passes it to ``heidi_test`` so the F3 #3 LD-weighted
+    variance path is exercised. The default (False) keeps the pre-patch
+    diagonal-only variance for back-compat regression of the harness.
+    """
     truth = _read_truth(data_dir / "sim_truth.json")
     ma_df = _read_ma(data_dir / "gwas.ma")
     esd_df = _read_esd(data_dir / "probe.esd")
@@ -177,6 +239,10 @@ def compare_smr(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
     gwas = _build_gwas_sumstats(ma_df)
     eqtl = _build_eqtl_sumstats(esd_df, eqtl_n=int(truth["eqtl_n"]))
+
+    ld_matrix: torch.Tensor | None = None
+    if use_ld_matrix:
+        ld_matrix = _build_ld_matrix(data_dir / "ref", gwas.snp)
 
     # The fixture has a single probe; SMR therefore returns exactly one row.
     if len(smr_df) != 1:
@@ -222,6 +288,7 @@ def compare_smr(data_dir: Path, out_dir: Path) -> ComparisonReport:
         nearby_snps=cand_snps,
         ld_r2_threshold=0.05,  # cosmetic in TG (no LD matrix consumed)
         max_snps=200,
+        ld_matrix=ld_matrix,
     )
 
     # ---- agreement metrics ----
@@ -277,18 +344,25 @@ def compare_smr(data_dir: Path, out_dir: Path) -> ComparisonReport:
         # SNPs have mild LD (rho_geno ~ 0.4) the off-diagonals are small but
         # not zero, so we expect some divergence in chi^2 and p.  The
         # tolerances are observed-then-floored.
+        # Tighter tolerance when the LD path was exercised (matches SMR
+        # to ~1%); wide back-compat tolerance for the diagonal path
+        # (documented F3 #3 divergence, ~38–60%).
+        tol_chi2 = TOL_REL_CHI2_HEIDI_LD if ld_matrix is not None else TOL_REL_CHI2_HEIDI_DIAG
+        tol_p    = TOL_REL_P_HEIDI_LD    if ld_matrix is not None else TOL_REL_P_HEIDI_DIAG
+        path_tag = "LD" if ld_matrix is not None else "diag"
+
         rel_h_chi2 = (abs(smr_heidi_chi2 - tg_heidi_chi2)
                        / max(abs(smr_heidi_chi2), 1e-300))
         rep.checks.append(_check_max(
-            "|d chi2_HEIDI| / chi2_HEIDI", float(rel_h_chi2),
-            TOL_REL_CHI2_HEIDI,
+            f"|d chi2_HEIDI| / chi2_HEIDI ({path_tag})", float(rel_h_chi2),
+            tol_chi2,
             note=f"(smr={smr_heidi_chi2:.6g} tg={tg_heidi_chi2:.6g} df={df_heidi})",
         ))
 
         rel_h_p = (abs(smr_p_heidi_f - float(p_h))
                     / max(abs(smr_p_heidi_f), 1e-300))
         rep.checks.append(_check_max(
-            "|d p_HEIDI| / p_HEIDI", float(rel_h_p), TOL_REL_P_HEIDI,
+            f"|d p_HEIDI| / p_HEIDI ({path_tag})", float(rel_h_p), tol_p,
             note=f"(smr={smr_p_heidi_f:.4e} tg={p_h:.4e})",
         ))
     else:
@@ -368,8 +442,10 @@ def _write_results(rep: ComparisonReport, results_dir: Path,
             "TOL_REL_BETA": TOL_REL_BETA,
             "TOL_REL_CHI2_SMR": TOL_REL_CHI2_SMR,
             "TOL_ABS_DELTA_NEGLOG10_P_SMR": TOL_ABS_DELTA_NEGLOG10_P_SMR,
-            "TOL_REL_CHI2_HEIDI": TOL_REL_CHI2_HEIDI,
-            "TOL_REL_P_HEIDI": TOL_REL_P_HEIDI,
+            "TOL_REL_CHI2_HEIDI_DIAG": TOL_REL_CHI2_HEIDI_DIAG,
+            "TOL_REL_P_HEIDI_DIAG": TOL_REL_P_HEIDI_DIAG,
+            "TOL_REL_CHI2_HEIDI_LD": TOL_REL_CHI2_HEIDI_LD,
+            "TOL_REL_P_HEIDI_LD": TOL_REL_P_HEIDI_LD,
         },
     }
     (results_dir / "agreement.json").write_text(
@@ -398,8 +474,9 @@ def _write_results(rep: ComparisonReport, results_dir: Path,
     (results_dir / "manifest.sha256").write_text("\n".join(manifest) + "\n")
 
 
-def run_all(data_dir: Path, out_dir: Path, results_dir: Path) -> int:
-    rep = compare_smr(data_dir, out_dir)
+def run_all(data_dir: Path, out_dir: Path, results_dir: Path,
+            use_ld_matrix: bool = False) -> int:
+    rep = compare_smr(data_dir, out_dir, use_ld_matrix=use_ld_matrix)
     rep.print()
     _write_results(rep, results_dir, data_dir, out_dir)
     print(f"=== {1 if rep.passed else 0}/1 comparisons passed ===")
@@ -414,9 +491,16 @@ def main() -> int:
     ap.add_argument("--data-dir", default=str(HERE / "data"))
     ap.add_argument("--out-dir", default=str(HERE / "outputs"))
     ap.add_argument("--results-dir", default=str(HERE / "results"))
+    ap.add_argument(
+        "--use-ld-matrix", action="store_true",
+        help="Load ref.bed and pass the LD r matrix to heidi_test "
+             "(F3 #3 LD-weighted variance path). Default off keeps the "
+             "pre-patch diagonal-only variance for regression comparison.",
+    )
     args = ap.parse_args()
     return run_all(
         Path(args.data_dir), Path(args.out_dir), Path(args.results_dir),
+        use_ld_matrix=args.use_ld_matrix,
     )
 
 

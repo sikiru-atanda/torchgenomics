@@ -353,13 +353,17 @@ class TestHeidiLdMatrix:
             )
 
     def test_ld_weighted_chi2_differs_from_diagonal_under_strong_ld(self):
-        """The whole point of the patch: with strong off-diagonal LD
-        (rho = 0.8) the LD-weighted chi² must differ materially from
-        the diagonal-only estimate. Under positive LD between the top
-        SNP and helper SNPs, the cross terms in Σ_d are LARGE and the
-        LD-weighted chi² shifts substantially (typically downward — the
-        diagonal estimator overstates Var(d_i) when bg, be have
-        concordant signs, which inflates the diagonal chi² spuriously).
+        """The whole point of the patch: with strong LD (rho = 0.8) and
+        concordant-sign effects the per-pair cross terms reduce each
+        Var_LD(d_i), so T_HEIDI = sum d_i^2 / Var_LD(d_i) increases
+        materially relative to the diagonal estimator. Under
+        opposite-sign effects (typical in cis-eQTL fine-mapping where
+        LD-linked SNPs can flip phase) the cross terms add to the
+        variance and T_HEIDI decreases.
+
+        This gate just requires a material shift (>=20% relative) — the
+        sign direction depends on the bg/be sign convention of the
+        fixture and is exercised separately below.
         """
         gwas, eqtl, R = self._block_ld_sumstats(
             m=8, rho=0.8, top_idx=0,
@@ -377,31 +381,20 @@ class TestHeidiLdMatrix:
             ld_matrix=R,
         )
         assert n_diag == n_ld == 7
-        # The LD-weighted chi² must shift by at least 20% under rho = 0.8.
         rel = abs(h_ld - h_diag) / max(h_diag, 1e-12)
         assert rel > 0.2, (
             f"LD-weighted chi² = {h_ld:.4f}, diagonal = {h_diag:.4f}; "
             f"relative shift = {rel:.4f}; F3 #3 patch should produce "
-            "a >20% shift under rho = 0.8 — if not, the off-diagonal "
-            "covariance contribution is silently zeroed."
+            "a >20% shift under rho = 0.8 — if not, the per-pair "
+            "cross terms are silently zeroed."
         )
-        # Both p-values must still be in [0, 1].
         assert 0.0 <= p_diag <= 1.0 and 0.0 <= p_ld <= 1.0
 
-    def test_ld_identity_correctly_shares_top_snp_variance(self):
-        """Under identity LD the off-diagonal SNP correlation is zero,
-        but the top-SNP variance contribution Var(b_top), Var(be_top) is
-        still SHARED across every d_i (each d_i subtracts the same
-        bg_top/be_top). The LD-weighted Σ_d encodes that correctly with
-        a uniform var_top_block added to every (i, j) entry — equivalent
-        to a rank-1 perturbation of the diagonal-only matrix.
-
-        Sherman-Morrison: inverting (D + alpha * 1 1') shrinks the
-        quadratic form, so chi²_LD < chi²_diag even at zero off-LD.
-        This is the *correct* HEIDI variance accounting; the diagonal-
-        only path inflates chi² by double-counting the shared top-SNP
-        variance.
-        """
+    def test_ld_identity_reduces_to_diagonal(self):
+        """Under identity LD the cross terms r(i, top) = 0 for all
+        helpers, so Var_LD(d_i) = Var_diag(d_i) exactly. The SMR-
+        convention LD-weighted path therefore agrees with the diagonal-
+        only path bit-for-bit at identity LD."""
         gwas, eqtl, _ = self._block_ld_sumstats(
             m=6, rho=0.0, top_idx=0,
             bg_top=0.30, be_top=0.45,
@@ -419,12 +412,63 @@ class TestHeidiLdMatrix:
             ld_matrix=R_id,
         )
         assert n_diag == n_ld
-        # Both estimators must produce a strictly positive chi² for this
-        # fixture (all d_i are nonzero with the same sign).
-        assert h_diag > 0.0 and h_ld > 0.0
-        # The LD-weighted estimator correctly shares the top-SNP
-        # variance across all d_i — so chi²_LD <= chi²_diag.
-        assert h_ld <= h_diag
+        assert abs(h_ld - h_diag) / max(h_diag, 1e-12) < 1e-9
+
+    def test_ld_cross_term_sign_depends_on_effect_concordance(self):
+        """Direction sanity check: with positive LD between helpers
+        and the top SNP, the cross terms either reduce or increase
+        Var_LD(d_i) depending on whether helpers carry the same or
+        opposite sign as the top SNP.
+
+        Concordant signs (bg_i, bg_top both positive): a_i * a_t > 0
+        false, actually a_i = 1/be > 0 and a_t = -1/be_top < 0, so
+        a_i * a_t < 0 → cross_g < 0 → Var_LD < Var_diag → chi²_LD
+        INCREASES relative to chi²_diag.
+
+        Discordant signs (bg_i < 0 < bg_top): a_i = 1/be_i < 0, a_t < 0,
+        a_i * a_t > 0 → cross_g > 0 → Var_LD > Var_diag → chi²_LD
+        DECREASES.
+        """
+        # Concordant signs.
+        gwas_c, eqtl_c, R = self._block_ld_sumstats(
+            m=4, rho=0.6, top_idx=0,
+            bg_top=0.30, be_top=0.45,
+            bg_off=0.34, be_off=0.45,
+        )
+        nearby = ["rs1", "rs2", "rs3"]
+        _, h_diag_c, _ = heidi_test(
+            gwas_c, eqtl_c, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+        )
+        _, h_ld_c, _ = heidi_test(
+            gwas_c, eqtl_c, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+            ld_matrix=R,
+        )
+        assert h_ld_c > h_diag_c, (
+            f"concordant signs: expected chi²_LD ({h_ld_c:.4f}) > "
+            f"chi²_diag ({h_diag_c:.4f}) under rho > 0."
+        )
+
+        # Discordant signs (helpers carry opposite sign).
+        gwas_d, eqtl_d, R = self._block_ld_sumstats(
+            m=4, rho=0.6, top_idx=0,
+            bg_top=0.30, be_top=0.45,
+            bg_off=-0.20, be_off=-0.40,
+        )
+        _, h_diag_d, _ = heidi_test(
+            gwas_d, eqtl_d, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+        )
+        _, h_ld_d, _ = heidi_test(
+            gwas_d, eqtl_d, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+            ld_matrix=R,
+        )
+        assert h_ld_d < h_diag_d, (
+            f"discordant signs: expected chi²_LD ({h_ld_d:.4f}) < "
+            f"chi²_diag ({h_diag_d:.4f}) under rho > 0."
+        )
 
     def test_smr_heidi_threads_ld_matrix(self):
         """End-to-end: the smr_heidi multi-gene wrapper threads

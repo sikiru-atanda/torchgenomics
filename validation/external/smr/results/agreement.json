@@ -28,28 +28,28 @@
       "note": "(smr=7.8270e-26 tg=7.8278e-26)"
     },
     {
-      "name": "|d chi2_HEIDI| / chi2_HEIDI",
+      "name": "|d chi2_HEIDI| / chi2_HEIDI (LD)",
       "passed": true,
-      "observed": 0.3807517390565707,
-      "threshold": 1.0,
+      "observed": 0.006720839446312522,
+      "threshold": 0.05,
       "direction": "max",
-      "note": "(smr=6.85532 tg=9.4655 df=5)"
+      "note": "(smr=6.85532 tg=6.80925 df=5)"
     },
     {
-      "name": "|d p_HEIDI| / p_HEIDI",
+      "name": "|d p_HEIDI| / p_HEIDI (LD)",
       "passed": true,
-      "observed": 0.6033380813491992,
-      "threshold": 2.0,
+      "observed": 0.015512953078043677,
+      "threshold": 0.05,
       "direction": "max",
-      "note": "(smr=2.3162e-01 tg=9.1877e-02)"
+      "note": "(smr=2.3162e-01 tg=2.3522e-01)"
     }
   ],
   "extras": {
     "heidi_ran_smr": true,
     "smr_p_heidi": 0.2316246,
     "smr_nsnp_heidi": 6,
-    "tg_heidi_stat": 9.46549565578918,
-    "tg_p_heidi": 0.09187665824272429,
+    "tg_heidi_stat": 6.809246958204735,
+    "tg_p_heidi": 0.23521778155152065,
     "tg_n_heidi": 5,
     "smr_heidi_chi2": 6.855320466412514,
     "smr_heidi_df": 5,
@@ -66,7 +66,9 @@
     "TOL_REL_BETA": 5e-05,
     "TOL_REL_CHI2_SMR": 5e-05,
     "TOL_ABS_DELTA_NEGLOG10_P_SMR": 0.0005,
-    "TOL_REL_CHI2_HEIDI": 1.0,
-    "TOL_REL_P_HEIDI": 2.0
+    "TOL_REL_CHI2_HEIDI_DIAG": 1.0,
+    "TOL_REL_P_HEIDI_DIAG": 2.0,
+    "TOL_REL_CHI2_HEIDI_LD": 0.05,
+    "TOL_REL_P_HEIDI_LD": 0.05
   }
 }
