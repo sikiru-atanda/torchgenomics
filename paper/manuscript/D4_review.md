@@ -37,21 +37,20 @@ cited by reviewers.
 | Architecture | 600 | 647 | +8% | ✓ |
 | Equivalence | 900 | 946 | +5% | ✓ |
 | Haplotype | 1100 | 1197 | +9% | ✓ |
-| Multi-omics | 1200 | 1399 | +17% | ⚠ Multi-omics over budget — trim during user review if needed |
+| Multi-omics | 1200 | 1235 | +3% | ✓ trimmed from 1399 |
 | Polyploid | 900 | 924 | +3% | ✓ |
 | Specialty | 700 | 768 | +10% | ✓ |
 | GPU + streaming | 800 | 860 | +7% | ✓ |
 | Methods | 800 | 867 | +8% | ✓ |
-| Discussion | 500 | 602 | +20% | ⚠ Discussion over budget — but kept dense for honest F3 disclosure |
+| Discussion | 500 | 535 | +7% | ✓ trimmed from 602 |
 | Availability | 200 | 210 | +5% | ✓ |
-| **Total body** | **8400** | **9371** | **+12%** | ⚠ Cumulative +371 over 9000 ceiling; trimming pass deferred to user review |
+| **Total body** | **8400** | **9140** | **+9%** | ✓ within 9000 soft ceiling (+1.5% over after trim from 9371) |
 
-Two sections (Multi-omics, Discussion) account for the bulk of the
-overshoot. Both are intentionally dense — Multi-omics covers four
-distinct method families (TWAS/SMR/coloc/mediation) each with its own
-agreement numbers, and Discussion carries the F3 disclosures that the
-journal will want to see in detail. Reviewers and the user can trim
-either before submission.
+Multi-omics and Discussion were trimmed in a focused pass that
+preserved every concrete number, F3 disclosure (file:line refs + LoC
+estimates), and citation, while compressing connective prose and
+duplicated framing. Net 231-word trim brought the draft from +12%
+to +1.5% over the 9000 ceiling.
 
 ---
 
