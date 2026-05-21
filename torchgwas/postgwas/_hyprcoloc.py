@@ -222,19 +222,40 @@ def hyprcoloc(
             stacked = log_abf[list(subset)].sum(dim=0)  # (m,)
             subset_log_bf[tuple(subset)] = _log_sum_exp(stacked)
 
-    # Prior structure (Foley 2021 eq. 2):
-    #   Pr(H_S) = prior_1^|S| * prior_2^(|S|-1) * (1 - prior_1)^(K - |S|)
-    # for each non-singleton subset, and the null hypothesis absorbs both
-    # "no trait is associated" and "exactly one trait is associated" mass.
+    # Prior structure -- Foley et al. (2021) Eq. 2 (corrected per F3 #1
+    # patch, 2026-05-15). For a candidate cluster S of size |S| >= 2
+    # in a panel of K traits:
+    #
+    #     Pr(H_S) = prior_1 * prior_2^(|S| - 1) * (1 - prior_2)^(K - |S|)
+    #
+    # where:
+    #   prior_1 (~1e-4) is the prior probability that *some* colocalization
+    #     architecture is true at this region (drawn once per cluster).
+    #   prior_2 (~0.98, Foley's `c`) is the conditional sharing probability
+    #     -- given that a cluster exists, the probability that one more
+    #     trait joins it.
+    #   (1 - prior_2) penalises each trait that is *not* in the cluster,
+    #     i.e., the exclusion mass that the cluster must "pay" for the
+    #     remaining (K - |S|) traits being un-associated with this cluster.
+    #
+    # Pre-patch TG used the PRODUCT prior `prior_1^|S| * prior_2^(|S|-1)
+    # * (1 - prior_1)^(K - |S|)`. With prior_1 = 1e-4, that imposed a
+    # ~1e-4 penalty *per additional trait* in the cluster, so the
+    # |S| = 3 / |S| = 2 prior ratio was ~1e-4 instead of Foley's
+    # ~prior_2 / (1 - prior_2) ~= 49. The result was that strong
+    # 3-trait shared-causal architectures were assigned to a 2-trait
+    # subset by TG while R hyprcoloc correctly selected the 3-trait
+    # cluster. See docs/validation_findings.md "Tier 1 A4" for the
+    # full diagnosis + numerical reproduction.
     log_p1 = math.log(prior_1)
     log_p2 = math.log(prior_2)
-    log_1mp1 = math.log1p(-prior_1)
+    log_1mp2 = math.log1p(-prior_2)
 
     def _log_prior(subset_size: int) -> float:
         return (
-            subset_size * log_p1
+            log_p1
             + (subset_size - 1) * log_p2
-            + (K - subset_size) * log_1mp1
+            + (K - subset_size) * log_1mp2
         )
 
     # Null prior: no subset of size >= 2 colocalizes. This is the residual
