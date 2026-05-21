@@ -88,18 +88,20 @@ EXTERNAL_PANELS: list[tuple[str, str, str, pathlib.Path]] = [
 ]
 
 
-INTERNAL_PANELS: list[tuple[str, str, str, str]] = [
+INTERNAL_PANELS: list[tuple[str, str, str, str, pathlib.Path]] = [
     (
         "GU",
         "Genotype-Uncertainty LMM",
         "Phase 28",
         "Dosage-variance-corrected score test.",
+        REPO_ROOT / "validation/specialty/gu/results/agreement.json",
     ),
     (
         "LRO",
         "Leave-Region-Out LMM",
         "Phase 29",
         "Block-level LOCO.",
+        REPO_ROOT / "validation/specialty/lro/results/agreement.json",
     ),
 ]
 
@@ -249,8 +251,15 @@ def _draw_internal_panel(
     title: str,
     phase: str,
     body: str,
+    agreement_path: pathlib.Path | None = None,
 ) -> dict[str, Any]:
-    """Draw one internal-only panel: placeholder with distinct dashed border."""
+    """Draw one internal-only panel.
+
+    If ``agreement_path`` is provided and exists, render the panel as a
+    real internal-consistency check summary (gate list + observed
+    numbers). Otherwise render as a scaffold placeholder. Both variants
+    use the distinct dashed border indicating "no external reference."
+    """
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_xticks([])
@@ -269,58 +278,128 @@ def _draw_internal_panel(
         fontsize=7, color=COLOR_NEUTRAL, style="italic",
     )
 
-    ax.add_patch(
-        mpatches.FancyBboxPatch(
-            (0.10, 0.30), 0.80, 0.42,
-            boxstyle="round,pad=0.02",
-            linewidth=1.5,
-            edgecolor=COLOR_INTERNAL_BORDER,
-            facecolor="#fff7ee",
-        )
-    )
-    ax.text(
-        0.5, 0.61,
-        "Internal validation",
-        ha="center", va="center",
-        fontsize=10, fontweight="bold", color=COLOR_INTERNAL_BORDER,
-    )
-    ax.text(
-        0.5, 0.51,
-        "(no external reference)",
-        ha="center", va="center",
-        fontsize=8, color=COLOR_INTERNAL_BORDER, style="italic",
-    )
-    ax.text(
-        0.5, 0.40,
-        body,
-        ha="center", va="center",
-        fontsize=7, color="#555555",
-    )
+    measured = agreement_path is not None and agreement_path.exists()
+    if measured:
+        payload = json.loads(agreement_path.read_text())
+        checks = payload.get("checks", []) or []
+        passed_overall = payload.get("passed")
+        n_pass = sum(1 for c in checks if c.get("passed"))
+        n_total = len(checks)
 
-    ax.text(
-        0.5, 0.20,
-        "scaffold-only; see Discussion section 10.6",
-        ha="center", va="top",
-        fontsize=6.5, color=COLOR_NEUTRAL, style="italic",
-    )
-    ax.text(
-        0.5, 0.10,
-        "internal-consistency simulator pending",
-        ha="center", va="top",
-        fontsize=6.5, color=COLOR_NEUTRAL,
-    )
+        ax.text(
+            0.5, 0.76,
+            "Internal validation",
+            ha="center", va="center",
+            fontsize=9, fontweight="bold", color=COLOR_INTERNAL_BORDER,
+        )
+        ax.text(
+            0.5, 0.70,
+            "(no external reference)",
+            ha="center", va="center",
+            fontsize=7, color=COLOR_INTERNAL_BORDER, style="italic",
+        )
+
+        # Per-check pass/fail rows
+        y0 = 0.62
+        row_gap = 0.08
+        for i, c in enumerate(checks):
+            color = COLOR_PASS if c.get("passed") else COLOR_FAIL
+            name = str(c.get("name", ""))
+            if len(name) > 48:
+                name = name[:45] + "..."
+            obs = _fmt_observed(c.get("observed"))
+            ax.text(
+                0.05, y0 - i * row_gap,
+                f"{'✓' if c.get('passed') else '✗'} {name}",
+                ha="left", va="center",
+                fontsize=6.5, color=color,
+            )
+            ax.text(
+                0.95, y0 - i * row_gap,
+                obs,
+                ha="right", va="center",
+                fontsize=6.5, color=color, family="monospace",
+            )
+
+        summary_color = COLOR_PASS if passed_overall else COLOR_FAIL
+        ax.text(
+            0.5, 0.08,
+            f"{n_pass} / {n_total} gates {'PASS' if passed_overall else 'FAIL'}",
+            ha="center", va="center",
+            fontsize=8, fontweight="bold", color=summary_color,
+        )
+
+        manifest_entry: dict[str, Any] = {
+            "internal_only": True,
+            "phase": phase,
+            "external_reference": None,
+            "scaffold": False,
+            "passed_overall": bool(passed_overall),
+            "n_pass": n_pass,
+            "n_total": n_total,
+            "checks": [
+                {
+                    "name": c.get("name"),
+                    "observed": c.get("observed"),
+                    "passed": c.get("passed"),
+                }
+                for c in checks
+            ],
+        }
+    else:
+        ax.add_patch(
+            mpatches.FancyBboxPatch(
+                (0.10, 0.30), 0.80, 0.42,
+                boxstyle="round,pad=0.02",
+                linewidth=1.5,
+                edgecolor=COLOR_INTERNAL_BORDER,
+                facecolor="#fff7ee",
+            )
+        )
+        ax.text(
+            0.5, 0.61,
+            "Internal validation",
+            ha="center", va="center",
+            fontsize=10, fontweight="bold", color=COLOR_INTERNAL_BORDER,
+        )
+        ax.text(
+            0.5, 0.51,
+            "(no external reference)",
+            ha="center", va="center",
+            fontsize=8, color=COLOR_INTERNAL_BORDER, style="italic",
+        )
+        ax.text(
+            0.5, 0.40,
+            body,
+            ha="center", va="center",
+            fontsize=7, color="#555555",
+        )
+        ax.text(
+            0.5, 0.20,
+            "scaffold-only; see Discussion section 10.6",
+            ha="center", va="top",
+            fontsize=6.5, color=COLOR_NEUTRAL, style="italic",
+        )
+        ax.text(
+            0.5, 0.10,
+            "internal-consistency simulator pending",
+            ha="center", va="top",
+            fontsize=6.5, color=COLOR_NEUTRAL,
+        )
+        manifest_entry = {
+            "internal_only": True,
+            "phase": phase,
+            "external_reference": None,
+            "scaffold": True,
+            "note": "scaffold; no external reference (spec section 10.6)",
+        }
 
     for spine in ax.spines.values():
         spine.set_edgecolor(COLOR_INTERNAL_BORDER)
         spine.set_linewidth(1.5)
         spine.set_linestyle("--")
 
-    return {
-        "internal_only": True,
-        "phase": phase,
-        "external_reference": None,
-        "note": "scaffold; no external reference (spec section 10.6)",
-    }
+    return manifest_entry
 
 
 
@@ -343,10 +422,10 @@ def render_f7(output_dir: pathlib.Path) -> tuple[pathlib.Path, dict]:
             ax, panel_id, title, subtitle, payload,
         )
 
-    for j, (panel_id, title, phase, body) in enumerate(INTERNAL_PANELS):
+    for j, (panel_id, title, phase, body, agreement_path) in enumerate(INTERNAL_PANELS):
         ax = flat_axes[len(EXTERNAL_PANELS) + j]
         manifest["panels"][panel_id] = _draw_internal_panel(
-            ax, panel_id, title, phase, body,
+            ax, panel_id, title, phase, body, agreement_path,
         )
 
     fig.suptitle(

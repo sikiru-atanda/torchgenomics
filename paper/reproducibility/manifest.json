@@ -1100,13 +1100,68 @@
           "internal_only": true,
           "phase": "Phase 28",
           "external_reference": null,
-          "note": "scaffold; no external reference (spec section 10.6)"
+          "scaffold": false,
+          "passed_overall": true,
+          "n_pass": 4,
+          "n_total": 4,
+          "checks": [
+            {
+              "name": "zero-uncertainty matches None-path (|Delta stat| max)",
+              "observed": 0.0,
+              "passed": true
+            },
+            {
+              "name": "non-zero-uncertainty conservativeness (frac stat_unc <= stat_none)",
+              "observed": 1.0,
+              "passed": true
+            },
+            {
+              "name": "median causal p < median null p (separation)",
+              "observed": 0.003359301759232515,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs below 5th-percentile null (>= 3 / 5)",
+              "observed": 5,
+              "passed": true
+            }
+          ]
         },
         "LRO": {
           "internal_only": true,
           "phase": "Phase 29",
           "external_reference": null,
-          "note": "scaffold; no external reference (spec section 10.6)"
+          "scaffold": false,
+          "passed_overall": true,
+          "n_pass": 5,
+          "n_total": 5,
+          "checks": [
+            {
+              "name": "causal beta_hat recovered (full-K LMM)",
+              "observed": 0.21510772883018514,
+              "passed": true
+            },
+            {
+              "name": "causal beta_hat recovered (LROLMM)",
+              "observed": 0.13317088367553176,
+              "passed": true
+            },
+            {
+              "name": "LRO p < full-K LMM p at causal SNP (decontamination effect)",
+              "observed": 1.8224637297551957e-27,
+              "passed": true
+            },
+            {
+              "name": "median non-causal p is null-like (>0.05)",
+              "observed": 0.39731331082657784,
+              "passed": true
+            },
+            {
+              "name": "LD-block partition is non-trivial (>= 2 blocks)",
+              "observed": 5,
+              "passed": true
+            }
+          ]
         }
       },
       "n_external_panels": 6,

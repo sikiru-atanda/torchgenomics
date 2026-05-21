@@ -1,0 +1,61 @@
+{
+  "name": "GU (Genotype-Uncertainty LMM) internal-consistency",
+  "external_reference": null,
+  "validation_mode": "internal-consistency",
+  "phase": "Phase 28",
+  "seed": 42,
+  "n_samples": 1000,
+  "m_null": 100,
+  "m_causal": 5,
+  "beta_causal": 0.5,
+  "dosage_sigma": 0.2,
+  "h2_target": 0.3,
+  "checks": [
+    {
+      "name": "zero-uncertainty matches None-path (|Delta stat| max)",
+      "observed": 0.0,
+      "threshold": 1e-08,
+      "direction": "max",
+      "passed": true
+    },
+    {
+      "name": "non-zero-uncertainty conservativeness (frac stat_unc <= stat_none)",
+      "observed": 1.0,
+      "threshold": 0.95,
+      "direction": "min",
+      "passed": true
+    },
+    {
+      "name": "median causal p < median null p (separation)",
+      "observed": 0.003359301759232515,
+      "threshold": 0.6931639825566116,
+      "direction": "max",
+      "passed": true
+    },
+    {
+      "name": "causal SNPs below 5th-percentile null (>= 3 / 5)",
+      "observed": 5,
+      "threshold": 3,
+      "direction": "min",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "extras": {
+    "n_conservative_out_of": 105,
+    "causal_idx": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "bonferroni_threshold": 0.0004761904761904762,
+    "n_causal_detected_bonf": 1,
+    "median_p_causal_unc": 0.003359301759232515,
+    "median_p_null_unc": 0.6931639825566116,
+    "null_p_5th_percentile": 0.266853899962552,
+    "mean_p_causal_unc": 0.0047171480854183,
+    "mean_p_null_unc": 0.6691990170424117
+  }
+}

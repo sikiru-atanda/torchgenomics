@@ -1,0 +1,8 @@
+# Per repo-level .gitignore, `results/` is normally ignored. We override
+# with explicit `git add -f` on results/ for this harness because the
+# canonical agreement.json + summary.tsv + manifest are the authoritative
+# numeric record cited by paper Figure 7 panel GU.
+
+data/
+outputs/
+__pycache__/

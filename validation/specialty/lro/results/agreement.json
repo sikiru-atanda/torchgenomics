@@ -1,0 +1,64 @@
+{
+  "name": "LRO (Leave-Region-Out LMM) internal-consistency",
+  "external_reference": null,
+  "validation_mode": "internal-consistency",
+  "phase": "Phase 29",
+  "seed": 42,
+  "n_samples": 500,
+  "n_blocks": 5,
+  "snps_per_block": 20,
+  "causal_block": 2,
+  "causal_idx": 47,
+  "beta_causal": 1.0,
+  "ld_rho": 0.85,
+  "checks": [
+    {
+      "name": "causal beta_hat recovered (full-K LMM)",
+      "observed": 0.21510772883018514,
+      "threshold": 0.3,
+      "direction": "max",
+      "passed": true
+    },
+    {
+      "name": "causal beta_hat recovered (LROLMM)",
+      "observed": 0.13317088367553176,
+      "threshold": 0.3,
+      "direction": "max",
+      "passed": true
+    },
+    {
+      "name": "LRO p < full-K LMM p at causal SNP (decontamination effect)",
+      "observed": 1.8224637297551957e-27,
+      "threshold": 3.016053369305633e-10,
+      "direction": "max",
+      "passed": true
+    },
+    {
+      "name": "median non-causal p is null-like (>0.05)",
+      "observed": 0.39731331082657784,
+      "threshold": 0.05,
+      "direction": "min",
+      "passed": true
+    },
+    {
+      "name": "LD-block partition is non-trivial (>= 2 blocks)",
+      "observed": 5,
+      "threshold": 2,
+      "direction": "min",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "extras": {
+    "beta_lmm_causal": 0.7848922711698149,
+    "beta_lro_causal": 0.8668291163244682,
+    "p_lmm_causal": 3.016053369305633e-10,
+    "p_lro_causal": 1.8224637297551957e-27,
+    "stat_lmm_causal": 41.32940179278913,
+    "stat_lro_causal": 133.17460181796736,
+    "median_p_noncausal_lmm": 0.6392669476066408,
+    "median_p_noncausal_lro": 0.39731331082657784,
+    "lro_n_blocks": 5,
+    "lro_block_size_mean": 20.0
+  }
+}
