@@ -196,6 +196,37 @@ def test_coloc_pairwise_distinct_signals_pph3_dominates():
     assert res.pp_h3 > res.pp_h4
 
 
+def test_coloc_pairwise_distinct_signals_pph3_near_unity_post_f3_patch():
+    """Regression: F3 #2 (2026-05-15) — under a strong distinct-causal
+    architecture, R coloc::coloc.abf reports PP.H3 ≈ 0.997. Pre-patch
+    TG returned PP.H3 ≈ 0.854 with the missing 14% leaked into PP.H1
+    because (a) H3 used the full outer product instead of
+    `outer - diag` and (b) the spurious `-log m` factor on the
+    per-hypothesis weights inverted the Bayes-factor balance between
+    H3 and H1. After the F3 #2 patch the corrected closed form
+    matches R to FP precision on the validation harness fixture
+    (validation/external/coloc/, scenario='distinct': max |Δ PP| = 2e-5).
+
+    This test gates the closed form: PP.H3 must be ≥ 0.95 on a
+    well-separated distinct-signal architecture, and the H1/H2
+    mass-leak must remain below 0.05 combined. Pre-patch this test
+    fails (H3 ≈ 0.85, H1 ≈ 0.14); post-patch it passes.
+    """
+    ss = _region_with_distinct_signals(m=60, causal_idxs=[10, 45],
+                                       effect=0.5, seed=33)
+    res = coloc_pairwise(ss[0], ss[1])
+    assert res.pp_h3 >= 0.95, (
+        f"PP.H3 = {res.pp_h3:.4f}; F3 #2 patch (H3 outer-minus-diagonal + drop "
+        "log_m factor) likely regressed. Pre-patch value was ~0.85; "
+        "see docs/validation_findings.md."
+    )
+    assert (res.pp_h1 + res.pp_h2) < 0.05, (
+        f"PP.H1 + PP.H2 = {res.pp_h1 + res.pp_h2:.4f}; the F3 #2 patch "
+        "should keep H1 + H2 mass below 0.05 under a well-separated "
+        "distinct-signal architecture."
+    )
+
+
 def test_coloc_pairwise_null_signal_pph0_dominates():
     torch.manual_seed(37)
     m = 60
