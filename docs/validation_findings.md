@@ -1375,3 +1375,80 @@ can substitute a scikit-learn estimator in a future revision.
 **Tolerance posture (observed-then-floored):** the test gates above
 were set after observing the 100-rep harness numbers, then floored
 below them so they tolerate 40-rep noise. They are not aspirational.
+
+---
+
+## 2026-05-21 --- F3 #3 PATCH APPLIED: heidi_test LD-weighted variance
+
+**Resolution of the 2026-05-15 Tier 1 A2 finding above (HEIDI variance
+divergence against the upstream SMR reference tool).**
+
+**Patch:** `torchgwas/postgwas/_smr.py` (+ `tests/test_postgwas_smr.py`)
+adds an optional ``ld_matrix`` parameter to ``heidi_test`` and threads
+it through ``smr_heidi``. When ``None`` (V1 default) HEIDI uses the
+pre-patch diagonal delta-method variance (bit-identical to prior
+behavior). When provided, HEIDI builds the full Σ_d covariance matrix
+per Zhu et al. (2016) supplementary eq. 18:
+
+    Sigma_d[i, j] = a_i * a_j * r_ij(gwas) * seg_i * seg_j
+                 + c_i * c_j * r_ij(eqtl) * see_i * see_j
+                 + (a_i a_t r_it seg_i seg_top
+                  + a_j a_t r_jt seg_j seg_top)
+                 + (c_i c_t r_it see_i see_top
+                  + c_j c_t r_jt see_j see_top)
+                 + a_t^2 * seg_top^2 + c_t^2 * see_top^2
+
+with ``a_i = 1/b_e_i``, ``c_i = -b_g_i/b_e_i^2``, ``a_t = -1/b_e_top``,
+``c_t = +b_g_top/b_e_top^2``. The LD r matrix is assumed symmetric for
+GWAS and eQTL (both effect estimates computed in the same ancestry /
+reference panel — the SMR-tool default assumption). The chi² statistic
+becomes ``T_HEIDI = d' Sigma_d^{-1} d ~ chi^2(n_snps)``, evaluated via
+Cholesky with a 1e-12 * trace ridge for numerical stability and a
+pseudoinverse fallback if Cholesky fails.
+
+**Why the diagonal estimator was wrong (even at ρ = 0):** all d_i share
+the same ``bg_top / be_top`` term. The diagonal-only formula adds
+``Var(bg_top) + Var(be_top)`` independently to each Var(d_i), implicitly
+treating the top-SNP error as if it varied per i. The LD-weighted
+formula correctly encodes that the top-SNP variance is shared across
+all d_i (it appears as a uniform rank-1 perturbation on Σ_d). Under
+Sherman-Morrison this shrinks ``T_HEIDI`` relative to the diagonal
+estimator. Under positive off-LD (typical at the SMR fine-mapping
+cis-window scale) the cross terms further reduce Σ_d's quadratic
+form, closing the gap against the upstream SMR tool that uses the
+reference-panel LD r matrix end-to-end.
+
+**Regression tests (`tests/test_postgwas_smr.py::TestHeidiLdMatrix`,
+5 tests):**
+
+| Test | Asserts |
+|---|---|
+| ``test_default_ld_matrix_none_matches_pre_patch`` | ld_matrix=None reproduces the closed-form diagonal-only T_HEIDI to FP precision. |
+| ``test_ld_matrix_shape_mismatch_raises`` | ValueError on misaligned LD matrix. |
+| ``test_ld_weighted_chi2_differs_from_diagonal_under_strong_ld`` | At ρ = 0.8 the LD-weighted chi² shifts by >20% — the cross terms are not silently zeroed. |
+| ``test_ld_identity_correctly_shares_top_snp_variance`` | At identity LD, chi²_LD ≤ chi²_diag (shared top-SNP variance is correctly accounted, not double-counted). |
+| ``test_smr_heidi_threads_ld_matrix`` | The multi-gene ``smr_heidi`` wrapper actually forwards ld_matrix to every per-gene HEIDI call. |
+
+All 11 pre-existing SMR tests continue to pass (default code path
+unchanged).
+
+**Files touched:**
+- `torchgwas/postgwas/_smr.py` — added the LD-weighted branch under
+  ``heidi_test``, threaded ``ld_matrix`` through ``smr_heidi``.
+- `tests/test_postgwas_smr.py` — added ``TestHeidiLdMatrix`` (5 tests).
+
+**Reference:** Zhu et al. (2016, *Nature Genetics* 48:481) supplementary
+note; the SMR command-line tool (Yang lab v1.3.1) uses the same
+reference-panel LD r weighting that this patch now exposes through
+TorchGWAS. The single-SNP delta-method derivation is in Zhu 2016 eq.
+S18; the multi-SNP HEIDI chi² is its natural matrix generalization.
+
+**Tolerance posture (observed-then-floored):** all assertion thresholds
+in the regression tests were calibrated after running both paths on
+the fixture, then floored to absorb FP noise. The harness-side
+tolerance tightening (`TOL_REL_CHI2_HEIDI`, `TOL_REL_P_HEIDI` currently
+floored at 1.0 / 2.0 to admit the pre-patch divergence) is deferred to
+a follow-up harness re-run that loads `validation/external/smr/data/ref.bed`
+into a torch LD matrix and passes it to ``smr_heidi``. The patch itself
+is independently testable and gated by the unit-test bias / shape
+assertions above.
