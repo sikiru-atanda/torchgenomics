@@ -1,0 +1,87 @@
+# bioRxiv preprint metadata
+#
+# Use to populate the bioRxiv submission form fields. User-gated:
+# this file does NOT trigger a submission; the user pastes these
+# values into the bioRxiv portal when ready.
+
+title: "TorchGWAS: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to fifteen reference tools"
+
+short_title: "TorchGWAS — biobank-scale polyploid + multi-omics GWAS toolkit"
+
+abstract_file: "paper/manuscript/sections/00_abstract.md"
+
+corresponding_author:
+  name: "Sikiru Atanda"
+  email: "sikiruandfriends@gmail.com"
+  affiliation: "PulseSmartLab Innovations"
+  orcid: "TBD — to be added by author before submission"
+
+co_authors:
+  - "TBD per Open Decision 1 in the design spec"
+
+subject_area:
+  primary: "Bioinformatics"
+  secondary: "Genomics"
+
+keywords:
+  - "GWAS"
+  - "linear mixed models"
+  - "polyploid genetics"
+  - "TWAS"
+  - "Mendelian randomization"
+  - "colocalization"
+  - "GPU acceleration"
+  - "biobank scale"
+  - "reproducibility"
+
+declarations:
+  competing_interests: "None to declare."
+  funding: "TBD — user fills in before submission."
+  data_availability: "All software and harness fixtures are open source at github.com/sikiru-atanda/torchgwas (Apache 2.0). The paper reproducibility pipeline is at github.com/sikiru-atanda/torchgwas-paper-reproducibility (forthcoming)."
+
+related_submissions:
+  journal: "Genome Biology — Methods (Software)"
+  status: "Submitted concurrently for peer review (this preprint posts the priority date)."
+
+# bioRxiv accepts manuscript in PDF or DOCX format; we will export from
+# paper/manuscript/full_draft.md once D3.14 lands.
+manuscript_file_planned: "paper/manuscript/full_draft.pdf"
+
+# Figures: include F1-F7 + the supplementary panels (S1-S7 documents +
+# the future S8 demo notebooks). All are regenerable via
+# `bash paper/reproducibility/reproduce_paper.sh`.
+figures_planned:
+  main:
+    - "paper/reproducibility/output/F1.pdf  -- Capability map (11 clusters, 121 capabilities)"
+    - "paper/reproducibility/output/F2.pdf  -- 11-harness equivalence grid (40/45 PASS)"
+    - "paper/reproducibility/output/F3.pdf  -- Haplotype layer (LD-block design + haplotype GWAS)"
+    - "paper/reproducibility/output/F4.pdf  -- Multi-omics integration (SORT1 worked example)"
+    - "paper/reproducibility/output/F5.pdf  -- Polyploid pipeline (k=4/6/8 demo)"
+    - "paper/reproducibility/output/F6.pdf  -- GPU + biobank streaming (8.7x at p=1e6)"
+    - "paper/reproducibility/output/F7.pdf  -- Specialty models (8 panels: 6 external + 2 internal-only)"
+  supplementary:
+    - "paper/manuscript/supplement/S1_equivalence_ledger.md"
+    - "paper/manuscript/supplement/S2_capability_inventory.md"
+    - "paper/manuscript/supplement/S3_validation_findings.md"
+    - "paper/manuscript/supplement/S4_reproducibility_manifest.md"
+    - "paper/manuscript/supplement/S5_tolerance_protocol.md"
+    - "paper/manuscript/supplement/S6_extended_figures.md"
+    - "paper/manuscript/supplement/S7_sensitivity_analyses.md"
+
+acknowledgements_template: |
+  The authors thank the developers and maintainers of every reference
+  tool that this work depends on: BOLT-LMM (Loh et al.), SAIGE (Zhou
+  et al.), regenie (Mbatchou et al.), GEMMA (Zhou & Stephens), GAPIT
+  (Tang et al.), GWASpoly (Rosyara et al.), PLINK 2.0 (Chang et al.),
+  LDSC (Bulik-Sullivan et al.), susieR (Wang et al.), TwoSampleMR
+  (Hemani et al.), MetaXcan / S-PrediXcan (Barbeira et al., Gamazon
+  et al.), SMR / HEIDI (Zhu et al.), R coloc (Giambartolomei et al.),
+  R hyprcoloc (Foley et al.), and haplo.stats (Schaid et al.). The
+  validation campaign would not be possible without their open code.
+
+# bioRxiv-specific: tick the "Submit to peer-reviewed journal" option
+# and select Genome Biology if bioRxiv offers it; otherwise note in
+# the "additional information" field that the manuscript is in review
+# at Genome Biology.
+journal_submission_through_biorxiv: true
+journal_choice: "Genome Biology"
