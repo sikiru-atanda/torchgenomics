@@ -1,7 +1,7 @@
 {
   "name": "R coloc::coloc.abf vs torchgwas.postgwas.coloc_pairwise (3 scenarios)",
   "n_compared": 150,
-  "passed": false,
+  "passed": true,
   "reports": [
     {
       "name": "coloc.abf vs TG coloc_pairwise -- scenario='shared'",
@@ -11,7 +11,7 @@
         {
           "name": "max |Delta PP.H0..H4|",
           "passed": true,
-          "observed": 2.05993227160306e-05,
+          "observed": 6.018014923059312e-07,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -19,7 +19,7 @@
         {
           "name": "|Delta PP.H0|",
           "passed": true,
-          "observed": 1.4524193197612743e-18,
+          "observed": 1.808415100691997e-25,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -27,7 +27,7 @@
         {
           "name": "|Delta PP.H1|",
           "passed": true,
-          "observed": 7.233114377697245e-12,
+          "observed": 4.759501495602247e-12,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -35,7 +35,7 @@
         {
           "name": "|Delta PP.H2|",
           "passed": true,
-          "observed": 5.610112171140342e-22,
+          "observed": 4.274154064978167e-22,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -43,7 +43,7 @@
         {
           "name": "|Delta PP.H3|",
           "passed": true,
-          "observed": 1.9997533247336477e-05,
+          "observed": 3.146952795302812e-14,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -51,7 +51,7 @@
         {
           "name": "|Delta PP.H4|",
           "passed": true,
-          "observed": 2.05993227160306e-05,
+          "observed": 6.018014923059312e-07,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -74,11 +74,11 @@
           1.0
         ],
         "TG PP.H0..H4": [
-          1.4820613197612743e-18,
-          5.996927668856223e-07,
-          4.9426438988782887e-17,
-          1.9999629947336478e-05,
-          0.999979400677284
+          2.9641819158489934e-20,
+          5.997047595014956e-07,
+          4.94274274154065e-17,
+          2.096731469527953e-09,
+          0.9999993981985077
         ],
         "R candidate_snp": "rs00025",
         "TG candidate_snp": "rs00025",
@@ -96,12 +96,12 @@
     {
       "name": "coloc.abf vs TG coloc_pairwise -- scenario='distinct'",
       "n_compared": 50,
-      "passed": false,
+      "passed": true,
       "checks": [
         {
           "name": "max |Delta PP.H0..H4|",
-          "passed": false,
-          "observed": 0.14277640615458342,
+          "passed": true,
+          "observed": 2.0261115698568146e-05,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -109,15 +109,15 @@
         {
           "name": "|Delta PP.H0|",
           "passed": true,
-          "observed": 1.0937550825769846e-06,
+          "observed": 3.402970062659763e-15,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
         },
         {
           "name": "|Delta PP.H1|",
-          "passed": false,
-          "observed": 0.13771701888605323,
+          "passed": true,
+          "observed": 8.08256580779208e-06,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -125,23 +125,23 @@
         {
           "name": "|Delta PP.H2|",
           "passed": true,
-          "observed": 6.470843095574551e-06,
+          "observed": 3.2637288665087374e-12,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
         },
         {
           "name": "|Delta PP.H3|",
-          "passed": false,
-          "observed": 0.14277640615458342,
+          "passed": true,
+          "observed": 1.23337275209634e-05,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
         },
         {
           "name": "|Delta PP.H4|",
-          "passed": false,
-          "observed": 0.005051667489462504,
+          "passed": true,
+          "observed": 2.0261115698568146e-05,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -164,11 +164,11 @@
           0.0001
         ],
         "TG PP.H0..H4": [
-          1.0942659725769845e-06,
-          0.14101701888605322,
-          6.625513095574551e-06,
-          0.8538235938454166,
-          0.005151667489462504
+          5.108934029700626e-10,
+          0.003291917434192208,
+          1.5466673627113349e-07,
+          0.9965876662724791,
+          0.00012026111569856815
         ],
         "R candidate_snp": "rs00025",
         "TG candidate_snp": "rs00025",
@@ -186,20 +186,20 @@
     {
       "name": "coloc.abf vs TG coloc_pairwise -- scenario='null'",
       "n_compared": 50,
-      "passed": false,
+      "passed": true,
       "checks": [
         {
           "name": "max |Delta PP.H0..H4|",
-          "passed": false,
-          "observed": 0.0058793329888334744,
+          "passed": true,
+          "observed": 4.9647131189783735e-05,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
         },
         {
           "name": "|Delta PP.H0|",
-          "passed": false,
-          "observed": 0.0058793329888334744,
+          "passed": true,
+          "observed": 5.862735671713359e-06,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -207,7 +207,7 @@
         {
           "name": "|Delta PP.H1|",
           "passed": true,
-          "observed": 0.002351423516657565,
+          "observed": 1.4528336482670916e-05,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -215,7 +215,7 @@
         {
           "name": "|Delta PP.H2|",
           "passed": true,
-          "observed": 0.0033309234911785587,
+          "observed": 3.349654932645893e-05,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -223,7 +223,7 @@
         {
           "name": "|Delta PP.H3|",
           "passed": true,
-          "observed": 8.1873441011736e-06,
+          "observed": 1.8672557029164832e-11,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -231,7 +231,7 @@
         {
           "name": "|Delta PP.H4|",
           "passed": true,
-          "observed": 9.698933689630117e-05,
+          "observed": 4.9647131189783735e-05,
           "threshold": 0.005,
           "direction": "max",
           "note": ""
@@ -254,11 +254,11 @@
           0.0001
         ],
         "TG PP.H0..H4": [
-          0.9998793329888335,
-          4.857648334243489e-05,
-          6.907650882144097e-05,
-          3.355898826399445e-09,
-          3.0106631036988305e-06
+          0.9939941372643283,
+          0.0024145283364826707,
+          0.0034334965493264587,
+          8.190718672557029e-06,
+          0.00014964713118978374
         ],
         "R candidate_snp": "rs00037",
         "TG candidate_snp": "rs00037",
@@ -274,7 +274,7 @@
       }
     }
   ],
-  "cross_scenario_pearson_r_on_PP": 0.9926063483213919,
+  "cross_scenario_pearson_r_on_PP": 0.9999999992988593,
   "package_versions": {
     "coloc": "5.2.3",
     "jsonlite": "2.0.0",
