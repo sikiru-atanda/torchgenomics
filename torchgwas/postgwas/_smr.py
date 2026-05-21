@@ -264,20 +264,31 @@ def heidi_test(
     ld_matrix : Tensor, optional
         ``(M_gwas, M_gwas)`` SNP-SNP LD correlation matrix r (NOT r²),
         with rows / columns aligned to ``gwas.snp`` ordering. When
-        provided, HEIDI uses the full delta-method covariance ``Σ_d``
-        with off-diagonal LD coupling (Zhu et al. 2016 supplementary
-        eq. 18 / SMR-tool reference panel weighting). The same LD is
+        provided, HEIDI augments each ``Var(d_i)`` with the two cross-
+        covariance terms induced by LD between SNP i and the top SNP
+        (Zhu et al. 2016 supplementary eq. 18 / SMR-tool v1.3.1 source):
+
+            Var_LD(d_i) = Var_diag(d_i)
+                        + 2 * a_i * a_t * r(i, top) * seg_i * seg_top
+                        + 2 * c_i * c_t * r(i, top) * see_i * see_top
+
+        with ``a_i = 1/be_i``, ``c_i = -bg_i/be_i^2``, ``a_t = -1/be_top``,
+        ``c_t = +bg_top/be_top^2``. ``T_HEIDI = sum_i d_i^2 / Var_LD(d_i)``
+        with df = n_snps, matching the upstream SMR tool. The same LD is
         assumed to apply symmetrically to b_GWAS and b_eQTL covariances
-        (standard SMR assumption: both GWAS and eQTL effect-size
-        estimates are computed in the same ancestry / LD environment as
-        the reference panel).
+        (standard SMR assumption: both summary estimates come from the
+        same ancestry / reference panel).
 
         When ``None`` (V1 default) HEIDI falls back to the diagonal
-        delta-method variance assuming SNP independence — this
-        understates Var(d_i) by ignoring ρ(i, top) * SE_g_i * SE_g_top
-        cross terms and corresponds to the F3 #3 documented divergence
-        against the SMR reference tool. The diagonal-only path remains
-        the V1 default so existing callers retain identical numerics.
+        delta-method variance assuming SNP independence — this was the
+        pre-F3 #3 behavior and is kept for backward compatibility.
+
+        Note: a fully rigorous multivariate test would use ``d' Σ_d^{-1} d``
+        with ``Σ_d`` including d_i-d_j off-diagonal LD coupling and the
+        shared Var(b_top) rank-1 perturbation. That form is *more*
+        accurate but differs from what the published SMR tool computes;
+        we therefore implement the SMR convention so the LD-weighted
+        path agrees with the reference tool numerically.
 
     Returns
     -------
@@ -357,17 +368,29 @@ def heidi_test(
         )
         return p_heidi, heidi_stat, n_snps
 
-    # --- F3 #3 LD-weighted full-covariance HEIDI ---------------------------
-    # Sigma_d[i, j] is the delta-method covariance of d_i and d_j under the
-    # linearization d_i ~ a_i*delta(bg_i) + c_i*delta(be_i)
-    #                + a_t*delta(bg_top) + c_t*delta(be_top),
+    # --- F3 #3 LD-weighted HEIDI (Zhu 2016 / SMR-tool convention) ---------
+    # For each helper SNP i, augment the diagonal delta-method variance
+    # Var(d_i) with the two cross-covariance terms induced by LD between i
+    # and the top SNP — under the SMR convention (Yang lab v1.3.1 source):
+    #
+    #     Var_LD(d_i) = Var_diag(d_i)
+    #                 + 2 * a_i * a_t * r(i, top) * seg_i * seg_top
+    #                 + 2 * c_i * c_t * r(i, top) * see_i * see_top
+    #
     # with a_i = 1/be_i, c_i = -bg_i/be_i^2, a_t = -1/be_top, c_t = +bg_top/be_top^2.
-    # Off-diagonal LD r among the GWAS SNPs (assumed equal to LD r among
-    # the eQTL SNPs in the same population / reference panel) injects
-    # cross-covariance into Var(bg_i, bg_j) = r_ij * seg_i * seg_j and
-    # Var(be_i, be_j) = r_ij * see_i * see_j. The single-SNP test in
-    # Zhu 2016 supplementary equation 18 generalizes to multi-SNP HEIDI as
-    # T = d' Sigma_d^{-1} d ~ chi^2(n_snps).
+    # The HEIDI statistic remains sum_i d_i^2 / Var_LD(d_i) ~ chi^2(n_snps).
+    # This per-SNP-pair correction matches Zhu 2016 supplementary eq. 18
+    # and the published SMR tool's HEIDI output. Note that when the helper
+    # SNPs carry effect estimates of OPPOSITE sign to the top SNP (typical
+    # for cis-eQTL fine-mapping where LD-linked SNPs can flip phase),
+    # a_i * a_t and c_i * c_t are positive, so Var_LD > Var_diag and
+    # T_HEIDI shrinks — matching SMR's reported behavior under moderate LD.
+    #
+    # The full multivariate Sigma_d^{-1} form (which additionally accounts
+    # for d_i-d_j correlations through r(i, j) and the shared Var(b_top))
+    # is mathematically more rigorous but is NOT what the SMR reference
+    # tool computes; users who pass an ld_matrix to heidi_test expect the
+    # SMR convention.
     ld_matrix = ld_matrix.to(dtype=torch.float64)
     if ld_matrix.shape[0] != len(gwas.snp) or ld_matrix.shape[1] != len(gwas.snp):
         raise ValueError(
@@ -376,50 +399,24 @@ def heidi_test(
             "aligned to the GWAS SNP ordering."
         )
     idx_t = torch.tensor(gwas_idx_list, dtype=torch.long, device=ld_matrix.device)
-    top_idx = torch.tensor(probe_gwas_idx, dtype=torch.long, device=ld_matrix.device)
-    R_ii = ld_matrix[idx_t][:, idx_t]            # (n, n) r among selected
-    R_it = ld_matrix[idx_t, top_idx]              # (n,)   r between each i and top
+    R_it = ld_matrix[idx_t, probe_gwas_idx]       # (n,) r between each i and top
 
     a_i = 1.0 / be_t                              # (n,)
     c_i = -bg_t / (be_t ** 2)                     # (n,)
     a_t = -1.0 / be_top                           # scalar
     c_t = bg_top / (be_top ** 2)                  # scalar
 
-    # Term 1: a_i a_j r_ij seg_i seg_j   (GWAS-only off-diagonal LD coupling)
-    sigma_gwas = (a_i * seg_t).unsqueeze(1) * (a_i * seg_t).unsqueeze(0) * R_ii
-    # Term 2: c_i c_j r_ij see_i see_j   (eQTL-only off-diagonal LD coupling)
-    sigma_eqtl = (c_i * see_t).unsqueeze(1) * (c_i * see_t).unsqueeze(0) * R_ii
-    # Term 3+4: cross-LD between each i and the top SNP (broadcast in both rows and cols).
-    row_g = a_i * a_t * R_it * seg_t * seg_top
-    cross_gwas = row_g.unsqueeze(1) + row_g.unsqueeze(0)
-    row_e = c_i * c_t * R_it * see_t * see_top
-    cross_eqtl = row_e.unsqueeze(1) + row_e.unsqueeze(0)
-    # Term 5+6: shared Var(bg_top) and Var(be_top) — constant across (i, j).
-    var_top_block = float(a_t) ** 2 * seg_top ** 2 + float(c_t) ** 2 * see_top ** 2
-
-    Sigma_d = sigma_gwas + sigma_eqtl + cross_gwas + cross_eqtl
-    Sigma_d = Sigma_d + var_top_block * torch.ones(
-        (n_snps, n_snps), dtype=torch.float64, device=Sigma_d.device
+    var_diag = (
+        (seg_t / be_t.abs().clamp(min=1e-300)) ** 2
+        + (seg_top / max(abs(be_top), 1e-300)) ** 2
+        + (see_t * bg_t.abs() / (be_t ** 2).clamp(min=1e-300)) ** 2
+        + (see_top * abs(bg_top) / max(be_top ** 2, 1e-300)) ** 2
     )
+    cross_gwas = 2.0 * a_i * a_t * R_it * seg_t * seg_top
+    cross_eqtl = 2.0 * c_i * c_t * R_it * see_t * see_top
+    var_ld = (var_diag + cross_gwas + cross_eqtl).clamp(min=1e-300)
 
-    # Symmetrize against FP asymmetry then add a tiny ridge for numerical
-    # stability (1e-12 * trace / n — the same scale GCTA-COJO uses).
-    Sigma_d = 0.5 * (Sigma_d + Sigma_d.T)
-    ridge_scale = float(Sigma_d.diagonal().mean().clamp(min=1e-300).item()) * 1e-12
-    Sigma_d = Sigma_d + ridge_scale * torch.eye(
-        n_snps, dtype=torch.float64, device=Sigma_d.device,
-    )
-
-    try:
-        L = torch.linalg.cholesky(Sigma_d)
-        y = torch.linalg.solve_triangular(L, d_t.unsqueeze(1), upper=False)
-        heidi_stat = float((y ** 2).sum().item())
-    except RuntimeError:
-        # Cholesky failure (e.g., near-singular Sigma_d from collinear SNPs):
-        # fall back to a pseudoinverse so the test still emits a value.
-        Sigma_d_inv = torch.linalg.pinv(Sigma_d)
-        heidi_stat = float((d_t @ Sigma_d_inv @ d_t).item())
-
+    heidi_stat = float(((d_t ** 2) / var_ld).sum().item())
     p_heidi = float(
         _chi2_sf(
             torch.tensor(heidi_stat, dtype=torch.float64), df=n_snps,
