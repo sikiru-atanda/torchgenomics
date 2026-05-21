@@ -116,14 +116,59 @@ def test_hyprcoloc_null_region_low_all_posterior():
 def test_hyprcoloc_distinct_causal_variants():
     """If each trait has its own distinct causal SNP in a large region, the
     best cluster should *not* be "all three colocalize" (because they don't
-    share). We accept any outcome where PP(all) < PP(null) + PP(best pair)
-    — i.e. the model is not fooled into declaring full colocalization."""
+    share). We invoke with a neutral conditional sharing prior so the
+    data-driven evidence dominates the prior.
+
+    Updated 2026-05-15 after the F3 #1 patch: the default ``prior_2 = 0.98``
+    encodes Foley 2021's strong prior belief in sharing (`c = 0.98` means
+    "given a cluster exists, 98% chance each additional trait joins").
+    Under that default, even weakly-shared data can push PP(all-traits) >
+    0.5 because the prior favors larger clusters. This test exercises
+    the *data-driven* discrimination by setting ``prior_2 = 0.5`` (the
+    neutral midpoint where the prior is uninformative about cluster
+    size), and asserts that the distinct-signal architecture is
+    correctly identified.
+    """
     ss = _region_with_distinct_signals(
         m=100, causal_idxs=[5, 50, 90], effect=0.5, seed=9
     )
-    res = hyprcoloc(ss)
-    # PP(all three colocalize) should not dominate.
+    res = hyprcoloc(ss, prior_2=0.5)
+    # PP(all three colocalize) should not dominate under a neutral
+    # conditional prior.
     assert res.pp_all_colocalize < 0.5
+
+
+def test_hyprcoloc_foley_2021_conditional_prior_post_f3_patch():
+    """Regression: F3 #1 (2026-05-15) — under a 3-trait shared-causal
+    architecture with strong signal, R hyprcoloc reports cluster
+    membership [T1, T2, T3] (size = K = 3). Pre-patch TG returned
+    [T1, T3] (size = 2) because the product prior
+    `prior_1^|S| * prior_2^(|S|-1) * (1 - prior_1)^(K - |S|)` imposed
+    a ~1e-4 penalty per additional trait. The F3 #1 patch implements
+    Foley 2021 Eq. 2 conditional prior
+    `prior_1 * prior_2^(|S|-1) * (1 - prior_2)^(K - |S|)` so the
+    prior ratio between |S| = K and |S| = K - 1 is ~prior_2 / (1 - prior_2)
+    when prior_2 is high. Validated against R hyprcoloc at commit
+    0348bbd via validation/external/hyprcoloc/ (cluster + candidate
+    SNP agreement now exact; regional_pp Pearson r ≈ 1.0).
+
+    This test gates the patch: on a strong 3-trait shared fixture
+    with default prior_2 = 0.98, the best cluster must include ALL
+    three traits.
+    """
+    # Strong shared signal at index 50 on all 3 traits.
+    ss = _region_with_shared_signal(m=100, causal_idx=50, k_traits=3,
+                                    effect=0.6, seed=42)
+    res = hyprcoloc(ss)
+    assert res.best_cluster == (0, 1, 2), (
+        f"best_cluster = {res.best_cluster!r}; F3 #1 patch (Foley 2021 "
+        "conditional prior) likely regressed. Pre-patch best_cluster "
+        "was (0, 2); see docs/validation_findings.md."
+    )
+    assert res.best_cluster_posterior >= 0.95, (
+        f"best_cluster_posterior = {res.best_cluster_posterior:.4f}; "
+        "expected >= 0.95 under the corrected conditional prior."
+    )
 
 
 def test_hyprcoloc_identical_traits_trivially_colocalize():
@@ -194,6 +239,37 @@ def test_coloc_pairwise_distinct_signals_pph3_dominates():
     res = coloc_pairwise(ss[0], ss[1])
     # H3 (distinct causal) should beat H4 (shared).
     assert res.pp_h3 > res.pp_h4
+
+
+def test_coloc_pairwise_distinct_signals_pph3_near_unity_post_f3_patch():
+    """Regression: F3 #2 (2026-05-15) — under a strong distinct-causal
+    architecture, R coloc::coloc.abf reports PP.H3 ≈ 0.997. Pre-patch
+    TG returned PP.H3 ≈ 0.854 with the missing 14% leaked into PP.H1
+    because (a) H3 used the full outer product instead of
+    `outer - diag` and (b) the spurious `-log m` factor on the
+    per-hypothesis weights inverted the Bayes-factor balance between
+    H3 and H1. After the F3 #2 patch the corrected closed form
+    matches R to FP precision on the validation harness fixture
+    (validation/external/coloc/, scenario='distinct': max |Δ PP| = 2e-5).
+
+    This test gates the closed form: PP.H3 must be ≥ 0.95 on a
+    well-separated distinct-signal architecture, and the H1/H2
+    mass-leak must remain below 0.05 combined. Pre-patch this test
+    fails (H3 ≈ 0.85, H1 ≈ 0.14); post-patch it passes.
+    """
+    ss = _region_with_distinct_signals(m=60, causal_idxs=[10, 45],
+                                       effect=0.5, seed=33)
+    res = coloc_pairwise(ss[0], ss[1])
+    assert res.pp_h3 >= 0.95, (
+        f"PP.H3 = {res.pp_h3:.4f}; F3 #2 patch (H3 outer-minus-diagonal + drop "
+        "log_m factor) likely regressed. Pre-patch value was ~0.85; "
+        "see docs/validation_findings.md."
+    )
+    assert (res.pp_h1 + res.pp_h2) < 0.05, (
+        f"PP.H1 + PP.H2 = {res.pp_h1 + res.pp_h2:.4f}; the F3 #2 patch "
+        "should keep H1 + H2 mass below 0.05 under a well-separated "
+        "distinct-signal architecture."
+    )
 
 
 def test_coloc_pairwise_null_signal_pph0_dominates():

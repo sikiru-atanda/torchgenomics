@@ -119,6 +119,27 @@ def _log_sum_exp(x: Tensor) -> float:
     return m + float(torch.log(torch.exp(x - m).sum()).item())
 
 
+def _log_diff_exp(a: float, b: float) -> float:
+    """Stable log(exp(a) - exp(b)) for a >= b.
+
+    Used by ``coloc_pairwise`` to compute log of the H3 sum
+    `(sum_j BF1_j)(sum_j' BF2_j') - sum_j BF1_j*BF2_j` — i.e. the
+    outer product over distinct (j, j') pairs only, with the
+    diagonal that already accrues to H4 subtracted. See F3 #2 in
+    ``docs/validation_findings.md`` (2026-05-15) for the bug history.
+    """
+    if not math.isfinite(a):
+        return a
+    if a < b:
+        # Numerical safety: a >= b should hold by construction. If
+        # rounding produces a < b by a tiny amount, treat the diff
+        # as zero (log(0) = -inf).
+        return float("-inf")
+    if a == b:
+        return float("-inf")
+    return a + math.log1p(-math.exp(b - a))
+
+
 # ---------------------------------------------------------------------------
 # Multi-trait hyprcoloc
 # ---------------------------------------------------------------------------
@@ -201,19 +222,40 @@ def hyprcoloc(
             stacked = log_abf[list(subset)].sum(dim=0)  # (m,)
             subset_log_bf[tuple(subset)] = _log_sum_exp(stacked)
 
-    # Prior structure (Foley 2021 eq. 2):
-    #   Pr(H_S) = prior_1^|S| * prior_2^(|S|-1) * (1 - prior_1)^(K - |S|)
-    # for each non-singleton subset, and the null hypothesis absorbs both
-    # "no trait is associated" and "exactly one trait is associated" mass.
+    # Prior structure -- Foley et al. (2021) Eq. 2 (corrected per F3 #1
+    # patch, 2026-05-15). For a candidate cluster S of size |S| >= 2
+    # in a panel of K traits:
+    #
+    #     Pr(H_S) = prior_1 * prior_2^(|S| - 1) * (1 - prior_2)^(K - |S|)
+    #
+    # where:
+    #   prior_1 (~1e-4) is the prior probability that *some* colocalization
+    #     architecture is true at this region (drawn once per cluster).
+    #   prior_2 (~0.98, Foley's `c`) is the conditional sharing probability
+    #     -- given that a cluster exists, the probability that one more
+    #     trait joins it.
+    #   (1 - prior_2) penalises each trait that is *not* in the cluster,
+    #     i.e., the exclusion mass that the cluster must "pay" for the
+    #     remaining (K - |S|) traits being un-associated with this cluster.
+    #
+    # Pre-patch TG used the PRODUCT prior `prior_1^|S| * prior_2^(|S|-1)
+    # * (1 - prior_1)^(K - |S|)`. With prior_1 = 1e-4, that imposed a
+    # ~1e-4 penalty *per additional trait* in the cluster, so the
+    # |S| = 3 / |S| = 2 prior ratio was ~1e-4 instead of Foley's
+    # ~prior_2 / (1 - prior_2) ~= 49. The result was that strong
+    # 3-trait shared-causal architectures were assigned to a 2-trait
+    # subset by TG while R hyprcoloc correctly selected the 3-trait
+    # cluster. See docs/validation_findings.md "Tier 1 A4" for the
+    # full diagnosis + numerical reproduction.
     log_p1 = math.log(prior_1)
     log_p2 = math.log(prior_2)
-    log_1mp1 = math.log1p(-prior_1)
+    log_1mp2 = math.log1p(-prior_2)
 
     def _log_prior(subset_size: int) -> float:
         return (
-            subset_size * log_p1
+            log_p1
             + (subset_size - 1) * log_p2
-            + (K - subset_size) * log_1mp1
+            + (K - subset_size) * log_1mp2
         )
 
     # Null prior: no subset of size >= 2 colocalizes. This is the residual
@@ -345,8 +387,6 @@ def coloc_pairwise(
     log_sum2 = _log_sum_exp(log_abf2)
     log_sum12 = _log_sum_exp(log_abf1 + log_abf2)
 
-    log_m = math.log(m)
-
     # The "per-SNP BF" formulation of Giambartolomei folds priors in as:
     #   PP(H0) ∝ 1
     #   PP(H1) ∝ prior_1 * sum_j BF1_j
@@ -358,11 +398,35 @@ def coloc_pairwise(
     log_p2 = math.log(prior_2)
     log_p12 = math.log(prior_12)
 
+    # F3 #2 patch (2026-05-15): two corrections vs the pre-patch formula.
+    #
+    #   (a) Diagonal subtraction on H3. H3 is the outer product over
+    #       DISTINCT pairs (j, j') with j != j', i.e.
+    #       (sum_j BF1_j)(sum_j' BF2_j') - sum_j BF1_j*BF2_j. The
+    #       diagonal sum (j == j') already accrues to H4 and must be
+    #       subtracted to avoid double-counting.
+    #
+    #   (b) Drop the `-log m` per-SNP normalisation. R coloc::coloc.abf
+    #       (Wallace 2020 erratum) absorbs per-SNP normalisation into
+    #       the prior parameterisation directly: `prior_1` is already
+    #       the marginal-SNP prior, so summing BF1_j over j gives the
+    #       per-region weight without a further 1/m factor. Pre-patch
+    #       TG carried `-log m` on H1/H2/H4 and `-2*log m` on H3,
+    #       which shifted ~14% mass from H3 to H1 in the distinct
+    #       scenario when H4 had stopped dominating.
+    #
+    # Numerically verified by the Tier 1 A3 dispatch (2026-05-15): the
+    # corrected closed form reproduces R coloc.abf at FP precision on
+    # the planted shared / distinct / null scenarios. See
+    # docs/validation_findings.md "Tier 1 A3" entry for the full
+    # derivation.
     log_h0 = 0.0
-    log_h1 = log_p1 + log_sum1 - log_m
-    log_h2 = log_p2 + log_sum2 - log_m
-    log_h3 = log_p1 + log_p2 + log_sum1 + log_sum2 - 2.0 * log_m
-    log_h4 = log_p12 + log_sum12 - log_m
+    log_h1 = log_p1 + log_sum1
+    log_h2 = log_p2 + log_sum2
+    log_h3_outer = log_sum1 + log_sum2
+    log_h3_outer_minus_diag = _log_diff_exp(log_h3_outer, log_sum12)
+    log_h3 = log_p1 + log_p2 + log_h3_outer_minus_diag
+    log_h4 = log_p12 + log_sum12
 
     log_weights = torch.tensor(
         [log_h0, log_h1, log_h2, log_h3, log_h4], dtype=torch.float64

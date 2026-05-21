@@ -83,6 +83,7 @@ class OCFNullFit:
     # DML scan options (stored at fit time, used at scan time)
     variance_type: str = "HC"
     project_genotype: bool = True
+    nuisance_learner: str = "linear"
 
     @property
     def sig2_g(self) -> float:
@@ -135,6 +136,7 @@ def _fit_fold(
     sig2_g_init: float | None = None,
     sig2_e_init: float | None = None,
     fold_id: int = 0,
+    nuisance_learner: str = "linear",
 ) -> FoldResult:
     """Fit nuisance on train set, BLUP predict on test set, compute residual.
 
@@ -172,7 +174,20 @@ def _fit_fold(
     sig2_e = nf_train.sig2_e
     # NullFit.b0 = X_rot^T W Y_rot (RHS of normal equations), not beta_hat.
     # Solve: beta_hat = (X^T W X)^{-1} X^T W Y = M00^{-1} b0
-    beta_hat = torch.linalg.solve(nf_train.M00, nf_train.b0)  # (c,)
+    # Under nuisance_learner="ridge_quadratic" the expanded X0 has many
+    # near-collinear quadratic / interaction columns; add a small ridge to
+    # M00 so beta_hat does not overfit the train fold (Chernozhukov 2018
+    # eq. 3.3 — both nuisances l(W), m(W) must converge at rate o(n^{-1/4}),
+    # and ridge is the closed-form learner with this property at fixed
+    # feature dim). Matches the reference DML ridge in
+    # validation/specialty/ocf/run_reference.R (lambda = 1e-2).
+    M00_solve = nf_train.M00
+    if nuisance_learner == "ridge_quadratic":
+        ridge_lambda = 1e-2
+        M00_solve = M00_solve + ridge_lambda * torch.eye(
+            M00_solve.shape[0], dtype=M00_solve.dtype, device=M00_solve.device
+        )
+    beta_hat = torch.linalg.solve(M00_solve, nf_train.b0)  # (c,)
 
     # BLUP for test samples:
     # V_train_inv @ r_train, where V_train = sig2_g*K_train + sig2_e*I
@@ -235,12 +250,40 @@ def _assemble_residuals(
 # DML scan algebra
 # ---------------------------------------------------------------------------
 
+def _expand_quadratic_features(X0: Tensor) -> Tensor:
+    """Augment X0 = [1, w_1, ..., w_c] with squared terms w_i^2 and pairwise
+    interactions w_i * w_j (i < j).
+
+    Used by the ``ridge_quadratic`` nuisance learner (Chernozhukov 2018) so
+    the cross-fit residuals are orthogonal to nonlinear functions of the
+    covariates W. Non-intercept columns are centered before squaring /
+    interacting to keep the design well-conditioned against the linear block.
+
+    The first column is assumed to be the intercept and is preserved
+    unchanged (squaring or interacting an all-ones column would only
+    reintroduce the intercept).
+    """
+    if X0.shape[1] < 2:
+        return X0
+    intercept = X0[:, :1]
+    W = X0[:, 1:]
+    W_centered = W - W.mean(dim=0, keepdim=True)
+    sq = W_centered ** 2
+    c = W.shape[1]
+    if c >= 2:
+        idx_i, idx_j = torch.triu_indices(c, c, offset=1)
+        inter = W_centered[:, idx_i] * W_centered[:, idx_j]
+        return torch.cat([intercept, W, sq, inter], dim=1)
+    return torch.cat([intercept, W, sq], dim=1)
+
+
 def _dml_score_batch(
     G_chunk: Tensor,
     y_tilde: Tensor,
     X0: Tensor,
     variance_type: str = "HC",
     project_genotype: bool = True,
+    nuisance_learner: str = "linear",
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     """DML scan: OLS of y_tilde on (optionally projected) genotypes.
 
@@ -262,9 +305,22 @@ def _dml_score_batch(
     n, m = G_chunk.shape
     device = G_chunk.device
 
-    # Genotype nuisance: project out covariates from genotypes
+    # Genotype nuisance: project out covariates from genotypes.
+    # When nuisance_learner == "ridge_quadratic" the X0 stored on the null
+    # fit has already been expanded with quadratic + interaction features
+    # (see fit_null + _expand_quadratic_features). We add a small ridge here
+    # because the expanded design is high-dimensional and can be near-singular.
     if project_genotype and X0.shape[1] > 0:
         XtX = X0.T @ X0  # (c, c)
+        if nuisance_learner == "ridge_quadratic":
+            # Match the constant ridge used by the reference DML in
+            # validation/specialty/ocf/run_reference.R (lambda = 1e-2).
+            # The same lambda is applied symmetrically to the outcome side
+            # in _fit_fold.
+            ridge_lambda = 1e-2
+            XtX = XtX + ridge_lambda * torch.eye(
+                X0.shape[1], dtype=X0.dtype, device=X0.device
+            )
         XtG = X0.T @ G_chunk  # (c, m)
         proj = torch.linalg.solve(XtX, XtG)  # (c, m)
         g_tilde = G_chunk - X0 @ proj  # (n, m)
@@ -329,6 +385,22 @@ class OCFLMM:
     project_genotype : bool
         If True (default), project genotypes onto covariate space before testing.
         This is the genotype nuisance l(W) = E[g|W] approximation.
+    nuisance_learner : str
+        ``"linear"`` (default, V1 backward-compatible) — both the outcome
+        nuisance m(W) = E[y|W] (via LMM with linear fixed effects) and the
+        treatment nuisance l(W) = E[g|W] (via OLS projection of g on X0)
+        are linear in the supplied covariates X0.
+
+        ``"ridge_quadratic"`` — augment X0 with squared terms and pairwise
+        interactions of non-intercept columns before both the outcome LMM
+        fit and the treatment projection, with a small ridge penalty
+        (1e-4 * n) on the expanded design. This mirrors the DoubleML
+        ``ml_g`` / ``ml_m`` flexibility advocated by Chernozhukov et al.
+        (2018, eq. 3.1): when E[y|W] or E[g|W] is nonlinear in W (e.g.,
+        quadratic confounding by age, BMI, or interactions), a linear
+        nuisance learner leaves residuals that are not orthogonal and
+        biases theta_hat. The default stays ``"linear"`` so all existing
+        callers retain bit-identical V1 behavior.
     """
 
     def __init__(
@@ -338,12 +410,20 @@ class OCFLMM:
         seed: int | None = None,
         variance_type: str = "HC",
         project_genotype: bool = True,
+        nuisance_learner: str = "linear",
     ) -> None:
+        if nuisance_learner not in ("linear", "ridge_quadratic"):
+            raise ValueError(
+                "nuisance_learner must be 'linear' (V1 default) or "
+                "'ridge_quadratic' (Chernozhukov 2018 nonlinear-W extension); "
+                f"got {nuisance_learner!r}"
+            )
         self.config = config or NumericalConfig()
         self.n_folds = n_folds
         self.seed = seed
         self.variance_type = variance_type
         self.project_genotype = project_genotype
+        self.nuisance_learner = nuisance_learner
 
     # ------------------------------------------------------------------
     # fit_null
@@ -385,6 +465,14 @@ class OCFLMM:
             raise ValueError(f"n_folds must be >= 2, got {self.n_folds}")
         if self.n_folds > n:
             raise ValueError(f"n_folds ({self.n_folds}) > n ({n})")
+
+        if self.nuisance_learner == "ridge_quadratic":
+            X0 = _expand_quadratic_features(X0)
+            logger.info(
+                "OCF-LMM nuisance_learner=ridge_quadratic: expanded X0 to %d "
+                "features (squares + pairwise interactions of non-intercept cols)",
+                X0.shape[1],
+            )
 
         # --- Quick full-sample REML for warm-start ---
         logger.info("OCF-LMM: full-sample REML for warm-start...")
@@ -433,6 +521,7 @@ class OCFLMM:
                 sig2_g_init=sig2_g_init,
                 sig2_e_init=sig2_e_init,
                 fold_id=k,
+                nuisance_learner=self.nuisance_learner,
             )
             fold_results.append(fr)
 
@@ -472,6 +561,7 @@ class OCFLMM:
             device=device,
             variance_type=self.variance_type,
             project_genotype=self.project_genotype,
+            nuisance_learner=self.nuisance_learner,
         )
 
     # ------------------------------------------------------------------
@@ -513,6 +603,7 @@ class OCFLMM:
             null_fit.X0,
             variance_type=null_fit.variance_type,
             project_genotype=null_fit.project_genotype,
+            nuisance_learner=null_fit.nuisance_learner,
         )
 
         return ScanResult(
