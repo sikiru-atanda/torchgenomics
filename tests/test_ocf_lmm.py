@@ -426,3 +426,162 @@ class TestProtocol:
         model = OCFLMM()
         assert hasattr(model, "score_chunk")
         assert callable(model.score_chunk)
+
+
+# ===================================================================
+# F3 #4 patch (2026-05-15): nuisance_learner='ridge_quadratic'
+# ===================================================================
+
+class TestNuisanceLearner:
+    """Regression gates for the F3 #4 patch: OCFLMM accepts a
+    ``nuisance_learner`` parameter that extends the linear-in-W default
+    with a quadratic-feature + pairwise-interaction ridge learner
+    (Chernozhukov 2018, eq. 3.1).
+
+    The validation/specialty/ocf/ harness fixture engineers a partially
+    linear DGP where E[y|W] and E[g|W] contain W^2 and W_i*W_j terms; under
+    that DGP the V1 ``"linear"`` default leaves nonzero E[m(W) - lin(W)],
+    biases theta_hat downward, and drops 95% CI empirical coverage to ~0.41
+    against the [0.92, 0.98] target. The ``"ridge_quadratic"`` option closes
+    this gap by augmenting X0 with squares + pairwise interactions before
+    both the LMM outcome fit and the treatment-side genotype projection.
+    See docs/validation_findings.md.
+    """
+
+    def _simulate_partially_linear(self, n, dW, theta0, seed, sigma_g=1.0,
+                                   sigma_y=1.0, rho=0.3):
+        """Reproduce a single replicate of the OCF harness DGP.
+
+        m(W) = 1 + W1 + 0.25 * W2^2 + 0.5 * W3 * W4
+        l(W) = -0.5 + 0.5 * W1 + 0.25 * W2 + 0.5 * W3^2 + 0.25 * sin(W5)
+        y = theta0 * g + l(W) + sigma_y * eps
+        g = m(W) + sigma_g * v
+
+        W is drawn from N(0, Sigma_W) with Sigma_W[i, j] = rho^|i-j|
+        (matches the AR(1)-like correlation structure that
+        validation/specialty/ocf/generate.R uses via MASS::mvrnorm). The
+        correlated-W is load-bearing: with i.i.d. W the nonlinear terms in
+        m(W) and l(W) involve disjoint variables and do not confound theta_hat;
+        with rho > 0 the W^2 and W_i*W_j terms in m and l become coupled
+        through the shared W block, biasing the linear-nuisance estimator.
+        """
+        gen = torch.Generator().manual_seed(seed)
+        Sigma_W = torch.tensor(
+            [[rho ** abs(i - j) for j in range(dW)] for i in range(dW)],
+            dtype=torch.float64,
+        )
+        L = torch.linalg.cholesky(Sigma_W)
+        Z = torch.randn((n, dW), generator=gen, dtype=torch.float64)
+        W = Z @ L.T
+        v = torch.randn(n, generator=gen, dtype=torch.float64)
+        eps = torch.randn(n, generator=gen, dtype=torch.float64)
+        m_W = (1.0 + W[:, 0] + 0.25 * W[:, 1] ** 2 + 0.5 * W[:, 2] * W[:, 3])
+        l_W = (
+            -0.5 + 0.5 * W[:, 0] + 0.25 * W[:, 1]
+            + 0.5 * W[:, 2] ** 2 + 0.25 * torch.sin(W[:, 4])
+        )
+        g = m_W + sigma_g * v
+        g = (g - g.mean()) / g.std()
+        Y = theta0 * g + l_W + sigma_y * eps
+        X0 = torch.cat([torch.ones((n, 1), dtype=torch.float64), W], dim=1)
+        K = torch.eye(n, dtype=torch.float64)
+        return Y, g.unsqueeze(1), X0, K
+
+    def _run_reps(self, *, nuisance_learner, reps=40, n=400, n_folds=5, dW=5,
+                  theta0=0.3, seed_base=11):
+        biases = []
+        ses = []
+        for r in range(reps):
+            Y, G, X0, K = self._simulate_partially_linear(
+                n=n, dW=dW, theta0=theta0, seed=seed_base + r,
+            )
+            model = OCFLMM(
+                n_folds=n_folds, seed=seed_base + r,
+                variance_type="HC", project_genotype=True,
+                nuisance_learner=nuisance_learner,
+            )
+            nf = model.fit_null(Y, X0, K=K)
+            vmeta = VariantMeta(
+                snp=["rs0"], chr=["1"], pos=[0], a1=["A"], a2=["G"],
+            )
+            sr = model.score_chunk(G, nf, vmeta)
+            biases.append(float(sr.beta.item()) - theta0)
+            ses.append(float(sr.se.item()))
+        return torch.tensor(biases, dtype=torch.float64), torch.tensor(ses, dtype=torch.float64)
+
+    def test_rejects_unknown_learner(self):
+        with pytest.raises(ValueError, match="nuisance_learner"):
+            OCFLMM(nuisance_learner="random_forest")
+
+    def test_default_is_linear(self):
+        """Backward compatibility: omitting nuisance_learner keeps V1 behavior."""
+        assert OCFLMM().nuisance_learner == "linear"
+
+    def test_linear_default_unchanged_by_patch(self):
+        """The patch must not change the linear-default code path. Verifies
+        OCFNullFit.X0 has the original (unexpanded) column count."""
+        data = _simulate_ocf_data(n=100, n_snps=5, seed=77)
+        model = OCFLMM(n_folds=3, seed=77)
+        nf = model.fit_null(data["Y"], data["X0"], K=data["K"])
+        assert nf.X0.shape[1] == data["X0"].shape[1]
+        assert nf.nuisance_learner == "linear"
+
+    def test_ridge_quadratic_expands_x0(self):
+        """ridge_quadratic must expand X0 from c columns to
+        1 + c_W + c_W + c_W*(c_W-1)/2 columns (intercept + W + W^2 + pairs)."""
+        data = _simulate_ocf_data(n=100, n_snps=5, seed=78)
+        c_orig = data["X0"].shape[1]
+        c_W = c_orig - 1  # non-intercept block size
+        expected = 1 + c_W + c_W + c_W * (c_W - 1) // 2
+        model = OCFLMM(n_folds=3, seed=78, nuisance_learner="ridge_quadratic")
+        nf = model.fit_null(data["Y"], data["X0"], K=data["K"])
+        assert nf.X0.shape[1] == expected
+        assert nf.nuisance_learner == "ridge_quadratic"
+
+    @pytest.mark.slow
+    def test_ridge_quadratic_reduces_bias_on_partially_linear_dgp(self):
+        """F3 #4 gate: on the Chernozhukov 2018 partially-linear DGP that
+        the validation harness uses (AR(1) W block, K=5 folds, n=400),
+        ``ridge_quadratic`` must reduce |mean bias| relative to the linear
+        default by at least 50% and lift 95% empirical coverage to >= 0.85.
+
+        Calibration on this fixture (40 reps, seed_base = 11):
+            linear:           mean_bias ~ +0.20, mean|bias| ~ 0.21, cov95 ~ 0.41
+            ridge_quadratic:  mean_bias ~ +0.02, mean|bias| ~ 0.07, cov95 ~ 0.94
+
+        Numbers were observed-then-floored: the asserts are looser than the
+        observed values so the test tolerates 40-rep Monte Carlo noise.
+        """
+        bias_linear, se_linear = self._run_reps(
+            nuisance_learner="linear", reps=40,
+        )
+        bias_quad, se_quad = self._run_reps(
+            nuisance_learner="ridge_quadratic", reps=40,
+        )
+        mean_abs_linear = float(bias_linear.abs().mean())
+        mean_abs_quad   = float(bias_quad.abs().mean())
+        assert mean_abs_quad < mean_abs_linear * 0.50, (
+            f"ridge_quadratic mean |bias| = {mean_abs_quad:.4f}, linear "
+            f"mean |bias| = {mean_abs_linear:.4f}; F3 #4 patch should "
+            "halve mean |bias| on the AR(1)-W partially-linear DGP."
+        )
+
+        # 95% Wald-interval empirical coverage.
+        def coverage(bias_t, se_t):
+            half = 1.96 * se_t
+            return ((bias_t.abs() <= half).float()).mean().item()
+        cov_linear = coverage(bias_linear, se_linear)
+        cov_quad   = coverage(bias_quad,   se_quad)
+        # The DGP is engineered so linear is *known* to undercover; assert
+        # the gap explicitly so a regression that re-narrows the linear path
+        # also fails this test.
+        assert cov_linear < 0.70, (
+            f"linear cov95 = {cov_linear:.3f}; expected < 0.70 on the AR(1)-W "
+            "DGP — if this fires the DGP fixture has drifted."
+        )
+        assert cov_quad >= 0.85, (
+            f"ridge_quadratic cov95 = {cov_quad:.3f}; F3 #4 patch should "
+            "lift empirical coverage above 0.85 (target band [0.92, 0.98] "
+            "in the validation/specialty/ocf/ harness at 100 reps; "
+            "this test floors at 0.85 to absorb 40-rep Monte Carlo noise)."
+        )
