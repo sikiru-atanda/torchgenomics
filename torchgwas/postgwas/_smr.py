@@ -240,6 +240,7 @@ def heidi_test(
     nearby_snps: list[str],
     ld_r2_threshold: float = 0.05,
     max_snps: int = 20,
+    ld_matrix: Tensor | None = None,
 ) -> tuple[float, float, int]:
     """HEIDI heterogeneity test.
 
@@ -260,6 +261,23 @@ def heidi_test(
         Minimum r² with probe to include in HEIDI (default 0.05).
     max_snps : int
         Maximum number of SNPs to use (default 20, sorted by eQTL p).
+    ld_matrix : Tensor, optional
+        ``(M_gwas, M_gwas)`` SNP-SNP LD correlation matrix r (NOT r²),
+        with rows / columns aligned to ``gwas.snp`` ordering. When
+        provided, HEIDI uses the full delta-method covariance ``Σ_d``
+        with off-diagonal LD coupling (Zhu et al. 2016 supplementary
+        eq. 18 / SMR-tool reference panel weighting). The same LD is
+        assumed to apply symmetrically to b_GWAS and b_eQTL covariances
+        (standard SMR assumption: both GWAS and eQTL effect-size
+        estimates are computed in the same ancestry / LD environment as
+        the reference panel).
+
+        When ``None`` (V1 default) HEIDI falls back to the diagonal
+        delta-method variance assuming SNP independence — this
+        understates Var(d_i) by ignoring ρ(i, top) * SE_g_i * SE_g_top
+        cross terms and corresponds to the F3 #3 documented divergence
+        against the SMR reference tool. The diagonal-only path remains
+        the V1 default so existing callers retain identical numerics.
 
     Returns
     -------
@@ -280,11 +298,8 @@ def heidi_test(
 
     ratio_top = bg_top / be_top
 
-    # Collect d_i and var_i for nearby SNPs
-    d_vals: list[float] = []
-    var_vals: list[float] = []
-
-    # Sort nearby by eQTL p-value
+    # Sort nearby by eQTL p-value and select up to ``max_snps`` SNPs that
+    # are present in both summaries and have non-degenerate eQTL effect.
     snp_p_pairs: list[tuple[str, float]] = []
     for s in nearby_snps:
         ei = eqtl_map.get(s)
@@ -293,44 +308,123 @@ def heidi_test(
             snp_p_pairs.append((s, float(eqtl.p[ei].item())))
     snp_p_pairs.sort(key=lambda x: x[1])
 
+    bg_list: list[float] = []
+    be_list: list[float] = []
+    seg_list: list[float] = []
+    see_list: list[float] = []
+    gwas_idx_list: list[int] = []
     for s, _ in snp_p_pairs[:max_snps]:
         gi = gwas_map[s]
         ei = eqtl_map[s]
-        bg_i = float(gwas.beta[gi].item())
         be_i = float(eqtl.beta[ei].item())
-        seg_i = float(gwas.se[gi].item())
-        see_i = float(eqtl.se[ei].item())
-        seg_top = float(gwas.se[probe_gwas_idx].item())
-        see_top = float(eqtl.se[probe_eqtl_idx].item())
-
         if abs(be_i) < 1e-300:
             continue
+        bg_list.append(float(gwas.beta[gi].item()))
+        be_list.append(be_i)
+        seg_list.append(float(gwas.se[gi].item()))
+        see_list.append(float(eqtl.se[ei].item()))
+        gwas_idx_list.append(gi)
 
-        ratio_i = bg_i / be_i
-        d_i = ratio_i - ratio_top
-
-        # Variance of d_i (delta method, assuming independence)
-        var_i = ((seg_i / max(abs(be_i), 1e-300)) ** 2
-                 + (seg_top / max(abs(be_top), 1e-300)) ** 2
-                 + (see_i * abs(bg_i) / max(be_i ** 2, 1e-300)) ** 2
-                 + (see_top * abs(bg_top) / max(be_top ** 2, 1e-300)) ** 2)
-
-        if var_i > 1e-300:
-            d_vals.append(d_i)
-            var_vals.append(var_i)
-
-    n_snps = len(d_vals)
+    n_snps = len(bg_list)
     if n_snps < 1:
         return 1.0, 0.0, 0
 
-    d_t = torch.tensor(d_vals, dtype=torch.float64)
-    v_t = torch.tensor(var_vals, dtype=torch.float64)
-    heidi_stat = float((d_t ** 2 / v_t).sum().item())
+    bg_t = torch.tensor(bg_list, dtype=torch.float64)
+    be_t = torch.tensor(be_list, dtype=torch.float64)
+    seg_t = torch.tensor(seg_list, dtype=torch.float64)
+    see_t = torch.tensor(see_list, dtype=torch.float64)
+    seg_top = float(gwas.se[probe_gwas_idx].item())
+    see_top = float(eqtl.se[probe_eqtl_idx].item())
 
-    p_heidi = float(_chi2_sf(
-        torch.tensor(heidi_stat, dtype=torch.float64), df=n_snps
-    ).item())
+    d_t = bg_t / be_t - ratio_top  # (n,) cross-fit GWAS/eQTL ratio differences
 
+    if ld_matrix is None:
+        # Diagonal delta-method variance (assumes SNP independence). The
+        # V1 default; matches the pre-F3 #3 behavior bit-for-bit when the
+        # corresponding SNPs survived the same filter.
+        var_t = (
+            (seg_t / be_t.abs().clamp(min=1e-300)) ** 2
+            + (seg_top / max(abs(be_top), 1e-300)) ** 2
+            + (see_t * bg_t.abs() / (be_t ** 2).clamp(min=1e-300)) ** 2
+            + (see_top * abs(bg_top) / max(be_top ** 2, 1e-300)) ** 2
+        )
+        var_safe = var_t.clamp(min=1e-300)
+        heidi_stat = float(((d_t ** 2) / var_safe).sum().item())
+        p_heidi = float(
+            _chi2_sf(
+                torch.tensor(heidi_stat, dtype=torch.float64), df=n_snps,
+            ).item()
+        )
+        return p_heidi, heidi_stat, n_snps
+
+    # --- F3 #3 LD-weighted full-covariance HEIDI ---------------------------
+    # Sigma_d[i, j] is the delta-method covariance of d_i and d_j under the
+    # linearization d_i ~ a_i*delta(bg_i) + c_i*delta(be_i)
+    #                + a_t*delta(bg_top) + c_t*delta(be_top),
+    # with a_i = 1/be_i, c_i = -bg_i/be_i^2, a_t = -1/be_top, c_t = +bg_top/be_top^2.
+    # Off-diagonal LD r among the GWAS SNPs (assumed equal to LD r among
+    # the eQTL SNPs in the same population / reference panel) injects
+    # cross-covariance into Var(bg_i, bg_j) = r_ij * seg_i * seg_j and
+    # Var(be_i, be_j) = r_ij * see_i * see_j. The single-SNP test in
+    # Zhu 2016 supplementary equation 18 generalizes to multi-SNP HEIDI as
+    # T = d' Sigma_d^{-1} d ~ chi^2(n_snps).
+    ld_matrix = ld_matrix.to(dtype=torch.float64)
+    if ld_matrix.shape[0] != len(gwas.snp) or ld_matrix.shape[1] != len(gwas.snp):
+        raise ValueError(
+            f"ld_matrix shape {tuple(ld_matrix.shape)} does not match "
+            f"len(gwas.snp) = {len(gwas.snp)}; rows / columns must be "
+            "aligned to the GWAS SNP ordering."
+        )
+    idx_t = torch.tensor(gwas_idx_list, dtype=torch.long, device=ld_matrix.device)
+    top_idx = torch.tensor(probe_gwas_idx, dtype=torch.long, device=ld_matrix.device)
+    R_ii = ld_matrix[idx_t][:, idx_t]            # (n, n) r among selected
+    R_it = ld_matrix[idx_t, top_idx]              # (n,)   r between each i and top
+
+    a_i = 1.0 / be_t                              # (n,)
+    c_i = -bg_t / (be_t ** 2)                     # (n,)
+    a_t = -1.0 / be_top                           # scalar
+    c_t = bg_top / (be_top ** 2)                  # scalar
+
+    # Term 1: a_i a_j r_ij seg_i seg_j   (GWAS-only off-diagonal LD coupling)
+    sigma_gwas = (a_i * seg_t).unsqueeze(1) * (a_i * seg_t).unsqueeze(0) * R_ii
+    # Term 2: c_i c_j r_ij see_i see_j   (eQTL-only off-diagonal LD coupling)
+    sigma_eqtl = (c_i * see_t).unsqueeze(1) * (c_i * see_t).unsqueeze(0) * R_ii
+    # Term 3+4: cross-LD between each i and the top SNP (broadcast in both rows and cols).
+    row_g = a_i * a_t * R_it * seg_t * seg_top
+    cross_gwas = row_g.unsqueeze(1) + row_g.unsqueeze(0)
+    row_e = c_i * c_t * R_it * see_t * see_top
+    cross_eqtl = row_e.unsqueeze(1) + row_e.unsqueeze(0)
+    # Term 5+6: shared Var(bg_top) and Var(be_top) — constant across (i, j).
+    var_top_block = float(a_t) ** 2 * seg_top ** 2 + float(c_t) ** 2 * see_top ** 2
+
+    Sigma_d = sigma_gwas + sigma_eqtl + cross_gwas + cross_eqtl
+    Sigma_d = Sigma_d + var_top_block * torch.ones(
+        (n_snps, n_snps), dtype=torch.float64, device=Sigma_d.device
+    )
+
+    # Symmetrize against FP asymmetry then add a tiny ridge for numerical
+    # stability (1e-12 * trace / n — the same scale GCTA-COJO uses).
+    Sigma_d = 0.5 * (Sigma_d + Sigma_d.T)
+    ridge_scale = float(Sigma_d.diagonal().mean().clamp(min=1e-300).item()) * 1e-12
+    Sigma_d = Sigma_d + ridge_scale * torch.eye(
+        n_snps, dtype=torch.float64, device=Sigma_d.device,
+    )
+
+    try:
+        L = torch.linalg.cholesky(Sigma_d)
+        y = torch.linalg.solve_triangular(L, d_t.unsqueeze(1), upper=False)
+        heidi_stat = float((y ** 2).sum().item())
+    except RuntimeError:
+        # Cholesky failure (e.g., near-singular Sigma_d from collinear SNPs):
+        # fall back to a pseudoinverse so the test still emits a value.
+        Sigma_d_inv = torch.linalg.pinv(Sigma_d)
+        heidi_stat = float((d_t @ Sigma_d_inv @ d_t).item())
+
+    p_heidi = float(
+        _chi2_sf(
+            torch.tensor(heidi_stat, dtype=torch.float64), df=n_snps,
+        ).item()
+    )
     return p_heidi, heidi_stat, n_snps
 
 
@@ -346,6 +440,7 @@ def smr_heidi(
     smr_p_threshold: float = 0.05,
     heidi_p_threshold: float = 0.05,
     heidi_max_snps: int = 20,
+    ld_matrix: Tensor | None = None,
 ) -> SMRSummary:
     """Run SMR + HEIDI across multiple genes.
 
@@ -365,6 +460,12 @@ def smr_heidi(
         HEIDI p-value threshold (genes with p > this pass HEIDI).
     heidi_max_snps : int
         Maximum SNPs per HEIDI test.
+    ld_matrix : Tensor, optional
+        ``(M_gwas, M_gwas)`` SNP-SNP LD r matrix aligned to ``gwas.snp``.
+        When provided, every per-gene HEIDI call uses the LD-weighted
+        full-covariance variance (Zhu 2016 supplementary eq. 18) instead
+        of the diagonal-only delta-method default. See ``heidi_test``
+        for the formula and the F3 #3 rationale.
 
     Returns
     -------
@@ -383,6 +484,7 @@ def smr_heidi(
             p_h, h_stat, n_h = heidi_test(
                 gwas, eqtl, res.probe_snp, nearby,
                 max_snps=heidi_max_snps,
+                ld_matrix=ld_matrix,
             )
             res = SMRResult(
                 gene_id=res.gene_id,

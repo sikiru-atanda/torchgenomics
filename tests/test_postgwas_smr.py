@@ -270,3 +270,187 @@ def test_smr_result_fields():
     assert 0.0 <= res.p_smr <= 1.0
     assert res.chi2_smr >= 0.0
     assert res.se_smr > 0.0
+
+
+# ===================================================================
+# F3 #3 patch (2026-05-21): LD-weighted HEIDI variance (Zhu 2016 sup. eq. 18)
+# ===================================================================
+
+class TestHeidiLdMatrix:
+    """Regression gates for the F3 #3 patch: ``heidi_test`` accepts an
+    optional ``ld_matrix`` so the variance of ``d_i = bg_i/be_i -
+    bg_top/be_top`` includes the full delta-method off-diagonal LD
+    coupling, instead of the diagonal-only independence approximation.
+
+    The 2026-05-15 SMR harness recorded chi²_HEIDI / p_HEIDI inside the
+    floored tolerance band (1.0 / 2.0) but with ~38% chi² relative
+    divergence against the upstream SMR tool, classified F3 post-V1.
+    The patch closes that gap when the caller provides the reference
+    LD r matrix; the default ``ld_matrix=None`` remains the diagonal
+    estimator (bit-identical to pre-patch behavior).
+    """
+
+    def _block_ld_sumstats(self, m, rho, top_idx, bg_top, be_top,
+                          bg_off, be_off, se_g=0.05, se_e=0.05):
+        """Build aligned (gwas, eqtl) SumStats where the top SNP has a
+        strong common signal and all other SNPs sit in compound-symmetric
+        LD (correlation rho) with it."""
+        snps = [f"rs{i}" for i in range(m)]
+        bg = [bg_off] * m
+        bg[top_idx] = bg_top
+        be = [be_off] * m
+        be[top_idx] = be_top
+        ps = [1e-3] * m
+        ps[top_idx] = 1e-12
+        gwas = _make_sumstats(snps, bg, [se_g] * m, ps)
+        eqtl = _make_sumstats(snps, be, [se_e] * m, ps)
+        # Compound-symmetric LD matrix r (NOT r²), diagonal = 1.
+        R = torch.full((m, m), float(rho), dtype=torch.float64)
+        R.fill_diagonal_(1.0)
+        return gwas, eqtl, R
+
+    def test_default_ld_matrix_none_matches_pre_patch(self):
+        """Backward compatibility: heidi_test with ld_matrix=None gives
+        the same answer as the pre-patch diagonal estimator. We re-derive
+        the diagonal value by hand to make the gate self-contained."""
+        gwas, eqtl, _ = self._block_ld_sumstats(
+            m=6, rho=0.0, top_idx=0,
+            bg_top=0.30, be_top=0.45,
+            bg_off=0.30 + 0.04, be_off=0.45,
+        )
+        nearby = [f"rs{i}" for i in range(1, 6)]
+        p_heidi, h_stat, n = heidi_test(
+            gwas, eqtl, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+        )
+        assert n == 5
+        # All d_i identical with same variance: T = 5 * d^2 / var_d.
+        bg_top, be_top = 0.30, 0.45
+        bg_i, be_i = 0.34, 0.45
+        seg, see = 0.05, 0.05
+        d = bg_i / be_i - bg_top / be_top
+        var_d = (
+            (seg / abs(be_i)) ** 2
+            + (seg / abs(be_top)) ** 2
+            + (see * abs(bg_i) / be_i ** 2) ** 2
+            + (see * abs(bg_top) / be_top ** 2) ** 2
+        )
+        expected = 5.0 * d ** 2 / var_d
+        assert abs(h_stat - expected) / expected < 1e-9
+
+    def test_ld_matrix_shape_mismatch_raises(self):
+        gwas, eqtl, _ = self._block_ld_sumstats(
+            m=6, rho=0.3, top_idx=0,
+            bg_top=0.3, be_top=0.4,
+            bg_off=0.32, be_off=0.4,
+        )
+        bad_ld = torch.eye(3, dtype=torch.float64)  # 3 != len(gwas.snp)
+        with pytest.raises(ValueError, match="ld_matrix shape"):
+            heidi_test(
+                gwas, eqtl, probe_snp="rs0",
+                nearby_snps=[f"rs{i}" for i in range(1, 6)],
+                ld_matrix=bad_ld,
+            )
+
+    def test_ld_weighted_chi2_differs_from_diagonal_under_strong_ld(self):
+        """The whole point of the patch: with strong off-diagonal LD
+        (rho = 0.8) the LD-weighted chi² must differ materially from
+        the diagonal-only estimate. Under positive LD between the top
+        SNP and helper SNPs, the cross terms in Σ_d are LARGE and the
+        LD-weighted chi² shifts substantially (typically downward — the
+        diagonal estimator overstates Var(d_i) when bg, be have
+        concordant signs, which inflates the diagonal chi² spuriously).
+        """
+        gwas, eqtl, R = self._block_ld_sumstats(
+            m=8, rho=0.8, top_idx=0,
+            bg_top=0.30, be_top=0.45,
+            bg_off=0.30 + 0.02, be_off=0.45,
+        )
+        nearby = [f"rs{i}" for i in range(1, 8)]
+        p_diag, h_diag, n_diag = heidi_test(
+            gwas, eqtl, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+        )
+        p_ld, h_ld, n_ld = heidi_test(
+            gwas, eqtl, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+            ld_matrix=R,
+        )
+        assert n_diag == n_ld == 7
+        # The LD-weighted chi² must shift by at least 20% under rho = 0.8.
+        rel = abs(h_ld - h_diag) / max(h_diag, 1e-12)
+        assert rel > 0.2, (
+            f"LD-weighted chi² = {h_ld:.4f}, diagonal = {h_diag:.4f}; "
+            f"relative shift = {rel:.4f}; F3 #3 patch should produce "
+            "a >20% shift under rho = 0.8 — if not, the off-diagonal "
+            "covariance contribution is silently zeroed."
+        )
+        # Both p-values must still be in [0, 1].
+        assert 0.0 <= p_diag <= 1.0 and 0.0 <= p_ld <= 1.0
+
+    def test_ld_identity_correctly_shares_top_snp_variance(self):
+        """Under identity LD the off-diagonal SNP correlation is zero,
+        but the top-SNP variance contribution Var(b_top), Var(be_top) is
+        still SHARED across every d_i (each d_i subtracts the same
+        bg_top/be_top). The LD-weighted Σ_d encodes that correctly with
+        a uniform var_top_block added to every (i, j) entry — equivalent
+        to a rank-1 perturbation of the diagonal-only matrix.
+
+        Sherman-Morrison: inverting (D + alpha * 1 1') shrinks the
+        quadratic form, so chi²_LD < chi²_diag even at zero off-LD.
+        This is the *correct* HEIDI variance accounting; the diagonal-
+        only path inflates chi² by double-counting the shared top-SNP
+        variance.
+        """
+        gwas, eqtl, _ = self._block_ld_sumstats(
+            m=6, rho=0.0, top_idx=0,
+            bg_top=0.30, be_top=0.45,
+            bg_off=0.34, be_off=0.45,
+        )
+        R_id = torch.eye(len(gwas.snp), dtype=torch.float64)
+        nearby = [f"rs{i}" for i in range(1, 6)]
+        _, h_diag, n_diag = heidi_test(
+            gwas, eqtl, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+        )
+        _, h_ld, n_ld = heidi_test(
+            gwas, eqtl, probe_snp="rs0",
+            nearby_snps=nearby, max_snps=10,
+            ld_matrix=R_id,
+        )
+        assert n_diag == n_ld
+        # Both estimators must produce a strictly positive chi² for this
+        # fixture (all d_i are nonzero with the same sign).
+        assert h_diag > 0.0 and h_ld > 0.0
+        # The LD-weighted estimator correctly shares the top-SNP
+        # variance across all d_i — so chi²_LD <= chi²_diag.
+        assert h_ld <= h_diag
+
+    def test_smr_heidi_threads_ld_matrix(self):
+        """End-to-end: the smr_heidi multi-gene wrapper threads
+        ld_matrix through to each per-gene heidi_test invocation."""
+        gwas, eqtl, R = self._block_ld_sumstats(
+            m=8, rho=0.6, top_idx=0,
+            bg_top=0.30, be_top=0.45,
+            bg_off=0.30 + 0.04, be_off=0.45,
+        )
+        gene_map = {"G1": [f"rs{i}" for i in range(8)]}
+        summary_diag = smr_heidi(
+            gwas, eqtl, gene_map,
+            eqtl_p_threshold=1.0,
+            smr_p_threshold=1.0,
+            heidi_p_threshold=0.05,
+            heidi_max_snps=10,
+        )
+        summary_ld = smr_heidi(
+            gwas, eqtl, gene_map,
+            eqtl_p_threshold=1.0,
+            smr_p_threshold=1.0,
+            heidi_p_threshold=0.05,
+            heidi_max_snps=10,
+            ld_matrix=R,
+        )
+        # Same SMR fit, different HEIDI chi² because the LD path was
+        # actually entered.
+        assert summary_diag.results[0].chi2_smr == summary_ld.results[0].chi2_smr
+        assert summary_diag.results[0].heidi_stat != summary_ld.results[0].heidi_stat
