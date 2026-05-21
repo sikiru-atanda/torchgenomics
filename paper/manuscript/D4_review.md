@@ -1,9 +1,61 @@
 # D4 — Internal spec-alignment review (Tier 4)
 
-**Status:** scaffold authored 2026-05-19; review-pass results to be filled in
-*after* D3 sections (00-11) and supplements (S1-S8) land on
-`paper/genome-biology-methods` and `paper/manuscript/full_draft.md` is
-assembled (D3.14).
+**Status:** scaffold authored 2026-05-19; **streamlined Pass-1 audit
+completed 2026-05-21** at draft assembly time (commit `345a440`).
+Full per-claim audit (all four passes, every line of the assembled
+draft, every supplement table) is the user's gate before D5 submission.
+
+## Streamlined Pass-1 audit (headline anchors, automated)
+
+The 10 headline numbers cited in the Abstract + section openings all
+resolve cleanly in `paper/reproducibility/manifest.json`:
+
+| Claim | Cited as | Manifest value | Status |
+|---|---|---|---|
+| F1 capability count | "121 capabilities" | 121 | ✓ MATCH |
+| F1 cluster count | "11 clusters" | 11 | ✓ MATCH |
+| F2 harness count | "11 fully-instrumented harnesses" | 11 | ✓ MATCH |
+| F2 pass/total | "40 of 45 numerical checks PASS" | 40 / 45 | ✓ MATCH |
+| F4 SORT1 z-correlation | "Pearson(z_eqtl, z_gwas) = −0.97" | −0.9676 | ✓ MATCH (rounds to −0.97) |
+| F6 panel B slope ratio | "8.7× at p=10⁶" | 8.7097 | ✓ MATCH |
+| F6 streaming slope | "log-log slope 0.020" | 0.0200 | ✓ MATCH |
+| F6 materialized slope | "log-log slope 0.933" | 0.9329 | ✓ MATCH |
+| F7 GU panel | "4/4 internal-consistency gates PASS" | passed_overall = True | ✓ MATCH |
+| F7 LRO panel | "5/5 internal-consistency gates PASS" | passed_overall = True | ✓ MATCH |
+
+The full 20-row per-claim checklist in Pass 1 (below) remains for the
+manual user-gated review. The streamlined automated pass above
+catches every claim that the assembled draft is most likely to be
+cited by reviewers.
+
+## Sections per-target word counts (D3.14 verification)
+
+| § | Target | Actual | Δ | Status |
+|---|---|---|---|---|
+| Abstract | 250 | 239 | −4% | ✓ under ceiling |
+| Background | 700 | 712 | +2% | ✓ |
+| Architecture | 600 | 647 | +8% | ✓ |
+| Equivalence | 900 | 946 | +5% | ✓ |
+| Haplotype | 1100 | 1197 | +9% | ✓ |
+| Multi-omics | 1200 | 1399 | +17% | ⚠ Multi-omics over budget — trim during user review if needed |
+| Polyploid | 900 | 924 | +3% | ✓ |
+| Specialty | 700 | 768 | +10% | ✓ |
+| GPU + streaming | 800 | 860 | +7% | ✓ |
+| Methods | 800 | 867 | +8% | ✓ |
+| Discussion | 500 | 602 | +20% | ⚠ Discussion over budget — but kept dense for honest F3 disclosure |
+| Availability | 200 | 210 | +5% | ✓ |
+| **Total body** | **8400** | **9371** | **+12%** | ⚠ Cumulative +371 over 9000 ceiling; trimming pass deferred to user review |
+
+Two sections (Multi-omics, Discussion) account for the bulk of the
+overshoot. Both are intentionally dense — Multi-omics covers four
+distinct method families (TWAS/SMR/coloc/mediation) each with its own
+agreement numbers, and Discussion carries the F3 disclosures that the
+journal will want to see in detail. Reviewers and the user can trim
+either before submission.
+
+---
+
+
 
 **Spec:** `docs/superpowers/specs/2026-05-15-genome-biology-paper-design.md`
 **Plan:** `docs/superpowers/plans/2026-05-15-paper-tier4-reproducibility-and-draft.md` § 5 D4
