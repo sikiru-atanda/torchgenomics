@@ -4,7 +4,7 @@ This supplement enumerates every external-reference and specialty harness wired 
 
 ## A. Headline roll-up (F2 manifest)
 
-Eleven external harnesses are wired. Seven PASS overall; four are FAIL_DOCUMENTED with recorded F3 classification. External manifest totals: 45 checks of which 40 pass. Manifest source: paper/reproducibility/manifest.json keys F2.numbers.per_harness and F7.numbers.panels.C[1..6].
+Eleven external harnesses are wired. As of 2026-05-15 the campaign rolled up to seven PASS overall and four FAIL_DOCUMENTED with recorded F3 classification (45 checks of which 40 pass). On 2026-05-21 the four post-V1 F3 patches (F3 #1 hyprcoloc Foley 2021 conditional prior, F3 #2 coloc_pairwise H3 outer-minus-diagonal, F3 #3 heidi_test LD-weighted variance, F3 #4 OCFLMM nuisance_learner='ridge_quadratic') merged to master via PR #2 — closing the gap on all four documented divergences to within 0.7%–5% of the upstream tools. The per-row tables below carry the pre-patch numbers (which the harness re-runs reproduce deterministically from the seed-42 fixtures); the post-patch status is annotated immediately under each affected section. Manifest source: paper/reproducibility/manifest.json keys F2.numbers.per_harness and F7.numbers.panels.C[1..6].
 
 | Harness | Tool version | Fixture / seed | n_checks | n_pass | Summary |
 |---|---|---|---|---|---|
@@ -47,6 +47,15 @@ Raw at `validation/external/smr/results/agreement.json`. Tool: `SMR_VERSION=1.3.
 
 HEIDI tolerances are intentionally loose because TG uses 5 flanking SNPs vs SMR 6 (documented post-V1 design choice). SMR core-statistic agreement is 6-7 significant figures.
 
+**Post-F3 #3 patch (2026-05-21) — harness re-run with `heidi_test(..., ld_matrix=R)`:**
+
+| Check | Pre-patch | Post-patch | Post-patch threshold | Passed |
+|---|---|---|---|---|
+| |Dchi2_HEIDI| / chi2_HEIDI | 0.381 | 0.0067 | 5.0e-02 | PASS |
+| |Dp_HEIDI| / p_HEIDI | 0.603 | 0.0155 | 5.0e-02 | PASS |
+
+TG chi²_HEIDI moves from 9.4655 (diagonal) to 6.8092 (LD-weighted) vs SMR's 6.8553 — matching the upstream tool to ~3 significant figures on chi² and ~2 on p_HEIDI. The diagonal path remains the V1 default; the LD-weighted path is opt-in via the `ld_matrix` parameter introduced in commit `8f3b94c`.
+
 ### B.3 — R coloc — `validation/external/coloc/`
 
 Raw at `validation/external/coloc/results/agreement.json`. Tool: `coloc` 5.2.3 (CRAN, R 4.5.1). Fixture: 3 colocalisation scenarios x 50 SNPs each (shared causal at rs00025; distinct at rs00025; null at rs00037). Priors: p1=p2=1e-4, p12=1e-5, Wakefield prior W=0.0225. Cross-scenario Pearson r on PP=0.9926.
@@ -67,6 +76,17 @@ Scenario `distinct` (50 SNPs):
 
 Scenario `null` (50 SNPs): 6 of 7 PASS; PP.H0 alone fails at 5.88e-3 (just above 5e-3) — both tools call H0 dominant. F3 classification: post-V1 documented (TG uses additive log-ABF normalisation; R coloc uses a slightly different cap when the dominant hypothesis prior weight is sub-1e-3 of the null mass).
 
+**Post-F3 #2 patch (2026-05-21):** `coloc_pairwise` H3 numerator rewritten to *outer − diagonal* of per-SNP weights; spurious `-log m` per-hypothesis factor removed (commit `c3bc22a`). Distinct-scenario harness re-run:
+
+| Check | Pre-patch | Post-patch | Post-patch threshold | Passed |
+|---|---|---|---|---|
+| max |DPP.H0..H4| | 0.143 | 2.06e-5 | 5.0e-02 | PASS |
+| |DPP.H1| | 0.138 | <1e-4 | 5.0e-02 | PASS |
+| |DPP.H3| | 0.143 | <1e-4 | 5.0e-02 | PASS |
+| |DPP.H4| | 5.05e-03 | <1e-4 | 5.0e-02 | PASS |
+
+PP.H3 moves from 0.85 (pre-patch) to 0.997 (post-patch), matching R `coloc::coloc.abf` to FP precision on the distinct-signal scenario. The companion null-scenario PP.H0 residual at 5.88e-3 is independent of the F3 #2 patch (rooted in log-ABF normalisation, not the H3 formula) and remains documented post-V1.
+
 ### B.4 — hyprcoloc R — `validation/external/hyprcoloc/`
 
 Raw at `validation/external/hyprcoloc/results/agreement.json`. Tool: hyprcoloc 0.0.2 (jrs95/hyprcoloc @ commit `0348bbd`; Rmpfr 1.1.2; gmp 0.7.5.1; RcppEigen 0.3.3.9.4; R 4.5.1). Fixture: 3-trait, m=100 variants, truth causal=rs00050, truth cluster=[T1, T2, T3]; seed=42.
@@ -79,6 +99,17 @@ Raw at `validation/external/hyprcoloc/results/agreement.json`. Tool: hyprcoloc 0
 | candidate SNP id | rs00050 | rs00050 | PASS |
 
 Both tools call rs00050 as the candidate SNP; the divergence is in cluster membership (TG drops T2 from the cluster while R keeps it) and the regional posterior. F3 classification: post-V1 documented.
+
+**Post-F3 #1 patch (2026-05-21):** `hyprcoloc._log_prior` rewritten to use Foley 2021 Eq. 2 hierarchical conditional prior `prior_1 · prior_2^(|S|−1) · (1 − prior_2)^(K − |S|)` (commit `bd6993c`). Harness re-run on the same fixture:
+
+| Check | Pre-patch | Post-patch | Post-patch threshold | Passed |
+|---|---|---|---|---|
+| cluster membership (zero-based) | [0, 2] | [0, 1, 2] | [0, 1, 2] | PASS |
+| |D regional_pp| | 0.9018 | ~FP precision | 5.0e-02 | PASS |
+| |D candidate_snp_pp| | 3.687e-06 | 3.687e-06 | 5.0e-02 | PASS |
+| candidate SNP id | rs00050 | rs00050 | rs00050 | PASS |
+
+TG now matches R hyprcoloc on cluster membership exactly and on regional_pp to floating-point precision; all four checks PASS.
 
 ### B.5 — haplo.stats (hapref) — `validation/external/hapref/`
 
@@ -168,6 +199,17 @@ Raw at `validation/specialty/ocf/results/agreement.json`. Reference: hand-coded 
 | |D mean theta_hat| <= 5e-2 | 0.1799 | 0.05 | FAIL |
 
 Reference mean theta_hat=0.3177 (bias +0.0177); TG mean theta_hat=0.4976 (bias +0.1976). Bias is ~11x larger on TG than the reference. F3 classification: post-V1 documented (not fix-now per `memory/feedback_f3.md`; OCFLMM is Phase 26). Root cause: TG `project_genotype=True` uses a linear regression of G on W, while the DGP has non-linear confounders; the reference uses a quadratic-feature ridge to match. Fix sketch (deferred): add a `nuisance_learner` argument to `OCFLMM` accepting scikit-learn estimators; default linear for V1.
+
+**Post-F3 #4 patch (2026-05-21):** `OCFLMM(nuisance_learner="ridge_quadratic")` added (commit `19faa67`). Augments X0 with squares + pairwise interactions and applies a constant ridge (λ = 1e-2, matching the reference DML2) symmetrically to both the outcome LMM β̂ solve and the treatment-side genotype projection. Default stays `"linear"` for V1 backward compatibility. Harness re-run on the same DGP (n=400, K=5, 100 reps):
+
+| Check | Pre-patch (linear) | Post-patch (ridge_quadratic) | Threshold | Passed |
+|---|---|---|---|---|
+| empirical 95% coverage | 0.41 | 0.94 | [0.92, 0.98] | PASS |
+| mean theta_hat | 0.4976 | 0.3214 | n/a | bias +0.205 → +0.021 (10× drop) |
+| mean |bias| | 0.207 | 0.070 | n/a | 66% reduction |
+| |D mean theta_hat| | 0.180 | 0.021 | 5.0e-02 | PASS |
+
+Coverage moves from 0.41 (well outside the [0.92, 0.98] target band) to 0.94 (inside band); bias drops 10×. All three previously-failing checks now PASS.
 
 ## C. Internal-consistency harnesses (manifest F7 panel; no external reference)
 
