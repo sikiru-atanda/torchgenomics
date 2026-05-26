@@ -90,6 +90,25 @@ from ._twas import (  # noqa: F401
     twas_observed_expression,
     twas_sumstat,
 )
+from ._combine import (  # noqa: F401
+    CombinedGeneResult,
+    CombinedResult,
+    brown_combined,
+    brown_ld_aware,
+    cauchy_combined,
+    cauchy_multi_tissue_plus_lead_snp,
+    combine_gwas_twas,
+    empirical_brown_combined,
+    fisher_combined,
+    fisher_polyploid_gene_action,
+    gwas_twas_conditional,
+    gwas_twas_hyprcoloc_gated,
+    harmonic_mean_p,
+    min_p_combined,
+    stouffer_combined,
+    stouffer_r2_weighted,
+    truncated_product,
+)
 from ._winners_curse import (  # noqa: F401
     WinnersCurseResult,
     bootstrap_correction,

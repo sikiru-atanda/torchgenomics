@@ -282,11 +282,12 @@ def _group_pvalue(p_group: Tensor, method: str) -> float:
         simes = (sorted_p * n_g / ranks).min().item()
         return min(simes, 1.0)
     elif method == "fisher":
-        from scipy import stats as sp_stats
-
-        # Fisher's method: stat = -2 * sum(log(p)) ~ chi2(2 * n_g)
-        p_clamped = torch.clamp(p_group, min=1e-300)
-        stat = -2.0 * torch.log(p_clamped).sum().item()
-        return float(sp_stats.chi2.sf(stat, df=2 * n_g))
+        # Delegate to the public Fisher's combined test
+        # (torchgwas.postgwas.fisher_combined) so the kernel lives in
+        # exactly one place. Behaviour identical to the previous
+        # in-line implementation: −2 Σ log(p) ~ χ²(2 n_g).
+        from ..postgwas._combine import fisher_combined
+        _, p_combined = fisher_combined(p_group)
+        return float(p_combined)
     else:
         raise ValueError(f"Unknown group_method: {method!r}. Use 'simes' or 'fisher'.")
