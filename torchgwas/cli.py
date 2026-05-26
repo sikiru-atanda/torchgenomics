@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_rr_scan_parser(subparsers)
     _add_rr_met_scan_parser(subparsers)
     _add_twas_scan_parser(subparsers)  # observed-expression TWAS
+    _add_combine_gwas_twas_parser(subparsers)  # GWAS+TWAS integration
 
     # --- LD / haplotype block detection ---
     _add_ld_blocks_parser(subparsers)
@@ -132,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         "rr-scan": _cmd_rr_scan,
         "rr-met-scan": _cmd_rr_met_scan,
         "twas-scan": _cmd_twas_scan,  # observed-expression TWAS
+        "combine-gwas-twas": _cmd_combine_gwas_twas,  # GWAS+TWAS integration
         "ld-blocks": _cmd_ld_blocks,
         "ldsc": _cmd_ldsc,
         "ldsc-rg": _cmd_ldsc_rg,
@@ -6598,6 +6600,168 @@ def _cmd_twas_scan(args: argparse.Namespace) -> int:
         "(%s correction). Wrote %s.",
         n_genes_tested, n_sig, args.p_threshold, args.correction,
         args.output,
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# combine-gwas-twas: gene-level GWAS↔TWAS integration
+# ---------------------------------------------------------------------------
+
+_COMBINE_GWAS_TWAS_METHODS = (
+    "fisher", "stouffer", "cauchy",
+    "brown", "empirical_brown",
+    "hmp", "truncated_product", "min_p",
+)
+
+
+def _add_combine_gwas_twas_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser(
+        "combine-gwas-twas",
+        help="Combine gene-level GWAS evidence with gene-level TWAS "
+             "evidence using a chosen p-value combination method.",
+    )
+    p.add_argument("--gwas-sumstats", required=True,
+                   help="GWAS sumstats TSV with columns chr, pos, snp, "
+                        "a1, a2, beta, se, p, n (and optionally af).")
+    p.add_argument("--twas-results", required=True,
+                   help="TWAS results TSV (output of `torchgwas twas-scan` or "
+                        "a compatible per-gene table with gene_id / chr / "
+                        "start / end / beta / se / z_twas / p_twas / r2_model).")
+    p.add_argument("--method", default="fisher",
+                   choices=list(_COMBINE_GWAS_TWAS_METHODS),
+                   help="Combination method (default: fisher).")
+    p.add_argument("--cis-window-bp", type=int, default=100_000,
+                   help="Symmetric cis window around each gene (bp). Default 100k.")
+    p.add_argument("--weights", default=None,
+                   choices=[None, "r2_model"],
+                   help="Optional weighting: 'r2_model' weights TWAS by "
+                        "sqrt(CV-R²).")
+    p.add_argument("--correction", default="bh",
+                   choices=["none", "bonferroni", "bh", "by", "storey"],
+                   help="Gene-wise multiple-testing correction (default: bh).")
+    p.add_argument("--p-threshold", type=float, default=0.05,
+                   help="Significance threshold after correction.")
+    p.add_argument("--output", required=True, help="Output TSV path.")
+
+
+def _read_gwas_sumstats_tsv(path: str):
+    """Read a GWAS sumstats TSV into a SumStats object."""
+    import pandas as pd
+    from .postgwas import SumStats
+    df = pd.read_csv(path, sep="\t")
+    required = {"chr", "pos", "snp", "a1", "a2", "beta", "se", "p"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"GWAS sumstats {path} missing required columns: {sorted(missing)}"
+        )
+    m = len(df)
+    n_col = df["n"].to_numpy(np.float64) if "n" in df.columns else \
+        np.full(m, float("nan"))
+    af_col = df["af"].to_numpy(np.float64) if "af" in df.columns else None
+    kwargs = dict(
+        chr=[str(c) for c in df["chr"]],
+        pos=[int(p) for p in df["pos"]],
+        snp=[str(s) for s in df["snp"]],
+        a1=[str(a) for a in df["a1"]],
+        a2=[str(a) for a in df["a2"]],
+        beta=torch.tensor(df["beta"].to_numpy(np.float64), dtype=torch.float64),
+        se=torch.tensor(df["se"].to_numpy(np.float64), dtype=torch.float64),
+        p=torch.tensor(df["p"].to_numpy(np.float64), dtype=torch.float64),
+        n=torch.tensor(n_col, dtype=torch.float64),
+    )
+    if af_col is not None:
+        kwargs["af"] = torch.tensor(af_col, dtype=torch.float64)
+    return SumStats(**kwargs)
+
+
+def _read_twas_results_tsv(path: str):
+    """Read a TWAS results TSV (output of `torchgwas twas-scan`) into a
+    TWASResult object."""
+    import pandas as pd
+    from .postgwas import TWASGeneResult, TWASResult
+    df = pd.read_csv(path, sep="\t")
+    required = {"gene_id", "z_twas", "p_twas"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"TWAS results {path} missing required columns: {sorted(missing)}"
+        )
+
+    def _get(row, col, default=None):
+        return row[col] if col in row and pd.notna(row[col]) else default
+
+    genes = []
+    for _, row in df.iterrows():
+        genes.append(TWASGeneResult(
+            gene_id=str(row["gene_id"]),
+            z_twas=float(row["z_twas"]),
+            p_twas=float(row["p_twas"]),
+            n_cis_snps=int(_get(row, "n_cis_snps", 0) or 0),
+            r2_model=float(_get(row, "r2_model")) if _get(row, "r2_model") is not None else None,
+            top_weight_snp=str(_get(row, "top_weight_snp")) if _get(row, "top_weight_snp") is not None else None,
+            beta=float(_get(row, "beta")) if _get(row, "beta") is not None else None,
+            se=float(_get(row, "se")) if _get(row, "se") is not None else None,
+            chr=str(_get(row, "chr")) if _get(row, "chr") is not None else None,
+            start=int(_get(row, "start")) if _get(row, "start") is not None else None,
+            end=int(_get(row, "end")) if _get(row, "end") is not None else None,
+            gene_name=str(_get(row, "gene_name")) if _get(row, "gene_name") is not None else None,
+        ))
+    return TWASResult(genes=genes, n_genes_tested=len(genes), n_significant=0)
+
+
+def _cmd_combine_gwas_twas(args: argparse.Namespace) -> int:
+    """GWAS↔TWAS gene-level integration entry point."""
+    from .postgwas import combine_gwas_twas
+
+    logger.info("Reading GWAS sumstats from %s", args.gwas_sumstats)
+    gwas = _read_gwas_sumstats_tsv(args.gwas_sumstats)
+
+    logger.info("Reading TWAS results from %s", args.twas_results)
+    twas = _read_twas_results_tsv(args.twas_results)
+
+    res = combine_gwas_twas(
+        gwas, twas,
+        method=args.method,
+        cis_window_bp=args.cis_window_bp,
+        weights=args.weights,
+        correction=args.correction,
+        p_threshold=args.p_threshold,
+    )
+
+    out_lines = [
+        "gene_id\tgene_name\tchr\tstart\tend\tp_gwas\tp_twas\t"
+        "p_combined\tp_adj\tmethod\tn_snps_in_gene\tbest_gwas_snp\t"
+        "best_gwas_p\tdirection_concordance\tr2_model"
+    ]
+    for g in res.genes:
+        out_lines.append("\t".join([
+            g.gene_id,
+            g.gene_name if g.gene_name is not None else "",
+            g.chr if g.chr is not None else "",
+            str(g.start) if g.start is not None else "",
+            str(g.end) if g.end is not None else "",
+            f"{g.p_gwas:.6e}",
+            f"{g.p_twas:.6e}",
+            f"{g.p_combined:.6e}",
+            f"{g.p_adj:.6e}" if g.p_adj is not None else "",
+            g.method,
+            str(g.n_snps_in_gene),
+            g.best_gwas_snp if g.best_gwas_snp is not None else "",
+            f"{g.best_gwas_p:.6e}" if g.best_gwas_p is not None else "",
+            str(g.direction_concordance),
+            f"{g.r2_model:.6g}" if g.r2_model is not None else "",
+        ]))
+
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.output).write_text("\n".join(out_lines) + "\n")
+
+    logger.info(
+        "combine-gwas-twas (%s): %d genes tested, %d significant at "
+        "p_adj <= %.3g (%s correction). Wrote %s.",
+        args.method, res.n_genes_tested, res.n_significant,
+        args.p_threshold, args.correction, args.output,
     )
     return 0
 

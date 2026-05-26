@@ -55,7 +55,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 39 as of 2026-05-26 (adds `twas-scan` for observed-expression TWAS; preceded by 38 as of Phase 56's `phase-poly`. See CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
+- **CLI subcommand count**: 40 as of 2026-05-26 (adds `combine-gwas-twas` for gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods; preceded by 39 with `twas-scan`. See CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
 
 ## Phase Index
 
@@ -287,6 +287,16 @@ torchgwas twas-scan --expression expr.tsv --phenotype pheno.tsv --covariates pcs
     --kinship K.npy --gene-annotation genes.bed --output twas_lmm.tsv --correction bh
 torchgwas twas-scan --expression expr.tsv --phenotype pheno.tsv --output twas_peer.tsv \
     --quantile-norm --rank-int --peer-factors 15
+
+# --- GWAS↔TWAS integration (2026-05-26: combine-gwas-twas) ---
+torchgwas combine-gwas-twas --gwas-sumstats gwas.tsv --twas-results twas.tsv \
+    --method fisher --output combined.tsv
+torchgwas combine-gwas-twas --gwas-sumstats gwas.tsv --twas-results twas.tsv \
+    --method stouffer --weights r2_model --correction bh --output combined_r2.tsv
+# Classical methods: fisher | stouffer | cauchy | brown | empirical_brown | hmp | truncated_product | min_p
+# Novel methods (library API only — see torchgwas.postgwas docstrings):
+#   stouffer_r2_weighted, brown_ld_aware, fisher_polyploid_gene_action,
+#   cauchy_multi_tissue_plus_lead_snp, gwas_twas_conditional, gwas_twas_hyprcoloc_gated
 
 # --- Full pipeline ---
 torchgwas pipeline --genotype data.vcf.gz --impute beagle --model lmm --test wald

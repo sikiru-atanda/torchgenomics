@@ -1,0 +1,13 @@
+# Reproducible build artifacts.
+data/
+outputs/
+.cache/
+.install_marker
+__pycache__/
+*.pyc
+
+# Persist results/ for review (overrides repository-wide results/ ignore).
+!results/
+!results/agreement.json
+!results/summary.tsv
+!results/manifest.sha256
