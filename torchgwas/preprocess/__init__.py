@@ -23,3 +23,8 @@ from .standardize import (  # noqa: F401
     compute_allele_frequencies,
     scale_genotypes,
 )
+from .expression import (  # noqa: F401
+    inverse_normal_transform,
+    peer_residualize,
+    quantile_normalize,
+)

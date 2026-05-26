@@ -17,6 +17,9 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
+import numpy as np
+import torch
+
 if _TYPE_CHECKING:
     import torch
 
@@ -67,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_survival_scan_parser(subparsers)
     _add_rr_scan_parser(subparsers)
     _add_rr_met_scan_parser(subparsers)
+    _add_twas_scan_parser(subparsers)  # observed-expression TWAS
 
     # --- LD / haplotype block detection ---
     _add_ld_blocks_parser(subparsers)
@@ -127,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         "survival-scan": _cmd_survival_scan,
         "rr-scan": _cmd_rr_scan,
         "rr-met-scan": _cmd_rr_met_scan,
+        "twas-scan": _cmd_twas_scan,  # observed-expression TWAS
         "ld-blocks": _cmd_ld_blocks,
         "ldsc": _cmd_ldsc,
         "ldsc-rg": _cmd_ldsc_rg,
@@ -6255,6 +6260,304 @@ def _cmd_bayes_scan_rss(args: argparse.Namespace) -> int:
         len(result.credible_sets),
         result.converged,
         result.n_iter,
+        args.output,
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# twas-scan: observed-expression TWAS
+# ---------------------------------------------------------------------------
+
+def _add_twas_scan_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser(
+        "twas-scan",
+        help="Observed-expression TWAS: gene-trait association on already-"
+             "normalized RNA-seq expression (no eQTL weights required).",
+    )
+    p.add_argument("--expression", required=True,
+                   help="Path to expression TSV: header row of "
+                        "'sample_id\\tgene1\\tgene2\\t...'.")
+    p.add_argument("--phenotype", required=True,
+                   help="Phenotype TSV: PLINK-style 'FID\\tIID\\tTRAIT' "
+                        "or 'sample_id\\tTRAIT'.")
+    p.add_argument("--trait", default=None,
+                   help="Trait column name. If omitted, the rightmost "
+                        "non-ID column in the phenotype file is used.")
+    p.add_argument("--covariates", default=None,
+                   help="Optional covariates TSV (PCs, PEER factors, "
+                        "sex, age, batch). Same ID convention as --phenotype.")
+    p.add_argument("--kinship", default=None,
+                   help="Optional (n, n) kinship / GRM matrix (.npy or "
+                        "tab-separated text). If supplied, switches OLS "
+                        "to LMM for population-stratification correction.")
+    p.add_argument("--gene-annotation", default=None,
+                   help="Optional gene-annotation BED: "
+                        "'chr\\tstart\\tend\\tgene_id[\\tgene_name]'.")
+    p.add_argument("--output", required=True, help="Output TSV path.")
+    p.add_argument("--correction", default="bonferroni",
+                   choices=["none", "bonferroni", "holm", "bh", "by",
+                            "storey"],
+                   help="Multiple-testing correction (default: bonferroni).")
+    p.add_argument("--p-threshold", type=float, default=0.05,
+                   help="Significance threshold (default: 0.05).")
+    p.add_argument("--standardize", action="store_true",
+                   help="Per-gene z-score the expression matrix before "
+                        "testing.")
+    p.add_argument("--rank-int", action="store_true",
+                   help="Apply Blom rank-INT per gene before testing.")
+    p.add_argument("--quantile-norm", action="store_true",
+                   help="Quantile-normalize columns before testing.")
+    p.add_argument("--peer-factors", type=int, default=None,
+                   help="Number of PEER factors to regress out before "
+                        "testing (requires R + peer).")
+
+
+def _read_expression_tsv(path: str) -> tuple[torch.Tensor, list[str], list[str]]:
+    """Read expression TSV with first column = sample_id, remaining
+    columns = genes. Returns (matrix, sample_ids, gene_ids)."""
+    import pandas as pd
+    df = pd.read_csv(path, sep="\t")
+    sample_ids = df.iloc[:, 0].astype(str).tolist()
+    gene_ids = list(df.columns[1:])
+    matrix = torch.tensor(
+        df.iloc[:, 1:].to_numpy(dtype=np.float64),
+        dtype=torch.float64,
+    )
+    return matrix, sample_ids, gene_ids
+
+
+def _read_phenotype_tsv(path: str, trait: str | None) -> tuple[
+        torch.Tensor, list[str]]:
+    """Read phenotype TSV (PLINK-style or sample_id-style). Returns
+    (trait_vector, sample_ids)."""
+    import pandas as pd
+    df = pd.read_csv(path, sep="\t")
+    cols = list(df.columns)
+    # PLINK convention: FID + IID + trait(s); otherwise sample_id + trait(s).
+    if cols[:2] == ["FID", "IID"] or {"FID", "IID"} <= set(cols[:2]):
+        sample_ids = df["IID"].astype(str).tolist()
+        candidate_cols = [c for c in cols if c not in ("FID", "IID")]
+    else:
+        sample_ids = df.iloc[:, 0].astype(str).tolist()
+        candidate_cols = cols[1:]
+    if not candidate_cols:
+        raise ValueError(f"No trait column found in {path}.")
+    if trait is not None:
+        if trait not in candidate_cols:
+            raise ValueError(
+                f"Trait '{trait}' not in {path}; available: "
+                f"{candidate_cols}"
+            )
+        y = df[trait].to_numpy(dtype=np.float64)
+    else:
+        y = df[candidate_cols[-1]].to_numpy(dtype=np.float64)
+    return torch.tensor(y, dtype=torch.float64), sample_ids
+
+
+def _read_covariates_tsv(path: str) -> tuple[torch.Tensor, list[str]]:
+    """Read covariates TSV (PLINK-style or sample_id-style). Returns
+    (covariates_matrix, sample_ids)."""
+    import pandas as pd
+    df = pd.read_csv(path, sep="\t")
+    cols = list(df.columns)
+    if cols[:2] == ["FID", "IID"] or {"FID", "IID"} <= set(cols[:2]):
+        sample_ids = df["IID"].astype(str).tolist()
+        data = df.drop(columns=["FID", "IID"]).to_numpy(dtype=np.float64)
+    else:
+        sample_ids = df.iloc[:, 0].astype(str).tolist()
+        data = df.iloc[:, 1:].to_numpy(dtype=np.float64)
+    return torch.tensor(data, dtype=torch.float64), sample_ids
+
+
+def _read_kinship(path: str) -> torch.Tensor:
+    if path.endswith(".npy"):
+        return torch.from_numpy(np.load(path)).to(torch.float64)
+    return torch.tensor(
+        np.loadtxt(path, dtype=np.float64), dtype=torch.float64,
+    )
+
+
+def _read_gene_annotation_bed(path: str) -> dict[str, dict]:
+    """Read a 4+-column BED: chr, start, end, gene_id [, gene_name [,
+    biotype]]. Returns gene_id -> {chr, start, end, gene_name?,
+    biotype?} mapping."""
+    import pandas as pd
+    df = pd.read_csv(path, sep="\t", header=None)
+    out: dict[str, dict] = {}
+    for _, row in df.iterrows():
+        rec = {
+            "chr": str(row[0]),
+            "start": int(row[1]),
+            "end": int(row[2]),
+        }
+        if df.shape[1] >= 5:
+            rec["gene_name"] = str(row[4])
+        if df.shape[1] >= 6:
+            rec["biotype"] = str(row[5])
+        out[str(row[3])] = rec
+    return out
+
+
+def _align_by_sample_id(
+    expr: torch.Tensor, expr_ids: list[str],
+    y: torch.Tensor, pheno_ids: list[str],
+    covariates: torch.Tensor | None, cov_ids: list[str] | None,
+    kinship: torch.Tensor | None,
+) -> tuple[
+        torch.Tensor, torch.Tensor,
+        torch.Tensor | None, torch.Tensor | None, list[str]]:
+    """Intersect sample IDs across all inputs (expression, phenotype,
+    covariates, kinship); reindex each to the common order."""
+    common = set(expr_ids) & set(pheno_ids)
+    if cov_ids is not None:
+        common &= set(cov_ids)
+    if not common:
+        raise ValueError(
+            "No samples shared between expression, phenotype, and "
+            "covariate files."
+        )
+    # Preserve expression-file order.
+    aligned = [s for s in expr_ids if s in common]
+
+    expr_idx = [expr_ids.index(s) for s in aligned]
+    pheno_idx = [pheno_ids.index(s) for s in aligned]
+    expr_a = expr[expr_idx, :]
+    y_a = y[pheno_idx]
+
+    cov_a: torch.Tensor | None = None
+    if covariates is not None and cov_ids is not None:
+        cov_idx = [cov_ids.index(s) for s in aligned]
+        cov_a = covariates[cov_idx, :]
+
+    K_a: torch.Tensor | None = None
+    if kinship is not None:
+        if kinship.shape[0] != len(expr_ids):
+            raise ValueError(
+                f"kinship shape {tuple(kinship.shape)} does not match "
+                f"the expression sample count {len(expr_ids)}."
+            )
+        K_a = kinship[expr_idx][:, expr_idx]
+    return expr_a, y_a, cov_a, K_a, aligned
+
+
+def _cmd_twas_scan(args: argparse.Namespace) -> int:
+    """Observed-expression TWAS entry point."""
+    from .postgwas import twas_observed_expression
+    from .preprocess import (
+        inverse_normal_transform, peer_residualize, quantile_normalize,
+    )
+    from .stats import multipletesting as _mt
+
+    logger.info("Reading expression matrix from %s", args.expression)
+    expression, expr_ids, gene_ids = _read_expression_tsv(args.expression)
+
+    logger.info("Reading phenotype from %s", args.phenotype)
+    y, pheno_ids = _read_phenotype_tsv(args.phenotype, args.trait)
+
+    covariates: torch.Tensor | None = None
+    cov_ids: list[str] | None = None
+    if args.covariates is not None:
+        logger.info("Reading covariates from %s", args.covariates)
+        covariates, cov_ids = _read_covariates_tsv(args.covariates)
+
+    kinship: torch.Tensor | None = None
+    if args.kinship is not None:
+        logger.info("Reading kinship from %s", args.kinship)
+        kinship = _read_kinship(args.kinship)
+
+    gene_annotation: dict[str, dict] | None = None
+    if args.gene_annotation is not None:
+        logger.info("Reading gene annotation from %s", args.gene_annotation)
+        gene_annotation = _read_gene_annotation_bed(args.gene_annotation)
+
+    expression, y, covariates, kinship, aligned_ids = _align_by_sample_id(
+        expression, expr_ids, y, pheno_ids, covariates, cov_ids, kinship,
+    )
+    logger.info(
+        "Aligned %d samples across all inputs (expr=%d, pheno=%d).",
+        len(aligned_ids), len(expr_ids), len(pheno_ids),
+    )
+
+    # Optional preprocessing in canonical GTEx order: quantile -> INT -> PEER.
+    if args.quantile_norm:
+        logger.info("Quantile-normalizing expression columns.")
+        expression = quantile_normalize(expression)
+    if args.rank_int:
+        logger.info("Applying rank-INT per gene.")
+        expression = inverse_normal_transform(expression)
+    if args.peer_factors is not None:
+        logger.info(
+            "Regressing %d PEER factors out of expression.",
+            args.peer_factors,
+        )
+        expression, peer_summary = peer_residualize(
+            expression, n_factors=args.peer_factors, covariates=covariates,
+        )
+        logger.info("PEER summary: %s", peer_summary)
+
+    res = twas_observed_expression(
+        expression, y, gene_ids,
+        covariates=covariates,
+        kinship=kinship,
+        gene_annotation=gene_annotation,
+        standardize=args.standardize,
+        correction="none",            # we compute p_adj separately for output
+        p_threshold=args.p_threshold,
+    )
+
+    # Compute p_adj separately so it can be persisted alongside the raw p.
+    p_vals = torch.tensor(
+        [g.p_twas for g in res.genes], dtype=torch.float64,
+    )
+    if args.correction in (None, "none"):
+        p_adj = p_vals.clone()
+    elif args.correction == "bonferroni":
+        p_adj = _mt.bonferroni(p_vals)
+    elif args.correction == "holm":
+        p_adj = _mt.holm(p_vals)
+    elif args.correction in ("bh", "fdr"):
+        p_adj = _mt.benjamini_hochberg(p_vals)
+    elif args.correction == "by":
+        p_adj = _mt.benjamini_yekutieli(p_vals)
+    elif args.correction == "storey":
+        p_adj = _mt.storey_qvalue(p_vals)
+    else:
+        raise ValueError(f"Unknown correction '{args.correction}'.")
+
+    n_samples_used = len(aligned_ids)
+    n_genes_tested = res.n_genes_tested
+
+    out_lines = [
+        "gene_id\tgene_name\tchr\tstart\tend\tbeta\tse\tz_twas\t"
+        "p_twas\tp_adj\tn_samples_used\tn_genes_tested"
+    ]
+    for g, padj in zip(res.genes, p_adj.tolist()):
+        out_lines.append(
+            "\t".join([
+                g.gene_id,
+                g.gene_name if g.gene_name is not None else "",
+                g.chr if g.chr is not None else "",
+                str(g.start) if g.start is not None else "",
+                str(g.end) if g.end is not None else "",
+                f"{g.beta:.6g}" if g.beta is not None else "",
+                f"{g.se:.6g}" if g.se is not None else "",
+                f"{g.z_twas:.6g}",
+                f"{g.p_twas:.6e}",
+                f"{padj:.6e}",
+                str(n_samples_used),
+                str(n_genes_tested),
+            ])
+        )
+
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.output).write_text("\n".join(out_lines) + "\n")
+
+    n_sig = int((p_adj <= args.p_threshold).sum().item())
+    logger.info(
+        "twas-scan: %d genes tested, %d significant at p_adj <= %.3g "
+        "(%s correction). Wrote %s.",
+        n_genes_tested, n_sig, args.p_threshold, args.correction,
         args.output,
     )
     return 0

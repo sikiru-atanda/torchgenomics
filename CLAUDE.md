@@ -55,7 +55,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 38 as of Phase 56 (adds `phase-poly`; see CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
+- **CLI subcommand count**: 39 as of 2026-05-26 (adds `twas-scan` for observed-expression TWAS; preceded by 38 as of Phase 56's `phase-poly`. See CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
 
 ## Phase Index
 
@@ -280,6 +280,13 @@ torchgwas mediate-scan --y pheno.npy --genotype data.bed --mediator-matrix media
 
 # --- NCBI gene annotation (Phase 48) ---
 torchgwas annotate --sumstats hits.tsv --crop maize --p-threshold 5e-8 --window-up 50000 --window-down 50000
+
+# --- Observed-expression TWAS (2026-05-26: twas-scan) ---
+torchgwas twas-scan --expression expr.tsv --phenotype pheno.tsv --output twas.tsv
+torchgwas twas-scan --expression expr.tsv --phenotype pheno.tsv --covariates pcs.tsv \
+    --kinship K.npy --gene-annotation genes.bed --output twas_lmm.tsv --correction bh
+torchgwas twas-scan --expression expr.tsv --phenotype pheno.tsv --output twas_peer.tsv \
+    --quantile-norm --rank-int --peer-factors 15
 
 # --- Full pipeline ---
 torchgwas pipeline --genotype data.vcf.gz --impute beagle --model lmm --test wald

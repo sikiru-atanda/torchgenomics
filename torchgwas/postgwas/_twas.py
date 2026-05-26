@@ -57,11 +57,30 @@ class TWASGeneResult:
     p_twas : float
         TWAS p-value (two-sided normal).
     n_cis_snps : int
-        Number of cis-SNPs with non-zero weights.
+        Number of cis-SNPs with non-zero weights (weight-based modes) or
+        0 (observed-expression mode where no eQTL weights are used).
     r2_model : float or None
         Cross-validated R-squared of the expression prediction model.
-    top_weight_snp : str
-        SNP with the largest absolute weight.
+        ``None`` for observed-expression mode.
+    top_weight_snp : str or None
+        SNP with the largest absolute weight (weight-based modes).
+        ``None`` for observed-expression mode.
+    beta : float or None
+        Per-gene effect estimate (observed-expression mode; the OLS / LMM
+        Wald coefficient of the expression column on the phenotype).
+        ``None`` for the weight-based modes which report z_twas only.
+    se : float or None
+        Standard error of ``beta`` (observed-expression mode); ``None``
+        otherwise.
+    chr : str or None
+        Chromosome (when a gene annotation is supplied).
+    start : int or None
+        Gene start coordinate (when annotation is supplied).
+    end : int or None
+        Gene end coordinate (when annotation is supplied).
+    gene_name : str or None
+        Human-readable gene name / HGNC symbol (when annotation is
+        supplied).
     """
 
     gene_id: str
@@ -69,7 +88,13 @@ class TWASGeneResult:
     p_twas: float
     n_cis_snps: int
     r2_model: float | None
-    top_weight_snp: str
+    top_weight_snp: str | None = None
+    beta: float | None = None
+    se: float | None = None
+    chr: str | None = None
+    start: int | None = None
+    end: int | None = None
+    gene_name: str | None = None
 
 
 @dataclass
@@ -362,6 +387,236 @@ def twas_individual(
 
     n_tested = len(gene_results)
     n_sig = sum(1 for g in gene_results if g.p_twas < 0.05)
+
+    return TWASResult(
+        genes=gene_results,
+        n_genes_tested=n_tested,
+        n_significant=n_sig,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Observed-expression TWAS (no pre-trained weights)
+# ---------------------------------------------------------------------------
+
+def twas_observed_expression(
+    expression: Tensor,
+    phenotype: Tensor,
+    gene_ids: list[str],
+    *,
+    covariates: Tensor | None = None,
+    kinship: Tensor | None = None,
+    gene_annotation: dict[str, dict] | None = None,
+    standardize: bool = False,
+    correction: str = "bonferroni",
+    p_threshold: float = 0.05,
+    test: str = "wald",
+) -> TWASResult:
+    """Observed-expression TWAS: per-gene association on already-normalized
+    expression, without pre-trained eQTL weights.
+
+    For a discovery cohort with measured gene expression (typically RNA-seq
+    → TMM/vst/quantile-normalized → optionally PEER-adjusted) and a
+    phenotype, test each gene's expression-trait association directly.
+    Mirrors the FUSION "measured-expression mode" (Gusev et al. 2016).
+
+    Algorithm
+    ---------
+    Each gene column is treated as a quantitative predictor. The per-gene
+    Wald test follows from:
+
+    - OLS (no kinship)::
+
+          y_resid = y - X0 @ (X0' X0)^{-1} X0' y
+          e_resid = e_g - X0 @ (X0' X0)^{-1} X0' e_g
+          β̂_g    = (e_resid' y_resid) / (e_resid' e_resid)
+          T_g    = β̂_g^2 / Var(β̂_g)  ~  F(1, n - c - 1)
+
+    - LMM (kinship provided)::
+
+          V       = σ²_g K + σ²_e I
+          β̂_g    = (e_g' V⁻¹ y) / (e_g' V⁻¹ e_g)
+          T_g    = β̂_g^2 / Var(β̂_g)  ~  χ²(1)
+
+    The OLS path reuses ``torchgwas.models.glm.GLM``; the LMM path reuses
+    ``torchgwas.models.single_trait_lmm.SingleTraitLMM``. Both already
+    handle the per-column algebra; the expression matrix simply
+    substitutes for the genotype matrix.
+
+    Parameters
+    ----------
+    expression : Tensor
+        ``(n_samples, n_genes)`` matrix of *already-normalized* gene
+        expression. The function does not apply any internal
+        normalization — the caller supplies whatever pipeline output they
+        have (RNA-seq counts → TMM/vst/quantile → PEER residuals etc.).
+        See ``torchgwas.preprocess.expression`` for helper transforms if
+        needed.
+    phenotype : Tensor
+        ``(n_samples,)`` or ``(n_samples, 1)`` quantitative phenotype.
+    gene_ids : list[str]
+        Length ``n_genes`` identifiers, in column order of ``expression``.
+    covariates : Tensor, optional
+        ``(n_samples, q)`` known covariates (genotype PCs, PEER factors,
+        sex, age, batch). An intercept column is added automatically; the
+        caller should not include one.
+    kinship : Tensor, optional
+        ``(n_samples, n_samples)`` GRM / kinship matrix. When supplied the
+        scan switches from OLS to LMM with variance-component REML
+        estimated once on the null; when omitted, ordinary OLS is used.
+        Useful for population-stratification correction at biobank scale.
+    gene_annotation : dict, optional
+        Mapping ``gene_id -> {"chr": str, "start": int, "end": int,
+        "gene_name": str, "biotype": str}``. Any subset of those keys may
+        be present; missing fields are left as ``None`` on the result.
+    standardize : bool
+        If True, per-gene z-score the expression matrix before testing
+        (mimics PrediXcan's column standardisation). Default False.
+    correction : str
+        Multiple testing correction: ``"bonferroni"``, ``"holm"``,
+        ``"bh"`` (Benjamini–Hochberg), ``"by"`` (Benjamini–Yekutieli),
+        ``"storey"`` (Storey q-value), or ``"none"``.
+    p_threshold : float
+        Significance threshold before correction.
+    test : str
+        Passed through to ``score_chunk``; ``"wald"`` is the only
+        supported value for OLS, and ``"wald"``, ``"lrt"``, or ``"score"``
+        for LMM.
+
+    Returns
+    -------
+    TWASResult
+        Each ``TWASGeneResult`` populates ``z_twas``, ``p_twas``, ``beta``,
+        ``se``, and ``n_cis_snps = 0`` (no eQTL weights used). When
+        ``gene_annotation`` is supplied, ``chr / start / end / gene_name``
+        are propagated. ``top_weight_snp`` is always ``None`` in this
+        mode.
+    """
+    # Lazy imports to avoid circular references.
+    from ..models.glm import GLM
+    from ..models.single_trait_lmm import SingleTraitLMM
+    from ..models.base import VariantMeta
+
+    if expression.ndim != 2:
+        raise ValueError(
+            f"expression must be 2-D (n_samples, n_genes); got shape "
+            f"{tuple(expression.shape)}."
+        )
+    n_samples, n_genes = expression.shape
+    if len(gene_ids) != n_genes:
+        raise ValueError(
+            f"len(gene_ids) = {len(gene_ids)} does not match "
+            f"expression.shape[1] = {n_genes}."
+        )
+    if phenotype.shape[0] != n_samples:
+        raise ValueError(
+            f"phenotype length {phenotype.shape[0]} does not match "
+            f"expression.shape[0] = {n_samples}."
+        )
+    if covariates is not None and covariates.shape[0] != n_samples:
+        raise ValueError(
+            f"covariates rows {covariates.shape[0]} does not match "
+            f"expression.shape[0] = {n_samples}."
+        )
+    if kinship is not None:
+        if kinship.shape != (n_samples, n_samples):
+            raise ValueError(
+                f"kinship shape {tuple(kinship.shape)} does not match "
+                f"(n_samples, n_samples) = ({n_samples}, {n_samples})."
+            )
+
+    expression = expression.to(torch.float64)
+    phenotype = phenotype.to(torch.float64).reshape(-1)
+
+    # Standardise per-gene if requested.
+    if standardize:
+        mean = expression.mean(dim=0, keepdim=True)
+        sd = expression.std(dim=0, unbiased=False, keepdim=True).clamp(min=1e-30)
+        expression = (expression - mean) / sd
+
+    # Build X0 = [1, covariates...] (intercept always present).
+    intercept = torch.ones((n_samples, 1), dtype=torch.float64)
+    if covariates is not None:
+        X0 = torch.cat([intercept, covariates.to(torch.float64)], dim=1)
+    else:
+        X0 = intercept
+
+    # Build a VariantMeta with gene_id playing the role of "snp".
+    vmeta = VariantMeta(
+        snp=list(gene_ids),
+        chr=["0"] * n_genes,
+        pos=list(range(n_genes)),
+        a1=["A"] * n_genes,
+        a2=["G"] * n_genes,
+    )
+
+    # Dispatch on whether kinship was provided.
+    if kinship is None:
+        model = GLM()
+        null_fit = model.fit_null(phenotype, X0)
+    else:
+        model = SingleTraitLMM()
+        null_fit = model.fit_null(phenotype, X0, K=kinship.to(torch.float64))
+
+    scan = model.score_chunk(expression, null_fit, vmeta, test=test)
+
+    # Convert per-column ScanResult into per-gene TWASGeneResult entries.
+    # z_twas is signed sqrt of the Wald statistic; the p-value is already
+    # two-sided. (Both GLM F-stat with df1=1 and LMM chi²(1) yield the
+    # same z under sqrt.)
+    beta_t = scan.beta.detach().cpu().to(torch.float64)
+    se_t = scan.se.detach().cpu().to(torch.float64)
+    stat_t = scan.stat.detach().cpu().to(torch.float64)
+    p_t = scan.p.detach().cpu().to(torch.float64)
+    z_t = stat_t.clamp(min=0.0).sqrt() * beta_t.sign()
+
+    annotation_lookup: dict[str, dict] = gene_annotation or {}
+
+    gene_results: list[TWASGeneResult] = []
+    for j, gene_id in enumerate(gene_ids):
+        ann = annotation_lookup.get(gene_id, {})
+        gene_results.append(TWASGeneResult(
+            gene_id=gene_id,
+            z_twas=float(z_t[j].item()),
+            p_twas=float(p_t[j].item()),
+            n_cis_snps=0,
+            r2_model=None,
+            top_weight_snp=None,
+            beta=float(beta_t[j].item()),
+            se=float(se_t[j].item()),
+            chr=ann.get("chr"),
+            start=ann.get("start"),
+            end=ann.get("end"),
+            gene_name=ann.get("gene_name"),
+        ))
+
+    # Multiple-testing correction.
+    n_tested = len(gene_results)
+    n_sig = 0
+    if n_tested > 0:
+        p_vals = torch.tensor(
+            [g.p_twas for g in gene_results], dtype=torch.float64,
+        )
+        if correction in (None, "none"):
+            n_sig = int((p_vals <= p_threshold).sum().item())
+        elif correction == "bonferroni":
+            n_sig = int((p_vals <= p_threshold / n_tested).sum().item())
+        else:
+            from ..stats import multipletesting as _mt
+            if correction == "holm":
+                p_adj = _mt.holm(p_vals)
+            elif correction in ("bh", "fdr"):
+                p_adj = _mt.benjamini_hochberg(p_vals)
+            elif correction == "by":
+                p_adj = _mt.benjamini_yekutieli(p_vals)
+            elif correction == "storey":
+                p_adj = _mt.storey_qvalue(p_vals)
+            else:
+                raise ValueError(
+                    f"Unknown correction '{correction}'. Use one of: "
+                    "'bonferroni', 'holm', 'bh', 'by', 'storey', 'none'."
+                )
+            n_sig = int((p_adj <= p_threshold).sum().item())
 
     return TWASResult(
         genes=gene_results,

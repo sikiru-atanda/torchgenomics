@@ -83,6 +83,7 @@ from ._twas import (  # noqa: F401
     TWASGeneResult,
     TWASResult,
     twas_individual,
+    twas_observed_expression,
     twas_sumstat,
 )
 from ._winners_curse import (  # noqa: F401
