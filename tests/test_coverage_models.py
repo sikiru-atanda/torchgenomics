@@ -378,18 +378,17 @@ class TestLinkFunction:
     (link, inverse, derivative, variance) that subclasses must implement."""
 
     def test_required_methods_raise_on_base(self):
-        """Direct base-class methods raise NotImplementedError because they
-        must be overridden."""
-        base = LinkFunction()
-        x = torch.tensor([0.5], dtype=torch.float64)
-        with pytest.raises(NotImplementedError):
-            base.link(x)
-        with pytest.raises(NotImplementedError):
-            base.inverse(x)
-        with pytest.raises(NotImplementedError):
-            base.derivative(x)
-        with pytest.raises(NotImplementedError):
-            base.variance(x)
+        """``LinkFunction`` is an abc.ABC with four @abstractmethod
+        declarations (link, inverse, derivative, variance). Python's ABC
+        machinery prevents instantiation entirely until every abstract
+        method is overridden, so the constraint surfaces as ``TypeError``
+        on ``LinkFunction()`` itself — not as ``NotImplementedError`` on
+        per-method calls (the older pre-ABC convention)."""
+        with pytest.raises(TypeError, match="abstract"):
+            LinkFunction()
+        # And the four declarations must remain marked abstract.
+        abstract = set(LinkFunction.__abstractmethods__)
+        assert abstract == {"link", "inverse", "derivative", "variance"}
 
     def test_subclass_can_override_required_methods(self):
         """A minimal subclass overriding all four methods works."""

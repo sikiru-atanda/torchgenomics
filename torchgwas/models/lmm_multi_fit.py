@@ -130,6 +130,12 @@ def fit_mvlmm_null_lbfgs(
 
     Y_rot_2d = _ensure_2d(Y_rot.to(STAT_DTYPE))
     n_traits = Y_rot_2d.shape[1]
+    if n_traits < 2:
+        raise ValueError(
+            "fit_mvlmm_null_lbfgs requires d >= 2 traits; got "
+            f"d = {n_traits}. Use torchgwas.models.SingleTraitLMM "
+            "for single-trait LMM fits."
+        )
 
     Vg, Ve, ll, trace = lbfgs_reml(
         Y_rot_2d,
