@@ -338,7 +338,16 @@ def _enumerate_haplotypes_unphased(
     # original diagnosis.
     if len(candidates) > max_haplotypes:
         scores = _score_candidates_ld_aware(candidates, G_int, device, STAT_DTYPE)
-        top_idx = torch.argsort(scores, descending=True)[:max_haplotypes].tolist()
+        # `stable=True` breaks score ties by *original index*, which is
+        # deterministic across CPU and CUDA backends. The non-stable
+        # form previously produced different top-K selections on CPU
+        # vs CUDA when many candidates tied at the same LD-aware score,
+        # which propagated through the EM into divergent per-window
+        # haplotype frequencies and Wald p-values
+        # (tests/test_gpu_model_parity.py::test_haplotype_gwas_parity).
+        top_idx = torch.argsort(
+            scores, descending=True, stable=True,
+        )[:max_haplotypes].tolist()
         candidates = [candidates[i] for i in sorted(top_idx)]
 
     H = len(candidates)
