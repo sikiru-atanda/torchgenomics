@@ -388,6 +388,10 @@ class TestTWASGeneResult:
     def test_round_trip_via_dataclass_fields(self):
         g = self._make()
         names = {f.name for f in fields(g)}
+        # TWASGeneResult was extended (2026-05-26) with optional fields
+        # populated by twas_observed_expression: beta, se, chr, start,
+        # end, gene_name. All default to None for backward compatibility
+        # with the weight-based modes that don't populate them.
         assert names == {
             "gene_id",
             "z_twas",
@@ -395,6 +399,12 @@ class TestTWASGeneResult:
             "n_cis_snps",
             "r2_model",
             "top_weight_snp",
+            "beta",
+            "se",
+            "chr",
+            "start",
+            "end",
+            "gene_name",
         }
         g2 = TWASGeneResult(**{f.name: getattr(g, f.name) for f in fields(g)})
         assert g2 == g
