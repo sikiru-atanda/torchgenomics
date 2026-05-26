@@ -165,16 +165,26 @@ class TestBenchColocH4Posterior:
         log_sum1 = _lse(labf1)
         log_sum2 = _lse(labf2)
         log_sum12 = _lse(labf1 + labf2)
-        log_m = np.log(m)
 
-        # Wallace 2020 erratum formulation
+        # Wallace 2020 erratum / F3 #2 (2026-05-21) formulation:
+        #   H3 = sum over *ordered* SNP pairs (i, j) with i != j
+        #      = outer(weights_1, weights_2) - diag(weights_1 * weights_2)
+        # No `-log m` per-hypothesis normalization (the spurious factor
+        # the F3 #2 patch removed). See docs/validation_findings.md
+        # 2026-05-21 F3 #2 closure entry + tests/test_postgwas_hyprcoloc.py
+        # ::test_coloc_pairwise_distinct_signals_pph3_near_unity_post_f3_patch.
         log_h0 = 0.0
-        log_h1 = np.log(prior_1) + log_sum1 - log_m
-        log_h2 = np.log(prior_2) + log_sum2 - log_m
-        log_h3 = (
-            np.log(prior_1) + np.log(prior_2) + log_sum1 + log_sum2 - 2 * log_m
+        log_h1 = np.log(prior_1) + log_sum1
+        log_h2 = np.log(prior_2) + log_sum2
+
+        # log(exp(log_sum1 + log_sum2) - exp(log_sum12)) — stable form
+        log_h3_outer = log_sum1 + log_sum2
+        # log_diff_exp(a, b) = a + log1p(-exp(b - a))
+        log_h3_outer_minus_diag = log_h3_outer + np.log1p(
+            -np.exp(log_sum12 - log_h3_outer)
         )
-        log_h4 = np.log(prior_12) + log_sum12 - log_m
+        log_h3 = np.log(prior_1) + np.log(prior_2) + log_h3_outer_minus_diag
+        log_h4 = np.log(prior_12) + log_sum12
 
         log_weights = np.array([log_h0, log_h1, log_h2, log_h3, log_h4])
         log_norm = _lse(log_weights)
@@ -281,13 +291,19 @@ class TestBenchHyprcolocBFManual:
                 stacked = np.sum(log_abf_np[list(subset)], axis=0)
                 manual_subset_log_bf[subset] = _lse(stacked)
 
-        # Manual prior
+        # Foley 2021 Eq. 2 hierarchical conditional prior (F3 #1, 2026-05-21):
+        #   P(S) = prior_1 * prior_2^(|S|-1) * (1 - prior_2)^(K - |S|)
+        # NOTE the third factor is (1 - prior_2), not (1 - prior_1) —
+        # the latter was the pre-F3 #1 incorrect product form. See
+        # docs/validation_findings.md F3 #1 closure entry +
+        # tests/test_postgwas_hyprcoloc.py
+        # ::test_hyprcoloc_foley_2021_conditional_prior_post_f3_patch.
         log_p1 = np.log(prior_1)
         log_p2 = np.log(prior_2)
-        log_1mp1 = np.log1p(-prior_1)
+        log_1mp2 = np.log1p(-prior_2)
 
         def _log_prior(sz):
-            return sz * log_p1 + (sz - 1) * log_p2 + (K - sz) * log_1mp1
+            return log_p1 + (sz - 1) * log_p2 + (K - sz) * log_1mp2
 
         # Manual null mass
         non_null_lps = []

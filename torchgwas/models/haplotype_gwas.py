@@ -135,6 +135,80 @@ class HaplotypeGWASResult:
 # Section B: Haplotype construction
 # ---------------------------------------------------------------------------
 
+def _score_candidates_ld_aware(
+    candidates: list[str],
+    G_int: Tensor,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> Tensor:
+    """LD-aware score for haplotype candidate pruning.
+
+    For each individual, find every haplotype-pair (h_a, h_b) in the
+    candidate set whose alleles sum to the observed genotype, and
+    distribute a fractional count of 1 / n_pairs across the two
+    haplotypes in each pair. The resulting per-haplotype score is
+    proportional to the haplotype's expected count under a uniform prior
+    over compatible pairs — large when the haplotype recurs across many
+    individuals' compatibility sets, small when it appears rarely.
+
+    This is the LD-aware replacement for the independence-prior
+    marginal-allele-frequency product that previously biased pruning
+    against LD-driven haplotypes (F2 finding, 2026-05-15 Tier 1 A5).
+
+    Complexity is ``O(n * H^2 * m)`` in the worst case; in practice
+    ``H <= max_haplotypes * 10 = 200`` (see the candidate-set cap) and
+    most pair lookups short-circuit on the ``target ∈ {0, 1}`` check, so
+    the cost is comparable to the EM-step compatibility enumeration done
+    on the pruned set further down.
+
+    Parameters
+    ----------
+    candidates : list[str]
+        Allele-string candidate haplotypes (length m, alphabet ``{'0', '1'}``).
+    G_int : (n, m) integer Tensor
+        Observed genotypes clamped to ``{0, 1, 2}``.
+    device : torch.device
+        Compute device.
+    dtype : torch.dtype
+        Score-tensor dtype.
+
+    Returns
+    -------
+    scores : (H,) Tensor
+        Per-candidate LD-aware score; higher scores rank first.
+    """
+    n = G_int.shape[0]
+    H = len(candidates)
+    if H == 0:
+        return torch.zeros(0, dtype=dtype, device=device)
+    cand_mat = torch.tensor(
+        [[int(c) for c in h] for h in candidates],
+        dtype=torch.long, device=device,
+    )  # (H, m)
+    scores = torch.zeros(H, dtype=dtype, device=device)
+    for i in range(n):
+        g = G_int[i]  # (m,)
+        compatible: list[tuple[int, int]] = []
+        for a in range(H):
+            target = g - cand_mat[a]  # (m,)
+            if (target < 0).any() or (target > 1).any():
+                continue
+            matches = (cand_mat == target).all(dim=1).nonzero(as_tuple=True)[0]
+            for b in matches.tolist():
+                if b >= a:
+                    compatible.append((a, b))
+        if not compatible:
+            continue
+        weight = 1.0 / len(compatible)
+        for a, b in compatible:
+            if a == b:
+                scores[a] += 2.0 * weight
+            else:
+                scores[a] += weight
+                scores[b] += weight
+    return scores
+
+
 def _enumerate_haplotypes_phased(
     haps_block: Tensor,
     ploidy: int = 2,
@@ -252,18 +326,29 @@ def _enumerate_haplotypes_unphased(
 
     candidates = sorted(candidate_set)
 
-    # If too many, keep the most frequent based on marginal allele freqs
+    # If too many, prune to max_haplotypes using LD-aware scoring.
+    # The previous implementation ranked candidates by the marginal-
+    # allele-frequency product (independence prior), which silently dropped
+    # real LD-driven haplotypes under tight LD — for example, the
+    # second-most-common haplotype on a high-LD 5-SNP window of the MDP
+    # maize panel (EM freq ~ 0.127) was discarded because its product
+    # score under independence was lower than mixed-allele candidates with
+    # equal marginal but no observational support. See
+    # docs/validation_findings.md (2026-05-15 Tier 1 A5 entry) for the
+    # original diagnosis.
     if len(candidates) > max_haplotypes:
-        af = G_int.float().mean(dim=0) / 2.0  # (m,)
-        scored = []
-        for h in candidates:
-            prob = 1.0
-            for j, c in enumerate(h):
-                p = af[j].item()
-                prob *= (p if int(c) == 1 else (1.0 - p))
-            scored.append((prob, h))
-        scored.sort(key=lambda x: -x[0])
-        candidates = [h for _, h in scored[:max_haplotypes]]
+        scores = _score_candidates_ld_aware(candidates, G_int, device, STAT_DTYPE)
+        # `stable=True` breaks score ties by *original index*, which is
+        # deterministic across CPU and CUDA backends. The non-stable
+        # form previously produced different top-K selections on CPU
+        # vs CUDA when many candidates tied at the same LD-aware score,
+        # which propagated through the EM into divergent per-window
+        # haplotype frequencies and Wald p-values
+        # (tests/test_gpu_model_parity.py::test_haplotype_gwas_parity).
+        top_idx = torch.argsort(
+            scores, descending=True, stable=True,
+        )[:max_haplotypes].tolist()
+        candidates = [candidates[i] for i in sorted(top_idx)]
 
     H = len(candidates)
     if H == 0:

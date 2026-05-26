@@ -1,0 +1,46 @@
+{
+  "name": "FUSION measured-expression vs torchgwas.postgwas.twas_observed_expression",
+  "n_compared": 15,
+  "passed": true,
+  "checks": [
+    {
+      "name": "max |\u0394\u03b2|/|\u03b2|",
+      "passed": true,
+      "observed": 2.215166661173612e-15,
+      "threshold": 1e-08,
+      "note": ""
+    },
+    {
+      "name": "max |\u0394SE|/|SE|",
+      "passed": true,
+      "observed": 1.85924088362965e-15,
+      "threshold": 1e-08,
+      "note": ""
+    },
+    {
+      "name": "max |\u0394z_TWAS|",
+      "passed": true,
+      "observed": 1.4210854715202004e-14,
+      "threshold": 1e-06,
+      "note": ""
+    },
+    {
+      "name": "max |\u0394-log10 p_TWAS|",
+      "passed": true,
+      "observed": 4.263256414560601e-14,
+      "threshold": 1e-06,
+      "note": ""
+    }
+  ],
+  "extras": {
+    "truth_causal_gene": "ENSG_0007",
+    "truth_effect": 0.45,
+    "pearson_r_beta": 1.0
+  },
+  "tolerance_gates": {
+    "TOL_REL_BETA": 1e-08,
+    "TOL_REL_SE": 1e-08,
+    "TOL_ABS_DELTA_Z": 1e-06,
+    "TOL_ABS_DELTA_NEGLOG10_P": 1e-06
+  }
+}

@@ -1,0 +1,5 @@
+check	observed	threshold	passed
+max |Δβ|/|β|	2.215167e-15	1.000000e-08	True
+max |ΔSE|/|SE|	1.859241e-15	1.000000e-08	True
+max |Δz_TWAS|	1.421085e-14	1.000000e-06	True
+max |Δ-log10 p_TWAS|	4.263256e-14	1.000000e-06	True

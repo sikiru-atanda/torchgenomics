@@ -80,9 +80,14 @@ from ._smr import (  # noqa: F401
 )
 from ._sumstats import SumStats, align_sumstats, load_sumstats  # noqa: F401
 from ._twas import (  # noqa: F401
+    MultiTissueRow,
+    MultiTissueSummary,
     TWASGeneResult,
     TWASResult,
     twas_individual,
+    twas_multi_tissue_aggregate,
+    twas_multi_tissue_stack,
+    twas_observed_expression,
     twas_sumstat,
 )
 from ._winners_curse import (  # noqa: F401
