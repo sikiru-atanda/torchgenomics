@@ -1,0 +1,30 @@
+========================================================================
+Haploview-style LD triangle demo on the MDP maize panel
+========================================================================
+
+Loaded MDP genotype matrix: n_samples = 281, n_snps = 3093
+
+Window selected (tightest 15-SNP cluster on chr 1, maize tb1 locus):
+  chromosome:  1
+  n_snps:      15
+  span:        264,847,299 – 264,856,041 bp (8.7 kb)
+  first SNP:   tb1.1
+  last SNP:    PZD00083.3
+
+Computing pairwise LD matrices...
+  r²:  mean upper-triangle = 0.0633, max = 0.8085
+  D':  mean upper-triangle = 0.3299, max = 1.0000
+
+Running block detection (two methods)...
+  gabriel   : detected 0 block(s)
+  r2        : detected 3 block(s)
+    block #1: SNPs tb1.20 → tb1.18 (idx 2–4, n=3, 264,847,406–264,847,469 bp)
+    block #2: SNPs tb1.14 → tb1.12 (idx 7–9, n=3, 264,847,950–264,847,985 bp)
+    block #3: SNPs PZD00083.4 → PZD00083.3 (idx 13–14, n=2, 264,855,731–264,856,041 bp)
+
+  block table → /home/sikiru.atanda/Documents/GWAS_Expert/docs/haploview_demo/mdp_tb1_15snps_blocks.tsv
+  Triangle overlay uses: r2
+
+Rendering Haploview-style LD triangles...
+  r²   → /home/sikiru.atanda/Documents/GWAS_Expert/docs/haploview_demo/mdp_tb1_15snps_r2_haploview.png
+  |D'| → /home/sikiru.atanda/Documents/GWAS_Expert/docs/haploview_demo/mdp_tb1_15snps_dprime_haploview.png
