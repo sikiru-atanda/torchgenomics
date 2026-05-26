@@ -8,6 +8,11 @@ from .hdf5 import HDF5Reader  # noqa: F401
 from .numeric import NumericDosageReader  # noqa: F401
 from .phenotype import AlignmentManifest, PhenotypeData, load_phenotype  # noqa: F401
 from .plink import PlinkBedReader  # noqa: F401
+from .predixcan_db import (  # noqa: F401
+    PredixcanModel,
+    list_genes_in_db,
+    read_predixcan_db,
+)
 from .regions import (  # noqa: F401
     Region,
     compute_skat_weights,

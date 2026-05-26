@@ -1,0 +1,14 @@
+# Build / staging directories that are reproducible from source.
+data/
+outputs/
+.cache/
+.install_marker
+__pycache__/
+*.pyc
+fusion_twas/
+
+# Persist results/ (override repository-wide gitignore that bans "results/").
+!results/
+!results/agreement.json
+!results/summary.tsv
+!results/manifest.sha256

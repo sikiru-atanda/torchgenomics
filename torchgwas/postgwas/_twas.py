@@ -552,23 +552,50 @@ def twas_observed_expression(
 
     # Dispatch on whether kinship was provided.
     if kinship is None:
-        model = GLM()
-        null_fit = model.fit_null(phenotype, X0)
+        # Full-model OLS per gene, matching the FUSION measured-expression /
+        # PLINK convention. ``torchgwas.models.glm.GLM`` uses the null-only
+        # σ²_e (GAPIT P3D=TRUE), which is conservative for strong-signal
+        # genes — the gene's contribution to phenotype variance stays in
+        # σ²_e, inflating SE. Refitting per gene via FWL recovers the
+        # full-model variance estimator that the upstream TWAS tools
+        # (PrediXcan, FUSION measured-expression mode, PLINK) report.
+        n = expression.shape[0]
+        c = X0.shape[1]
+        df_full = n - c - 1
+        XtX_X0_inv = torch.linalg.inv(X0.T @ X0)
+        y_proj = X0 @ (XtX_X0_inv @ (X0.T @ phenotype))
+        g_proj = X0 @ (XtX_X0_inv @ (X0.T @ expression))
+        y_resid = phenotype - y_proj
+        g_resid = expression - g_proj
+        gtg = (g_resid * g_resid).sum(dim=0).clamp(min=1e-30)
+        beta_t = (g_resid * y_resid.unsqueeze(1)).sum(dim=0) / gtg
+        e_full = y_resid.unsqueeze(1) - beta_t.unsqueeze(0) * g_resid
+        sse = (e_full ** 2).sum(dim=0)
+        sigma2 = sse / df_full
+        var_beta = sigma2 / gtg
+        se_t = var_beta.clamp(min=1e-300).sqrt()
+        stat_t = beta_t ** 2 / var_beta.clamp(min=1e-300)
+        # F(1, df_full) p-values match the FUSION reference exactly.
+        import scipy.stats as _sp_stats
+        p_t = torch.tensor(
+            _sp_stats.f.sf(stat_t.detach().cpu().numpy(), 1, df_full),
+            dtype=torch.float64,
+        )
+        z_t = beta_t.sign() * stat_t.clamp(min=0.0).sqrt()
     else:
+        # LMM path: keep the GAPIT / EMMAX / P3D=TRUE convention used by
+        # SingleTraitLMM — REML estimates σ²_g, σ²_e once on the null,
+        # then per-SNP Wald uses V = σ²_g K + σ²_e I. This is the
+        # standard LMM-GWAS convention and is what biobank-scale TWAS
+        # users expect for population-stratification correction.
         model = SingleTraitLMM()
         null_fit = model.fit_null(phenotype, X0, K=kinship.to(torch.float64))
-
-    scan = model.score_chunk(expression, null_fit, vmeta, test=test)
-
-    # Convert per-column ScanResult into per-gene TWASGeneResult entries.
-    # z_twas is signed sqrt of the Wald statistic; the p-value is already
-    # two-sided. (Both GLM F-stat with df1=1 and LMM chi²(1) yield the
-    # same z under sqrt.)
-    beta_t = scan.beta.detach().cpu().to(torch.float64)
-    se_t = scan.se.detach().cpu().to(torch.float64)
-    stat_t = scan.stat.detach().cpu().to(torch.float64)
-    p_t = scan.p.detach().cpu().to(torch.float64)
-    z_t = stat_t.clamp(min=0.0).sqrt() * beta_t.sign()
+        scan = model.score_chunk(expression, null_fit, vmeta, test=test)
+        beta_t = scan.beta.detach().cpu().to(torch.float64)
+        se_t = scan.se.detach().cpu().to(torch.float64)
+        stat_t = scan.stat.detach().cpu().to(torch.float64)
+        p_t = scan.p.detach().cpu().to(torch.float64)
+        z_t = stat_t.clamp(min=0.0).sqrt() * beta_t.sign()
 
     annotation_lookup: dict[str, dict] = gene_annotation or {}
 
@@ -623,3 +650,189 @@ def twas_observed_expression(
         n_genes_tested=n_tested,
         n_significant=n_sig,
     )
+
+
+# ---------------------------------------------------------------------------
+# Multi-tissue stacking + S-MultiXcan-style aggregation
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MultiTissueRow:
+    """One row of a multi-tissue TWAS result.
+
+    Attributes
+    ----------
+    gene_id : str
+    tissue : str
+    z_twas : float
+    p_twas : float
+    beta : float or None
+    se : float or None
+    r2_model : float or None
+    n_cis_snps : int
+    gene_name : str or None
+    chr : str or None
+    start : int or None
+    end : int or None
+    """
+
+    gene_id: str
+    tissue: str
+    z_twas: float
+    p_twas: float
+    beta: float | None
+    se: float | None
+    r2_model: float | None
+    n_cis_snps: int
+    gene_name: str | None
+    chr: str | None
+    start: int | None
+    end: int | None
+
+
+@dataclass
+class MultiTissueSummary:
+    """S-MultiXcan-style per-gene aggregation across tissues.
+
+    Attributes
+    ----------
+    gene_id : str
+    n_tissues : int
+        Number of tissues with a non-null result for this gene.
+    z_min, z_max, z_mean, z_sd : float
+        Per-gene summary statistics across tissues' z-scores.
+    p_min : float
+        Minimum p-value across tissues (driver-tissue identification).
+    chi2_multixcan : float
+        Sum of squared z-scores across tissues (treated as χ²(n_tissues)
+        under the working assumption of independence — see Barbeira
+        et al. 2019; this is an approximation, not the full S-MultiXcan
+        SVD-truncated joint test which would require the cross-tissue
+        prediction correlation matrix).
+    p_multixcan : float
+        p-value of ``chi2_multixcan`` under χ²(n_tissues).
+    driver_tissue : str
+        Tissue carrying ``p_min``.
+    """
+
+    gene_id: str
+    n_tissues: int
+    z_min: float
+    z_max: float
+    z_mean: float
+    z_sd: float
+    p_min: float
+    chi2_multixcan: float
+    p_multixcan: float
+    driver_tissue: str
+
+
+def twas_multi_tissue_stack(
+    per_tissue: dict[str, TWASResult],
+) -> list[MultiTissueRow]:
+    """Stack per-tissue ``TWASResult`` objects into a long-format list
+    of one ``MultiTissueRow`` per (gene, tissue) pair.
+
+    Useful when running ``twas_sumstat`` or ``twas_observed_expression``
+    against each of N tissues (GTEx-style 49 tissues, PsychENCODE
+    multi-brain, etc.) and you want a single tabular dump.
+
+    Parameters
+    ----------
+    per_tissue : dict[str, TWASResult]
+        ``tissue_name -> TWASResult`` mapping. The keys become the
+        ``tissue`` column in the output rows.
+
+    Returns
+    -------
+    list[MultiTissueRow]
+        Long-format rows, sorted by ``(gene_id, tissue)`` ascending.
+    """
+    rows: list[MultiTissueRow] = []
+    for tissue, result in per_tissue.items():
+        for g in result.genes:
+            rows.append(MultiTissueRow(
+                gene_id=g.gene_id,
+                tissue=tissue,
+                z_twas=g.z_twas,
+                p_twas=g.p_twas,
+                beta=g.beta,
+                se=g.se,
+                r2_model=g.r2_model,
+                n_cis_snps=g.n_cis_snps,
+                gene_name=g.gene_name,
+                chr=g.chr,
+                start=g.start,
+                end=g.end,
+            ))
+    rows.sort(key=lambda r: (r.gene_id, r.tissue))
+    return rows
+
+
+def twas_multi_tissue_aggregate(
+    per_tissue: dict[str, TWASResult],
+) -> list[MultiTissueSummary]:
+    """Aggregate per-tissue TWAS results into one summary per gene.
+
+    Computes a per-gene S-MultiXcan-style approximation:
+
+        chi2_multixcan = sum_t (z_t^2)
+        p_multixcan    = chi2_sf(chi2_multixcan, df=n_tissues)
+
+    This treats per-tissue z-scores as independent, which is an
+    approximation: the full S-MultiXcan (Barbeira et al. 2019,
+    *PLoS Genet*) uses the SVD-truncated joint test driven by the
+    cross-tissue prediction correlation matrix. The approximation
+    serves as a fast first-pass for identifying genes with pleiotropic
+    tissue signal; the full joint test can be applied downstream.
+
+    Parameters
+    ----------
+    per_tissue : dict[str, TWASResult]
+        ``tissue_name -> TWASResult``.
+
+    Returns
+    -------
+    list[MultiTissueSummary]
+        One summary per unique gene, sorted by ``p_multixcan`` ascending.
+    """
+    # Gather per-gene z-vectors across tissues.
+    per_gene_z: dict[str, list[tuple[str, float, float]]] = {}
+    for tissue, result in per_tissue.items():
+        for g in result.genes:
+            per_gene_z.setdefault(g.gene_id, []).append(
+                (tissue, g.z_twas, g.p_twas)
+            )
+
+    summaries: list[MultiTissueSummary] = []
+    import math
+    from scipy.stats import chi2 as _chi2  # type: ignore[import-untyped]
+    for gene_id, entries in per_gene_z.items():
+        zs = [e[1] for e in entries]
+        ps = [e[2] for e in entries]
+        n_t = len(zs)
+        if n_t == 0:
+            continue
+        z_arr = torch.tensor(zs, dtype=torch.float64)
+        chi2_val = float((z_arr ** 2).sum().item())
+        p_val = float(_chi2.sf(chi2_val, df=n_t))
+        # Driver tissue = the one with minimum p.
+        driver_idx = min(range(n_t), key=lambda i: ps[i])
+        z_mean = float(z_arr.mean().item())
+        z_sd = (
+            float(z_arr.std(unbiased=False).item()) if n_t > 1 else 0.0
+        )
+        summaries.append(MultiTissueSummary(
+            gene_id=gene_id,
+            n_tissues=n_t,
+            z_min=float(z_arr.min().item()),
+            z_max=float(z_arr.max().item()),
+            z_mean=z_mean,
+            z_sd=z_sd,
+            p_min=min(ps),
+            chi2_multixcan=chi2_val,
+            p_multixcan=p_val,
+            driver_tissue=entries[driver_idx][0],
+        ))
+    summaries.sort(key=lambda s: s.p_multixcan)
+    return summaries
