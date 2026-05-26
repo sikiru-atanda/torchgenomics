@@ -2,6 +2,126 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.9] — 2026-05-26
+
+Post-V1 expansion release: four F3 statistical fixes, the
+observed-expression TWAS surface, the GWAS↔TWAS integration entry
+point with 14 combination methods (8 classical + 6 novel), and a
+suite of external-tool validation harnesses. Five PRs landed on
+master (#2–#6); full test suite goes from **2921 passed, 43 failed**
+to **3038 passed, 0 failed**.
+
+### Added
+
+- **GWAS↔TWAS integration** — `torchgwas.postgwas.combine_gwas_twas`
+  routes GWAS sumstats through MAGMA-style `snp_to_gene` aggregation
+  and combines the gene-level GWAS p with the TWAS p via any of 14
+  kernels.
+  - 8 two-input kernels: `fisher_combined`, `brown_combined`,
+    `empirical_brown_combined`, `harmonic_mean_p`, `truncated_product`,
+    `min_p_combined`, `cauchy_combined` (wraps existing ACAT),
+    `stouffer_combined` (wraps existing Stouffer's-Z).
+  - 6 novel methods (each "to our knowledge"-tagged):
+    `stouffer_r2_weighted` (eQTL CV-R² weighting), `brown_ld_aware`
+    (Brown + eigenMT effective tests), `fisher_polyploid_gene_action`
+    (two-stage Cauchy→Fisher across autopolyploid gene-action models),
+    `cauchy_multi_tissue_plus_lead_snp` (S-MultiXcan + lead-SNP via
+    ACAT), `gwas_twas_conditional` (ConditionalLMM-mediated; flags
+    mediated vs independent), `gwas_twas_hyprcoloc_gated` (PPFC-gated).
+  - New CLI: `torchgwas combine-gwas-twas`. Subcommand count 39 → 40.
+- **Observed-expression TWAS** — `twas_observed_expression()` for the
+  workflow where the user has measured normalized expression and a
+  phenotype, plus the corresponding `torchgwas twas-scan` CLI. OLS by
+  default; LMM (kinship-corrected) when a GRM is provided. New
+  preprocessing module `torchgwas.preprocess.expression` with
+  `inverse_normal_transform` (Blom rank-INT), `quantile_normalize`,
+  and `peer_residualize` (R-subprocess wrapper around PEER).
+- **PrediXcan / FUSION `.db` reader** —
+  `torchgwas.io.read_predixcan_db()` returns a `PredixcanModel`
+  dataclass with weights / snp_lists / eff_alleles / ref_alleles /
+  r2_models / gene_names dicts ready to drop into `twas_sumstat`. Plus
+  `list_genes_in_db()` convenience helper. Tolerates alternate r²
+  column names (`pred.perf.R2`, `pred_perf_R2`, `cv_R2`).
+- **Multi-tissue stacking + S-MultiXcan-style aggregation** —
+  `twas_multi_tissue_stack` (long-format `{tissue: TWASResult}` →
+  list of MultiTissueRow), `twas_multi_tissue_aggregate` (per-gene
+  χ² + p_multixcan + driver-tissue identification).
+- **Gene-level TWAS visualizations** — `manhattan_twas` (chromosome-
+  aware when annotation is supplied; top-N gene-name labelling),
+  `qq_twas` (with Beta-CI band), `genomic_inflation_factor_twas`
+  (λ_TWAS using `chi2.ppf(0.5, df=1)` as the denominator).
+- **External-tool harnesses** — `validation/external/fusion/` against
+  the FUSION measured-expression mode (FP-precision agreement on
+  β/SE/z/-log10 p), and `validation/external/metap/` against the
+  CRAN `metap` + Bioconductor `EmpiricalBrownsMethod` packages
+  (closed-form on Fisher / Stouffer / min-p at 1e-10).
+- **F2 closure** — LD-aware pruning in `_enumerate_haplotypes_unphased`
+  (Tier 1 A5 finding); replaces the marginal-AF-product candidate
+  scoring that dropped real LD-driven haplotypes under tight LD.
+
+### Fixed
+
+- **F3 #1 — hyprcoloc Foley 2021 conditional prior**
+  (`torchgwas/postgwas/_hyprcoloc.py`). Replaces the product prior
+  with the hierarchical conditional prior. Cluster membership now
+  matches R hyprcoloc exactly on the 3-trait shared-causal fixture
+  ([0, 1, 2] vs [0, 2] pre-patch).
+- **F3 #2 — coloc_pairwise H3 formula**
+  (`torchgwas/postgwas/_hyprcoloc.py`). H3 marginal rewritten as
+  *outer − diagonal* of per-SNP weights; spurious `-log m`
+  per-hypothesis factor removed. PP.H3 on the distinct-signal fixture
+  goes from 0.85 (pre-patch) to 0.997, matching R `coloc::coloc.abf`
+  to FP precision.
+- **F3 #3 — heidi_test LD-weighted variance**
+  (`torchgwas/postgwas/_smr.py`). New optional `ld_matrix` parameter
+  applies the Zhu 2016 sup. eq. 18 per-SNP-pair LD-corrected variance,
+  matching SMR v1.3.1 to 0.67% on chi²_HEIDI and 1.55% on p_HEIDI on
+  the harness fixture.
+- **F3 #4 — OCFLMM `nuisance_learner='ridge_quadratic'`**
+  (`torchgwas/models/ocf_lmm.py`). New optional nuisance learner with
+  quadratic feature expansion + small ridge; default stays `'linear'`
+  for V1 backward compatibility. Empirical 95% coverage moves from
+  0.41 (linear, biased under nonlinear confounding) to 0.94 on the
+  Chernozhukov 2018 partially-linear DGP.
+- **GPU haplotype parity** (`torchgwas/models/haplotype_gwas.py`).
+  Uses `torch.argsort(stable=True)` for tied LD-aware scores, fixing
+  the pre-existing CPU/CUDA divergence in `HaplotypeGWAS(method="window")`.
+- **PGS parser cleanup** (`torchgwas/cli.py`). Restored the missing
+  `_add_pgs_fit_parser` / `_add_pgs_score_parser` / `_cmd_pgs_fit` /
+  `_cmd_pgs_score` function bodies that had been referenced in
+  `cli.py` but never defined on master, closing 40 NameError test
+  failures.
+- **TWAS observed-expression OLS variance** — switched the OLS path
+  from delegating to `GLM.score_chunk` (null-only σ²_e, GAPIT P3D=TRUE
+  convention) to a full per-gene FWL OLS refit. Brings the FUSION
+  harness from 88% relative SE divergence to FP precision (2e-15).
+- **Three test/code drift fixes** — `LinkFunction` ABC expectation
+  (TypeError on `LinkFunction()`, not NotImplementedError on methods),
+  `fit_mvlmm_null_lbfgs` single-trait rejection (`d >= 2` validation),
+  `compare_pvalues` NaN-aware with new keys `n_total` / `n_finite` /
+  `n_within_tolerance`.
+
+### Tests
+
+- Full suite: **3038 passed, 0 failed, 492 skipped** (from 2921
+  passed / 43 failed at the start of the campaign).
+- New test files: `test_postgwas_combine.py` (43), `test_postgwas_twas.py`
+  (+13), `test_io_predixcan_db.py` (9), `test_viz_twas.py` (10),
+  `test_preprocess_expression.py` (12), `test_cli_combine_gwas_twas.py`
+  (2), `test_cli_twas_scan.py` (2). Plus per-F3-patch regression gates
+  added to existing test files.
+
+### Validation
+
+- FUSION measured-expression harness: 4/4 PASS at FP precision
+  (max |Δβ|/|β| = 2e-15, max |Δz| = 1e-14).
+- MetaXcan / S-PrediXcan harness re-verified: 4/4 PASS, Pearson r(z) = 1.0.
+- SMR v1.3.1 harness: 0.67% chi²_HEIDI agreement post-patch (was 38%).
+- R hyprcoloc / R coloc harnesses: post-patch agreement at the
+  observed-then-floored tolerances.
+- Five validation findings closed (F2 + F3 #1-#4) in
+  `docs/validation_findings.md`.
+
 ## [0.3.8] — 2026-05-05
 
 Multi-kernel streaming release (F3). The last tractable materialized
