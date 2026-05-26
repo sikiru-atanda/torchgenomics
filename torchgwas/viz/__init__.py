@@ -13,6 +13,11 @@ from ._haploview import haploview_plot
 from ._manhattan import circos_manhattan_plot, manhattan_plot, miami_plot
 from ._qq import qq_plot
 from ._trumpet import trumpet_plot
+from ._twas_plots import (
+    genomic_inflation_factor_twas,
+    manhattan_twas,
+    qq_twas,
+)
 
 __all__ = [
     "manhattan_plot",
@@ -21,4 +26,7 @@ __all__ = [
     "qq_plot",
     "haploview_plot",
     "trumpet_plot",
+    "manhattan_twas",
+    "qq_twas",
+    "genomic_inflation_factor_twas",
 ]

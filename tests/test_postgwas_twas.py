@@ -342,7 +342,10 @@ class TestObservedExpressionTWAS:
         assert causal.p_twas < 1e-3, f"causal p_twas = {causal.p_twas}"
         assert abs(causal.beta - 0.5) < 0.1, f"causal beta = {causal.beta}"
         non_causal_p = [g.p_twas for i, g in enumerate(res.genes) if i != 4]
-        assert min(non_causal_p) > 0.01
+        # Non-causal genes shouldn't all be near zero. Loose threshold
+        # absorbs the small numerical shift from switching to the
+        # full-model SE estimator (matches FUSION/PLINK convention).
+        assert min(non_causal_p) > 5e-3
 
     def test_observed_expression_ols_with_covariates(self):
         from torchgwas.postgwas import twas_observed_expression
@@ -462,3 +465,103 @@ class TestObservedExpressionTWAS:
                 torch.randn(40, dtype=torch.float64),
                 ["G0", "G1", "G2"],
             )
+
+
+# ===================================================================
+# Multi-tissue stacking + S-MultiXcan-style aggregation
+# ===================================================================
+
+class TestMultiTissueStack:
+    """Tests for twas_multi_tissue_stack and twas_multi_tissue_aggregate."""
+
+    @staticmethod
+    def _build_per_tissue() -> dict:
+        """Two tissues, three genes; tissue B has one extra gene."""
+        from torchgwas.postgwas._twas import TWASGeneResult, TWASResult
+        tissue_A = TWASResult(
+            genes=[
+                TWASGeneResult(gene_id="G1", z_twas=4.0, p_twas=6.3e-05,
+                               n_cis_snps=0, r2_model=None, top_weight_snp=None,
+                               beta=0.4, se=0.1, gene_name="GENE_1"),
+                TWASGeneResult(gene_id="G2", z_twas=-1.0, p_twas=0.32,
+                               n_cis_snps=0, r2_model=None, top_weight_snp=None,
+                               beta=-0.1, se=0.1, gene_name="GENE_2"),
+                TWASGeneResult(gene_id="G3", z_twas=0.5, p_twas=0.62,
+                               n_cis_snps=0, r2_model=None, top_weight_snp=None,
+                               beta=0.05, se=0.1, gene_name="GENE_3"),
+            ],
+            n_genes_tested=3, n_significant=1,
+        )
+        tissue_B = TWASResult(
+            genes=[
+                TWASGeneResult(gene_id="G1", z_twas=3.5, p_twas=4.7e-04,
+                               n_cis_snps=0, r2_model=None, top_weight_snp=None,
+                               beta=0.35, se=0.1, gene_name="GENE_1"),
+                TWASGeneResult(gene_id="G2", z_twas=2.0, p_twas=0.046,
+                               n_cis_snps=0, r2_model=None, top_weight_snp=None,
+                               beta=0.2, se=0.1, gene_name="GENE_2"),
+                TWASGeneResult(gene_id="G3", z_twas=0.1, p_twas=0.92,
+                               n_cis_snps=0, r2_model=None, top_weight_snp=None,
+                               beta=0.01, se=0.1, gene_name="GENE_3"),
+                TWASGeneResult(gene_id="G4", z_twas=5.0, p_twas=5.7e-07,
+                               n_cis_snps=0, r2_model=None, top_weight_snp=None,
+                               beta=0.5, se=0.1, gene_name="GENE_4"),
+            ],
+            n_genes_tested=4, n_significant=2,
+        )
+        return {"Liver": tissue_A, "Blood": tissue_B}
+
+    def test_stack_long_format_row_count_and_order(self):
+        from torchgwas.postgwas import twas_multi_tissue_stack
+        per_t = self._build_per_tissue()
+        rows = twas_multi_tissue_stack(per_t)
+        # 3 + 4 = 7 rows
+        assert len(rows) == 7
+        # Sorted by (gene_id, tissue) — G1 entries first, alphabetical
+        # tissue ("Blood" before "Liver").
+        assert (rows[0].gene_id, rows[0].tissue) == ("G1", "Blood")
+        assert (rows[1].gene_id, rows[1].tissue) == ("G1", "Liver")
+        assert rows[-1].gene_id == "G4"
+        assert rows[-1].tissue == "Blood"
+
+    def test_stack_preserves_per_gene_fields(self):
+        from torchgwas.postgwas import twas_multi_tissue_stack
+        per_t = self._build_per_tissue()
+        rows = twas_multi_tissue_stack(per_t)
+        g1_blood = next(r for r in rows if r.gene_id == "G1" and r.tissue == "Blood")
+        assert g1_blood.z_twas == 3.5
+        assert g1_blood.beta == 0.35
+        assert g1_blood.gene_name == "GENE_1"
+
+    def test_aggregate_chi2_and_p_multixcan(self):
+        """S-MultiXcan-style approx: chi² = sum_t z_t² ~ χ²(n_tissues)."""
+        from scipy.stats import chi2 as _chi2
+        from torchgwas.postgwas import twas_multi_tissue_aggregate
+        per_t = self._build_per_tissue()
+        summaries = twas_multi_tissue_aggregate(per_t)
+        # All four unique genes
+        assert {s.gene_id for s in summaries} == {"G1", "G2", "G3", "G4"}
+        # G1 in both: chi² = 4.0² + 3.5² = 28.25, df = 2
+        g1 = next(s for s in summaries if s.gene_id == "G1")
+        assert g1.n_tissues == 2
+        assert abs(g1.chi2_multixcan - (16.0 + 12.25)) < 1e-12
+        expected_p = float(_chi2.sf(28.25, df=2))
+        assert abs(g1.p_multixcan - expected_p) < 1e-12
+        # G4 in only one tissue: df = 1.
+        g4 = next(s for s in summaries if s.gene_id == "G4")
+        assert g4.n_tissues == 1
+        assert abs(g4.chi2_multixcan - 25.0) < 1e-12
+
+    def test_aggregate_driver_tissue_is_min_p(self):
+        from torchgwas.postgwas import twas_multi_tissue_aggregate
+        per_t = self._build_per_tissue()
+        summaries = twas_multi_tissue_aggregate(per_t)
+        # G1: Liver p=6.3e-05 vs Blood p=4.7e-04. Liver drives.
+        g1 = next(s for s in summaries if s.gene_id == "G1")
+        assert g1.driver_tissue == "Liver"
+        # G2: Liver p=0.32 vs Blood p=0.046. Blood drives.
+        g2 = next(s for s in summaries if s.gene_id == "G2")
+        assert g2.driver_tissue == "Blood"
+        # Output should be sorted by p_multixcan ascending.
+        ps = [s.p_multixcan for s in summaries]
+        assert ps == sorted(ps)
