@@ -1,0 +1,13 @@
+{
+  "name": "p-value combination (metap CRAN + EmpiricalBrownsMethod BioC vs torchgwas.postgwas)",
+  "n_compared": 0,
+  "passed": true,
+  "checks": [],
+  "tolerance_gates": {
+    "TOL_ABS_FISHER": 1e-10,
+    "TOL_ABS_STOUFFER": 1e-10,
+    "TOL_ABS_MIN_P": 1e-10,
+    "TOL_ABS_HMP": 0.005,
+    "TOL_REL_EBM": 0.05
+  }
+}
