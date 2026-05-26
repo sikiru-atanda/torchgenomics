@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/torchgwas.svg)](https://pypi.org/project/torchgwas/)
 [![Python](https://img.shields.io/pypi/pyversions/torchgwas.svg)](https://pypi.org/project/torchgwas/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2801%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-3038%20passing-brightgreen.svg)](tests/)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 **GPU-accelerated Genome-Wide Association Studies with PyTorch.**
@@ -23,7 +23,7 @@ single `pip install`.
 
 ## Status
 
-**v0.3.8 · Alpha · 2801 tests passing · Python 3.10 – 3.12 · Linux + Windows**
+**v0.3.9 · Alpha · 3038 tests passing · Python 3.10 – 3.13 · Linux + macOS + Windows**
 
 V1 core (Phases 0 – 13) delivers GEMMA / GAPIT reference equivalence for
 Gaussian single- and multi-trait GWAS. Post-V1 extensions implemented through
@@ -52,6 +52,24 @@ and wall-time (`perf.yml` workflow with > 10% native-kernel regression =
 hard fail, > 5% = warning). Plus golden-data CI (GEMMA / GAPIT / GWASpoly),
 external-tool CI (Pillar B, weekly), CLI smoke matrix (Pillar C, nightly),
 and fixture-drift audit (Pillar D, monthly).
+
+**Post-V1 expansion campaign (v0.3.9, 2026-05-21 → 2026-05-26):** four F3
+post-V1 statistical fixes landed on master (hyprcoloc Foley-2021 conditional
+prior, coloc_pairwise H3 outer-minus-diagonal, heidi_test LD-weighted
+variance, OCFLMM `nuisance_learner='ridge_quadratic'`) with closed-form
+agreement against the upstream R hyprcoloc / coloc / SMR v1.3.1 / DoubleML
+references. Plus the **observed-expression TWAS surface** (`twas_observed_expression`,
+`torchgwas twas-scan` CLI, rank-INT / quantile-norm / PEER residualization
+helpers), the **PrediXcan / FUSION `.db` reader**, **multi-tissue stacking**
++ S-MultiXcan-style aggregation, **gene-level TWAS plots** (Manhattan / QQ /
+λ_TWAS), and the **GWAS↔TWAS integration entry point** with 14 combination
+methods — 8 classical kernels (Fisher, Brown, Empirical Brown, HMP,
+truncated product, min-p, Cauchy, Stouffer) plus 6 novel methods (R²-weighted
+Stouffer, LD-aware Brown via eigenMT, polyploid gene-action Fisher,
+multi-tissue ACAT + lead-SNP, conditional GWAS+TWAS via COJO, hyprcoloc-PPFC-
+gated combination). External-tool head-to-head harnesses for FUSION
+measured-expression mode and `metap`/`EmpiricalBrownsMethod` round out the
+validation surface. CLI subcommand count: 38 → 40.
 
 ## Install
 
