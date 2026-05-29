@@ -1,0 +1,4 @@
+block_id	method	chr	first_idx	last_idx	first_snp	last_snp	first_bp	last_bp	n_snps_in_block
+1	r2	1	2	4	tb1.20	tb1.18	264847406	264847469	3
+2	r2	1	7	9	tb1.14	tb1.12	264847950	264847985	3
+3	r2	1	13	14	PZD00083.4	PZD00083.3	264855731	264856041	2
