@@ -117,9 +117,11 @@ documented, not fix-now.
 
 ## Cross-host reproducibility
 
-Every harness -- 15 reference tools under `validation/external/<tool>/`
-and the six Tier-3 specialty harnesses under
-`validation/specialty/<model>/` -- shares a six-artefact layout
+Every harness — 17 reference tools under `validation/external/<tool>/`
+(the eleven core tools plus FUSION measured-expression, the CRAN `metap`
+package, Bioconductor `EmpiricalBrownsMethod`, hapref `haplo.stats`,
+hyprcoloc R, and SMR v1.3.1) and the six Tier-3 specialty harnesses
+under `validation/specialty/<model>/` -- shares a six-artefact layout
 (`install.sh` pinning version, `fetch_data.sh` with SHA256-verified
 fixture, `run.sh`, `compare.py` writing `results/summary.tsv` plus
 `results/agreement.json`, `manifest.sha256`, and a tolerance-rationale
