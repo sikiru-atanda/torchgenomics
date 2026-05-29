@@ -19,6 +19,9 @@ from typing import Optional, Tuple
 import math
 import torch
 
+from .._dispatch import native_disabled
+from .._native import HAS_NATIVE_IBSS, _ibss_native
+
 
 @dataclass
 class BayesianVSRssResult:
@@ -338,63 +341,132 @@ class BayesianVSRss:
         # ELBO can oscillate by ~1e-3 even after PIPs are stable).
         prev_pip: Optional[torch.Tensor] = None
 
+        # Native C++ inner-sweep is selected when the build is present, the
+        # tensors live on CPU and are float64, and TORCHGWAS_DISABLE_NATIVE
+        # is unset. One call per outer iteration runs all L sequential layer
+        # updates (residual + Brent V optimiser + SER + softmax + EM) in place.
+        # The Python outer loop still drives the ELBO + convergence check.
+        # Below the threshold the per-iteration overhead of the C++ marshalling
+        # does not pay back; the Python reference body runs unchanged.
+        use_native_sweep = (
+            HAS_NATIVE_IBSS
+            and not native_disabled()
+            and z.device.type == "cpu"
+            and R.device.type == "cpu"
+            and z.dtype == torch.float64
+            and R.dtype == torch.float64
+            and p >= 128
+        )
+        if use_native_sweep:
+            # Precompute R_diag once; constant across iterations.
+            R_diag_np = torch.diag(R).contiguous().numpy()
+            R_np = R.detach().contiguous().numpy()
+            # log_prior matches find_optimal_V's convention exactly (uniform
+            # = -log(p); user-supplied prior_pi taken as-is). Softmax is
+            # shift-invariant, so this single array drives both the V
+            # maximisation and the per-layer alpha softmax with bit-equal
+            # results vs the Python body.
+            if prior_pi_per_snp is None:
+                log_prior_np = torch.full(
+                    (p,), -math.log(p), dtype=torch.float64
+                ).numpy()
+            else:
+                log_prior_np = torch.log(
+                    prior_pi_per_snp.to(torch.float64).clamp_min(1e-300)
+                ).contiguous().numpy()
+
+        V_method_int = 0 if self.estimate_prior_method == "optim" else 1
+        sigma_prior_sq_f = float(self.sigma_prior_sq)
+        prior_variance_tol_f = float(self.prior_variance_tol)
+
         for iteration in range(self.max_iter):
-            for l in range(L):
-                # Residual on z-scale: tilde_z_l = z - R @ sum_{l'!=l} b_eff_{l'}
-                tilde_z_l = ibss_residual_update(z, R, b_eff, layer_idx=l)
-
-                # V update — two methods, both mirror susieR options:
-                #   "optim": per-layer 1D maximization of L(V) BEFORE the SER.
-                #     Returns V=0 EXACTLY when null is favored. No snap threshold.
-                #   "EM":    closed-form M-step AFTER the SER (uses this layer's
-                #     fresh alpha/mu/sigma_sq) with snap-to-zero at
-                #     prior_variance_tol. Cheaper but has noise-floor fixed point.
-                if (
-                    self.estimate_prior_variance
-                    and self.estimate_prior_method == "optim"
-                ):
-                    V[l] = find_optimal_V(
-                        z=tilde_z_l,
-                        R=R,
-                        n=n,
-                        V_init=max(V[l].item(), self.sigma_prior_sq),
-                        prior_pi=prior_pi_per_snp,
-                    )
-
-                # Layer is null (V_l == 0): SER posterior collapses to a delta
-                # at zero. Skip computation.
-                if self.estimate_prior_variance and V[l].item() == 0.0:
-                    alpha[l] = 1.0 / p  # uniform (irrelevant; mu is zero)
-                    mu[l] = 0.0
-                    sigma_sq[l] = 0.0
-                    b_eff[l] = 0.0
-                    continue
-
-                # SER posterior (beta-scale) using PER-LAYER prior variance V_l
-                sigma_sq_l, mu_l, log_bf_l = ser_posterior(
-                    tilde_z_l, R, n, V[l].item()
+            if use_native_sweep:
+                # In-place sweep: the contiguous CPU torch tensors share
+                # storage with their .numpy() views, so alpha / mu /
+                # sigma_sq / b_eff / V are updated directly.
+                z_np = z.contiguous().numpy()
+                alpha_t = alpha.contiguous()
+                mu_t = mu.contiguous()
+                sigma_sq_t = sigma_sq.contiguous()
+                b_eff_t = b_eff.contiguous()
+                V_t = V.contiguous()
+                _ibss_native.ibss_inner_sweep(
+                    z_np,
+                    R_np,
+                    R_diag_np,
+                    alpha_t.numpy(),
+                    mu_t.numpy(),
+                    sigma_sq_t.numpy(),
+                    b_eff_t.numpy(),
+                    V_t.numpy(),
+                    log_prior_np,
+                    int(n),
+                    bool(self.estimate_prior_variance),
+                    V_method_int,
+                    prior_variance_tol_f,
+                    sigma_prior_sq_f,
+                    1e-4,
                 )
-                # Softmax with per-SNP prior (D3 shim)
-                alpha_l = compute_alpha(log_bf_l, prior_pi=prior_pi_per_snp)
+                alpha, mu, sigma_sq, b_eff, V = (
+                    alpha_t, mu_t, sigma_sq_t, b_eff_t, V_t,
+                )
+            else:
+                for l in range(L):
+                    # Residual on z-scale: tilde_z_l = z - R @ sum_{l'!=l} b_eff_{l'}
+                    tilde_z_l = ibss_residual_update(z, R, b_eff, layer_idx=l)
 
-                alpha[l] = alpha_l
-                mu[l] = mu_l
-                sigma_sq[l] = sigma_sq_l
-                # b_eff = sqrt(n) * beta-scale posterior mean for this layer
-                b_eff[l] = alpha_l * (sqrt_n * mu_l)
+                    # V update — two methods, both mirror susieR options:
+                    #   "optim": per-layer 1D maximization of L(V) BEFORE the SER.
+                    #     Returns V=0 EXACTLY when null is favored. No snap threshold.
+                    #   "EM":    closed-form M-step AFTER the SER (uses this layer's
+                    #     fresh alpha/mu/sigma_sq) with snap-to-zero at
+                    #     prior_variance_tol. Cheaper but has noise-floor fixed point.
+                    if (
+                        self.estimate_prior_variance
+                        and self.estimate_prior_method == "optim"
+                    ):
+                        V[l] = find_optimal_V(
+                            z=tilde_z_l,
+                            R=R,
+                            n=n,
+                            V_init=max(V[l].item(), self.sigma_prior_sq),
+                            prior_pi=prior_pi_per_snp,
+                        )
 
-                # EM M-step for V_l: posterior expected squared effect.
-                # Mirrors susieR's estimate_prior_variance="EM" path. Snap-to-
-                # zero closes the β_sd parity gap on noise variants but breaks
-                # strict ELBO monotonicity at the snap (PIP-stability
-                # convergence handles it). For the cleaner null treatment use
-                # estimate_prior_method="optim" (default).
-                if (
-                    self.estimate_prior_variance
-                    and self.estimate_prior_method == "EM"
-                ):
-                    V_new = (alpha_l * (mu_l ** 2 + sigma_sq_l)).sum().clamp_min(0.0).item()
-                    V[l] = 0.0 if V_new < self.prior_variance_tol else V_new
+                    # Layer is null (V_l == 0): SER posterior collapses to a delta
+                    # at zero. Skip computation.
+                    if self.estimate_prior_variance and V[l].item() == 0.0:
+                        alpha[l] = 1.0 / p  # uniform (irrelevant; mu is zero)
+                        mu[l] = 0.0
+                        sigma_sq[l] = 0.0
+                        b_eff[l] = 0.0
+                        continue
+
+                    # SER posterior (beta-scale) using PER-LAYER prior variance V_l
+                    sigma_sq_l, mu_l, log_bf_l = ser_posterior(
+                        tilde_z_l, R, n, V[l].item()
+                    )
+                    # Softmax with per-SNP prior (D3 shim)
+                    alpha_l = compute_alpha(log_bf_l, prior_pi=prior_pi_per_snp)
+
+                    alpha[l] = alpha_l
+                    mu[l] = mu_l
+                    sigma_sq[l] = sigma_sq_l
+                    # b_eff = sqrt(n) * beta-scale posterior mean for this layer
+                    b_eff[l] = alpha_l * (sqrt_n * mu_l)
+
+                    # EM M-step for V_l: posterior expected squared effect.
+                    # Mirrors susieR's estimate_prior_variance="EM" path. Snap-to-
+                    # zero closes the β_sd parity gap on noise variants but breaks
+                    # strict ELBO monotonicity at the snap (PIP-stability
+                    # convergence handles it). For the cleaner null treatment use
+                    # estimate_prior_method="optim" (default).
+                    if (
+                        self.estimate_prior_variance
+                        and self.estimate_prior_method == "EM"
+                    ):
+                        V_new = (alpha_l * (mu_l ** 2 + sigma_sq_l)).sum().clamp_min(0.0).item()
+                        V[l] = 0.0 if V_new < self.prior_variance_tol else V_new
 
             # Compute ELBO at end of iteration (uses scaled effects internally)
             elbo = self._compute_elbo(z, R, n, alpha, mu, sigma_sq, V)

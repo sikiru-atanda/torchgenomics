@@ -222,6 +222,15 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
+        "torchgwas._native._ibss_native",
+        sources=[
+            "csrc/models/susie_rss_ibss.cpp",
+        ],
+        include_dirs=["csrc"],
+        cxx_std=17,
+        optional=True,
+    ),
+    Pybind11Extension(
         "torchgwas._native._spa_native",
         sources=[
             "csrc/stats/spa_lugannani_rice.cpp",

@@ -175,6 +175,14 @@ except ImportError:  # pragma: no cover
     HAS_NATIVE_CAVI = False
 
 try:  # pragma: no cover
+    from . import _ibss_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_IBSS = True
+except ImportError:  # pragma: no cover
+    _ibss_native = None  # type: ignore[assignment]
+    HAS_NATIVE_IBSS = False
+
+try:  # pragma: no cover
     from . import _spa_native  # type: ignore[attr-defined]
 
     HAS_NATIVE_SPA = True
@@ -227,6 +235,7 @@ __all__ = [
     "HAS_NATIVE_IMPUTE_KNN",
     "HAS_NATIVE_IMPUTE_LD",
     "HAS_NATIVE_CAVI",
+    "HAS_NATIVE_IBSS",
     "HAS_NATIVE_SPA",
     "HAS_NATIVE_LDSC",
     "HAS_NATIVE_HWE",
@@ -251,6 +260,7 @@ __all__ = [
     "_impute_knn_native",
     "_impute_ld_native",
     "_cavi_native",
+    "_ibss_native",
     "_spa_native",
     "_ldsc_native",
     "_hwe_native",
