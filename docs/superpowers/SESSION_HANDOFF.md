@@ -49,6 +49,50 @@
 
 ---
 
+## Tier 1 native accelerators landed 2026-05-29
+
+Three new pybind11 extensions on branch
+`modernization/native-accel-tier1`, identified by the
+2026-05-29 audit of remaining Python hot loops and built to the same
+"Python-as-spec, native-as-shortcut" invariant as the existing 25
+extensions. All Python reference bodies remain in place as the
+algorithmic spec; dispatcher guards (`HAS_NATIVE_*` + CPU + FP64 +
+size threshold) route to the C++ shortcut by default and fall through
+on `TORCHGWAS_DISABLE_NATIVE=1` or below-threshold input.
+
+- **csrc/models/susie_rss_ibss.cpp** (Extension A): one full IBSS
+  inner sweep (residual + 1-D Brent V optimiser + SER + softmax +
+  optional EM M-step). Brent ported in C++ to remove the per-layer
+  scipy round-trip. Observed kernel speedup 4.6×–5.6× at typical
+  fine-mapping sizes (p ∈ [128, 500]); at p ≥ 1000 the unchanged
+  `_compute_elbo` solve dominates both paths. Tests:
+  `tests/test_native_susie_rss.py` (7 cases).
+- **csrc/multiomics/mediate_sigma_blocks.cpp** (Extension B): per-pair
+  WLS via inline Cholesky on precomputed cross-products + OpenMP.
+  Observed 133×–3,982× across realistic block sizes. Unblocks
+  `mediate-scan` at UKB-size mediator sets. Tests:
+  `tests/test_native_mediate.py` (7 cases).
+- **csrc/models/pcht_compat.cpp** (Extension C): one pass for
+  compat-pair enumeration + (H, H) posterior-covariance accumulation,
+  OpenMP per sample. Observed 735×–20,183×. Shared kernel for all
+  five novel haplotype tests (PCHT / HHCT / HSKAT / HapGxE /
+  BayesHap). The F2 LD-aware-pruning fix (`f601f20`) lives upstream
+  in `haplotype_gwas._compute_ld_aware_score` and is preserved
+  automatically. Tests: `tests/test_native_pcht.py` (7 cases including
+  the F2 regression guard).
+
+Per-run JSON measurements in `bench/native_runs/*_2026-05-29.json`.
+Rolled-up summary rows in `bench/native_speedups.md`. Full-suite
+status: **3,297 passed, 0 failed** (was 3,276 pre-Tier-1; the 21 new
+tests are the delta).
+
+**Outstanding** (Tier 2 from the audit; deferred to follow-up plans):
+SKAT `scan_regions`, LD-score streaming buffer, TWAS expression
+normalisation, MAGMA `snp_to_gene`, hyprcoloc subset enumeration,
+OrdinalGLMM threshold NR. Also: caching the Cholesky factorisation
+of R across IBSS iterations in `_compute_elbo` would unlock
+Extension A's full savings at biobank scale.
+
 ## NEXT AGENT TASKS (assigned by user 2026-05-06)
 
 The streaming + validation campaigns are saturated. The user has explicitly assigned these three forward-looking items to the next agent. Each is **research/infra-grade work**, not a template-port refactor — read carefully, plan with `superpowers:brainstorming` before executing.
