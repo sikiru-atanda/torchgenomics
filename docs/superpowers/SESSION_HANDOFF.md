@@ -86,12 +86,47 @@ Rolled-up summary rows in `bench/native_speedups.md`. Full-suite
 status: **3,297 passed, 0 failed** (was 3,276 pre-Tier-1; the 21 new
 tests are the delta).
 
-**Outstanding** (Tier 2 from the audit; deferred to follow-up plans):
-SKAT `scan_regions`, LD-score streaming buffer, TWAS expression
-normalisation, MAGMA `snp_to_gene`, hyprcoloc subset enumeration,
-OrdinalGLMM threshold NR. Also: caching the Cholesky factorisation
-of R across IBSS iterations in `_compute_elbo` would unlock
-Extension A's full savings at biobank scale.
+**Tier 2 status** (landed 2026-05-29 on the same branch):
+
+- **csrc/postgwas/snp_to_gene.cpp** (Extension D): MAGMA per-gene
+  window scan — binary search + linear accumulation + std::erfc per
+  gene, OpenMP across genes. Python preprocesses inputs once into
+  globally sorted arrays + chr_offsets. Observed 5.8×–166.8× across
+  m ∈ [5K, 1M] × n_genes ∈ [1K, 20K]. At biobank scale (m=10⁶ ×
+  n_genes=20K) the Python 31s drops to 188ms. Tests:
+  `tests/test_native_snp_to_gene.py` (6 cases).
+- **csrc/preprocess/expression_norm.cpp** (Extension E): TWAS
+  preprocessing — rank-INT u values + quantile-normalisation
+  column-wise tie-resolved scatter, both with average-tie semantics
+  matching scipy.stats.rankdata("average"). OpenMP across columns.
+  Observed 410×–2,164× across both transforms; at GTEx-scale
+  (n=200 × m=20K), INT 18.7s → 11.2ms and quant-norm 35.0s → 16.2ms.
+  Tests: `tests/test_native_expression.py` (10 cases).
+
+**Tier 2 NOT done** (deliberate; documented after deeper inspection):
+
+- **LD-score streaming buffer** (`postgwas/_ld_scores.py`): the audit
+  estimated 50–200× by analogy to `ld_decay_signal`, but the actual
+  hot path is the per-push torch matvec (already BLAS-fast) — the
+  Python overhead is small relative to the matvec at biobank n. A
+  C++ port would need either a stateful pybind11 class or a chunk-
+  redesign of the caller, both invasive, and the matvec ceiling
+  would cap any win below the audit estimate. Deferred.
+- **SKAT `scan_regions`** (`models/set_based.py`): would require
+  LAPACK (eigvalsh) + QUADPACK (Davies' method) linkage, neither
+  currently in the build, for the audit's modest 5–20× estimate.
+  The per-region eigvalsh + Davies are already in fast torch BLAS /
+  scipy; the per-region Python overhead is comparatively small.
+  Deferred until SKAT-O becomes a critical biobank-scale bottleneck.
+
+**Tier 3 candidates not yet attempted** (lowest priority from the
+audit): hyprcoloc subset enumeration (only matters at K ≥ 10
+traits), OrdinalGLMM threshold NR (small absolute payoff).
+
+Also: caching the Cholesky factorisation of R across IBSS iterations
+in `_compute_elbo` (a small Python-side change) would unlock
+Extension A's full savings at biobank scale; this is a high-value
+single-PR follow-up.
 
 ## NEXT AGENT TASKS (assigned by user 2026-05-06)
 
