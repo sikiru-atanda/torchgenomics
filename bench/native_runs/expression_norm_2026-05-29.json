@@ -1,0 +1,16 @@
+{
+  "kernel": "rank_int_u_columns + quantile_normalize_columns",
+  "ext": "torchgwas._native._expression_native",
+  "date": "2026-05-29",
+  "host": "linux-x86_64",
+  "notes": "TWAS expression preprocessing kernels. Per-column stateful average-tie rank scan replaced with OpenMP across columns + std::sort + tight tie-resolution loop. INT path: C++ produces u = (rank-c)/(n-2c+1) per column; Python applies sqrt(2)*erfinv(2u-1) via torch (vectorised). Quantile-norm path: Python precomputes reference = sorted_x.mean(dim=1); C++ scatters reference[i] back via column-wise tie-resolved index. Both bench against random Gaussian inputs.",
+  "measurements": [
+    {"transform": "inverse_normal_transform", "n": 100, "m":   100, "py_ms":    50.3, "cpp_ms":  0.07, "speedup":  757.1},
+    {"transform": "inverse_normal_transform", "n": 200, "m":  1000, "py_ms":   920.1, "cpp_ms":  0.52, "speedup": 1756.6},
+    {"transform": "inverse_normal_transform", "n": 200, "m": 20000, "py_ms": 18715.3, "cpp_ms": 11.23, "speedup": 1666.2},
+    {"transform": "quantile_normalize",        "n": 100, "m":   100, "py_ms":    94.8, "cpp_ms":  0.23, "speedup":  410.6},
+    {"transform": "quantile_normalize",        "n": 200, "m":  1000, "py_ms":  1888.6, "cpp_ms":  1.31, "speedup": 1446.4},
+    {"transform": "quantile_normalize",        "n": 200, "m": 20000, "py_ms": 35048.5, "cpp_ms": 16.20, "speedup": 2164.1}
+  ],
+  "scaling": "Both scale linearly with n_genes (number of independent column problems). At GTEx-scale (n=200 × m=20K), INT moves from 18.7s to 11.2ms; quantile-norm from 35.0s to 16.2ms."
+}
