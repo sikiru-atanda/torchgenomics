@@ -199,6 +199,14 @@ except ImportError:  # pragma: no cover
     HAS_NATIVE_PCHT = False
 
 try:  # pragma: no cover
+    from . import _snp_to_gene_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_SNP_TO_GENE = True
+except ImportError:  # pragma: no cover
+    _snp_to_gene_native = None  # type: ignore[assignment]
+    HAS_NATIVE_SNP_TO_GENE = False
+
+try:  # pragma: no cover
     from . import _spa_native  # type: ignore[attr-defined]
 
     HAS_NATIVE_SPA = True
@@ -254,6 +262,7 @@ __all__ = [
     "HAS_NATIVE_IBSS",
     "HAS_NATIVE_MEDIATE",
     "HAS_NATIVE_PCHT",
+    "HAS_NATIVE_SNP_TO_GENE",
     "HAS_NATIVE_SPA",
     "HAS_NATIVE_LDSC",
     "HAS_NATIVE_HWE",
@@ -281,6 +290,7 @@ __all__ = [
     "_ibss_native",
     "_mediate_native",
     "_pcht_native",
+    "_snp_to_gene_native",
     "_spa_native",
     "_ldsc_native",
     "_hwe_native",

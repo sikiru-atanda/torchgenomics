@@ -39,8 +39,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 from torch import Tensor
+
+from .._dispatch import native_disabled
+from .._native import HAS_NATIVE_SNP_TO_GENE, _snp_to_gene_native
 
 # Polyploid compatibility: snp_to_gene uses chi2 = (beta/se)^2 which is
 # ploidy-agnostic (the GWAS scan produces valid z-statistics for any ploidy).
@@ -166,6 +170,77 @@ def snp_to_gene(
 
     window_bp = int(window_kb * 1000)
     chi2 = ss.chi2.to(dtype=torch.float64)  # (m,)
+
+    # Native C++ shortcut: preprocess inputs once into globally sorted
+    # arrays + per-chromosome offset table, then walk all genes in
+    # parallel via binary-search. The Python body below is the
+    # algorithmic spec and runs unchanged when the kernel is
+    # unavailable, on GPU, or below the gene-count threshold.
+    if (
+        HAS_NATIVE_SNP_TO_GENE
+        and not native_disabled()
+        and chi2.device.type == "cpu"
+        and n_genes >= 64
+    ):
+        chi2_np = chi2.contiguous().cpu().numpy()
+        # Encode chromosomes as integer IDs (sorted by string for
+        # determinism; chromosome strings need not be numeric).
+        unique_chrs_set: set[str] = set()
+        for c in ss.chr:
+            unique_chrs_set.add(str(c))
+        for c in gene_chr:
+            unique_chrs_set.add(str(c))
+        unique_chrs = sorted(unique_chrs_set)
+        chr_to_id = {c: i for i, c in enumerate(unique_chrs)}
+        snp_chr_ids = np.array(
+            [chr_to_id[str(c)] for c in ss.chr], dtype=np.int64,
+        )
+        snp_positions = np.asarray(ss.pos, dtype=np.int64)
+        # Stable lexsort: primary key chr_id, secondary key position.
+        sort_idx = np.lexsort((snp_positions, snp_chr_ids))
+        sorted_positions = snp_positions[sort_idx]
+        sorted_chi2 = chi2_np[sort_idx]
+        sorted_chr_ids = snp_chr_ids[sort_idx]
+        # chr_offsets[c] = first index with chr_id == c (using searchsorted
+        # left-side; chr_offsets[len] = m).
+        chr_offsets = np.searchsorted(
+            sorted_chr_ids, np.arange(len(unique_chrs) + 1), side="left",
+        ).astype(np.int64)
+        gene_chr_ids_np = np.array(
+            [chr_to_id[str(c)] for c in gene_chr], dtype=np.int64,
+        )
+        gene_starts_np = (
+            np.asarray(gene_start, dtype=np.int64) - window_bp
+        ).astype(np.int64)
+        gene_ends_np = (
+            np.asarray(gene_end, dtype=np.int64) + window_bp
+        ).astype(np.int64)
+
+        stat_np = np.empty(n_genes, dtype=np.float64)
+        p_np = np.empty(n_genes, dtype=np.float64)
+        n_snps_np = np.empty(n_genes, dtype=np.int64)
+
+        _snp_to_gene_native.snp_to_gene_scan(
+            sorted_positions,
+            sorted_chi2,
+            chr_offsets,
+            gene_chr_ids_np,
+            gene_starts_np,
+            gene_ends_np,
+            stat_np,
+            p_np,
+            n_snps_np,
+        )
+        device = chi2.device
+        return GeneResult(
+            gene_id=list(gene_id),
+            gene_chr=list(gene_chr),
+            gene_start=list(gene_start),
+            gene_end=list(gene_end),
+            n_snps=n_snps_np.tolist(),
+            stat=torch.from_numpy(stat_np).to(device=device, dtype=torch.float64),
+            p=torch.from_numpy(p_np).to(device=device, dtype=torch.float64),
+        )
 
     # Build a chromosome -> list of (pos, snp_index) lookup for fast matching.
     chr_to_snps: dict[str, list[tuple[int, int]]] = {}
