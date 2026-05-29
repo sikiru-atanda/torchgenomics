@@ -1,0 +1,14 @@
+{
+  "kernel": "dosage_posterior_cov",
+  "ext": "torchgwas._native._pcht_native",
+  "date": "2026-05-29",
+  "host": "linux-x86_64",
+  "notes": "One pass for compat-pair enumeration + posterior-covariance accumulation per individual. OpenMP across the outer sample loop with per-thread (H, H) accumulators reduced at end. The F2 LD-aware-pruning fix (haplotype_gwas._compute_ld_aware_score, commit f601f20) is upstream of this kernel and inherited via the already-pruned labels/freq arguments. Random planted haplotype fixture: G[i] = hap[a_i] + hap[b_i] with (a, b) drawn from the Dirichlet-distributed frequency vector.",
+  "measurements": [
+    {"n":  200, "H":  8, "m":  5, "py_ms":    32.3, "cpp_ms": 0.044, "speedup":   734.6},
+    {"n":  500, "H": 12, "m":  8, "py_ms":   165.0, "cpp_ms": 0.039, "speedup":  4245.4},
+    {"n": 2000, "H": 20, "m": 10, "py_ms":  1661.2, "cpp_ms": 0.098, "speedup": 17030.1},
+    {"n": 5000, "H": 20, "m": 15, "py_ms":  4361.7, "cpp_ms": 0.216, "speedup": 20182.7}
+  ],
+  "consumer_summary": "Shared kernel for PCHT (Phase 46 novel #1). The same posterior-covariance output drives all five novel methods (PCHT, HHCT, HSKAT, HapGxE, BayesHap) that consume Cov(D_i | g_i) downstream. The Python compat-list path (_reconstruct_compat) remains the spec for callers that need raw pair lists; the native shortcut bypasses both _reconstruct_compat and the per-sample Python accumulation."
+}

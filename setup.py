@@ -240,6 +240,15 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
+        "torchgwas._native._pcht_native",
+        sources=[
+            "csrc/models/pcht_compat.cpp",
+        ],
+        include_dirs=["csrc"],
+        cxx_std=17,
+        optional=True,
+    ),
+    Pybind11Extension(
         "torchgwas._native._spa_native",
         sources=[
             "csrc/stats/spa_lugannani_rice.cpp",
@@ -285,6 +294,7 @@ _OMP_TARGETS = {
     "torchgwas._native._spa_native",
     "torchgwas._native._dp_optimize_native",
     "torchgwas._native._mediate_native",
+    "torchgwas._native._pcht_native",
 }
 for _ext in ext_modules:
     if _ext.name in _OMP_TARGETS:

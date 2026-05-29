@@ -32,6 +32,9 @@ from dataclasses import dataclass, field
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
+from .._native import HAS_NATIVE_PCHT, _pcht_native
+
 logger = logging.getLogger(__name__)
 
 STAT_DTYPE = torch.float64
@@ -235,6 +238,35 @@ def compute_dosage_posterior_cov(
         [[int(c) for c in h] for h in labels],
         dtype=torch.long, device=device,
     )
+
+    # Native C++ shortcut: one pass for compat-pair enumeration +
+    # per-individual posterior covariance accumulation, replacing the
+    # nested Python ``for i in range(n)`` + ``_reconstruct_compat``
+    # path. OpenMP across the outer sample loop. The F2 LD-aware
+    # haplotype-pruning fix (commit f601f20) lives upstream in
+    # ``haplotype_gwas._compute_ld_aware_score`` and is inherited via
+    # the already-pruned ``labels`` / ``freq`` arguments — the kernel
+    # does not duplicate the pruning logic.
+    if (
+        HAS_NATIVE_PCHT
+        and not native_disabled()
+        and device.type == "cpu"
+        and n * H * H >= 256
+    ):
+        G_int_np = (
+            G_block.round().long().clamp(0, 2).contiguous().cpu().numpy()
+        )
+        hap_mat_np = hap_mat.contiguous().cpu().numpy()
+        freq_np = freq.to(STAT_DTYPE).contiguous().cpu().numpy()
+        cov_sum = torch.zeros(H, H, dtype=STAT_DTYPE, device="cpu")
+        _pcht_native.dosage_posterior_cov(
+            G_int_np,
+            hap_mat_np,
+            freq_np,
+            cov_sum.numpy(),
+        )
+        return cov_sum.to(device)
+
     compat = _reconstruct_compat(G_block, hap_mat)
 
     cov_sum = torch.zeros(H, H, dtype=STAT_DTYPE, device=device)
