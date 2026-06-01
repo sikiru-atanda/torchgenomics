@@ -259,4 +259,9 @@ jobs:
       - name: Smoke CLI on CUDA
         run: |
           python -c "from torchgwas.cli import main; print('CLI import ok on GPU node')"
-          torchgwas --version
+          # `torchgwas --help` exits 0 and confirms the argparse roundtrip
+          # (the CLI requires a subcommand, so plain `--version` is not a
+          # supported invocation; `--help` exercises the same top-level parser).
+          torchgwas --help > /dev/null
+          torchgwas validate --help > /dev/null
+          echo "CLI roundtrip ok on GPU node"
