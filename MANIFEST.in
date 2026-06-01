@@ -1,11 +1,16 @@
 include LICENSE
 include README.md
+include CHANGELOG.md
 include pyproject.toml
 include setup.py
 
 recursive-include csrc *.cpp *.hpp *.h
 recursive-include torchgwas *.py *.pyi
 
+# Explicit prunes for everything that could plausibly leak via setuptools
+# auto-discovery. Anything not on an `include` / `recursive-include` line
+# above is excluded by the include-allowlist convention; these prunes are
+# belt-and-braces against future refactors that flip on auto-discovery.
 prune tests
 prune bench
 prune docs
@@ -14,3 +19,9 @@ prune MT_ME
 prune gemma_demo
 prune benchmark
 prune output
+prune paper
+prune validation
+prune examples
+prune tools
+prune .github
+prune .claude

@@ -2,6 +2,102 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.10] — 2026-06-01
+
+Performance + infrastructure release. Seven new native C++ accelerators
+on top of the existing 24, an ELBO Cholesky cache that unblocks
+SuSiE-RSS at biobank-locus size, and a self-hosted GPU CI pipeline.
+The public API is unchanged; this is purely faster and safer.
+
+### Added — native C++ accelerators (7 new; 24 → 31 total)
+
+Each is opt-in via `pip install torchgwas[native]`, falls through to
+the pure-Python algorithmic spec when the build is unavailable or
+when `TORCHGWAS_DISABLE_NATIVE=1` is set.
+
+- **SuSiE-RSS IBSS inner sweep** (`csrc/models/susie_rss_ibss.cpp`).
+  One full IBSS iteration — per-layer SER + residual update + Brent
+  V optimiser + softmax + EM M-step — runs under a single GIL
+  release. Brent ported to C++ so each layer's prior-variance update
+  no longer round-trips through `scipy.optimize`. Observed 4.6×–5.6×
+  at typical fine-mapping sizes (p ∈ [128, 500]).
+- **Mediation σ_u / σ_v per-pair WLS**
+  (`csrc/multiomics/mediate_sigma_blocks.cpp`). Per-pair Cholesky on
+  precomputed cross-products with OpenMP across SNPs. Observed
+  **133× – 3,982×** across realistic block sizes; unblocks
+  `mediate-scan` at UKB-size mediator sets.
+- **PCHT compat-pair + posterior covariance**
+  (`csrc/models/pcht_compat.cpp`). One pass for compat-pair
+  enumeration + (H × H) posterior-covariance accumulation, OpenMP
+  per sample. Observed **735× – 20,183×**. Shared kernel for all
+  five novel haplotype tests (PCHT / HHCT / HSKAT / HapGxE / BayesHap).
+- **MAGMA `snp_to_gene` window scan**
+  (`csrc/postgwas/snp_to_gene.cpp`). Binary-search + linear scan
+  over a globally-sorted SNP array, OpenMP across genes. At biobank
+  scale (m = 10⁶ × n_genes = 20K), Python 31s → native 188 ms (167×).
+- **TWAS expression normalisation**
+  (`csrc/preprocess/expression_norm.cpp`). Per-column average-tie
+  rank scan for `inverse_normal_transform` and
+  `quantile_normalize`. At GTEx scale (n = 200 × m = 20K):
+  rank-INT 18.7s → 11.2 ms (1,666×), quantile-norm 35.0s → 16.2 ms
+  (2,164×).
+- **hyprcoloc 2^K subset enumeration**
+  (`csrc/postgwas/hyprcoloc_subsets.cpp`). Bitmask enumeration with
+  per-subset `logsumexp` inline. 1.9× – 18.7× across K ∈ [6, 15];
+  peak at K = 12. Only matters at K ≥ 8.
+- **OrdinalGLMM threshold Newton-Raphson**
+  (`csrc/models/ordinal_threshold_nr.cpp`). Score vector + Hessian
+  assembly in one pass over samples, OpenMP-parallel. 3.7× – 48×
+  across J ∈ {3, 5, 10}.
+
+### Added — SuSiE-RSS ELBO Cholesky cache
+
+`BayesianVSRss.fit_rss` now factorises R once before the IBSS loop
+and reuses the Cholesky factor via `torch.cholesky_solve` inside
+`_compute_elbo`. Replaces the per-iteration O(p³) `linalg.solve`
+with O(p²) substitution. At p = 2,000 the end-to-end `fit_rss` drops
+from 5.8 s to 0.53 s (11×). On a non-PD R the cache falls back
+silently to the un-factored path.
+
+### Added — GPU CI pipeline
+
+- `.github/workflows/gpu.yml` triggers on `pull_request_target`
+  (label-gated by `gpu-tested`), nightly cron, and
+  `workflow_dispatch`. Runs the 71 CUDA-aware tests on a self-hosted
+  runner labelled `[self-hosted, gpu, rtx-2000-ada]`.
+- `scripts/setup_gpu_runner.sh` walks the operator through runner
+  registration with SHA256 verification of the upstream tarball
+  against the GitHub release manifest.
+- `docs/operations/gpu-ci.md` documents the
+  `pull_request_target` + label gate security model with citations
+  to GitHub Security Lab's Pwn-Requests writeup.
+
+### Fixed
+
+- `fix(ci): GPU workflow — union (not intersection) of marker +
+  file globs`. `pytest -m gpu file1.py file2.py …` is pytest's
+  *intersection* semantic, not union; the workflow now runs two
+  pytest passes so unmarked CUDA-skipif tests still run.
+- `fix(ci): GPU workflow smoke step uses --help not --version`.
+  The `torchgwas` CLI is subcommand-based and has no `--version`
+  flag.
+
+### Internal
+
+- Version synchronisation: `torchgwas.__version__` was stuck at
+  `"0.2.0"` while `pyproject.toml` advanced to `"0.3.8"`. Both now
+  agree at `"0.3.10"`.
+- `MANIFEST.in` now explicitly bundles `CHANGELOG.md` and adds
+  belt-and-braces prunes for `paper/`, `validation/`, `examples/`,
+  `tools/`, `.github/`, `.claude/`.
+- README links rewritten from relative paths to absolute GitHub
+  URLs so they resolve on PyPI / TestPyPI.
+
+### Test suite
+
+3,323 passed / 0 failed (was 3,276 pre-Tier-1). 47 new regression
+tests across the 7 new native extensions + the ELBO Cholesky cache.
+
 ## [0.3.9] — 2026-05-26
 
 Post-V1 expansion release: four F3 statistical fixes, the

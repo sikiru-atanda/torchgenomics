@@ -2,8 +2,8 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/torchgwas.svg)](https://pypi.org/project/torchgwas/)
 [![Python](https://img.shields.io/pypi/pyversions/torchgwas.svg)](https://pypi.org/project/torchgwas/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-3038%20passing-brightgreen.svg)](tests/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/sikiru-atanda/torchgwas/blob/master/LICENSE)
+[![Tests](https://img.shields.io/badge/tests-3038%20passing-brightgreen.svg)](https://github.com/sikiru-atanda/torchgwas/tree/master/tests)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 **GPU-accelerated Genome-Wide Association Studies with PyTorch.**
@@ -15,7 +15,7 @@ analyses, haplotype tests, polygenic scoring, and causal mediation — all in a
 single `pip install`.
 
 <p align="center">
-  <img src="docs/assets/mdp_earht_manhattan.png" alt="Manhattan plot — MDP maize EarHT" width="720"/>
+  <img src="https://raw.githubusercontent.com/sikiru-atanda/torchgwas/master/docs/assets/mdp_earht_manhattan.png" alt="Manhattan plot — MDP maize EarHT" width="720"/>
   <br/>
   <em>Example output from <code>examples/python/01_single_trait_lmm.py</code>
   (MDP maize Ear Height, SingleTraitLMM, 276 samples × 3093 SNPs).</em>
@@ -90,7 +90,7 @@ pytest tests/ -v
 ```
 
 GPU support: install the matching PyTorch CUDA wheel first (see
-[docs/getting-started/installation.md](docs/getting-started/installation.md)),
+[docs/getting-started/installation.md](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/getting-started/installation.md)),
 then `pip install torchgwas`. The same Python code runs on CPU or CUDA by
 changing one tensor device.
 
@@ -106,7 +106,7 @@ torchgwas lmm-scan \
 ```
 
 The equivalent Python (trimmed; full script at
-[`examples/python/01_single_trait_lmm.py`](examples/python/01_single_trait_lmm.py)):
+[`examples/python/01_single_trait_lmm.py`](https://github.com/sikiru-atanda/torchgwas/blob/master/examples/python/01_single_trait_lmm.py)):
 
 ```python
 import pandas as pd
@@ -141,14 +141,14 @@ fdr = benjamini_hochberg(result.p.cpu())
 - [**Docs site**](https://sikiru-atanda.github.io/torchgwas/) — installation,
   tutorials, full API reference, and validation protocol. Built with MkDocs
   Material; deployed on pushes to `master` / `main`.
-- [**examples/python/**](examples/python/) — 10 working end-to-end scripts
+- [**examples/python/**](https://github.com/sikiru-atanda/torchgwas/tree/master/examples/python) — 10 working end-to-end scripts
   (single/multi-trait LMM, MET, threshold-linear, PGS, SuSiE fine-mapping,
   mediation, NCBI annotation, polyploid, haplotype).
-- [**examples/notebooks/quickstart.ipynb**](examples/notebooks/quickstart.ipynb)
+- [**examples/notebooks/quickstart.ipynb**](https://github.com/sikiru-atanda/torchgwas/blob/master/examples/notebooks/quickstart.ipynb)
   — same as example 01 but renders the Manhattan inline.
-- [**docs/cli.md**](docs/cli.md) — every CLI subcommand with expected inputs.
-- [**docs/validation.md**](docs/validation.md) — GEMMA / GAPIT agreement tables.
-- [**docs/ROADMAP.md**](docs/ROADMAP.md) — deferred internal improvements and
+- [**docs/cli.md**](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/cli.md) — every CLI subcommand with expected inputs.
+- [**docs/validation.md**](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/validation.md) — GEMMA / GAPIT agreement tables.
+- [**docs/ROADMAP.md**](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/ROADMAP.md) — deferred internal improvements and
   candidate Phase 50+ features.
 
 ## Features
