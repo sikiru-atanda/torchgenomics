@@ -111,7 +111,12 @@ def test_workflow_uploads_artifacts() -> None:
     assert "actions/upload-artifact" in text, (
         "workflow must upload pytest JUnit XML + nvidia-smi snapshots as artifacts"
     )
-    assert "junit-gpu.xml" in text, "workflow must produce JUnit XML for downstream tooling"
+    # Accept either the single-pass name (legacy) or the two-pass
+    # marker/files split (post fix/gpu-workflow-marker-intersection).
+    assert (
+        "junit-gpu.xml" in text
+        or ("junit-gpu-marker.xml" in text and "junit-gpu-files.xml" in text)
+    ), "workflow must produce at least one JUnit XML for downstream tooling"
     assert "nvidia-smi" in text, "workflow must capture nvidia-smi output"
 
 
