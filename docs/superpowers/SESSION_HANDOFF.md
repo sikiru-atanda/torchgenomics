@@ -119,9 +119,22 @@ tests are the delta).
   scipy; the per-region Python overhead is comparatively small.
   Deferred until SKAT-O becomes a critical biobank-scale bottleneck.
 
-**Tier 3 candidates not yet attempted** (lowest priority from the
-audit): hyprcoloc subset enumeration (only matters at K ≥ 10
-traits), OrdinalGLMM threshold NR (small absolute payoff).
+**Tier 3 status** (landed 2026-05-29 on the same branch):
+
+- **csrc/postgwas/hyprcoloc_subsets.cpp** (Extension H): 2^K subset
+  enumeration via bitmask + per-subset trait-row sum + logsumexp
+  inline, OpenMP across subsets. Output flat (2^K,) array indexed by
+  bitmask. Observed 1.9×–18.7× across K ∈ [6, 15]; peak at K=12.
+  Dispatcher guard K ∈ [6, 30] keeps K<6 cases (already <1ms) in
+  Python. Tests: `tests/test_native_hyprcoloc.py` (5 cases including
+  end-to-end posterior parity at K=10 and K=12).
+- **csrc/models/ordinal_threshold_nr.cpp** (Extension I): per-NR-step
+  score vector + (n_thresh, n_thresh) Hessian assembly in a single
+  pass over the n samples, OpenMP across samples with per-thread
+  upper-triangle accumulators reduced at completion. Observed
+  3.7×–48× across J ∈ {3, 5, 10}; exceeds the audit's 3-15×
+  estimate at J ≥ 5. Tests: `tests/test_native_ordinal_threshold.py`
+  (5 cases including end-to-end fit_null parity).
 
 Also: caching the Cholesky factorisation of R across IBSS iterations
 in `_compute_elbo` (a small Python-side change) would unlock
