@@ -182,18 +182,35 @@ The streaming + validation campaigns are saturated. The user has explicitly assi
 
 ### Task NA3 — UKB-scale validation runs
 
+**Status (2026-06-01): scaffold ready; real run pending user. One new
+gap surfaced during the audit.**
+
 **What:** all of the campaign's biobank-scale memory math (40 TB → 4 GB) is *projected* from chunk-size arithmetic. No actual run on UKB-scale (n ≈ 500K samples, m ≈ 10M variants) data has been done. The streaming-memory regression tests verify peak ∝ chunk_size on n=200/m=2000 fixtures — that's the *invariant*, not the *biobank-scale measurement*.
 
 **Why it's hard:** needs UKB data access (DUA, controlled access committee, etc.) and tens of CPU-hours per run. Not something that can be auto-dispatched.
 
 **Where to start:**
 - The user has UKB access in their day job (per `bench/data/` references). If access is in place, a single LMM scan + a single LDSC h² estimate at UKB chr22 scale (~1.6M variants) is the right first target.
-- Build a one-off harness at `validation/external/ukb/` that mirrors the Pillar B layout: install (no-op; uses pre-fetched UKB), fetch_data (assumes UKB locally), run, compare.
+- Harness at `validation/external/ukb/` is **ready** — 7 files (install / fetch_data / run_reference / run_torchgwas / compare / README / .gitignore) on master, all syntax-clean, CLI flags verified against `torchgwas lmm-scan --help`. Operator runbook is in `validation/external/ukb/README.md`.
 - Compare: TorchGWAS LMM vs regenie LMM (already wired), TorchGWAS h² vs LDSC h² (already wired), peak memory observed vs the projected `O(n × chunk_size)` invariant.
+
+**Operator runbook (when UKB data is locally available):**
+
+```bash
+cd validation/external/ukb
+bash install.sh        # one-time: REGENIE v4.x + LDSC 1.0.1
+bash fetch_data.sh     # writes .env_marker; assumes UKB chr22 PLINK/PGEN on a local path
+bash run_reference.sh  # ~few hours: REGENIE chr22 LMM + LDSC h²
+bash run_torchgwas.sh  # ~few hours: TorchGWAS lmm-scan + ldsc_h2 driver
+python compare.py      # ledger row: β Pearson, |Δh²|, peak RSS vs invariant
+```
 
 **Success criteria:** at least one biobank-scale comparison empirically validates that the streaming peak holds and the numerical agreement holds (β corr > 0.999, h² Δ < 5e-3). One ledger row capturing the result. Future runs can re-use the harness.
 
-**Why this matters:** without an empirical biobank run, the campaign's claims are theoretically sound but not empirically validated at scale. A single UKB chr22 LMM + LDSC h² run takes ~few CPU-hours and ratifies the entire campaign's memory + correctness story.
+**Audit gap surfaced 2026-06-01** (informational; not blocking the run):
+The existing `bench/streaming_p_sweep.py` fixes n=2000 and validates p-scaling (924 MB plateau across p ∈ [10⁴, 10⁶]). It does **not** validate n-scaling. A quick n-bump to n=20K (at p=10⁴) shows streaming peak rising to 16.8 GB — that's the **dense GRM** (n×n = 3.2 GB at n=20K; 2 TB at n=500K) dominating, not the chunk-scan loop. The manuscript's "1–4 GB at biobank scale" claim implicitly assumes the **sparse-block-diagonal GRM + PCG-REML path** (Section 8.6 of the paper), not the dense-GRM path the current bench measures. The UKB run should default to the sparse-GRM path; if the user runs against dense GRM at biobank n, the result will not match the headline number.
+
+**Why this matters:** without an empirical biobank run, the campaign's claims are theoretically sound but not empirically validated at scale. A single UKB chr22 LMM + LDSC h² run takes ~few CPU-hours and ratifies the entire campaign's memory + correctness story. The audit gap above does not block the run — it sharpens the success criterion: peak RSS should match the **sparse-GRM** projection, not the dense one.
 
 ### Process notes for the next agent
 
