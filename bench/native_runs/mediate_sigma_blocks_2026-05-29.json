@@ -1,0 +1,14 @@
+{
+  "kernel": "sigma_u_block + sigma_v_block",
+  "ext": "torchgwas._native._mediate_native",
+  "date": "2026-05-29",
+  "host": "linux-x86_64",
+  "notes": "Both kernels combined; random rotated-basis inputs; c0 covariates; warm-up + 3-trial mean. Python path uses nested torch.linalg.solve over per-pair Xy. Native path precomputes weighted cross-products via torch BLAS once per block, then inline Cholesky + solve + SSR per pair. OpenMP across the outer SNP loop.",
+  "measurements": [
+    {"n": 200,  "s_b":  64, "f_b":  64, "c0":  5, "py_ms":   127.7, "cpp_ms": 0.96, "speedup":  133.3},
+    {"n": 500,  "s_b": 128, "f_b":  64, "c0": 10, "py_ms":  1175.9, "cpp_ms": 1.28, "speedup":  917.8},
+    {"n": 2000, "s_b": 256, "f_b":  64, "c0": 10, "py_ms":  5618.7, "cpp_ms": 2.57, "speedup": 2182.3},
+    {"n": 2000, "s_b": 512, "f_b": 128, "c0": 10, "py_ms": 22766.3, "cpp_ms": 5.72, "speedup": 3982.4}
+  ],
+  "scaling": "Native time scales sub-linearly with s_b*f_b because the small (p_y x p_y) Cholesky per pair is cache-resident; the precomputed cross-products amortize across all f_b mediators within a single SNP iteration."
+}

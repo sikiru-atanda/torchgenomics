@@ -49,6 +49,98 @@
 
 ---
 
+## Tier 1 native accelerators landed 2026-05-29
+
+Three new pybind11 extensions on branch
+`modernization/native-accel-tier1`, identified by the
+2026-05-29 audit of remaining Python hot loops and built to the same
+"Python-as-spec, native-as-shortcut" invariant as the existing 25
+extensions. All Python reference bodies remain in place as the
+algorithmic spec; dispatcher guards (`HAS_NATIVE_*` + CPU + FP64 +
+size threshold) route to the C++ shortcut by default and fall through
+on `TORCHGWAS_DISABLE_NATIVE=1` or below-threshold input.
+
+- **csrc/models/susie_rss_ibss.cpp** (Extension A): one full IBSS
+  inner sweep (residual + 1-D Brent V optimiser + SER + softmax +
+  optional EM M-step). Brent ported in C++ to remove the per-layer
+  scipy round-trip. Observed kernel speedup 4.6×–5.6× at typical
+  fine-mapping sizes (p ∈ [128, 500]); at p ≥ 1000 the unchanged
+  `_compute_elbo` solve dominates both paths. Tests:
+  `tests/test_native_susie_rss.py` (7 cases).
+- **csrc/multiomics/mediate_sigma_blocks.cpp** (Extension B): per-pair
+  WLS via inline Cholesky on precomputed cross-products + OpenMP.
+  Observed 133×–3,982× across realistic block sizes. Unblocks
+  `mediate-scan` at UKB-size mediator sets. Tests:
+  `tests/test_native_mediate.py` (7 cases).
+- **csrc/models/pcht_compat.cpp** (Extension C): one pass for
+  compat-pair enumeration + (H, H) posterior-covariance accumulation,
+  OpenMP per sample. Observed 735×–20,183×. Shared kernel for all
+  five novel haplotype tests (PCHT / HHCT / HSKAT / HapGxE /
+  BayesHap). The F2 LD-aware-pruning fix (`f601f20`) lives upstream
+  in `haplotype_gwas._compute_ld_aware_score` and is preserved
+  automatically. Tests: `tests/test_native_pcht.py` (7 cases including
+  the F2 regression guard).
+
+Per-run JSON measurements in `bench/native_runs/*_2026-05-29.json`.
+Rolled-up summary rows in `bench/native_speedups.md`. Full-suite
+status: **3,297 passed, 0 failed** (was 3,276 pre-Tier-1; the 21 new
+tests are the delta).
+
+**Tier 2 status** (landed 2026-05-29 on the same branch):
+
+- **csrc/postgwas/snp_to_gene.cpp** (Extension D): MAGMA per-gene
+  window scan — binary search + linear accumulation + std::erfc per
+  gene, OpenMP across genes. Python preprocesses inputs once into
+  globally sorted arrays + chr_offsets. Observed 5.8×–166.8× across
+  m ∈ [5K, 1M] × n_genes ∈ [1K, 20K]. At biobank scale (m=10⁶ ×
+  n_genes=20K) the Python 31s drops to 188ms. Tests:
+  `tests/test_native_snp_to_gene.py` (6 cases).
+- **csrc/preprocess/expression_norm.cpp** (Extension E): TWAS
+  preprocessing — rank-INT u values + quantile-normalisation
+  column-wise tie-resolved scatter, both with average-tie semantics
+  matching scipy.stats.rankdata("average"). OpenMP across columns.
+  Observed 410×–2,164× across both transforms; at GTEx-scale
+  (n=200 × m=20K), INT 18.7s → 11.2ms and quant-norm 35.0s → 16.2ms.
+  Tests: `tests/test_native_expression.py` (10 cases).
+
+**Tier 2 NOT done** (deliberate; documented after deeper inspection):
+
+- **LD-score streaming buffer** (`postgwas/_ld_scores.py`): the audit
+  estimated 50–200× by analogy to `ld_decay_signal`, but the actual
+  hot path is the per-push torch matvec (already BLAS-fast) — the
+  Python overhead is small relative to the matvec at biobank n. A
+  C++ port would need either a stateful pybind11 class or a chunk-
+  redesign of the caller, both invasive, and the matvec ceiling
+  would cap any win below the audit estimate. Deferred.
+- **SKAT `scan_regions`** (`models/set_based.py`): would require
+  LAPACK (eigvalsh) + QUADPACK (Davies' method) linkage, neither
+  currently in the build, for the audit's modest 5–20× estimate.
+  The per-region eigvalsh + Davies are already in fast torch BLAS /
+  scipy; the per-region Python overhead is comparatively small.
+  Deferred until SKAT-O becomes a critical biobank-scale bottleneck.
+
+**Tier 3 status** (landed 2026-05-29 on the same branch):
+
+- **csrc/postgwas/hyprcoloc_subsets.cpp** (Extension H): 2^K subset
+  enumeration via bitmask + per-subset trait-row sum + logsumexp
+  inline, OpenMP across subsets. Output flat (2^K,) array indexed by
+  bitmask. Observed 1.9×–18.7× across K ∈ [6, 15]; peak at K=12.
+  Dispatcher guard K ∈ [6, 30] keeps K<6 cases (already <1ms) in
+  Python. Tests: `tests/test_native_hyprcoloc.py` (5 cases including
+  end-to-end posterior parity at K=10 and K=12).
+- **csrc/models/ordinal_threshold_nr.cpp** (Extension I): per-NR-step
+  score vector + (n_thresh, n_thresh) Hessian assembly in a single
+  pass over the n samples, OpenMP across samples with per-thread
+  upper-triangle accumulators reduced at completion. Observed
+  3.7×–48× across J ∈ {3, 5, 10}; exceeds the audit's 3-15×
+  estimate at J ≥ 5. Tests: `tests/test_native_ordinal_threshold.py`
+  (5 cases including end-to-end fit_null parity).
+
+Also: caching the Cholesky factorisation of R across IBSS iterations
+in `_compute_elbo` (a small Python-side change) would unlock
+Extension A's full savings at biobank scale; this is a high-value
+single-PR follow-up.
+
 ## NEXT AGENT TASKS (assigned by user 2026-05-06)
 
 The streaming + validation campaigns are saturated. The user has explicitly assigned these three forward-looking items to the next agent. Each is **research/infra-grade work**, not a template-port refactor — read carefully, plan with `superpowers:brainstorming` before executing.

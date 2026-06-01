@@ -1,0 +1,16 @@
+{
+  "kernel": "ibss_inner_sweep",
+  "ext": "torchgwas._native._ibss_native",
+  "date": "2026-05-29",
+  "host": "linux-x86_64",
+  "notes": "AR(1) rho=0.5 LD; n_causal=3-10 planted; estimate_prior_method='optim'; max_iter=100; tol=1e-6. Observed-then-floored measurement.",
+  "measurements": [
+    {"p": 128, "n": 1000, "L": 5,  "n_iter": 3, "py_ms": 8.2,    "cpp_ms": 1.8,    "speedup": 4.63},
+    {"p": 200, "n": 1000, "L": 5,  "n_iter": 4, "py_ms": 12.4,   "cpp_ms": 3.7,    "speedup": 3.34},
+    {"p": 500, "n": 2000, "L": 10, "n_iter": 8, "py_ms": 233.3,  "cpp_ms": 41.6,   "speedup": 5.61},
+    {"p": 1000,"n": 5000, "L": 10, "n_iter": 2, "py_ms": 148.2,  "cpp_ms": 159.5,  "speedup": 0.93},
+    {"p": 2000,"n": 5000, "L": 10, "n_iter": 6, "py_ms": 5534.8, "cpp_ms": 5568.8, "speedup": 0.99}
+  ],
+  "ceiling_note": "At p>=1000 the per-outer-iter ELBO call (torch.linalg.solve on R, O(p^3)) dominates both paths equally; the kernel itself is fast but represents <10% of total fit_rss time. Caching the Cholesky factorisation of R across IBSS iterations is a separate Python-side optimisation that would unlock the C++ savings at biobank scale.",
+  "kernel_only_speedup": "On the work the kernel replaces (per-layer SER + Brent V optimiser + softmax + EM), profiled at p=500 the kernel runs in 17ms vs 110ms Python (6.5x). The headline speedup degrades at large p because of the unchanged ELBO."
+}

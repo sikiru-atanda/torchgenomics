@@ -1,0 +1,26 @@
+# Plant multi-omics worked-example fixture for Paper F4 panel C.
+#
+# Policy: COMMIT the derived/aligned parquet bundle + manifest;
+#         IGNORE raw upstream downloads (re-fetchable via fetch.sh).
+
+# Raw downloads -- re-fetchable from canonical URLs in README.md.
+raw/
+downloads/
+*.vcf.gz
+*.vcf.gz.tbi
+*.vcf.bgz
+*.h5
+*.tar.gz
+*.zip
+*.tsv.gz
+
+# R / Python scratch
+.Rhistory
+.RData
+.Rproj.user/
+__pycache__/
+*.pyc
+
+# Local install / fetch markers
+.install_marker
+.fetch_marker

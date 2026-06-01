@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "n_samples": 2000,
+  "chunk_size": 1024,
+  "dtype_bytes_materialized": 4,
+  "per_p": [
+    {
+      "p": 10000,
+      "peak_bytes": 822599680,
+      "peak_delta_from_baseline_bytes": 178450432,
+      "rss_before_bytes": 644149248,
+      "rss_after_bytes": 822599680,
+      "elapsed_seconds": 0.47632627794519067,
+      "p_seen": 10000,
+      "n_samples": 2000,
+      "chunk_size": 1024,
+      "materialized_peak_bytes": 112160000,
+      "ratio_materialized_over_streaming": 0.13634821739779912
+    },
+    {
+      "p": 30000,
+      "peak_bytes": 924024832,
+      "peak_delta_from_baseline_bytes": 101425152,
+      "rss_before_bytes": 822599680,
+      "rss_after_bytes": 924024832,
+      "elapsed_seconds": 1.025571540929377,
+      "p_seen": 30000,
+      "n_samples": 2000,
+      "chunk_size": 1024,
+      "materialized_peak_bytes": 272480000,
+      "ratio_materialized_over_streaming": 0.29488385004787404
+    },
+    {
+      "p": 100000,
+      "peak_bytes": 924024832,
+      "peak_delta_from_baseline_bytes": 0,
+      "rss_before_bytes": 924024832,
+      "rss_after_bytes": 924024832,
+      "elapsed_seconds": 2.697055280674249,
+      "p_seen": 100000,
+      "n_samples": 2000,
+      "chunk_size": 1024,
+      "materialized_peak_bytes": 833600000,
+      "ratio_materialized_over_streaming": 0.9021402576332495
+    },
+    {
+      "p": 300000,
+      "peak_bytes": 924024832,
+      "peak_delta_from_baseline_bytes": 0,
+      "rss_before_bytes": 924024832,
+      "rss_after_bytes": 924024832,
+      "elapsed_seconds": 7.9583870260976255,
+      "p_seen": 300000,
+      "n_samples": 2000,
+      "chunk_size": 1024,
+      "materialized_peak_bytes": 2436800000,
+      "ratio_materialized_over_streaming": 2.637158565020036
+    },
+    {
+      "p": 1000000,
+      "peak_bytes": 924024832,
+      "peak_delta_from_baseline_bytes": 0,
+      "rss_before_bytes": 924024832,
+      "rss_after_bytes": 924024832,
+      "elapsed_seconds": 26.16684423200786,
+      "p_seen": 1000000,
+      "n_samples": 2000,
+      "chunk_size": 1024,
+      "materialized_peak_bytes": 8048000000,
+      "ratio_materialized_over_streaming": 8.70972264087379
+    }
+  ],
+  "streaming_log_log_slope": 0.020008173109363092,
+  "materialized_log_log_slope": 0.932927028019629,
+  "ratio_at_max_p": 8.70972264087379,
+  "max_p": 1000000
+}

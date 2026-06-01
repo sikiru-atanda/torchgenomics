@@ -1,0 +1,9 @@
+# Exclude everything in fixtures/ ...
+fixtures/*
+# ... except the small reference files that the paper figure consumes.
+!fixtures/truth.json
+!fixtures/manifest.sha256
+
+# Python caches
+__pycache__/
+*.pyc

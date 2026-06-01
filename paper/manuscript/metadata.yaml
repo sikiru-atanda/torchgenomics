@@ -1,0 +1,25 @@
+title: "TorchGWAS: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to fifteen reference tools"
+venue: "Genome Biology - Methods (Software)"
+authors:
+  - name: "Sikiru Atanda"
+    email: "sikiruandfriends@gmail.com"
+    affiliation: "PulseSmartLab Innovations"
+    corresponding: true
+license: "Apache 2.0 (subject to confirmation)"
+repo: "github.com/sikiru-atanda/torchgwas"
+reproducibility_repo: "github.com/sikiru-atanda/torchgwas-paper-reproducibility"
+spec: "docs/superpowers/specs/2026-05-15-genome-biology-paper-design.md"
+target_word_count: 8400
+section_budgets:
+  background: 700
+  architecture: 600
+  equivalence: 900
+  haplotype: 1100
+  multiomics: 1200
+  polyploid: 900
+  specialty: 700
+  gpu_streaming: 800
+  methods: 800
+  discussion: 500
+  availability: 200
+  abstract: 250

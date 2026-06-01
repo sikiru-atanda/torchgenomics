@@ -14,6 +14,8 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
+from .._native import HAS_NATIVE_ORDINAL_THRESHOLD, _ordinal_threshold_native
 from ..config import STAT_DTYPE
 from .base import NullFit, ScanResult, VariantMeta
 from .glm_link import CumulativeLogitLink
@@ -175,8 +177,18 @@ class OrdinalGLMM:
             u = u_w / sqrtW.clamp(min=1e-10)
             eta_new = X0 @ beta + u
 
-            # Re-estimate thresholds given current eta via Newton-Raphson
+            # Re-estimate thresholds given current eta via Newton-Raphson.
+            # Native C++ shortcut: assemble the (n_thresh,) score and
+            # (n_thresh, n_thresh) Hessian in one pass over the n samples
+            # with OpenMP reduction; the Python body below is the
+            # algorithmic spec and runs unchanged on fallthrough.
             n_thresh = J - 1
+            use_native_thresh = (
+                HAS_NATIVE_ORDINAL_THRESHOLD
+                and not native_disabled()
+                and eta_new.device.type == "cpu"
+                and n_thresh >= 2
+            )
             for _nr in range(5):
                 self.link.thresholds = thresholds
                 gamma_nr = self.link.cumulative_probs(eta_new)  # (n, J-1)
@@ -184,17 +196,25 @@ class OrdinalGLMM:
                                       device=Y.device)
                 H_a = torch.zeros(n_thresh, n_thresh, dtype=STAT_DTYPE,
                                   device=Y.device)
-                for jj in range(n_thresh):
-                    D_jj = (jj >= Y).float()
-                    g_jj = gamma_nr[:, jj]
-                    w_jj = g_jj * (1.0 - g_jj)
-                    score_a[jj] = (D_jj - g_jj).sum()
-                    H_a[jj, jj] = -w_jj.sum()
-                    for kk in range(jj + 1, n_thresh):
-                        g_kk = gamma_nr[:, kk]
-                        cross = -(g_jj * (1.0 - g_kk)).sum()
-                        H_a[jj, kk] = cross
-                        H_a[kk, jj] = cross
+                if use_native_thresh and gamma_nr.dtype == torch.float64:
+                    gamma_np = gamma_nr.contiguous().numpy()
+                    Y_np = Y.to(torch.int64).contiguous().numpy()
+                    _ordinal_threshold_native.ordinal_threshold_score_hessian(
+                        gamma_np, Y_np,
+                        score_a.numpy(), H_a.numpy(),
+                    )
+                else:
+                    for jj in range(n_thresh):
+                        D_jj = (jj >= Y).float()
+                        g_jj = gamma_nr[:, jj]
+                        w_jj = g_jj * (1.0 - g_jj)
+                        score_a[jj] = (D_jj - g_jj).sum()
+                        H_a[jj, jj] = -w_jj.sum()
+                        for kk in range(jj + 1, n_thresh):
+                            g_kk = gamma_nr[:, kk]
+                            cross = -(g_jj * (1.0 - g_kk)).sum()
+                            H_a[jj, kk] = cross
+                            H_a[kk, jj] = cross
                 try:
                     delta_a = torch.linalg.solve(-H_a, score_a)
                     thresholds = thresholds + delta_a

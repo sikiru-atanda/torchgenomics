@@ -1,0 +1,6 @@
+check	observed	threshold	direction	passed
+causal beta_hat recovered (full-K LMM)	0.21510772883018514	0.3	max	True
+causal beta_hat recovered (LROLMM)	0.13317088367553176	0.3	max	True
+LRO p < full-K LMM p at causal SNP (decontamination effect)	1.8224637297551957e-27	3.016053369305633e-10	max	True
+median non-causal p is null-like (>0.05)	0.39731331082657784	0.05	min	True
+LD-block partition is non-trivial (>= 2 blocks)	5	2	min	True

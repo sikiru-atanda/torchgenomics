@@ -32,6 +32,9 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
+from .._native import HAS_NATIVE_EXPRESSION, _expression_native
+
 
 # ---------------------------------------------------------------------------
 # Rank-based inverse normal transform (Blom)
@@ -83,6 +86,25 @@ def inverse_normal_transform(x: Tensor, c: float = 3.0 / 8.0) -> Tensor:
     x64 = x.to(torch.float64)
     if x64.ndim == 1:
         return _rank_int_column(x64, c)
+
+    # Native C++ shortcut for 2-D inputs: compute u = (rank-c)/(n-2c+1)
+    # per column with average-tie ranks in one OpenMP-parallel pass, then
+    # apply sqrt(2)·erfinv(2u-1) via torch on the result. The Python body
+    # below is the algorithmic spec and runs unchanged on fallthrough.
+    n, n_cols = x64.shape
+    if (
+        HAS_NATIVE_EXPRESSION
+        and not native_disabled()
+        and x64.device.type == "cpu"
+        and n_cols * n >= 1024
+        and n >= 2  # avoid degenerate single-row denom = 1 + (1 - 2c)
+    ):
+        x_np = x64.contiguous().numpy()
+        u_np = np.empty_like(x_np)
+        _expression_native.rank_int_u_columns(x_np, float(c), u_np)
+        u_t = torch.from_numpy(u_np)
+        return math.sqrt(2.0) * torch.erfinv(2.0 * u_t - 1.0)
+
     out = torch.empty_like(x64)
     for j in range(x64.shape[1]):
         out[:, j] = _rank_int_column(x64[:, j], c)
@@ -158,6 +180,22 @@ def quantile_normalize(x: Tensor) -> Tensor:
     # Reference quantiles: mean of column-sorted values.
     sorted_x, sort_idx = torch.sort(x64, dim=0)
     reference = sorted_x.mean(dim=1)  # (n,)
+
+    # Native C++ shortcut: column-wise tie-resolved scatter against
+    # the precomputed reference, OpenMP across columns. The Python
+    # body below is the algorithmic spec and runs unchanged on
+    # fallthrough.
+    if (
+        HAS_NATIVE_EXPRESSION
+        and not native_disabled()
+        and x64.device.type == "cpu"
+        and m * n >= 1024
+    ):
+        x_np = x64.contiguous().numpy()
+        ref_np = reference.contiguous().numpy()
+        out_np = np.empty_like(x_np)
+        _expression_native.quantile_normalize_columns(x_np, ref_np, out_np)
+        return torch.from_numpy(out_np)
 
     # Map each column's values back through the reference via rank.
     out = torch.empty_like(x64)

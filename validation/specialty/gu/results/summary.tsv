@@ -1,0 +1,5 @@
+check	observed	threshold	direction	passed
+zero-uncertainty matches None-path (|Delta stat| max)	0.0	1e-08	max	True
+non-zero-uncertainty conservativeness (frac stat_unc <= stat_none)	1.0	0.95	min	True
+median causal p < median null p (separation)	0.003359301759232515	0.6931639825566116	max	True
+causal SNPs below 5th-percentile null (>= 3 / 5)	5	3	min	True

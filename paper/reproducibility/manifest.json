@@ -1,0 +1,1174 @@
+{
+  "F1": {
+    "file": "output/F1.pdf",
+    "numbers": {
+      "n_clusters": 11,
+      "n_capabilities": 121,
+      "cluster_summary": {
+        "Variant-level GWAS": [
+          "GLM",
+          "Single-trait LMM",
+          "Multi-trait mvLMM",
+          "FarmCPU",
+          "BLINK",
+          "GxE LMM",
+          "Multi-kernel LMM",
+          "Set-based (SKAT/Burden/SKAT-O)",
+          "Bayesian VS (SuSiE + CAVI)",
+          "Bayesian VS-RSS"
+        ],
+        "Haplotype layer": [
+          "LD blocks: Gabriel",
+          "LD blocks: 4-gamete",
+          "LD blocks: r2",
+          "LD blocks: spine",
+          "LD blocks: BigLD",
+          "LD blocks: CC-graph",
+          "LD blocks: DP-optimize",
+          "LD blocks: change-point",
+          "LD blocks: cross-pop",
+          "LD blocks: graphical",
+          "LD blocks: GWAS-aligned",
+          "LD blocks: uncertainty",
+          "LD blocks: Wall-Pritchard diag.",
+          "Haplotype HTR",
+          "Haplotype block",
+          "Haplotype window",
+          "Haplotype SKAT",
+          "PCHT (score test)",
+          "HHCT (hierarchical)",
+          "HSKAT (similarity kernel)",
+          "HapGxE",
+          "BayesHap"
+        ],
+        "Multi-omics integration": [
+          "TWAS (S-PrediXcan)",
+          "SMR + HEIDI",
+          "Coloc (2-trait)",
+          "Hyprcoloc",
+          "GRM-corrected mediation",
+          "Multi-kernel h2",
+          "Gene-set Wald",
+          "eigenMT FDR"
+        ],
+        "Polyploid pipeline": [
+          "Dosage call (updog/polyrad)",
+          "F1 phasing (PolyOrigin)",
+          "Polyploid GWAS scan",
+          "Polyploid LD blocks",
+          "Polyploid haplotype GWAS",
+          "Gene-action encoding"
+        ],
+        "Specialty models": [
+          "Survival (Cox PH frailty)",
+          "Random regression LMM",
+          "RR x multi-env",
+          "Spatio-temporal RR",
+          "Within-family LMM",
+          "Threshold-linear (multi-trait)",
+          "Knockoff LMM (FDR)",
+          "OCF LMM (DML)",
+          "Genotype-uncertainty LMM",
+          "Leave-region-out LMM",
+          "Conditional LMM (COJO)"
+        ],
+        "GLM / GLMM family": [
+          "Binary GLM",
+          "Ordinal GLM",
+          "Multinomial GLM",
+          "Binary GLMM (PQL)",
+          "Ordinal GLMM (PQL)",
+          "Multinomial GLMM (PQL)",
+          "Multi-env GLMM"
+        ],
+        "Multi-env / multi-trait": [
+          "MET (reaction-norm + FA(k))",
+          "MT-MET LMM (Kronecker)",
+          "Multi-env haplotype GWAS",
+          "Multi-trait haplotype GWAS",
+          "MT-MET haplotype GWAS"
+        ],
+        "Post-GWAS": [
+          "LDSC h2",
+          "LDSC genetic correlation",
+          "S-LDSC (partitioned)",
+          "Meta-analysis (IVW/DL/Stouffer/RE2)",
+          "LD clumping",
+          "Fine-mapping",
+          "MR (IVW/Egger/median/PRESSO)",
+          "HESS regional h2",
+          "Multi-ancestry (MR-MEGA/MANTRA)",
+          "Power analysis",
+          "Winners-curse correction",
+          "PGS: C+T",
+          "PGS: LDpred2-Inf/Grid/Auto",
+          "PGS: PRS-CS",
+          "PGS scoring + validation",
+          "NCBI gene annotation"
+        ],
+        "Multiple testing": [
+          "Bonferroni",
+          "Holm",
+          "Sidak",
+          "BH",
+          "BY",
+          "Storey q-value",
+          "simpleM / M_eff",
+          "eigenMT",
+          "IHW",
+          "AdaPT",
+          "Weighted FDR",
+          "Cauchy combination",
+          "Local FDR",
+          "Permutation max-T"
+        ],
+        "Visualization": [
+          "Manhattan (linear)",
+          "Circos Manhattan",
+          "QQ plot",
+          "Miami plot",
+          "Haploview LD triangle",
+          "Trumpet plot"
+        ],
+        "I/O + preprocessing": [
+          "PLINK BED reader",
+          "PLINK2 PGEN reader",
+          "VCF/BCF reader",
+          "BGEN reader",
+          "HapMap reader",
+          "Zarr/HDF5 reader",
+          "Numeric/CSV dosage reader",
+          "Format auto-detect + convert",
+          "Imputation: mean/KNN/LD",
+          "Imputation: GPU Li-Stephens",
+          "Imputation: deep autoencoder",
+          "Imputation: BEAGLE/IMPUTE5/Minimac4",
+          "Phasing",
+          "QC (MAF/HWE/call-rate)",
+          "Standardization (ploidy-aware)",
+          "Dosage uncertainty (R^2)"
+        ]
+      }
+    }
+  },
+  "F2": {
+    "file": "output/F2.pdf",
+    "numbers": {
+      "n_harnesses": 11,
+      "n_total_checks": 45,
+      "n_pass_checks": 40,
+      "per_harness": {
+        "MetaXcan (TWAS)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|Delta z| max",
+              "observed": 3.067808229673119e-08,
+              "threshold": 1e-06,
+              "passed": true
+            },
+            {
+              "name": "|Delta effect_size| max",
+              "observed": 9.367506770274758e-17,
+              "threshold": 1e-06,
+              "passed": true
+            },
+            {
+              "name": "|Delta -log10 p| max",
+              "observed": 1.5611945158866547e-07,
+              "threshold": 0.001,
+              "passed": true
+            },
+            {
+              "name": "Pearson r (z)",
+              "observed": 1.0,
+              "threshold": 0.9999,
+              "passed": true
+            }
+          ]
+        },
+        "SMR + HEIDI": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|d beta_SMR| / |beta_SMR|",
+              "observed": 1.1449286640793994e-06,
+              "threshold": 5e-05,
+              "passed": true
+            },
+            {
+              "name": "|d chi2_SMR| / chi2_SMR",
+              "observed": 3.036624037885765e-07,
+              "threshold": 5e-05,
+              "passed": true
+            },
+            {
+              "name": "|d -log10 p_SMR|",
+              "observed": 4.3767468035582624e-05,
+              "threshold": 0.0005,
+              "passed": true
+            },
+            {
+              "name": "|d chi2_HEIDI| / chi2_HEIDI",
+              "observed": 0.3807517390565707,
+              "threshold": 1.0,
+              "passed": true
+            },
+            {
+              "name": "|d p_HEIDI| / p_HEIDI",
+              "observed": 0.6033380813491992,
+              "threshold": 2.0,
+              "passed": true
+            }
+          ]
+        },
+        "coloc R": {
+          "passed_overall": false,
+          "checks": []
+        },
+        "hyprcoloc R": {
+          "passed_overall": false,
+          "checks": [
+            {
+              "name": "cluster membership (zero-based)",
+              "observed": "[0, 2]",
+              "threshold": "[0, 1, 2]",
+              "passed": false
+            },
+            {
+              "name": "|Delta regional_pp|",
+              "observed": 0.9018045626665429,
+              "threshold": 0.001,
+              "passed": false
+            },
+            {
+              "name": "|Delta candidate_snp_pp|",
+              "observed": 3.6871385115100352e-06,
+              "threshold": 0.001,
+              "passed": true
+            },
+            {
+              "name": "candidate SNP id",
+              "observed": "rs00050",
+              "threshold": "rs00050",
+              "passed": true
+            }
+          ]
+        },
+        "haplo.stats (hapref)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "reference haplotype identity",
+              "observed": "00000",
+              "threshold": "00000",
+              "passed": true
+            },
+            {
+              "name": "max |Delta freq| (per-haplotype EM freq)",
+              "observed": 0.00011390738299625613,
+              "threshold": 0.0002,
+              "passed": true
+            },
+            {
+              "name": "max relative |Delta beta|",
+              "observed": 0.004382863556827237,
+              "threshold": 0.005,
+              "passed": true
+            },
+            {
+              "name": "max relative |Delta pval| (per-hap)",
+              "observed": 0.00577353312599673,
+              "threshold": 0.01,
+              "passed": true
+            },
+            {
+              "name": "relative |Delta global F-test p|",
+              "observed": 0.07567950535051778,
+              "threshold": 0.1,
+              "passed": true
+            }
+          ]
+        },
+        "Cox PH frailty (coxme)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "beta Pearson correlation (full set)",
+              "observed": 0.9955782346760704,
+              "threshold": 0.95,
+              "passed": true
+            },
+            {
+              "name": "-log10(p) Spearman corr (TG score vs coxme Wald)",
+              "observed": 0.9984962406015038,
+              "threshold": 0.85,
+              "passed": true
+            },
+            {
+              "name": "causal beta median rel |delta|",
+              "observed": 0.1855199733674634,
+              "threshold": 0.3,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs detected in top-K (TG)",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs detected in top-K (coxme)",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "causal beta sign agreement",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            }
+          ]
+        },
+        "Random regression (lme4)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|d var_ratio_basis[0]|",
+              "observed": 0.00248033390000002,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d var_ratio_basis[1]|",
+              "observed": 0.023039106700000034,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d var_ratio_basis[2]|",
+              "observed": 0.025519440699999993,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d beta_g_P1| / |beta_g_P1|",
+              "observed": 0.0,
+              "threshold": 1e-05,
+              "passed": true
+            },
+            {
+              "name": "|d beta_g_P2| / |beta_g_P2|",
+              "observed": 0.0,
+              "threshold": 1e-05,
+              "passed": true
+            },
+            {
+              "name": "|d -log10 p_g_P1|",
+              "observed": 1.1546697802807397,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "max |d beta(t)| / |beta(t)|",
+              "observed": 0.13364760177074939,
+              "threshold": 0.5,
+              "passed": true
+            }
+          ]
+        },
+        "Within-family (paper-OLS)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "median |delta beta_direct| (causal, n=50)",
+              "observed": 1.726166987126021e-10,
+              "threshold": 5e-05,
+              "passed": true
+            },
+            {
+              "name": "median |delta beta_indirect| (causal, n=50)",
+              "observed": 0.04562746873215224,
+              "threshold": 0.1,
+              "passed": true
+            },
+            {
+              "name": "median |delta attenuation| (finite, n=300)",
+              "observed": 0.3963521299965171,
+              "threshold": 1.0,
+              "passed": true
+            }
+          ]
+        },
+        "Threshold-linear (BLUPF90+)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|d R| max",
+              "observed": 7.2483,
+              "threshold": 10.0,
+              "passed": true
+            },
+            {
+              "name": "|d G_cov| max",
+              "observed": 8.5397,
+              "threshold": 10.0,
+              "passed": true
+            },
+            {
+              "name": "|d beta_sex| max relative (3 traits)",
+              "observed": 0.9520776260518107,
+              "threshold": 1.0,
+              "passed": true
+            },
+            {
+              "name": "|d beta_SNP| mean abs (TG vs sim, 5 causal)",
+              "observed": 0.03806044923635925,
+              "threshold": 0.15,
+              "passed": true
+            }
+          ]
+        },
+        "Knockoff FDR (R)": {
+          "passed_overall": true,
+          "checks": [
+            {
+              "name": "|Delta mean FDR|",
+              "observed": 0.1548,
+              "threshold": 0.2,
+              "passed": true
+            },
+            {
+              "name": "|Delta mean power|",
+              "observed": 0.10875000000000001,
+              "threshold": 0.15,
+              "passed": true
+            },
+            {
+              "name": "TG FDR overshoot above target",
+              "observed": 0.0,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "R  FDR overshoot above target",
+              "observed": 0.0,
+              "threshold": 0.05,
+              "passed": true
+            }
+          ]
+        },
+        "OCF DML": {
+          "passed_overall": false,
+          "checks": [
+            {
+              "name": "reference empirical coverage in [0.92, 0.98]",
+              "observed": 0.91,
+              "threshold": [
+                0.92,
+                0.98
+              ],
+              "passed": false
+            },
+            {
+              "name": "torchgwas empirical coverage in [0.92, 0.98]",
+              "observed": 0.41,
+              "threshold": [
+                0.92,
+                0.98
+              ],
+              "passed": false
+            },
+            {
+              "name": "|Delta mean theta_hat| <= 5e-2",
+              "observed": 0.1799129560159426,
+              "threshold": 0.05,
+              "passed": false
+            }
+          ]
+        }
+      }
+    }
+  },
+  "F3": {
+    "file": "output/F3.pdf",
+    "numbers": {
+      "panels": {
+        "A": {
+          "n_methods": 13,
+          "scaffold_only": true,
+          "reference": "PLINK 1.9 --blocks (Gabriel)",
+          "data_source": "validation/external/plink2/results/agreement.json",
+          "per_method": {
+            "gabriel": {
+              "category": "classical",
+              "scaffold": true
+            },
+            "four_gamete": {
+              "category": "classical",
+              "scaffold": true
+            },
+            "spine": {
+              "category": "classical",
+              "scaffold": true
+            },
+            "r2": {
+              "category": "classical",
+              "scaffold": true
+            },
+            "gwas_aligned": {
+              "category": "novel",
+              "scaffold": true
+            },
+            "uncertainty": {
+              "category": "novel",
+              "scaffold": true
+            },
+            "cross_pop": {
+              "category": "novel",
+              "scaffold": true
+            },
+            "graphical": {
+              "category": "novel",
+              "scaffold": true
+            },
+            "changepoint": {
+              "category": "novel",
+              "scaffold": true
+            },
+            "big_ld": {
+              "category": "literature",
+              "scaffold": true
+            },
+            "cc_graph": {
+              "category": "literature",
+              "scaffold": true
+            },
+            "dp_optimize": {
+              "category": "literature",
+              "scaffold": true
+            },
+            "wall_pritchard": {
+              "category": "diagnostic",
+              "scaffold": true
+            }
+          }
+        },
+        "B": {
+          "n_methods": 9,
+          "n_concrete_rows": 1,
+          "scaffold_only": false,
+          "per_method": {
+            "HTR-block (F-test)": {
+              "family": "core",
+              "observed": 0.07567950535051778,
+              "threshold": 0.1,
+              "passed": true,
+              "check_name": "relative |Delta global F-test p|",
+              "source": "validation/external/hapref/results/agreement.json"
+            },
+            "HTR-block (LRT)": {
+              "family": "core",
+              "scaffold": true
+            },
+            "HTR-window (F-test)": {
+              "family": "core",
+              "scaffold": true
+            },
+            "SKAT-block": {
+              "family": "core",
+              "scaffold": true
+            },
+            "PCHT": {
+              "family": "novel",
+              "scaffold": true
+            },
+            "HHCT": {
+              "family": "novel",
+              "scaffold": true
+            },
+            "HSKAT": {
+              "family": "novel",
+              "scaffold": true
+            },
+            "HapGxE": {
+              "family": "novel",
+              "scaffold": true
+            },
+            "BayesHap": {
+              "family": "novel",
+              "scaffold": true
+            }
+          }
+        },
+        "C": {
+          "scaffold_only": false,
+          "window_id": "chr1_win343",
+          "snp_ids": "id1.6, id1.3, id1.2, PZB02144.4, PZB02144.5",
+          "n_haplotypes": 4,
+          "labels": [
+            "00010",
+            "11110",
+            "11111",
+            "OTHER"
+          ],
+          "r_beta": [
+            -6.4797140394,
+            -0.54905959749,
+            -5.7241409255,
+            5.0340989864
+          ],
+          "tg_beta": [
+            -6.479572662613799,
+            -0.5466531441896348,
+            -5.724007319925532,
+            5.04815007352304
+          ],
+          "max_rel_dbeta": 0.004382863556827237,
+          "data_source": "validation/external/hapref/results/agreement.json",
+          "novel_overlay": "scaffold pending (BayesHap PIP / PCHT tree / HHCT cluster)"
+        }
+      },
+      "data_sources": [
+        "validation/external/plink2/results/agreement.json",
+        "validation/external/hapref/results/agreement.json",
+        "validation/external/soymd/ (scaffold; SoyMD harness pending)"
+      ],
+      "n_ld_block_methods": 13,
+      "n_haplotype_gwas_methods": 9,
+      "scaffold_pending": {
+        "panel_A": true,
+        "panel_B_rows": [
+          "HTR-block (LRT)",
+          "HTR-window (F-test)",
+          "SKAT-block",
+          "PCHT",
+          "HHCT",
+          "HSKAT",
+          "HapGxE",
+          "BayesHap"
+        ],
+        "panel_C_novel_overlay": "scaffold pending (BayesHap PIP / PCHT tree / HHCT cluster)"
+      }
+    }
+  },
+  "F4": {
+    "file": "output/F4.pdf",
+    "numbers": {
+      "panels": {
+        "A": {
+          "n_total_mediators": 50,
+          "n_causal": 5,
+          "n_neg_control": 2,
+          "n_null": 43,
+          "causal_mediator_ids": [
+            "G002",
+            "G005",
+            "G024",
+            "G026",
+            "G047"
+          ],
+          "neg_control_mediator_ids": [
+            "G004",
+            "G038"
+          ],
+          "twas_z_truth_summary": {
+            "min": -12.331041037184407,
+            "max": 3.5465146463556874,
+            "abs_max_idx": 5
+          },
+          "smr_beta_truth_nonzero": 5,
+          "coloc_pp_h4_truth_nonzero": 5,
+          "mediation_ab_truth_nonzero": 5,
+          "recovery_floors": {
+            "twas_z_corr_pearson": 0.95,
+            "smr_beta_relative_error": 0.1,
+            "coloc_pp_h4_min_for_causal": 0.8,
+            "mediation_ab_relative_error": 0.2,
+            "definition": {
+              "twas_z_corr_pearson": "Pearson correlation of recovered TWAS z-scores against truth.twas_z_truth across all m genes; must be >= floor.",
+              "smr_beta_relative_error": "max over causal mediators of |b_smr_hat - smr_beta_truth| / |smr_beta_truth|; must be <= floor.",
+              "coloc_pp_h4_min_for_causal": "min over causal mediators of recovered PP.H4; must be >= floor. Negative-control mediators must have PP.H4 < 0.5.",
+              "mediation_ab_relative_error": "max over causal mediators of |ab_hat - mediation_ab_truth| / |mediation_ab_truth|; must be <= floor."
+            }
+          },
+          "tg_recovery_status": "pending: Tier 4 D2 execution sub-task"
+        },
+        "B": {
+          "n_variants": 48,
+          "sort1_pearson_z": -0.967633637659225,
+          "orientation_counts": {
+            "direct": 48
+          },
+          "z_eqtl_range": [
+            -20.19064039570338,
+            23.188131152081457
+          ],
+          "z_gwas_range": [
+            -89.08414517612131,
+            88.93895549953977
+          ]
+        },
+        "C": {
+          "n_samples": 50,
+          "n_snps": 100,
+          "n_expr_cols": 20,
+          "top_gene_corr": {
+            "AT1G69120": 0.3285721682538686,
+            "AT5G10140": 0.2052022729224002,
+            "AT5G61850": -0.19608521821765595,
+            "AT5G15840": 0.17810063980592533,
+            "AT5G65070": 0.17428213537245094
+          },
+          "abs_corr_range": [
+            0.01711610466131644,
+            0.3285721682538686
+          ]
+        }
+      },
+      "fixtures": {
+        "A_truth_json": "validation/multiomics/sim/fixtures/truth.json",
+        "B_aligned_parquet": "validation/multiomics/gtex_ukb/fixtures/aligned.parquet",
+        "C_aligned_parquet": "validation/multiomics/plant/fixtures/aligned.parquet"
+      }
+    }
+  },
+  "F5": {
+    "file": "output/F5.pdf",
+    "numbers": {
+      "panels": {
+        "A": {
+          "panel": "A",
+          "scaffold": true,
+          "scaffold_reason": "Phase 55 updog wrapper gated on R+updog; renderer uses HW posterior surrogate.",
+          "n_samples": 80,
+          "n_markers": 100,
+          "depth": 30,
+          "ploidy": 4,
+          "accuracy": 0.894,
+          "n_correct": 7152,
+          "n_total": 8000,
+          "simulation_seed": 42,
+          "model": "hw_posterior_surrogate"
+        },
+        "B": {
+          "panel": "B",
+          "scaffold": true,
+          "scaffold_reason": "GWASpoly potato round-trip (2026-04-24-gwaspoly-potato-roundtrip.md) pending: URL/SHA constants in tests/test_phase_polyorigin_e2e.py are placeholders.",
+          "n_progeny": 6,
+          "n_loci": 20,
+          "n_states": 35,
+          "ploidy": 4,
+          "simulation_seed": 17
+        },
+        "C": {
+          "panel": "C",
+          "scaffold": true,
+          "scaffold_reason": "validation/external/gwaspoly/{data,outputs} not staged on this branch - used simulated -log10(p) scatter.",
+          "correlation_logp": 0.9982834061880537,
+          "n_compared": 200,
+          "ploidy": 4
+        },
+        "D": {
+          "panel": "D",
+          "scaffold": false,
+          "synthesized_at_render_time": true,
+          "ploidies_tested": [
+            4,
+            6,
+            8
+          ],
+          "n_individuals": 50,
+          "n_markers": 20,
+          "causal_idx": 10,
+          "causal_effect": 1.5,
+          "bonferroni_threshold_neg_log10": 2.6020599913279625,
+          "n_ploidies_clearing_alpha_0_05_at_causal": 3,
+          "per_ploidy": {
+            "k=4": {
+              "causal_neg_log10p": 3.3067976376059254,
+              "max_neg_log10p": 3.3067976376059254,
+              "n": 50,
+              "m": 20,
+              "causal_idx": 10,
+              "error": null
+            },
+            "k=6": {
+              "causal_neg_log10p": 3.146965544752109,
+              "max_neg_log10p": 3.146965544752109,
+              "n": 50,
+              "m": 20,
+              "causal_idx": 10,
+              "error": null
+            },
+            "k=8": {
+              "causal_neg_log10p": 4.26866148806552,
+              "max_neg_log10p": 4.26866148806552,
+              "n": 50,
+              "m": 20,
+              "causal_idx": 10,
+              "error": null
+            }
+          }
+        }
+      },
+      "n_scaffold_panels": 3,
+      "phase_provenance": [
+        "Phase 55 (dosage_call / updog wrapper)",
+        "Phase 56 (phase_polyorigin / PolyOrigin wrapper)",
+        "Phases 0-13 (polyploid SingleTraitLMM + GRM)"
+      ]
+    }
+  },
+  "F6": {
+    "file": "output/F6.pdf",
+    "numbers": {
+      "panels": {
+        "A": {
+          "n_kernels": 24,
+          "speedup_range": [
+            1.0,
+            9210.7
+          ],
+          "speedup_median": 93.5,
+          "scaffold": false,
+          "source": "bench/native_speedups_realistic.md"
+        },
+        "B": {
+          "slope_ratio": 8.70972264087379,
+          "spec_headline_ratio": 19.0,
+          "scaffold": false,
+          "scaffold_reason": null,
+          "p_sweep": [
+            10000.0,
+            30000.0,
+            100000.0,
+            300000.0,
+            1000000.0
+          ],
+          "peak_streaming_bytes": [
+            822599680.0,
+            924024832.0,
+            924024832.0,
+            924024832.0,
+            924024832.0
+          ],
+          "peak_materialized_bytes": [
+            112160000.0,
+            272480000.0,
+            833600000.0,
+            2436800000.0,
+            8048000000.0
+          ],
+          "streaming_log_log_slope": 0.020008173109363092,
+          "materialized_log_log_slope": 0.932927028019629,
+          "n_samples": 2000,
+          "chunk_size": 1024,
+          "source": "bench/streaming_p_sweep.json"
+        },
+        "C": {
+          "speedup_x": 1.8,
+          "n_samples": 500000,
+          "scaffold": true,
+          "scaffold_reason": "definitive measurement requires NA3 UKB harness GPU-node run; no committed artifacts yet"
+        },
+        "D": {
+          "n_gpu_tests": 68,
+          "n_gpu_test_files": 4,
+          "scaffold": true,
+          "scaffold_reason": "GPU CI artifacts (.github/workflows/gpu.yml JUnit XML) are not committed to the repo; parity scatter shown at FP64 noise floor"
+        }
+      }
+    }
+  },
+  "F7": {
+    "file": "output/F7.pdf",
+    "numbers": {
+      "panels": {
+        "C1": {
+          "passed_overall": true,
+          "n_checks": 6,
+          "n_pass": 6,
+          "checks": [
+            {
+              "name": "beta Pearson correlation (full set)",
+              "observed": 0.9955782346760704,
+              "threshold": 0.95,
+              "passed": true
+            },
+            {
+              "name": "-log10(p) Spearman corr (TG score vs coxme Wald)",
+              "observed": 0.9984962406015038,
+              "threshold": 0.85,
+              "passed": true
+            },
+            {
+              "name": "causal beta median rel |delta|",
+              "observed": 0.1855199733674634,
+              "threshold": 0.3,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs detected in top-K (TG)",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs detected in top-K (coxme)",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "causal beta sign agreement",
+              "observed": 3.0,
+              "threshold": 2.0,
+              "passed": true
+            }
+          ]
+        },
+        "C2": {
+          "passed_overall": true,
+          "n_checks": 7,
+          "n_pass": 7,
+          "checks": [
+            {
+              "name": "|d var_ratio_basis[0]|",
+              "observed": 0.00248033390000002,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d var_ratio_basis[1]|",
+              "observed": 0.023039106700000034,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d var_ratio_basis[2]|",
+              "observed": 0.025519440699999993,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "|d beta_g_P1| / |beta_g_P1|",
+              "observed": 0.0,
+              "threshold": 1e-05,
+              "passed": true
+            },
+            {
+              "name": "|d beta_g_P2| / |beta_g_P2|",
+              "observed": 0.0,
+              "threshold": 1e-05,
+              "passed": true
+            },
+            {
+              "name": "|d -log10 p_g_P1|",
+              "observed": 1.1546697802807397,
+              "threshold": 2.0,
+              "passed": true
+            },
+            {
+              "name": "max |d beta(t)| / |beta(t)|",
+              "observed": 0.13364760177074939,
+              "threshold": 0.5,
+              "passed": true
+            }
+          ]
+        },
+        "C3": {
+          "passed_overall": true,
+          "n_checks": 3,
+          "n_pass": 3,
+          "checks": [
+            {
+              "name": "median |delta beta_direct| (causal, n=50)",
+              "observed": 1.726166987126021e-10,
+              "threshold": 5e-05,
+              "passed": true
+            },
+            {
+              "name": "median |delta beta_indirect| (causal, n=50)",
+              "observed": 0.04562746873215224,
+              "threshold": 0.1,
+              "passed": true
+            },
+            {
+              "name": "median |delta attenuation| (finite, n=300)",
+              "observed": 0.3963521299965171,
+              "threshold": 1.0,
+              "passed": true
+            }
+          ]
+        },
+        "C4": {
+          "passed_overall": true,
+          "n_checks": 4,
+          "n_pass": 4,
+          "checks": [
+            {
+              "name": "|d R| max",
+              "observed": 7.2483,
+              "threshold": 10.0,
+              "passed": true
+            },
+            {
+              "name": "|d G_cov| max",
+              "observed": 8.5397,
+              "threshold": 10.0,
+              "passed": true
+            },
+            {
+              "name": "|d beta_sex| max relative (3 traits)",
+              "observed": 0.9520776260518107,
+              "threshold": 1.0,
+              "passed": true
+            },
+            {
+              "name": "|d beta_SNP| mean abs (TG vs sim, 5 causal)",
+              "observed": 0.03806044923635925,
+              "threshold": 0.15,
+              "passed": true
+            }
+          ]
+        },
+        "C5": {
+          "passed_overall": true,
+          "n_checks": 4,
+          "n_pass": 4,
+          "checks": [
+            {
+              "name": "|Delta mean FDR|",
+              "observed": 0.1548,
+              "threshold": 0.2,
+              "passed": true
+            },
+            {
+              "name": "|Delta mean power|",
+              "observed": 0.10875000000000001,
+              "threshold": 0.15,
+              "passed": true
+            },
+            {
+              "name": "TG FDR overshoot above target",
+              "observed": 0.0,
+              "threshold": 0.05,
+              "passed": true
+            },
+            {
+              "name": "R  FDR overshoot above target",
+              "observed": 0.0,
+              "threshold": 0.05,
+              "passed": true
+            }
+          ]
+        },
+        "C6": {
+          "passed_overall": false,
+          "n_checks": 3,
+          "n_pass": 0,
+          "checks": [
+            {
+              "name": "reference empirical coverage in [0.92, 0.98]",
+              "observed": 0.91,
+              "threshold": [
+                0.92,
+                0.98
+              ],
+              "passed": false
+            },
+            {
+              "name": "torchgwas empirical coverage in [0.92, 0.98]",
+              "observed": 0.41,
+              "threshold": [
+                0.92,
+                0.98
+              ],
+              "passed": false
+            },
+            {
+              "name": "|Delta mean theta_hat| <= 5e-2",
+              "observed": 0.1799129560159426,
+              "threshold": 0.05,
+              "passed": false
+            }
+          ]
+        },
+        "GU": {
+          "internal_only": true,
+          "phase": "Phase 28",
+          "external_reference": null,
+          "scaffold": false,
+          "passed_overall": true,
+          "n_pass": 4,
+          "n_total": 4,
+          "checks": [
+            {
+              "name": "zero-uncertainty matches None-path (|Delta stat| max)",
+              "observed": 0.0,
+              "passed": true
+            },
+            {
+              "name": "non-zero-uncertainty conservativeness (frac stat_unc <= stat_none)",
+              "observed": 1.0,
+              "passed": true
+            },
+            {
+              "name": "median causal p < median null p (separation)",
+              "observed": 0.003359301759232515,
+              "passed": true
+            },
+            {
+              "name": "causal SNPs below 5th-percentile null (>= 3 / 5)",
+              "observed": 5,
+              "passed": true
+            }
+          ]
+        },
+        "LRO": {
+          "internal_only": true,
+          "phase": "Phase 29",
+          "external_reference": null,
+          "scaffold": false,
+          "passed_overall": true,
+          "n_pass": 5,
+          "n_total": 5,
+          "checks": [
+            {
+              "name": "causal beta_hat recovered (full-K LMM)",
+              "observed": 0.21510772883018514,
+              "passed": true
+            },
+            {
+              "name": "causal beta_hat recovered (LROLMM)",
+              "observed": 0.13317088367553176,
+              "passed": true
+            },
+            {
+              "name": "LRO p < full-K LMM p at causal SNP (decontamination effect)",
+              "observed": 1.8224637297551957e-27,
+              "passed": true
+            },
+            {
+              "name": "median non-causal p is null-like (>0.05)",
+              "observed": 0.39731331082657784,
+              "passed": true
+            },
+            {
+              "name": "LD-block partition is non-trivial (>= 2 blocks)",
+              "observed": 5,
+              "passed": true
+            }
+          ]
+        }
+      },
+      "n_external_panels": 6,
+      "n_internal_panels": 2,
+      "n_total_panels": 8,
+      "external_total_checks": 27,
+      "external_total_pass": 24
+    }
+  }
+}

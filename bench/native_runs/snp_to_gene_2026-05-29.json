@@ -1,0 +1,14 @@
+{
+  "kernel": "snp_to_gene_scan",
+  "ext": "torchgwas._native._snp_to_gene_native",
+  "date": "2026-05-29",
+  "host": "linux-x86_64",
+  "notes": "MAGMA per-gene window scan. Python preprocesses inputs once (encode chromosomes, sort SNPs by (chr_id, pos), build chr_offsets), then OpenMP across genes with binary-search + linear walk + std::erfc per gene. window_kb=10 in all benchmarks.",
+  "measurements": [
+    {"m":    5000, "n_genes":  1000, "n_chrs": 22, "py_ms":     4.8, "cpp_ms":   0.84, "speedup":   5.8},
+    {"m":   10000, "n_genes":  5000, "n_chrs": 22, "py_ms":    35.6, "cpp_ms":   1.90, "speedup":  18.7},
+    {"m":  100000, "n_genes": 20000, "n_chrs": 22, "py_ms":  1154.5, "cpp_ms":  17.21, "speedup":  67.1},
+    {"m": 1000000, "n_genes": 20000, "n_chrs": 22, "py_ms": 31304.5, "cpp_ms": 187.64, "speedup": 166.8}
+  ],
+  "scaling": "Linear-ish in m (chrom scan + binary search dominate) and well-amortised across genes. At biobank scale (m=10⁶ × n_genes=20K), Python takes 31 sec; native 188 ms."
+}

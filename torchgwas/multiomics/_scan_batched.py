@@ -30,6 +30,8 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
+from .._native import HAS_NATIVE_MEDIATE, _mediate_native
 from ..linalg.eigh import rotate
 from ..models.base import NullFit
 from ._se import monte_carlo_se, sobel_se
@@ -217,6 +219,43 @@ def _sigma_v_block(
     s_b, f_b = a.shape
     n = SNP_block_r.shape[0]
     p_m = 1 + X0_r.shape[1]
+
+    # Native C++ shortcut: precompute weighted cross-products via torch
+    # BLAS (one matmul each), then per-pair Cholesky + solve + SSR in C++.
+    # The Python body below is the algorithmic spec and runs unchanged
+    # when the kernel is unavailable, dtype != float64, on CUDA, or the
+    # block is below the dispatch threshold.
+    if (
+        HAS_NATIVE_MEDIATE
+        and not native_disabled()
+        and SNP_block_r.device.type == "cpu"
+        and SNP_block_r.dtype == torch.float64
+        and M_block_r.dtype == torch.float64
+        and X0_r.dtype == torch.float64
+        and w.dtype == torch.float64
+        and s_b * f_b >= 64
+    ):
+        wX0 = w.unsqueeze(1) * X0_r                   # (n, c0)
+        A_X0_X0 = (X0_r.T @ wX0).contiguous()         # (c0, c0)
+        X0_M = (wX0.T @ M_block_r).contiguous()       # (c0, f_b)
+        wSNP = w.unsqueeze(1) * SNP_block_r           # (n, s_b)
+        snp_snp = (SNP_block_r * wSNP).sum(dim=0).contiguous()       # (s_b,)
+        snp_X0 = (wSNP.T @ X0_r).contiguous()                         # (s_b, c0)
+        snp_M = (wSNP.T @ M_block_r).contiguous()                     # (s_b, f_b)
+        M_M = (w.unsqueeze(1) * M_block_r * M_block_r).sum(dim=0).contiguous()  # (f_b,)
+        sigma_v_native = torch.empty(s_b, f_b, dtype=torch.float64)
+        _mediate_native.sigma_v_block(
+            snp_snp.numpy(),
+            snp_X0.numpy(),
+            snp_M.numpy(),
+            A_X0_X0.numpy(),
+            X0_M.numpy(),
+            M_M.numpy(),
+            int(n),
+            sigma_v_native.numpy(),
+        )
+        return sigma_v_native
+
     sigma_v = torch.empty(s_b, f_b, dtype=X0_r.dtype)
     for i in range(s_b):
         Xm = torch.cat([SNP_block_r[:, i:i + 1], X0_r], dim=1)  # (n, p_m)
@@ -246,6 +285,54 @@ def _sigma_u_block(
     s_b, f_b = c_prime.shape
     n = SNP_block_r.shape[0]
     p_y = 2 + X0_r.shape[1]
+
+    # Native C++ shortcut: precompute weighted cross-products via torch
+    # BLAS, then per-pair Cholesky + solve + SSR in C++ under one GIL
+    # release. The Python body below is the algorithmic spec; the
+    # dispatcher falls through on disabled / non-CPU / non-FP64 / small
+    # blocks. The size guard (s_b*f_b >= 64) matches the per-pair
+    # marshalling cost vs the Python alternative.
+    if (
+        HAS_NATIVE_MEDIATE
+        and not native_disabled()
+        and SNP_block_r.device.type == "cpu"
+        and SNP_block_r.dtype == torch.float64
+        and M_block_r.dtype == torch.float64
+        and Y_r.dtype == torch.float64
+        and X0_r.dtype == torch.float64
+        and w.dtype == torch.float64
+        and s_b * f_b >= 64
+    ):
+        wX0 = w.unsqueeze(1) * X0_r                                       # (n, c0)
+        wSNP = w.unsqueeze(1) * SNP_block_r                               # (n, s_b)
+        wM = w.unsqueeze(1) * M_block_r                                   # (n, f_b)
+        A_X0_X0 = (X0_r.T @ wX0).contiguous()                             # (c0, c0)
+        X0_Y = (wX0.T @ Y_r).contiguous()                                 # (c0,)
+        snp_snp = (SNP_block_r * wSNP).sum(dim=0).contiguous()            # (s_b,)
+        snp_X0 = (wSNP.T @ X0_r).contiguous()                             # (s_b, c0)
+        snp_Y = (wSNP.T @ Y_r).contiguous()                               # (s_b,)
+        snp_M = (wSNP.T @ M_block_r).contiguous()                         # (s_b, f_b)
+        M_M = (M_block_r * wM).sum(dim=0).contiguous()                    # (f_b,)
+        M_X0 = (wM.T @ X0_r).contiguous()                                 # (f_b, c0)
+        M_Y = (wM.T @ Y_r).contiguous()                                   # (f_b,)
+        Y_W_Y = float((w * Y_r * Y_r).sum().item())
+        sigma_u_native = torch.empty(s_b, f_b, dtype=torch.float64)
+        _mediate_native.sigma_u_block(
+            snp_snp.numpy(),
+            snp_X0.numpy(),
+            snp_Y.numpy(),
+            snp_M.numpy(),
+            M_M.numpy(),
+            M_X0.numpy(),
+            M_Y.numpy(),
+            A_X0_X0.numpy(),
+            X0_Y.numpy(),
+            Y_W_Y,
+            int(n),
+            sigma_u_native.numpy(),
+        )
+        return sigma_u_native
+
     sigma_u = torch.empty(s_b, f_b, dtype=X0_r.dtype)
     for i in range(s_b):
         snp = SNP_block_r[:, i]

@@ -1,0 +1,11 @@
+d08a5f6c85edb813610b1aa53ec3e1d259dd3f81a105f348642317f5628ddd91  data/ref.bed
+e1c271a3e7341ecbd9e9a7b9fa3ff14d5e600df5077ee33ca6d6ecb78814a6ca  data/ref.bim
+e184f73fd3c03d2ccaf74a0d36e28776fd9c2f90b06f5c606b77a70a87a91aaa  data/ref.fam
+2f7ec82f9103ed7f1d37c8a1f6bb08333594a76a5c27de2a5bef3048b7d1be8c  data/gwas.ma
+874bf6d2c9b78187edb0b47604553a47345ac7c8ec9b7c7cd6cb09ab77867615  data/probe.esd
+33a63dea8ddbe8b6a705b42b8d7ff6f5acc3c2137520058320356e82f3076ac2  data/probe.flist
+7f0e148186d2c81a30b101cbc77093788cd78d993af51d36cec39f244eb6b6b7  data/sim_truth.json
+MISSING  outputs/sim_eqtl.besd
+MISSING  outputs/sim_eqtl.esi
+MISSING  outputs/sim_eqtl.epi
+d86cb2fcad2be6828f9da20427c661b4336d61c4e75d70cadde65715b9534a15  outputs/smr_results.smr

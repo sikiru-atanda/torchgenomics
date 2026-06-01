@@ -1,0 +1,116 @@
+{
+  "name": "RandomRegressionLMM vs lme4 (longitudinal)",
+  "n_compared": 1,
+  "passed": true,
+  "checks": [
+    {
+      "name": "|d var_ratio_basis[0]|",
+      "passed": true,
+      "observed": 0.00248033390000002,
+      "threshold": 0.05,
+      "direction": "max",
+      "note": "(lme4=0.5075 tg=0.5050)"
+    },
+    {
+      "name": "|d var_ratio_basis[1]|",
+      "passed": true,
+      "observed": 0.023039106700000034,
+      "threshold": 0.05,
+      "direction": "max",
+      "note": "(lme4=0.3867 tg=0.3637)"
+    },
+    {
+      "name": "|d var_ratio_basis[2]|",
+      "passed": true,
+      "observed": 0.025519440699999993,
+      "threshold": 0.05,
+      "direction": "max",
+      "note": "(lme4=0.1058 tg=0.1313)"
+    },
+    {
+      "name": "|d beta_g_P1| / |beta_g_P1|",
+      "passed": true,
+      "observed": 0.0,
+      "threshold": 1e-05,
+      "direction": "max",
+      "note": "(lme4=0.391134 tg=0.391134)"
+    },
+    {
+      "name": "|d beta_g_P2| / |beta_g_P2|",
+      "passed": true,
+      "observed": 0.0,
+      "threshold": 1e-05,
+      "direction": "max",
+      "note": "(lme4=0.082484 tg=0.082484)"
+    },
+    {
+      "name": "|d -log10 p_g_P1|",
+      "passed": true,
+      "observed": 1.1546697802807397,
+      "threshold": 2.0,
+      "direction": "max",
+      "note": "(lme4=1.514e-14 tg=2.161e-13)"
+    },
+    {
+      "name": "max |d beta(t)| / |beta(t)|",
+      "passed": true,
+      "observed": 0.13364760177074939,
+      "threshold": 0.5,
+      "direction": "max",
+      "note": "(over 5 time points)"
+    }
+  ],
+  "extras": {
+    "var_ratio_basis_0_lme4": 0.5074713086,
+    "var_ratio_basis_0_tg": 0.5049909747,
+    "var_ratio_basis_1_lme4": 0.3867044908,
+    "var_ratio_basis_1_tg": 0.3636653841,
+    "var_ratio_basis_2_lme4": 0.1058242005,
+    "var_ratio_basis_2_tg": 0.1313436412,
+    "beta_g_P1_lme4": 0.3911335658,
+    "beta_g_P1_tg": 0.3911335658,
+    "beta_g_P2_lme4": 0.08248418057,
+    "beta_g_P2_tg": 0.08248418057,
+    "p_g_P1_lme4": 1.513787341e-14,
+    "p_g_P1_tg": 2.161397523e-13,
+    "per_time_point": [
+      {
+        "t": 0.0,
+        "beta_lme4": -0.3796824208,
+        "beta_tg": -0.3925489432,
+        "rel_delta": 0.03388759051022155
+      },
+      {
+        "t": 25.0,
+        "beta_lme4": -0.2868843148,
+        "beta_tg": -0.2997508371,
+        "rel_delta": 0.04484916614897489
+      },
+      {
+        "t": 50.0,
+        "beta_lme4": -0.09627200316,
+        "beta_tg": -0.1091385255,
+        "rel_delta": 0.13364760177074939
+      },
+      {
+        "t": 75.0,
+        "beta_lme4": 0.192154514,
+        "beta_tg": 0.1792879917,
+        "rel_delta": 0.06695925082457334
+      },
+      {
+        "t": 100.0,
+        "beta_lme4": 0.5783952368,
+        "beta_tg": 0.5655287144,
+        "rel_delta": 0.02224520808847726
+      }
+    ]
+  },
+  "tolerance_gates": {
+    "TOL_REL_BETA_PER_T": 0.5,
+    "TOL_ABS_VAR_RATIO": 0.05,
+    "TOL_REL_SLOPE_BETA": 1e-05,
+    "TOL_REL_CURV_BETA": 1e-05,
+    "TOL_ABS_DELTA_NEGLOG10_P_SLOPE": 2.0
+  }
+}

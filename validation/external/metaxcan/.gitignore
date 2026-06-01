@@ -1,0 +1,6 @@
+data/
+outputs/
+MetaXcan/
+.cache/
+.install_marker
+__pycache__/

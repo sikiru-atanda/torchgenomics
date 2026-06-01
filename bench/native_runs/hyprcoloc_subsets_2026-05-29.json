@@ -1,0 +1,16 @@
+{
+  "kernel": "enumerate_subset_log_bf",
+  "ext": "torchgwas._native._hyprcoloc_native",
+  "date": "2026-05-29",
+  "host": "linux-x86_64",
+  "notes": "2^K subset enumeration via bitmask + per-subset trait-row sum + logsumexp inline. OpenMP across subsets with dynamic scheduling (chunks of 64). Random planted-causal sumstats; first 3 traits share a single causal SNP.",
+  "measurements": [
+    {"K":  6, "m": 200, "n_subsets":    57, "py_ms":   0.8, "cpp_ms":  0.42, "speedup":  1.9},
+    {"K":  8, "m": 200, "n_subsets":   247, "py_ms":   3.5, "cpp_ms":  0.60, "speedup":  5.8},
+    {"K": 10, "m": 200, "n_subsets":  1013, "py_ms":  11.1, "cpp_ms":  1.21, "speedup":  9.2},
+    {"K": 12, "m": 200, "n_subsets":  4083, "py_ms":  52.9, "cpp_ms":  2.82, "speedup": 18.7},
+    {"K": 14, "m": 200, "n_subsets": 16369, "py_ms": 178.1, "cpp_ms": 11.28, "speedup": 15.8},
+    {"K": 15, "m": 100, "n_subsets": 32752, "py_ms": 345.1, "cpp_ms": 35.64, "speedup":  9.7}
+  ],
+  "scaling": "Speedup peaks near K=12 (~19x) and stays in the 10-20x range for K=10-14 — the audit's target window. Below K=6 the dispatcher routes to Python because subset count is small enough that the Python path is already <1ms."
+}

@@ -1,0 +1,7 @@
+# Knockoff harness gitignore
+# Outputs are intermediate; the canonical results live under results/
+outputs/
+data/replicates.npz
+data/replicates.rds
+# Install marker is host-specific
+.install_marker

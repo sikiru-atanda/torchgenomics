@@ -175,6 +175,62 @@ except ImportError:  # pragma: no cover
     HAS_NATIVE_CAVI = False
 
 try:  # pragma: no cover
+    from . import _ibss_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_IBSS = True
+except ImportError:  # pragma: no cover
+    _ibss_native = None  # type: ignore[assignment]
+    HAS_NATIVE_IBSS = False
+
+try:  # pragma: no cover
+    from . import _mediate_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_MEDIATE = True
+except ImportError:  # pragma: no cover
+    _mediate_native = None  # type: ignore[assignment]
+    HAS_NATIVE_MEDIATE = False
+
+try:  # pragma: no cover
+    from . import _pcht_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_PCHT = True
+except ImportError:  # pragma: no cover
+    _pcht_native = None  # type: ignore[assignment]
+    HAS_NATIVE_PCHT = False
+
+try:  # pragma: no cover
+    from . import _snp_to_gene_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_SNP_TO_GENE = True
+except ImportError:  # pragma: no cover
+    _snp_to_gene_native = None  # type: ignore[assignment]
+    HAS_NATIVE_SNP_TO_GENE = False
+
+try:  # pragma: no cover
+    from . import _expression_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_EXPRESSION = True
+except ImportError:  # pragma: no cover
+    _expression_native = None  # type: ignore[assignment]
+    HAS_NATIVE_EXPRESSION = False
+
+try:  # pragma: no cover
+    from . import _hyprcoloc_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_HYPRCOLOC = True
+except ImportError:  # pragma: no cover
+    _hyprcoloc_native = None  # type: ignore[assignment]
+    HAS_NATIVE_HYPRCOLOC = False
+
+try:  # pragma: no cover
+    from . import _ordinal_threshold_native  # type: ignore[attr-defined]
+
+    HAS_NATIVE_ORDINAL_THRESHOLD = True
+except ImportError:  # pragma: no cover
+    _ordinal_threshold_native = None  # type: ignore[assignment]
+    HAS_NATIVE_ORDINAL_THRESHOLD = False
+
+try:  # pragma: no cover
     from . import _spa_native  # type: ignore[attr-defined]
 
     HAS_NATIVE_SPA = True
@@ -227,6 +283,13 @@ __all__ = [
     "HAS_NATIVE_IMPUTE_KNN",
     "HAS_NATIVE_IMPUTE_LD",
     "HAS_NATIVE_CAVI",
+    "HAS_NATIVE_IBSS",
+    "HAS_NATIVE_MEDIATE",
+    "HAS_NATIVE_PCHT",
+    "HAS_NATIVE_SNP_TO_GENE",
+    "HAS_NATIVE_EXPRESSION",
+    "HAS_NATIVE_HYPRCOLOC",
+    "HAS_NATIVE_ORDINAL_THRESHOLD",
     "HAS_NATIVE_SPA",
     "HAS_NATIVE_LDSC",
     "HAS_NATIVE_HWE",
@@ -251,6 +314,13 @@ __all__ = [
     "_impute_knn_native",
     "_impute_ld_native",
     "_cavi_native",
+    "_ibss_native",
+    "_mediate_native",
+    "_pcht_native",
+    "_snp_to_gene_native",
+    "_expression_native",
+    "_hyprcoloc_native",
+    "_ordinal_threshold_native",
     "_spa_native",
     "_ldsc_native",
     "_hwe_native",

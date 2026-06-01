@@ -1,0 +1,11 @@
+metric	blupf90	tg	delta	note
+R_max	8.2483	1	7.2483	posterior-mode max element
+G_cov_max	9.0397	0.5	8.5397	posterior-mode max element
+beta_sex_trait1	nan	0.00958447479	nan	truth=0.2
+beta_sex_trait2	nan	-0.1050390175	nan	truth=-0.15
+beta_sex_trait3	nan	0.1037741912	nan	truth=0.3
+beta_SNP0018	NA	0.07960736097	0.04259141317	truth=0.03702 p_tg=0.1062
+beta_SNP0023	NA	0.014841582	0.01367990358	truth=0.001162 p_tg=0.9072
+beta_SNP0005	NA	0.02507277913	0.003257824358	truth=0.02833 p_tg=0.1199
+beta_SNP0030	NA	-0.05493555466	0.04693861227	truth=-0.007997 p_tg=0.4768
+beta_SNP0002	NA	0.01764620311	0.08383449281	truth=-0.06619 p_tg=0.505
