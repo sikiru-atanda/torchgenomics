@@ -190,7 +190,7 @@ jobs:
           PY
 
       - name: Run GPU-marked tests + GPU test files (with JUnit XML)
-        # We pair the `gpu` pytest marker with a filename-glob so unmarked-
+        # We union the `gpu` pytest marker with a filename-glob so unmarked-
         # but-CUDA-skipif tests also run. The `gpu` marker is registered in
         # pyproject.toml but not yet applied to every CUDA test (legacy
         # convention is `@pytest.mark.skipif(not HAS_CUDA, ...)`); the file
@@ -198,9 +198,16 @@ jobs:
         # files added later are picked up automatically — no workflow edit
         # required. Pytest deduplicates files passed multiply.
         #
-        # The shell expands the glob; if no GPU test files exist (e.g. on a
-        # fresh checkout) we let pytest fail loudly rather than silently
-        # collecting only the marked tests.
+        # Crucially: pytest's `-m EXPR <files>` semantics are *intersection*
+        # (only matching tests in the named files), not union. To get a
+        # union (= marker-anywhere OR everything-in-files) we run two
+        # passes: one with `-m gpu` over the whole tests/ tree, and one
+        # over the GPU test files with no marker filter. Both write
+        # to the same JUnit XML / log via append mode.
+        #
+        # The shell expands the glob; if no GPU test files exist (e.g. on
+        # a fresh checkout) we let pytest fail loudly rather than silently
+        # skip the marker pass.
         run: |
           set -o pipefail
           mkdir -p artifacts
@@ -212,13 +219,26 @@ jobs:
             exit 1
           fi
           echo "GPU test files matched: ${GPU_TEST_FILES[*]}"
+          # Pass 1: any test in the repo marked @pytest.mark.gpu. This
+          # is empty today (no tests carry the marker) but future-proofs
+          # the workflow for tests added with the marker convention.
           pytest \
             -m gpu \
+            -v --tb=short \
+            --timeout=900 \
+            --junitxml=artifacts/junit-gpu-marker.xml \
+            tests/ \
+            | tee artifacts/pytest-gpu-marker.log \
+            || ([ $? -eq 5 ] && echo "::notice::No @pytest.mark.gpu tests collected (expected today)")
+          # Pass 2: all tests in the GPU test files. These currently
+          # rely on @pytest.mark.skipif(not torch.cuda.is_available())
+          # and are the canonical GPU test set as of v0.3.9.
+          pytest \
             "${GPU_TEST_FILES[@]}" \
             -v --tb=short \
             --timeout=900 \
-            --junitxml=artifacts/junit-gpu.xml \
-            | tee artifacts/pytest-gpu.log
+            --junitxml=artifacts/junit-gpu-files.xml \
+            | tee artifacts/pytest-gpu-files.log
 
       - name: Post-flight — final VRAM snapshot
         if: always()
