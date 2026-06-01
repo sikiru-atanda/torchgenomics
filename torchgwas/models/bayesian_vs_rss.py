@@ -379,6 +379,17 @@ class BayesianVSRss:
         sigma_prior_sq_f = float(self.sigma_prior_sq)
         prior_variance_tol_f = float(self.prior_variance_tol)
 
+        # Precompute the Cholesky factor of R once. R is constant across
+        # the outer IBSS iterations, but _compute_elbo solves R^{-1}·r
+        # every iteration — caching the factor turns each ELBO call from
+        # O(p³) to O(p²). On a non-PD R (numerical fluke; rare on real LD
+        # matrices) we fall back to the unfactored linalg.solve path with
+        # a warning-free None.
+        try:
+            cholesky_L = torch.linalg.cholesky(R)
+        except Exception:
+            cholesky_L = None
+
         for iteration in range(self.max_iter):
             if use_native_sweep:
                 # In-place sweep: the contiguous CPU torch tensors share
@@ -469,7 +480,7 @@ class BayesianVSRss:
                         V[l] = 0.0 if V_new < self.prior_variance_tol else V_new
 
             # Compute ELBO at end of iteration (uses scaled effects internally)
-            elbo = self._compute_elbo(z, R, n, alpha, mu, sigma_sq, V)
+            elbo = self._compute_elbo(z, R, n, alpha, mu, sigma_sq, V, cholesky_L=cholesky_L)
             elbo_history.append(elbo)
 
             # Current PIPs for convergence check
@@ -714,6 +725,7 @@ class BayesianVSRss:
         mu: torch.Tensor,
         sigma_sq: torch.Tensor,
         V: Optional[torch.Tensor] = None,
+        cholesky_L: Optional[torch.Tensor] = None,
     ) -> float:
         """Compute the ELBO for SuSiE-RSS.
 
@@ -745,10 +757,20 @@ class BayesianVSRss:
 
         # Likelihood term: E_q[log p(z | beta)] = -0.5 * E_q[(z - R b_eff)^T R^{-1} (z - R b_eff)] + const.
         # Per Zou 2022 [C4] §A.2 the canonical SuSiE-RSS likelihood under z | beta ~ N(R b_eff, R)
-        # uses the R^{-1} Mahalanobis weighting. Solve R^{-1}(z - z_pred) via torch.linalg.solve
-        # for numerical stability (avoids explicit matrix inverse; equivalent but better-conditioned).
+        # uses the R^{-1} Mahalanobis weighting. R is constant across IBSS
+        # iterations, so when the caller passes a precomputed Cholesky
+        # factor cholesky_L (R = L L^T) we reuse it via torch.cholesky_solve
+        # — O(p²) per call vs O(p³) for the unfactored torch.linalg.solve
+        # path. The unfactored path remains the algorithmic spec / default
+        # when cholesky_L is None (single-call usage outside fit_rss, or
+        # when the cached factor is unavailable due to a non-PD R).
         residual = z - z_pred
-        R_inv_residual = torch.linalg.solve(R, residual)
+        if cholesky_L is not None:
+            R_inv_residual = torch.cholesky_solve(
+                residual.unsqueeze(-1), cholesky_L
+            ).squeeze(-1)
+        else:
+            R_inv_residual = torch.linalg.solve(R, residual)
         squared_residual = (residual * R_inv_residual).sum()
 
         # Variance trace term under the R^{-1}-weighted likelihood:

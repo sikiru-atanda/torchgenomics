@@ -1,0 +1,18 @@
+{
+  "kernel": "_compute_elbo Cholesky cache",
+  "location": "torchgwas.models.bayesian_vs_rss",
+  "date": "2026-06-01",
+  "host": "linux-x86_64",
+  "notes": "Cache torch.linalg.cholesky(R) once per fit_rss and reuse via torch.cholesky_solve in _compute_elbo (called once per IBSS outer iteration). Replaces O(p^3) linalg.solve with O(p^2) substitution. R is constant across IBSS iterations so the factor amortises across max_iter calls. Bench against AR(1) rho=0.5 LD, L=10, n_causal=3, estimate_prior_method='optim'.",
+  "cache_only_speedup": [
+    {"p":  500, "n": 2000, "L": 10, "n_iter": 8, "uncached_ms":   32.3, "cached_ms":  23.4, "speedup":  1.4},
+    {"p": 1000, "n": 5000, "L": 10, "n_iter": 2, "uncached_ms":  157.6, "cached_ms":  45.1, "speedup":  3.5},
+    {"p": 2000, "n": 5000, "L": 10, "n_iter": 6, "uncached_ms": 5775.8, "cached_ms": 512.1, "speedup": 11.3}
+  ],
+  "combined_with_extension_A": [
+    {"p":  500, "n": 2000, "baseline_ms":  229.4, "native_only_ms":   41.7, "both_ms":  36.8, "combined_x":  6.2},
+    {"p": 1000, "n": 5000, "baseline_ms":  220.7, "native_only_ms":  143.0, "both_ms":  40.9, "combined_x":  5.4},
+    {"p": 2000, "n": 5000, "baseline_ms": 5800.0, "native_only_ms": 5480.1, "both_ms": 529.1, "combined_x": 11.0}
+  ],
+  "what_this_unlocks": "Extension A's native IBSS sweep speedup was capped near 1x at p>=1000 because torch.linalg.solve in _compute_elbo (O(p^3) per outer iteration) dominated. With the Cholesky cache, ELBO drops from ~875ms to ~10ms per call at p=2000, and the full fit_rss speedup tracks the kernel speedup. Combined Tier 1 A + cache delivers 5-11x at typical fine-mapping sizes (p in [500, 2000])."
+}
