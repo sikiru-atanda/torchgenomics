@@ -1,29 +1,16 @@
-"""Phase 6: Multi-trait mvLMM tests."""
+"""Legacy import tests for multi-trait LMM compatibility."""
 
 from __future__ import annotations
 
-import pytest
+from torchgwas.models.lmm_multi import MultiTraitLMM as LegacyMultiTraitLMM
+from torchgwas.models.multi_trait_lmm import MultiTraitLMM
 
 
-class TestMultiTraitLMM:
-    """Tests for torchgwas.models.lmm_multi.MultiTraitLMM."""
+def test_legacy_multi_trait_lmm_import_is_shim():
+    assert LegacyMultiTraitLMM is MultiTraitLMM
 
-    def test_mvlmm_conforms_to_protocol(self):
-        """MultiTraitLMM implements BaseModel protocol."""
-        pytest.skip("Phase 6: not yet implemented")
 
-    def test_vg_ve_positive_definite(self):
-        """Vg and Ve matrices are positive definite."""
-        pytest.skip("Phase 6: not yet implemented")
-
-    def test_multi_trait_pvalues(self):
-        """Multi-trait scan produces per-trait and joint p-values."""
-        pytest.skip("Phase 6: not yet implemented")
-
-    def test_genetic_correlation_range(self):
-        """Genetic correlations are in [-1, 1]."""
-        pytest.skip("Phase 6: not yet implemented")
-
-    def test_two_trait_matches_single(self):
-        """Single-trait result from mvLMM matches dedicated single-trait LMM."""
-        pytest.skip("Phase 6: not yet implemented")
+def test_legacy_multi_trait_lmm_instantiates():
+    model = LegacyMultiTraitLMM()
+    assert hasattr(model, "fit_null")
+    assert hasattr(model, "score_chunk")

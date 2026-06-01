@@ -27,12 +27,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # Pin torch and numpy to the versions TorchGWAS is validated
-          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml keeps the
-          # public constraint loose (torch>=2.0) so users aren't forced to
-          # this range, but CI uses the validated set — torch 2.11 and
-          # numpy 2.4 have surfaced numerical/API drift in a handful of
-          # statsmodels-reference and convergence tests that hasn't been
-          # worked through yet.
+          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml mirrors
+          # this validated major range until newer torch/numpy releases are
+          # explicitly qualified.
           pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install -e ".[dev]"
 
@@ -61,12 +58,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # Pin torch and numpy to the versions TorchGWAS is validated
-          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml keeps the
-          # public constraint loose (torch>=2.0) so users aren't forced to
-          # this range, but CI uses the validated set — torch 2.11 and
-          # numpy 2.4 have surfaced numerical/API drift in a handful of
-          # statsmodels-reference and convergence tests that hasn't been
-          # worked through yet.
+          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml mirrors
+          # this validated major range until newer torch/numpy releases are
+          # explicitly qualified.
           pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install -e ".[dev]"
 
@@ -137,12 +131,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # Pin torch and numpy to the versions TorchGWAS is validated
-          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml keeps the
-          # public constraint loose (torch>=2.0) so users aren't forced to
-          # this range, but CI uses the validated set — torch 2.11 and
-          # numpy 2.4 have surfaced numerical/API drift in a handful of
-          # statsmodels-reference and convergence tests that hasn't been
-          # worked through yet.
+          # against (torch 2.4.x + numpy 1.26.x). pyproject.toml mirrors
+          # this validated major range until newer torch/numpy releases are
+          # explicitly qualified.
           pip install "torch>=2.0,<2.5" "numpy<2.0"
           pip install -e ".[dev]"
 

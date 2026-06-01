@@ -20,7 +20,7 @@ critical path. None of them change user-visible behaviour.
 
 ### 1. CLI decomposition
 
-`torchgwas/cli.py` is a single 4382-line module with 35 subcommands inline.
+`torchgwas/cli.py` is a single ~4700-line module with 40 subcommands inline.
 Every new subcommand grows the file; every refactor requires reading the
 full surface. The suggested split:
 

@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
 
     handler = handlers.get(args.command)
     if handler is None:
-        raise NotImplementedError(f"Command '{args.command}' not yet implemented")
+        raise RuntimeError(f"Internal error: no handler registered for command '{args.command}'")
     return handler(args)
 
 
@@ -751,6 +751,42 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
 
     _apply_correction_and_save(result, args)
     return 0
+
+
+def _load_env_vector(env_path: str, sample_ids: list[str], *, dtype, device):
+    """Load a GxE environment vector aligned to genotype/phenotype samples."""
+    import pandas as pd
+    import torch
+
+    env_df = pd.read_csv(env_path, sep="\t")
+    if "ENV" not in env_df.columns:
+        raise ValueError(f"{env_path} must contain an ENV column.")
+
+    id_col = None
+    for candidate in ("SAMPLE", "IID", "sample", "id"):
+        if candidate in env_df.columns:
+            id_col = candidate
+            break
+
+    if id_col is None:
+        if len(env_df) != len(sample_ids):
+            raise ValueError(
+                f"{env_path} has {len(env_df)} rows but {len(sample_ids)} aligned samples; "
+                "add a SAMPLE or IID column to align environments explicitly."
+            )
+        values = env_df["ENV"].to_numpy()
+    else:
+        env_by_id = dict(zip(env_df[id_col].astype(str), env_df["ENV"]))
+        missing = [sid for sid in sample_ids if sid not in env_by_id]
+        if missing:
+            preview = ", ".join(missing[:5])
+            raise ValueError(
+                f"{env_path} is missing ENV values for {len(missing)} aligned samples "
+                f"(first missing: {preview})."
+            )
+        values = [env_by_id[sid] for sid in sample_ids]
+
+    return torch.tensor(values, dtype=dtype, device=device)
 
 
 def _cmd_set_scan(args: argparse.Namespace) -> int:
@@ -3334,7 +3370,7 @@ def _cmd_impute(args: argparse.Namespace) -> int:
                      result.n_variants_imputed, result.mean_rsq)
         return 0
 
-    raise NotImplementedError(f"impute CLI for method={method} not yet implemented")
+    raise RuntimeError(f"Internal error: no impute handler registered for method={method!r}")
 
 
 def _cmd_dosage_call(args: argparse.Namespace) -> int:
@@ -4445,7 +4481,7 @@ def _add_convert_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("convert", help="Convert between genotype formats")
     p.add_argument("--input", required=True)
     p.add_argument("--output", required=True)
-    p.add_argument("--format", required=True, choices=["bed", "vcf", "zarr"])
+    p.add_argument("--format", required=True, choices=["bed", "zarr", "vcf"])
     p.add_argument("--sample")
     p.add_argument("--map")
 
@@ -5121,9 +5157,7 @@ def _add_pgs_score_parser(subparsers: argparse._SubParsersAction) -> None:
 def _add_pipeline_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("pipeline", help="Full pipeline: impute -> scan -> correct")
     _add_common_scan_args(p)
-    p.add_argument("--impute", choices=[
-        "mean", "beagle", "impute5", "minimac4", "li-stephens", "deep-learning",
-    ])
+    p.add_argument("--impute", choices=["mean"])
     p.add_argument("--model", default="lmm", choices=[
         "glm", "lmm", "mvlmm", "farmcpu", "blink", "mklmm", "gxe", "met",
     ])
@@ -5136,6 +5170,11 @@ def _add_pipeline_parser(subparsers: argparse._SubParsersAction) -> None:
                    help="SNP effect decomposition for MET (default: per_env)")
     p.add_argument("--vg-structure", default="unstructured", type=str,
                    help="Genetic covariance structure for MET: 'unstructured' or 'fa(k)'")
+    # GxE-specific args (used when --model gxe)
+    p.add_argument("--env", default=None,
+                   help="Environment variable file (TSV: SAMPLE/IID, ENV) for --model gxe")
+    p.add_argument("--gxe-model", default="het", choices=["het", "multi"],
+                   help="GxE model for --model gxe: 'het' (default) or 'multi'")
     _add_approx_args(p)
 
 

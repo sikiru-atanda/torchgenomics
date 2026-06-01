@@ -156,10 +156,14 @@ def mediate_gene_set(
     pvalue = _chi2_sf(chi2_stat, df)
 
     # --- Scalar set summary: sum_indirect ---
-    ones = torch.ones(k, dtype=indirect.dtype)
+    ones = torch.ones(k, dtype=indirect.dtype, device=indirect.device)
     sum_indirect = float(indirect.sum().item())
     var_sum = float((ones @ (indirect_cov @ ones)).item())
-    sum_indirect_se = float(torch.sqrt(torch.tensor(max(var_sum, 0.0))).item())
+    sum_indirect_se = float(
+        torch.sqrt(
+            torch.tensor(max(var_sum, 0.0), dtype=indirect.dtype, device=indirect.device)
+        ).item()
+    )
     if sum_indirect_se > 0.0:
         z = sum_indirect / sum_indirect_se
         import math

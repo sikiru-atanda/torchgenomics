@@ -74,7 +74,7 @@ validation surface. CLI subcommand count: 38 → 40.
 ## Install
 
 ```bash
-pip install torchgwas             # sdist + compiled-on-install native extensions
+pip install torchgwas             # wheel where available; sdist fallback
 pip install "torchgwas[all]"      # + zarr, h5py, pyarrow, seaborn
 pip install "torchgwas[dev]"      # + pytest, ruff, mypy (editable development)
 pip install "torchgwas[docs]"     # + mkdocs + mkdocs-material + mkdocstrings
@@ -140,7 +140,7 @@ fdr = benjamini_hochberg(result.p.cpu())
 
 - [**Docs site**](https://sikiru-atanda.github.io/torchgwas/) — installation,
   tutorials, full API reference, and validation protocol. Built with MkDocs
-  Material; deployed on every push to `master`.
+  Material; deployed on pushes to `master` / `main`.
 - [**examples/python/**](examples/python/) — 10 working end-to-end scripts
   (single/multi-trait LMM, MET, threshold-linear, PGS, SuSiE fine-mapping,
   mediation, NCBI annotation, polyploid, haplotype).
@@ -198,7 +198,7 @@ fdr = benjamini_hochberg(result.p.cpu())
 - Multi-kernel heritability; eigenMT FDR; colocalisation prefilter
 
 ### Performance
-- 26 native C++ accelerators via pybind11 (up to ~12 000× speedup on hot kernels)
+- 24 native C++ extension modules via pybind11 (up to ~12 000× speedup on hot kernels)
 - OpenMP parallelization where measured beneficial
 - GPU kernels for imputation (mode, KNN, LD-based)
 - Three-tier dispatch: GPU > native C++ > Python (automatic fallback)
@@ -226,8 +226,8 @@ torchgwas/
   multiomics/  GRM-corrected mediation + multi-kernel heritability
   annotate/    NCBI Datasets v2 + E-utilities gene annotation
   viz/         Manhattan, QQ, Miami, Circos, Haploview, trumpet plots
-  _native/     26 C++ pybind11 accelerators + GPU kernels + select_path dispatcher
-  cli.py       35 CLI subcommands
+  _native/     24 C++ pybind11 extension modules + GPU kernels + select_path dispatcher
+  cli.py       40 CLI subcommands
 ```
 
 Data flow: **Format detection → Imputation / phasing → QC → Genotype encoding
@@ -282,8 +282,8 @@ with `chunk_size` / `window_size`, not with total `m`.
 
 ## Requirements
 
-Python ≥ 3.10, PyTorch ≥ 2.0, NumPy ≥ 1.24, pandas ≥ 2.0, SciPy ≥ 1.10,
-matplotlib ≥ 3.7, requests ≥ 2.28.
+Python ≥ 3.10 and < 3.13, PyTorch ≥ 2.0 and < 2.5, NumPy ≥ 1.24 and < 2.0,
+pandas ≥ 2.0, SciPy ≥ 1.10, matplotlib ≥ 3.7, requests ≥ 2.28.
 
 Optional: `zarr`, `h5py`, `pyarrow`, `seaborn`. A C++ compiler with pybind11 is
 optional; if unavailable, every native path falls back to the pure-torch

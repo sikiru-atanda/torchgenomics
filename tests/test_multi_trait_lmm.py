@@ -10,6 +10,7 @@ import torch
 from torchgwas.linalg.eigh import eigendecompose, rotate
 from torchgwas.linalg.kinship import grm_vanraden
 from torchgwas.models.base import NullFit, ScanResult, VariantMeta
+from torchgwas.models.lmm_multi_fit import fit_mvlmm_null_lbfgs
 from torchgwas.models.multi_trait_lmm import MultiTraitLMM
 from torchgwas.optim.lbfgs_reml import lbfgs_reml
 from torchgwas.optim.mvlmm_reml import (
@@ -192,6 +193,18 @@ class TestLBFGSAutograd:
         assert Vg.shape == (3, 3)
         assert Ve.shape == (3, 3)
         assert math.isfinite(ll)
+
+    def test_legacy_lbfgs_nullfit_wrapper(self, rotated_mv_data):
+        """Legacy mvLMM fit helper returns a populated NullFit."""
+        Y_rot, X0_rot, evals = rotated_mv_data
+        nf = fit_mvlmm_null_lbfgs(Y_rot, X0_rot, evals)
+
+        assert isinstance(nf, NullFit)
+        assert nf.Vg is not None
+        assert nf.Ve is not None
+        assert nf.weights is not None
+        assert nf.Vg.shape == (2, 2)
+        assert nf.Ve.shape == (2, 2)
 
 
 # ---------------------------------------------------------------

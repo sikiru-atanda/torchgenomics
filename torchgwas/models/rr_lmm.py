@@ -307,10 +307,7 @@ class RRScanResult:
 class RandomRegressionLMM:
     """Random Regression LMM for longitudinal GWAS.
 
-    .. note::
-        Skeleton class. ``fit_null`` and ``score_chunk`` are implemented in
-        the next steps of Phase 38. Currently exposes the projection helper
-        as a static method.
+    Supports projection and stacked modes with Legendre or B-spline bases.
     """
 
     def __init__(
@@ -413,8 +410,8 @@ class RandomRegressionLMM:
         if K is None:
             raise ValueError("RandomRegressionLMM.fit_null requires a kinship matrix K.")
         if self.mode not in ("projection", "stacked"):
-            raise NotImplementedError(
-                f"RandomRegressionLMM mode='{self.mode}' not yet implemented."
+            raise ValueError(
+                f"RandomRegressionLMM mode must be 'projection' or 'stacked'; got {self.mode!r}."
             )
 
         # 1. Project long-format observations to coefficient space

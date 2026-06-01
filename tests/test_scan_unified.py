@@ -8,9 +8,16 @@ import torch
 from torchgwas.config import STAT_DTYPE, TorchGWASConfig
 from torchgwas.models.base import NullFit, ScanResult, VariantMeta
 from torchgwas.preprocess.qc import QCFilterConfig
+from torchgwas.scan.strategies import FixedNullStrategy, PerSNPRefitStrategy
 from torchgwas.scan.unified import UnifiedScanner, merge_scan_results
 
 # --- Fakes for testing ---
+
+
+def test_scan_strategy_markers_expose_refit_policy():
+    assert FixedNullStrategy().refit_per_snp is False
+    assert PerSNPRefitStrategy().refit_per_snp is True
+
 
 class FakeReader:
     """Minimal GenotypeReader for testing."""

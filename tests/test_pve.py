@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import warnings
 
+import pytest
 import torch
 
 from torchgwas.models.base import ScanResult
@@ -313,6 +314,17 @@ def test_compute_pve_joint_requires_genotype_matrix():
         assert "requires the genotype matrix" in str(e)
     else:
         raise AssertionError("expected ValueError when joint mode is asked without G")
+
+
+def test_compute_pve_rejects_multi_trait_scan_result():
+    m = 5
+    result = _make_scan_result(
+        torch.zeros((m, 2), dtype=torch.float64),
+        torch.tensor([1e-20] + [1.0] * (m - 1), dtype=torch.float64),
+        torch.full((m,), 0.5, dtype=torch.float64),
+    )
+    with pytest.raises(ValueError, match="single-trait"):
+        compute_pve(result, torch.zeros(10), method="marginal")
 
 
 # ---------------------------------------------------------------------------

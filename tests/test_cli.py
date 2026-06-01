@@ -87,15 +87,65 @@ class TestCLIParsing:
                 "--model", "farmcpu",
             ])
 
+    def test_pipeline_gxe_parses(self):
+        """pipeline accepts --model gxe and its environment argument."""
+        with pytest.raises(FileNotFoundError):
+            main([
+                "pipeline", "--genotype", "data.bed",
+                "--phenotype", "pheno.txt",
+                "--model", "gxe", "--env", "env.tsv",
+            ])
+
     def test_convert_wired(self):
         """convert subcommand is wired (fails on missing input, not NotImplementedError)."""
         with pytest.raises(FileNotFoundError):
             main(["convert", "--input", "a.vcf", "--output", "b.bed", "--format", "bed"])
 
+    def test_convert_vcf_format_parses(self):
+        """convert accepts VCF as an output format."""
+        with pytest.raises(FileNotFoundError):
+            main(["convert", "--input", "a.bed", "--output", "out.vcf", "--format", "vcf"])
+
+    def test_gxe_env_vector_aligns_by_sample_id(self, tmp_path):
+        """GxE env files are aligned by sample ID rather than raw row order."""
+        import torch
+
+        from torchgwas.cli import _load_env_vector
+
+        env = tmp_path / "env.tsv"
+        env.write_text("SAMPLE\tENV\ns2\t2.0\ns1\t1.0\n")
+
+        values = _load_env_vector(
+            str(env),
+            ["s1", "s2"],
+            dtype=torch.float64,
+            device=torch.device("cpu"),
+        )
+
+        assert values.tolist() == [1.0, 2.0]
+
     def test_impute_wired(self):
         """impute subcommand is wired (fails on missing input, not NotImplementedError)."""
         with pytest.raises(FileNotFoundError):
             main(["impute", "--genotype", "a.bed", "--method", "mean", "--output", "out.bed"])
+
+    def test_impute_mean_runs_on_csv_fixture(self, tmp_path):
+        """mean imputation loads real reader chunks and writes a dosage tensor."""
+        import torch
+
+        out = tmp_path / "imputed.pt"
+        rc = main([
+            "impute",
+            "--genotype", "tests/fixtures/tiny_dosage.csv",
+            "--method", "mean",
+            "--output", str(out),
+        ])
+
+        assert rc == 0
+        payload = torch.load(out, weights_only=False)
+        assert set(payload) == {"dosage"}
+        assert payload["dosage"].shape == (10, 20)
+        assert torch.isfinite(payload["dosage"]).all()
 
     def test_ld_blocks_parses(self):
         """ld-blocks subcommand accepts required args (fails on missing file)."""
