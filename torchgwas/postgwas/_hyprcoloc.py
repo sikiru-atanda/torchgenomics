@@ -45,9 +45,12 @@ import itertools
 import math
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
+from .._native import HAS_NATIVE_HYPRCOLOC, _hyprcoloc_native
 from ._sumstats import SumStats
 
 
@@ -216,11 +219,35 @@ def hyprcoloc(
     # putative causal SNP j) is log( sum_j exp( sum_{k in S} log_abf_jk ) ).
     # We enumerate every non-singleton subset up to the full set; at K = 10
     # that is 1013 subsets, easily handled.
+    #
+    # Native C++ shortcut: enumerate 2^K bitmasks with per-subset trait-row
+    # sum + per-subset logsumexp inline, OpenMP across subsets. Output is a
+    # (2^K,) array indexed by bitmask; we read out the non-singleton entries
+    # into the same dict the Python body produces, preserving the downstream
+    # contract bit-for-bit. The Python body below is the algorithmic spec
+    # and runs unchanged on fallthrough.
     subset_log_bf: dict[tuple[int, ...], float] = {}
-    for size in range(2, K + 1):
-        for subset in itertools.combinations(range(K), size):
-            stacked = log_abf[list(subset)].sum(dim=0)  # (m,)
-            subset_log_bf[tuple(subset)] = _log_sum_exp(stacked)
+    if (
+        HAS_NATIVE_HYPRCOLOC
+        and not native_disabled()
+        and log_abf.device.type == "cpu"
+        and K >= 6
+        and K <= 30
+    ):
+        log_abf_np = log_abf.contiguous().numpy()
+        out_np = np.empty(1 << K, dtype=np.float64)
+        _hyprcoloc_native.enumerate_subset_log_bf(log_abf_np, out_np)
+        for size in range(2, K + 1):
+            for subset in itertools.combinations(range(K), size):
+                bitmask = 0
+                for k in subset:
+                    bitmask |= 1 << k
+                subset_log_bf[tuple(subset)] = float(out_np[bitmask])
+    else:
+        for size in range(2, K + 1):
+            for subset in itertools.combinations(range(K), size):
+                stacked = log_abf[list(subset)].sum(dim=0)  # (m,)
+                subset_log_bf[tuple(subset)] = _log_sum_exp(stacked)
 
     # Prior structure -- Foley et al. (2021) Eq. 2 (corrected per F3 #1
     # patch, 2026-05-15). For a candidate cluster S of size |S| >= 2
