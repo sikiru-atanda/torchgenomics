@@ -276,6 +276,15 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
+        "torchgwas._native._ordinal_threshold_native",
+        sources=[
+            "csrc/models/ordinal_threshold_nr.cpp",
+        ],
+        include_dirs=["csrc"],
+        cxx_std=17,
+        optional=True,
+    ),
+    Pybind11Extension(
         "torchgwas._native._spa_native",
         sources=[
             "csrc/stats/spa_lugannani_rice.cpp",
@@ -325,6 +334,7 @@ _OMP_TARGETS = {
     "torchgwas._native._snp_to_gene_native",
     "torchgwas._native._expression_native",
     "torchgwas._native._hyprcoloc_native",
+    "torchgwas._native._ordinal_threshold_native",
 }
 for _ext in ext_modules:
     if _ext.name in _OMP_TARGETS:

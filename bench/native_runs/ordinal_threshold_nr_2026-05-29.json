@@ -1,0 +1,15 @@
+{
+  "kernel": "ordinal_threshold_score_hessian",
+  "ext": "torchgwas._native._ordinal_threshold_native",
+  "date": "2026-05-29",
+  "host": "linux-x86_64",
+  "notes": "Per-NR-iteration score vector + Hessian assembly for the OrdinalGLMM cumulative-link threshold update. Inner work is O(n * n_thresh^2). OpenMP across samples with per-thread accumulators reduced at end. Random gamma_nr inputs from a logistic-link template; Y uniform over {0..J-1}.",
+  "measurements": [
+    {"n":  200, "J":  3, "n_thresh": 2, "py_us":  38.4, "cpp_us": 10.3, "speedup":  3.7},
+    {"n":  500, "J":  5, "n_thresh": 4, "py_us": 179.6, "cpp_us":  9.9, "speedup": 18.2},
+    {"n": 2000, "J":  5, "n_thresh": 4, "py_us": 198.1, "cpp_us": 10.4, "speedup": 19.0},
+    {"n": 5000, "J":  5, "n_thresh": 4, "py_us": 234.3, "cpp_us": 11.9, "speedup": 19.7},
+    {"n": 5000, "J": 10, "n_thresh": 9, "py_us": 923.4, "cpp_us": 19.3, "speedup": 48.0}
+  ],
+  "scaling": "Speedup scales with n_thresh^2 because the Python overhead is per (jj, kk) pair while the C++ inner loop is straight-line. Exceeds the audit's 3-15x estimate at J >= 5."
+}
