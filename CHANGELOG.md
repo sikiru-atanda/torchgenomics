@@ -2,6 +2,128 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] — 2026-06-02
+
+Rebrand and surface-expansion release. The package is renamed from
+`torchgwas` to `torchgenomics` to reflect a scope that now covers far
+more than GWAS (post-GWAS, PGS, MR, TWAS, multi-omics, LD, imputation,
+annotation, visualization). On top of the rename, two new surfaces ship:
+a curated one-call API for novice / notebook users, and an MCP server
+exposing 13 tier-1 tools to LLM clients (Claude Desktop, Claude Code).
+
+Existing `torchgwas` users keep working without code changes — the
+legacy package, CLI binary, and environment variables stay live as a
+deprecation shim through the v0.x series and are removed in v1.0.0.
+
+### Added — high-level API facade (`torchgenomics.api`)
+
+A new `torchgenomics.api` module (also re-exported at the top level)
+provides 12 one-call tier-1 functions designed for three audiences
+sharing a single code path:
+
+- **Data tier (3)**: `validate`, `convert`, `impute`
+- **Scan tier (2)**: `lmm_scan`, `glm_scan`
+- **LD / post-GWAS tier (3)**: `ld_blocks`, `clump`, `meta`
+- **PGS tier (2)**: `pgs_fit`, `pgs_score`
+- **Utility tier (2)**: `annotate_hits`, `manhattan` (+ bonus `qq`)
+
+Each returns a typed result dataclass with `.summary()`, `.to_dict()`
+(JSON-safe), `.runtime_s`, `.output_files`, and per-kind extras
+(`.top_hits` DataFrame, `.manhattan()` / `.qq()` matplotlib helpers,
+`.lambda_gc`, etc.). Smart defaults: format auto-detection, sample
+auto-alignment, auto-named output directories, first-trait auto-pick.
+
+### Added — MCP server (`torchgenomics-mcp`)
+
+A new `torchgenomics.mcp` subpackage publishes the 13 tier-1 api
+functions as Model Context Protocol tools over stdio:
+
+```bash
+pip install "torchgenomics[mcp]"
+```
+
+```json
+{
+  "mcpServers": {
+    "torchgenomics": {"command": "torchgenomics-mcp"}
+  }
+}
+```
+
+Wrapper layer strips non-JSON-serializable params (`progress_callback`,
+`Path` → `str`), preserves `Literal` enums as JSON Schema enums, and
+auto-`.to_dict()`'s api result objects. The `torchgenomics-mcp
+--list-tools` flag emits the tool registry as JSON without booting the
+server.
+
+### Changed — package rename
+
+- `torchgwas` → `torchgenomics` across the Python package, CLI binary,
+  PyPI distribution, GitHub repo, charter, README, CLAUDE.md, all docs,
+  manuscript text, and 10 GitHub Actions workflows.
+- 24 native C++ extension module names rebuilt as `torchgenomics._native._*`.
+- All `TORCHGWAS_*` env vars renamed to `TORCHGENOMICS_*` (DISABLE_NATIVE,
+  DISABLE_GPU, DISABLE_OPENMP, JULIA, BENCH_CI/QUICK/REALISTIC,
+  ALLOW_AUTO_INSTALL, NCBI_LIVE).
+- Charter file: `TorchGWAS_AI_Agent_Handoff_Charter.md` →
+  `TorchGenomics_AI_Agent_Handoff_Charter.md`.
+
+### Added — backwards-compat shim (removed at v1.0.0)
+
+- `torchgwas` Python package — meta-path finder redirects every
+  `torchgwas[.X]` import to `torchgenomics[.X]`. Same module objects.
+  Emits one-shot `DeprecationWarning`.
+- `torchgwas` console script — prints stderr deprecation banner once,
+  then forwards argv unchanged to `torchgenomics.cli:main`.
+- `TORCHGWAS_DISABLE_NATIVE` / `_GPU` / `_OPENMP` env vars — accepted
+  with one-shot `DeprecationWarning`; new `TORCHGENOMICS_*` names take
+  precedence when both are set.
+- Centralized via `torchgenomics._dispatch.env_var(name)` helper; 9
+  direct `os.environ.get` sites under `ld/` and `pgs/` migrated to
+  `native_disabled()` so the legacy alias is honored uniformly.
+
+### Refactored — CLI ↔ api dependency direction
+
+For 7 of the 12 tier-1 functions (clump, meta, pgs_fit, pgs_score,
+ld_blocks, lmm_scan, glm_scan), the api facade now calls thin
+primitive-args helpers in `cli.py` (`_run_clump`, `_run_meta`, etc.)
+rather than constructing synthetic `argparse.Namespace` objects. No
+api module imports argparse anymore. Side-fix: `api.clump` was
+silently passing wrong attribute names (`r2_threshold`/`bp_window_kb`
+instead of `r2`/`window_kb`) — corrected. No CLI test was exercising
+the api.clump path.
+
+### Tests
+
+- `tests/test_compat_shim.py` (13 tests) — import shim, env-var compat,
+  CLI proxy banner + dispatch.
+- `tests/test_api_facade.py` (43 tests) — registry, top-level
+  re-exports, result-class invariants, end-to-end smoke for validate /
+  lmm_scan / glm_scan / ld_blocks / manhattan / qq.
+- `tests/test_mcp_server.py` (12 tests) — wrapper hygiene
+  (progress_callback stripped, Path → str, Literal preserved), server
+  boot, schema validity, end-to-end in-process MCP tool call.
+
+**Verification**: 3,071 passed (3,003 baseline + 68 new), 417 skipped,
+0 failures (excluding opt-in external / cli_matrix / reproducibility /
+gpu markers). 2m 22s wall time.
+
+### Migration
+
+```python
+# Before
+import torchgwas
+from torchgwas.models import SingleTraitLMM
+
+# After
+import torchgenomics
+from torchgenomics.models import SingleTraitLMM
+```
+
+CLI: `torchgwas <cmd>` → `torchgenomics <cmd>` (old form proxies with a
+banner). Env vars: `TORCHGWAS_DISABLE_NATIVE=1` → `TORCHGENOMICS_DISABLE_NATIVE=1`.
+Python API surface is unchanged.
+
 ## [0.3.10] — 2026-06-01
 
 Performance + infrastructure release. Seven new native C++ accelerators

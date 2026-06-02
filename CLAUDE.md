@@ -4,11 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**TorchGenomics** is a modular Python library for GPU-accelerated Genome-Wide Association Studies (GWAS) using PyTorch. It replicates and extends functionality from established tools like GEMMA and GAPIT, targeting 4th-decimal-place agreement with their p-values. Supports both diploid and polyploid organisms.
+**TorchGenomics** (renamed from `torchgwas` in v0.4.0) is a GPU-accelerated PyTorch engine for statistical and quantitative genomics. It covers GWAS, post-GWAS, polygenic scoring, LD analysis, imputation, multi-omics integration, visualization, and annotation — a single `pip install`. It replicates GEMMA / GAPIT / GWASpoly to the 4th decimal on shared benchmarks. Diploid and polyploid.
 
-**Status**: Active development. Version 0.3.8 (Alpha). 2801 tests pass, 544 skipped. V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions implemented through Phase 56. See the **Phase Index** below for scope, and `git log --grep="Phase NN"` for per-phase details (every phase was shipped as a labeled commit).
+**Status**: Active development. Version 0.4.0 (Alpha). 3,071 tests pass, 417 skipped. V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions through Phase 56.
 
-**Post-V1 maturation (v0.3.0–v0.3.8, 2026-04-30 to 2026-05-05):** Multi-pillar validation campaign + streaming/efficiency campaign. 15 V1 production fixes shipped from validation work. 36 of 40 CLI scan subcommands now stream chunks at biobank scale (40 TB → 1-4 GB peak). Reference equivalence validated against 11 external tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, R `mediation`). Five CI workflows wire all four pillar's regression nets + native-kernel wall-time gate. See `docs/superpowers/SESSION_HANDOFF.md` for the full state.
+**v0.4.0 (current branch — 2026-06-02):** Rename `torchgwas` → `torchgenomics`. New `torchgenomics.api` one-call facade (12 tier-1 workflows: `tg.lmm_scan`, `tg.glm_scan`, `tg.pgs_fit`, `tg.ld_blocks`, ...). New `torchgenomics-mcp` MCP server publishing 13 tools over stdio (`pip install torchgenomics[mcp]`). Legacy `torchgwas` package, CLI binary, and `TORCHGWAS_*` env vars stay live as a deprecation shim through the v0.x series.
+
+**Post-V1 maturation (v0.3.0–v0.3.10, 2026-04-30 to 2026-06-01):** Multi-pillar validation campaign + streaming/efficiency campaign + native C++ accelerator campaign. 15 V1 production fixes shipped from validation work. 36 of 40 CLI scan subcommands now stream chunks at biobank scale (40 TB → 1-4 GB peak). Reference equivalence validated against 11 external tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, R `mediation`). Five CI workflows wire all four pillars' regression nets + native-kernel wall-time gate. See `docs/superpowers/SESSION_HANDOFF.md` for the full state.
+
+### Three audiences, one engine
+
+The same code path serves three audiences (see `torchgenomics/api/` + `torchgenomics/mcp/`):
+
+- **Novice / notebook**: `import torchgenomics as tg; tg.lmm_scan(genotype=..., phenotype=...)` returns a `ScanRun` with `.summary()`, `.top_hits` DataFrame, `.manhattan()`, `.qq()`, `.output_files`. Smart defaults: format auto-detection, sample auto-alignment, auto-named output dirs, first-trait auto-selection.
+- **Advanced / research**: The low-level modules (`torchgenomics.models`, `torchgenomics.scan`, `torchgenomics.linalg`, ...) are unchanged. Compose `SingleTraitLMM().fit_null(Y, X0, K)` → `UnifiedScanner(reader, model).scan(null_fit)` directly.
+- **LLM / MCP tools**: `torchgenomics-mcp` console script (installed by `[mcp]` extra) registers the 13 tier-1 api functions as MCP tools via stdio. Wrapper layer strips non-JSON-serializable params (`progress_callback`, `Path` → `str`), preserves `Literal` enums, auto-`.to_dict()`'s results.
 
 ## Planned Architecture
 

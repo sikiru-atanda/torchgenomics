@@ -75,7 +75,10 @@ nav:
   - CLI Reference: cli.md
   - Tutorials:
       - Single-trait LMM: tutorials/single-trait-lmm.md
-  - API Reference: api/index.md
+  - API:
+      - One-call quickstart: api/quickstart.md
+      - Low-level reference: api/index.md
+  - MCP server: mcp/index.md
   - Validation:
       - Overview: validation.md
       - Section 16 protocol: validation_protocol.md
