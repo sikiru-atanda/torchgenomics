@@ -63,9 +63,11 @@ docs = [
     "mkdocs-literate-nav>=0.6",
 ]
 polyploid-phase = ["juliacall>=0.9"]
+mcp = ["mcp>=1.0", "pydantic>=2.0"]
 
 [project.scripts]
 torchgenomics = "torchgenomics.cli:main"
+torchgenomics-mcp = "torchgenomics.mcp.server:main"
 torchgwas = "torchgwas._legacy_cli:main"
 
 [project.urls]
