@@ -246,6 +246,50 @@ def _run_per_trait(args: argparse.Namespace, scan_fn) -> int:
     return 0
 
 
+def _run_glm_scan(
+    *,
+    genotype: str,
+    phenotype: str,
+    output: str,
+    trait: str | None = None,
+    covariate: str | None = None,
+    family: str = "gaussian",
+    n_categories: int | None = None,
+    firth: bool = False,
+    no_spa: bool = False,
+    test: str = "wald",
+    correction: str = "bh",
+    chunk_size: int = 10_000,
+    maf_min: float = 0.01,
+    miss_max: float = 0.1,
+    device: str = "cpu",
+    id_column: str | None = None,
+    no_save_parquet: bool = False,
+) -> dict:
+    """Pure-primitives GLM-family scan orchestration shared by CLI and api."""
+    ns = argparse.Namespace(
+        genotype=genotype,
+        phenotype=phenotype,
+        output=output,
+        traits=trait,
+        covariate=covariate,
+        family=family,
+        n_categories=n_categories,
+        firth=firth,
+        no_spa=no_spa,
+        test=test,
+        correction=correction,
+        chunk_size=chunk_size,
+        maf_min=maf_min,
+        miss_max=miss_max,
+        device=device,
+        id_column=id_column,
+        no_save_parquet=no_save_parquet,
+    )
+    rc = _cmd_glm_scan_single(ns)
+    return {"output_prefix": output, "exit_code": int(rc)}
+
+
 def _cmd_glm_scan(args: argparse.Namespace) -> int:
     """Run GLM association scan (streaming — no GRM needed)."""
     return _run_per_trait(args, _cmd_glm_scan_single)
@@ -335,6 +379,68 @@ def _cmd_glm_scan_single(args: argparse.Namespace) -> int:
 
     _apply_correction_and_save(result, args)
     return 0
+
+
+def _run_lmm_scan(
+    *,
+    genotype: str,
+    phenotype: str,
+    output: str,
+    trait: str | None = None,
+    covariate: str | None = None,
+    test: str = "wald",
+    correction: str = "bh",
+    chunk_size: int = 10_000,
+    maf_min: float = 0.01,
+    miss_max: float = 0.1,
+    device: str = "cpu",
+    grm: str | None = None,
+    grm_method: str = "vanraden",
+    n_pcs: int = 0,
+    p3d: bool = True,
+    approx_method: str | None = None,
+    approx_components: int = 100,
+    approx_landmarks: int = 500,
+    sparse_threshold: float = 0.05,
+    max_iter: int | None = None,
+    id_column: str | None = None,
+    loco: bool = False,
+    no_save_parquet: bool = False,
+) -> dict:
+    """Pure-primitives single-trait LMM scan orchestration shared by CLI and api.
+
+    Builds the legacy-shape Namespace internally so the established
+    ``_cmd_lmm_scan_single`` chain (which still consumes ``args.foo``) sees
+    what it expects. This lets the api layer pass primitives without
+    constructing argparse objects itself.
+    """
+    ns = argparse.Namespace(
+        genotype=genotype,
+        phenotype=phenotype,
+        output=output,
+        traits=trait,
+        covariate=covariate,
+        test=test,
+        correction=correction,
+        chunk_size=chunk_size,
+        maf_min=maf_min,
+        miss_max=miss_max,
+        device=device,
+        grm=grm,
+        grm_method=grm_method,
+        n_pcs=n_pcs,
+        p3d=p3d,
+        approx_method=approx_method,
+        approx_components=approx_components,
+        approx_landmarks=approx_landmarks,
+        sparse_threshold=sparse_threshold,
+        max_iter=max_iter,
+        id_column=id_column,
+        loco=loco,
+        no_save_parquet=no_save_parquet,
+    )
+    rc = _cmd_lmm_scan_single(ns)
+    return {"output_prefix": output, "exit_code": int(rc)}
 
 
 def _cmd_lmm_scan(args: argparse.Namespace) -> int:
@@ -3473,25 +3579,35 @@ def _cmd_phase_poly(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_ld_blocks(args: argparse.Namespace) -> int:
-    """Detect haplotype blocks.
+def _run_ld_blocks(
+    genotype_path: str,
+    output_prefix: str,
+    *,
+    method: str = "gabriel",
+    max_kb: int = 200,
+    device: str | None = None,
+    phased_vcf: str | None = None,
+    compare_plink: str | None = None,
+    # Method-specific knobs (unused ones are simply ignored per method).
+    ci_low: float = 0.7,
+    ci_high: float = 0.98,
+    freq_threshold: float = 0.01,
+    dprime_threshold: float = 0.7,
+    r2_threshold: float = 0.5,
+    condition_penalty: float = 0.0,
+    max_block_snps: int = 1_000,
+    l1_penalty: float = 0.1,
+    window_size: int = 100,
+    cp_penalty: float = 0.0,
+    ld_window: int = 100,
+    include_singletons: bool = False,
+    objective: str = "ldscore",
+) -> dict:
+    """Pure-primitives haplotype-block detection orchestration.
 
-    Streaming variant: accumulates one chromosome's genotype slice at a
-    time from ``reader.iter_chunks``, runs the block-detection algorithm
-    on that chromosome, then frees the slice before reading the next.
-    Peak memory is ``O(n × max_per_chromosome_m × 8 B)`` instead of
-    ``O(n × m × 8 B)``. The block-detection algorithms operate on the
-    chromosome-scale dosage matrix because they fundamentally require
-    pairwise r²/D' across the full max_kb window — which is bounded by
-    the chromosome boundary anyway.
-
-    Per-chromosome cap (soft documentation): at biobank density a single
-    chromosome holds ~1M SNPs × 500K samples × 8 B = ~4 TB. At that scale,
-    block detection requires more aggressive on-disk windowing or a
-    chromosome shard pass. Today's algorithms target ag-panel and
-    intermediate biobank scales (n ≤ ~50K) where chromosome-scale
-    materialization fits within ~80 GB. Documented in
-    docs/efficiency/streaming_audit.md.
+    Streams the genotype per-chromosome (peak memory bounded by largest
+    chromosome). Writes ``<output_prefix>.{bed, blocks.det, summary.txt}``
+    and (if ``compare_plink`` is set) a comparison summary.
     """
     import torch
 
@@ -3499,48 +3615,44 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
     from .io.validate import _open_reader
     from .ld import detect_blocks
 
-    device = torch.device(args.device) if args.device else None
+    device_t = torch.device(device) if device else None
 
-    # Optionally load phased haplotypes (file-level — small).
     haplotypes_full = None
-    if args.phased_vcf:
+    if phased_vcf:
         from .preprocess.phase import load_haplotypes
-        haplotypes_full = load_haplotypes(args.phased_vcf)
-        logger.info("Loaded phased haplotypes: %s", haplotypes_full.shape)
+        haplotypes_full = load_haplotypes(phased_vcf)
 
-    # Build method-specific kwargs (unchanged from the legacy path).
-    method_kwargs = {}
-    method = args.method
+    method_kwargs: dict = {}
     if method == "gabriel":
-        method_kwargs["ci_low"] = args.ci_low
-        method_kwargs["ci_high"] = args.ci_high
+        method_kwargs["ci_low"] = ci_low
+        method_kwargs["ci_high"] = ci_high
     elif method == "four_gamete":
-        method_kwargs["freq_threshold"] = args.freq_threshold
+        method_kwargs["freq_threshold"] = freq_threshold
     elif method == "spine":
-        method_kwargs["d_prime_threshold"] = args.dprime_threshold
+        method_kwargs["d_prime_threshold"] = dprime_threshold
     elif method == "r2":
-        method_kwargs["r2_threshold"] = args.r2_threshold
+        method_kwargs["r2_threshold"] = r2_threshold
     elif method == "gwas_aligned":
-        method_kwargs["condition_penalty"] = args.condition_penalty
-        method_kwargs["max_block_snps"] = args.max_block_snps
+        method_kwargs["condition_penalty"] = condition_penalty
+        method_kwargs["max_block_snps"] = max_block_snps
     elif method == "graphical":
-        method_kwargs["l1_penalty"] = args.l1_penalty
-        method_kwargs["window_size"] = args.window_size
+        method_kwargs["l1_penalty"] = l1_penalty
+        method_kwargs["window_size"] = window_size
     elif method == "changepoint":
-        method_kwargs["penalty"] = args.cp_penalty
+        method_kwargs["penalty"] = cp_penalty
     elif method == "big_ld":
-        method_kwargs["r2_threshold"] = args.r2_threshold
-        method_kwargs["window_size"] = args.window_size
+        method_kwargs["r2_threshold"] = r2_threshold
+        method_kwargs["window_size"] = window_size
     elif method == "cc_graph":
-        method_kwargs["r2_threshold"] = args.r2_threshold
-        method_kwargs["window"] = args.ld_window
-        method_kwargs["include_singletons"] = args.include_singletons
+        method_kwargs["r2_threshold"] = r2_threshold
+        method_kwargs["window"] = ld_window
+        method_kwargs["include_singletons"] = include_singletons
     elif method == "dp_optimize":
-        method_kwargs["objective"] = args.objective
-        method_kwargs["max_block_snps"] = args.max_block_snps
+        method_kwargs["objective"] = objective
+        method_kwargs["max_block_snps"] = max_block_snps
 
-    fmt = detect_format(args.genotype)
-    reader = _open_reader(args.genotype, fmt)
+    fmt = detect_format(genotype_path)
+    reader = _open_reader(genotype_path, fmt)
 
     # Per-chromosome streaming accumulator. We keep one chromosome's
     # G slice resident, run detection when the chromosome flips, free
@@ -3578,8 +3690,8 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
             cur_ids,
             method=method,
             haplotypes=hap_chr,
-            max_kb=args.max_kb,
-            device=device,
+            max_kb=max_kb,
+            device=device_t,
             **method_kwargs,
         )
         # detect_blocks emits variant_indices that are local to G_chr;
@@ -3631,39 +3743,33 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
         n_seen += G_chunk.shape[1]
 
     _process_chrom()
-    logger.info(
-        "Loaded %d samples x %d markers (%d chromosome partitions)",
-        reader.n_samples, len(variant_pos), len(set(variant_chr)),
-    )
 
     # Save output in all standard formats
     from .ld import save_blocks_bed, save_blocks_det, save_blocks_summary
 
-    bed_path = f"{args.output}.bed"
-    det_path = f"{args.output}.blocks.det"
-    summary_path = f"{args.output}.summary.txt"
+    bed_path = f"{output_prefix}.bed"
+    det_path = f"{output_prefix}.blocks.det"
+    summary_path = f"{output_prefix}.summary.txt"
 
     save_blocks_bed(blocks, bed_path)
     save_blocks_det(blocks, det_path, variant_ids=variant_ids)
     save_blocks_summary(blocks, summary_path)
-    logger.info(
-        "Detected %d blocks (%s method) -> %s, %s, %s",
-        len(blocks), args.method, bed_path, det_path, summary_path,
-    )
+
+    output_files = {"bed": bed_path, "det": det_path, "summary": summary_path}
 
     # Optional: compare against PLINK reference blocks
-    if hasattr(args, "compare_plink") and args.compare_plink:
+    if compare_plink:
         from .ld import (
             compare_blocks,
             load_plink_blocks_det,
             plink_blocks_to_ldblocks,
         )
 
-        plink_blocks = load_plink_blocks_det(args.compare_plink)
+        plink_blocks = load_plink_blocks_det(compare_plink)
         plink_ld = plink_blocks_to_ldblocks(plink_blocks, variant_ids=variant_ids)
         result = compare_blocks(blocks, plink_ld, method_a=method, method_b="plink")
 
-        comp_path = f"{args.output}.comparison.txt"
+        comp_path = f"{output_prefix}.comparison.txt"
         with open(comp_path, "w") as f:
             f.write(f"Block Comparison: {method} vs PLINK\n")
             f.write(f"{'=' * 50}\n")
@@ -3676,8 +3782,53 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
             f.write(f"Match rate (PLINK):   {result.match_rate_b:.4f}\n")
             f.write(f"Mean boundary dist:   {result.mean_boundary_dist:.1f} bp\n")
             f.write(f"Median boundary dist: {result.median_boundary_dist:.1f} bp\n")
-        logger.info("Comparison with PLINK -> %s", comp_path)
+        output_files["comparison"] = comp_path
 
+    return {
+        "method": method,
+        "n_samples": int(reader.n_samples),
+        "n_variants": len(variant_pos),
+        "n_chromosome_partitions": len(set(variant_chr)),
+        "n_blocks": len(blocks),
+        "output_files": output_files,
+    }
+
+
+def _cmd_ld_blocks(args: argparse.Namespace) -> int:
+    """Detect haplotype blocks (CLI adapter for _run_ld_blocks)."""
+    info = _run_ld_blocks(
+        genotype_path=args.genotype,
+        output_prefix=args.output,
+        method=args.method,
+        max_kb=args.max_kb,
+        device=args.device,
+        phased_vcf=args.phased_vcf,
+        compare_plink=getattr(args, "compare_plink", None),
+        ci_low=getattr(args, "ci_low", 0.7),
+        ci_high=getattr(args, "ci_high", 0.98),
+        freq_threshold=getattr(args, "freq_threshold", 0.01),
+        dprime_threshold=getattr(args, "dprime_threshold", 0.7),
+        r2_threshold=getattr(args, "r2_threshold", 0.5),
+        condition_penalty=getattr(args, "condition_penalty", 0.0),
+        max_block_snps=getattr(args, "max_block_snps", 1000),
+        l1_penalty=getattr(args, "l1_penalty", 0.1),
+        window_size=getattr(args, "window_size", 100),
+        cp_penalty=getattr(args, "cp_penalty", 0.0),
+        ld_window=getattr(args, "ld_window", 100),
+        include_singletons=getattr(args, "include_singletons", False),
+        objective=getattr(args, "objective", "ldscore"),
+    )
+    logger.info(
+        "Loaded %d samples x %d markers (%d chromosome partitions)",
+        info["n_samples"], info["n_variants"], info["n_chromosome_partitions"],
+    )
+    of = info["output_files"]
+    logger.info(
+        "Detected %d blocks (%s method) -> %s, %s, %s",
+        info["n_blocks"], info["method"], of["bed"], of["det"], of["summary"],
+    )
+    if "comparison" in of:
+        logger.info("Comparison with PLINK -> %s", of["comparison"])
     return 0
 
 
@@ -3762,8 +3913,16 @@ def _cmd_ldsc_rg(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_meta(args: argparse.Namespace) -> int:
-    """Run meta-analysis across multiple GWAS results."""
+def _run_meta(
+    inputs: list[str],
+    output_prefix: str,
+    method: str,
+) -> dict:
+    """Pure-primitives meta-analysis orchestration shared by CLI and api.
+
+    Returns a small dict ``{output_path, n_studies, n_variants}``. The
+    full per-variant results live in the TSV at ``output_path``.
+    """
     import torch
 
     from .postgwas import (
@@ -3775,11 +3934,9 @@ def _cmd_meta(args: argparse.Namespace) -> int:
         meta_sample_size,
     )
 
-    ss_list = [load_sumstats(p) for p in args.input]
+    ss_list = [load_sumstats(p) for p in inputs]
     ss_list = align_sumstats(ss_list)
     K = len(ss_list)
-
-    method = args.method
 
     if method in ("fixed", "random", "han_eskin"):
         beta = torch.stack([ss.beta for ss in ss_list], dim=1)
@@ -3802,9 +3959,8 @@ def _cmd_meta(args: argparse.Namespace) -> int:
     else:
         raise ValueError(f"Unknown meta-analysis method: {method}")
 
-    # Write output
     ref = ss_list[0]
-    out_path = f"{args.output}.meta.tsv"
+    out_path = f"{output_prefix}.meta.tsv"
     with open(out_path, "w") as f:
         f.write("chr\tpos\tsnp\ta1\ta2\tbeta_meta\tse_meta\tp_meta\tz_meta\tq_stat\ti2\n")
         for j in range(ref.m):
@@ -3812,22 +3968,33 @@ def _cmd_meta(args: argparse.Namespace) -> int:
                     f"{result.beta_meta[j].item():.6f}\t{result.se_meta[j].item():.6f}\t"
                     f"{result.p_meta[j].item():.6e}\t{result.z_meta[j].item():.4f}\t"
                     f"{result.q_stat[j].item():.4f}\t{result.i2[j].item():.4f}\n")
-    logger.info("Meta-analysis (%s, K=%d) -> %s", method, K, out_path)
+    return {"output_path": out_path, "n_studies": K, "n_variants": int(ref.m)}
+
+
+def _cmd_meta(args: argparse.Namespace) -> int:
+    """Run meta-analysis across multiple GWAS results."""
+    info = _run_meta(args.input, args.output, args.method)
+    logger.info(
+        "Meta-analysis (%s, K=%d) -> %s",
+        args.method, info["n_studies"], info["output_path"],
+    )
     return 0
 
 
-def _cmd_clump(args: argparse.Namespace) -> int:
-    """LD clumping to identify independent loci.
+def _run_clump(
+    sumstats_path: str,
+    genotype_path: str,
+    output_prefix: str,
+    *,
+    r2: float = 0.1,
+    p_threshold: float = 5e-8,
+    window_kb: float = 250.0,
+) -> dict:
+    """Pure-primitives LD-clumping orchestration shared by CLI and api.
 
-    Streaming variant: clumping is independently per-chromosome (an
-    index SNP on chr 1 cannot LD-clump a SNP on chr 2). We stream chunks
-    from the genotype reader, accumulate one chromosome's slice at a
-    time, run ld_clump on that chromosome's sumstats subset, then free
-    the slice before reading the next chromosome. Per-chromosome results
-    are concatenated into a genome-wide ClumpResult.
-
-    Peak memory: O(n × max_per_chromosome_m × 8 B) instead of
-    O(n × m × 8 B). The bp_window is bounded by chromosome length.
+    Streams the genotype per-chromosome (peak memory bounded by largest
+    chromosome). Writes ``<output_prefix>.clumps.tsv`` and returns a
+    summary dict.
     """
     import torch
 
@@ -3836,7 +4003,7 @@ def _cmd_clump(args: argparse.Namespace) -> int:
     from .postgwas import ld_clump, load_sumstats
     from .postgwas._clump import ClumpResult
 
-    ss = load_sumstats(args.sumstats)
+    ss = load_sumstats(sumstats_path)
 
     # Build a per-chromosome view of the sumstats so we can emit
     # genome-wide indices from per-chromosome ld_clump calls.
@@ -3845,8 +4012,8 @@ def _cmd_clump(args: argparse.Namespace) -> int:
     for i, c in enumerate(ss_chr):
         chrom_to_global_idx.setdefault(c, []).append(i)
 
-    fmt = detect_format(args.genotype)
-    reader = _open_reader(args.genotype, fmt)
+    fmt = detect_format(genotype_path)
+    reader = _open_reader(genotype_path, fmt)
 
     # Per-chromosome streaming accumulator. ld_clump itself only needs
     # G for r^2 within max_kb on the same chromosome, so we run it once
@@ -3898,9 +4065,9 @@ def _cmd_clump(args: argparse.Namespace) -> int:
         # Pass single-chromosome slices to ld_clump.
         chr_result = ld_clump(
             p_chr, G_chr, cur_pos_use, [str(cur_chr)] * len(cur_pos_use),
-            r2_threshold=args.r2,
-            p_threshold=args.p_threshold,
-            window_kb=args.window_kb,
+            r2_threshold=r2,
+            p_threshold=p_threshold,
+            window_kb=window_kb,
         )
         # Map local indices back to global sumstats indices.
         for local_i in chr_result.index_snps:
@@ -3957,20 +4124,55 @@ def _cmd_clump(args: argparse.Namespace) -> int:
             clump_members=[], n_clumps=0,
         )
 
-    out_path = f"{args.output}.clumps.tsv"
+    out_path = f"{output_prefix}.clumps.tsv"
     with open(out_path, "w") as f:
         f.write("index_snp\tchr\tpos\tp\tn_clumped\n")
         for i, idx in enumerate(result.index_snps):
             f.write(f"{ss.snp[idx]}\t{ss.chr[idx]}\t{ss.pos[idx]}\t"
                     f"{result.index_p[i].item():.6e}\t{len(result.clump_members[i])}\n")
-    logger.info("LD clumping: %d index SNPs -> %s", result.n_clumps, out_path)
-    print(f"{result.n_clumps} independent loci identified")
+    return {"output_path": out_path, "n_clumps": int(result.n_clumps)}
+
+
+def _cmd_clump(args: argparse.Namespace) -> int:
+    """LD clumping to identify independent loci."""
+    info = _run_clump(
+        sumstats_path=args.sumstats,
+        genotype_path=args.genotype,
+        output_prefix=args.output,
+        r2=args.r2,
+        p_threshold=args.p_threshold,
+        window_kb=args.window_kb,
+    )
+    logger.info("LD clumping: %d index SNPs -> %s", info["n_clumps"], info["output_path"])
+    print(f"{info['n_clumps']} independent loci identified")
     return 0
 
 
-def _cmd_pgs_fit(args: argparse.Namespace) -> int:
-    """Fit PGS weights from GWAS sumstats."""
+def _run_pgs_fit(
+    sumstats_path: str,
+    ld_ref_path: str,
+    output: str,
+    *,
+    method: str,
+    device: str = "cpu",
+    seed: int | None = None,
+    h2: float | None = None,
+    p_causal: float | None = None,
+    n_iter: int = 1000,
+    n_burnin: int = 500,
+    n_chains: int = 3,
+    clump_p: float = 1.0,
+    clump_r2: float = 0.1,
+    clump_kb: float = 250.0,
+    grid_p: str = "0.001,0.01,0.1",
+    grid_h2: str = "0.3,0.5,0.7",
+    grid_sparse: bool = False,
+    phi: float | None = None,
+) -> dict:
+    """Pure-primitives PGS-fit orchestration shared by CLI and api.
 
+    Writes weights to ``output`` and returns a summary dict.
+    """
     from .pgs import (
         PRSCS,
         ClumpingThresholding,
@@ -3981,72 +4183,95 @@ def _cmd_pgs_fit(args: argparse.Namespace) -> int:
         load_pgs_sumstats,
     )
 
-    device = args.device
-    ss = load_pgs_sumstats(args.sumstats, device=device)
-    ld = load_ld_reference(args.ld_ref, device=device)
+    ss = load_pgs_sumstats(sumstats_path, device=device)
+    ld = load_ld_reference(ld_ref_path, device=device)
 
-    method = args.method
     if method == "ct":
-        m = ClumpingThresholding(device=device, seed=args.seed)
-        result = m.fit(
-            ss, ld,
-            p_threshold=args.clump_p,
-            r2_threshold=args.clump_r2,
-            window_kb=args.clump_kb,
-        )
+        m = ClumpingThresholding(device=device, seed=seed)
+        result = m.fit(ss, ld, p_threshold=clump_p, r2_threshold=clump_r2, window_kb=clump_kb)
     elif method == "ldpred2-inf":
-        m = LDpred2Inf(device=device, seed=args.seed)
-        result = m.fit(ss, ld, h2=args.h2)
+        m = LDpred2Inf(device=device, seed=seed)
+        result = m.fit(ss, ld, h2=h2)
     elif method == "ldpred2-grid":
-        grid_p = [float(x) for x in args.grid_p.split(",")]
-        grid_h2 = [float(x) for x in args.grid_h2.split(",")]
-        m = LDpred2Grid(device=device, seed=args.seed)
-        result = m.fit(
-            ss, ld,
-            grid_p=grid_p, grid_h2=grid_h2, sparse=args.grid_sparse,
-            n_iter=args.n_iter, n_burnin=args.n_burnin,
-        )
+        gp = [float(x) for x in grid_p.split(",")]
+        gh = [float(x) for x in grid_h2.split(",")]
+        m = LDpred2Grid(device=device, seed=seed)
+        result = m.fit(ss, ld, grid_p=gp, grid_h2=gh, sparse=grid_sparse, n_iter=n_iter, n_burnin=n_burnin)
     elif method == "ldpred2-auto":
-        m = LDpred2Auto(device=device, seed=args.seed)
+        m = LDpred2Auto(device=device, seed=seed)
         result = m.fit(
-            ss, ld,
-            h2_init=args.h2, p_init=args.p_causal,
-            n_iter=args.n_iter, n_burnin=args.n_burnin, n_chains=args.n_chains,
+            ss, ld, h2_init=h2, p_init=p_causal,
+            n_iter=n_iter, n_burnin=n_burnin, n_chains=n_chains,
         )
     elif method == "prscs":
-        m = PRSCS(device=device, seed=args.seed)
+        m = PRSCS(device=device, seed=seed)
         result = m.fit(
-            ss, ld,
-            phi=args.phi, n_iter=args.n_iter, n_burnin=args.n_burnin,
-            n_chains=args.n_chains,
+            ss, ld, phi=phi, n_iter=n_iter, n_burnin=n_burnin, n_chains=n_chains,
         )
-    else:  # pragma: no cover
+    else:
         raise ValueError(f"Unknown PGS method: {method}")
 
-    result.save(args.output)
-    logger.info(
-        "PGS fit (%s): %d SNPs weighted -> %s",
-        method, result.m, args.output,
+    result.save(output)
+    return {
+        "output_path": output,
+        "method": method,
+        "m": int(result.m),
+        "h2": float(result.h2) if result.h2 is not None else None,
+        "p_causal": float(result.p_causal) if result.p_causal is not None else None,
+        "converged": bool(result.converged),
+    }
+
+
+def _cmd_pgs_fit(args: argparse.Namespace) -> int:
+    """Fit PGS weights from GWAS sumstats."""
+    info = _run_pgs_fit(
+        sumstats_path=args.sumstats,
+        ld_ref_path=args.ld_ref,
+        output=args.output,
+        method=args.method,
+        device=args.device,
+        seed=args.seed,
+        h2=args.h2,
+        p_causal=args.p_causal,
+        n_iter=args.n_iter,
+        n_burnin=args.n_burnin,
+        n_chains=args.n_chains,
+        clump_p=args.clump_p,
+        clump_r2=args.clump_r2,
+        clump_kb=args.clump_kb,
+        grid_p=args.grid_p,
+        grid_h2=args.grid_h2,
+        grid_sparse=args.grid_sparse,
+        phi=args.phi,
     )
+    logger.info("PGS fit (%s): %d SNPs weighted -> %s", info["method"], info["m"], info["output_path"])
     print(
-        f"{method}: {result.m} SNPs | h2={result.h2} | p_causal={result.p_causal} | "
-        f"converged={result.converged}"
+        f"{info['method']}: {info['m']} SNPs | h2={info['h2']} | "
+        f"p_causal={info['p_causal']} | converged={info['converged']}"
     )
     return 0
 
 
-def _cmd_pgs_score(args: argparse.Namespace) -> int:
-    """Apply PGS weights to target genotypes."""
+def _run_pgs_score(
+    genotype_path: str,
+    weights_path: str,
+    output: str,
+    *,
+    standardize: bool = False,
+    handle_missing: str = "mean",
+    chunk_size: int = 10_000,
+    device: str = "cpu",
+) -> dict:
+    """Pure-primitives PGS scoring orchestration shared by CLI and api."""
     import torch
 
     from .io.detect import detect_format
     from .io.validate import _open_reader
     from .pgs import PGSResult, score_individuals
 
-    result = PGSResult.load(args.weights)
-
-    fmt = detect_format(args.genotype)
-    reader = _open_reader(args.genotype, fmt)
+    result = PGSResult.load(weights_path)
+    fmt = detect_format(genotype_path)
+    reader = _open_reader(genotype_path, fmt)
     chunks = []
     var_snp: list[str] = []
     var_a1: list[str] = []
@@ -4056,7 +4281,7 @@ def _cmd_pgs_score(args: argparse.Namespace) -> int:
         var_snp.extend(vmeta.snp)
         var_a1.extend(vmeta.a1)
         var_a2.extend(vmeta.a2)
-    G = torch.cat(chunks, dim=1).to(args.device)
+    G = torch.cat(chunks, dim=1).to(device)
 
     sample_ids = getattr(reader, "sample_ids", None)
     if sample_ids is None:
@@ -4064,23 +4289,43 @@ def _cmd_pgs_score(args: argparse.Namespace) -> int:
 
     score_res = score_individuals(
         G, var_snp, var_a1, var_a2, result,
-        standardize=args.standardize,
-        handle_missing=args.handle_missing,
-        chunk_size=args.chunk_size,
+        standardize=standardize,
+        handle_missing=handle_missing,
+        chunk_size=chunk_size,
     )
 
-    with open(args.output, "w", encoding="utf-8") as f:
+    with open(output, "w", encoding="utf-8") as f:
         f.write("FID\tIID\tPGS\n")
         for i, iid in enumerate(sample_ids):
             f.write(f"{iid}\t{iid}\t{float(score_res.pgs[i].item()):.6e}\n")
+    return {
+        "output_path": output,
+        "n_samples": int(G.shape[0]),
+        "n_snp_used": int(score_res.n_snp_used),
+        "n_snp_missing": int(score_res.n_snp_missing),
+        "n_snp_flipped": int(score_res.n_snp_flipped),
+    }
+
+
+def _cmd_pgs_score(args: argparse.Namespace) -> int:
+    """Apply PGS weights to target genotypes."""
+    info = _run_pgs_score(
+        genotype_path=args.genotype,
+        weights_path=args.weights,
+        output=args.output,
+        standardize=args.standardize,
+        handle_missing=args.handle_missing,
+        chunk_size=args.chunk_size,
+        device=args.device,
+    )
     logger.info(
         "PGS scoring: used=%d missing=%d flipped=%d -> %s",
-        score_res.n_snp_used, score_res.n_snp_missing, score_res.n_snp_flipped,
-        args.output,
+        info["n_snp_used"], info["n_snp_missing"], info["n_snp_flipped"],
+        info["output_path"],
     )
     print(
-        f"Used {score_res.n_snp_used} SNPs ({score_res.n_snp_missing} missing, "
-        f"{score_res.n_snp_flipped} flipped) -> {args.output}"
+        f"Used {info['n_snp_used']} SNPs ({info['n_snp_missing']} missing, "
+        f"{info['n_snp_flipped']} flipped) -> {info['output_path']}"
     )
     return 0
 

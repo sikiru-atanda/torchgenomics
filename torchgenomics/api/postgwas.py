@@ -1,7 +1,6 @@
 """Post-GWAS tier-1 API: :func:`clump`, :func:`meta`."""
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from typing import Literal
 
@@ -31,33 +30,43 @@ def clump(
     *,
     output: str | Path | None = None,
     p_threshold: float = 5e-8,
-    r2_threshold: float = 0.1,
-    bp_window_kb: int = 250,
+    r2: float = 0.1,
+    window_kb: float = 250.0,
     progress_callback: ProgressCallback | None = None,
 ) -> ClumpRun:
-    """LD-clump GWAS sumstats against an LD-reference genotype panel."""
+    """LD-clump GWAS sumstats against an LD-reference genotype panel.
+
+    Parameters
+    ----------
+    sumstats, genotype
+        Paths to the GWAS summary statistics and the LD-reference genotype panel.
+    output
+        Output directory or file prefix. If None, auto-creates a unique run dir.
+    p_threshold
+        P-value cutoff for index variants (default ``5e-8``).
+    r2
+        r² ceiling for clumping (default ``0.1``).
+    window_kb
+        Clumping window in kilobases (default ``250``).
+    """
     output_dir = resolve_output_dir(output, default_prefix="torchgenomics_clump")
     output_prefix = output_dir / "clumps"
 
     emit_progress(progress_callback, 0.0, "clumping")
 
     with timed() as elapsed:
-        ns = argparse.Namespace(
-            sumstats=str(sumstats),
-            genotype=str(genotype),
-            output=str(output_prefix),
+        from ..cli import _run_clump
+
+        info = _run_clump(
+            sumstats_path=str(sumstats),
+            genotype_path=str(genotype),
+            output_prefix=str(output_prefix),
+            r2=r2,
             p_threshold=p_threshold,
-            r2_threshold=r2_threshold,
-            bp_window_kb=bp_window_kb,
+            window_kb=window_kb,
         )
 
-        from ..cli import _cmd_clump
-
-        rc = _cmd_clump(ns)
-        if rc not in (None, 0):
-            raise RuntimeError(f"clump returned non-zero status {rc}")
-
-        out_tsv = Path(f"{output_prefix}.tsv")
+        out_tsv = Path(info["output_path"])
         output_files: dict[str, Path] = {}
         if out_tsv.exists():
             output_files["tsv"] = out_tsv
@@ -76,10 +85,10 @@ def clump(
             runtime_s=elapsed(),
             output_files=output_files,
             n_input_variants=n_input,
-            n_clumps=int(len(df)),
-            n_index_variants=int(len(df)),
+            n_clumps=int(info["n_clumps"]),
+            n_index_variants=int(info["n_clumps"]),
             p_threshold=p_threshold,
-            r2_threshold=r2_threshold,
+            r2_threshold=r2,
             clumps=df,
         )
 
@@ -122,19 +131,15 @@ def meta(
     output_prefix = output_dir / "meta"
 
     with timed() as elapsed:
-        ns = argparse.Namespace(
-            input=[str(p) for p in inputs],
-            output=str(output_prefix),
+        from ..cli import _run_meta
+
+        info = _run_meta(
+            inputs=[str(p) for p in inputs],
+            output_prefix=str(output_prefix),
             method=method,
         )
 
-        from ..cli import _cmd_meta
-
-        rc = _cmd_meta(ns)
-        if rc not in (None, 0):
-            raise RuntimeError(f"meta returned non-zero status {rc}")
-
-        meta_tsv = Path(f"{output_prefix}.meta.tsv")
+        meta_tsv = Path(info["output_path"])
         output_files: dict[str, Path] = {}
         if meta_tsv.exists():
             output_files["tsv"] = meta_tsv

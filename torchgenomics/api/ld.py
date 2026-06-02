@@ -1,7 +1,6 @@
 """LD tier-1 API: :func:`ld_blocks`."""
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from typing import Literal
 
@@ -73,11 +72,15 @@ def ld_blocks(
     emit_progress(progress_callback, 0.0, f"detecting LD blocks via {method}")
 
     with timed() as elapsed:
-        ns = argparse.Namespace(
-            genotype=str(genotype),
-            output=str(output_prefix),
+        from ..cli import _run_ld_blocks
+
+        info = _run_ld_blocks(
+            genotype_path=str(genotype),
+            output_prefix=str(output_prefix),
             method=method,
             max_kb=max_kb,
+            device=device,
+            phased_vcf=str(phased_vcf) if phased_vcf else None,
             ci_low=ci_low,
             ci_high=ci_high,
             freq_threshold=freq_threshold,
@@ -91,29 +94,12 @@ def ld_blocks(
             ld_window=ld_window,
             include_singletons=include_singletons,
             objective=objective,
-            phased_vcf=str(phased_vcf) if phased_vcf else None,
-            device=device,
-            compare_plink=None,
         )
 
-        from ..cli import _cmd_ld_blocks
-
-        rc = _cmd_ld_blocks(ns)
-        if rc not in (None, 0):
-            raise RuntimeError(f"ld_blocks returned non-zero status {rc}")
-
-        # Read the .blocks.det file that the CLI handler wrote
-        det_path = Path(f"{output_prefix}.blocks.det")
-        bed_path = Path(f"{output_prefix}.bed")
-        summary_path = Path(f"{output_prefix}.summary.txt")
-
-        output_files: dict[str, Path] = {}
-        if bed_path.exists():
-            output_files["bed"] = bed_path
-        if det_path.exists():
-            output_files["det"] = det_path
-        if summary_path.exists():
-            output_files["summary"] = summary_path
+        output_files: dict[str, Path] = {k: Path(v) for k, v in info["output_files"].items()}
+        det_path = output_files.get("det")
+        bed_path = output_files.get("bed")
+        summary_path = output_files.get("summary")
 
         # Parse the .blocks.det (PLINK-format text table)
         if det_path.exists():

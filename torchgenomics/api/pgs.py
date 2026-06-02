@@ -1,7 +1,6 @@
 """Polygenic Score tier-1 API: :func:`pgs_fit`, :func:`pgs_score`."""
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from typing import Literal
 
@@ -66,10 +65,15 @@ def pgs_fit(
     emit_progress(progress_callback, 0.0, f"fitting {method}")
 
     with timed() as elapsed:
-        ns = argparse.Namespace(
-            sumstats=str(sumstats),
-            ld_ref=str(ld_ref),
+        from ..cli import _run_pgs_fit
+
+        info = _run_pgs_fit(
+            sumstats_path=str(sumstats),
+            ld_ref_path=str(ld_ref),
+            output=str(output_path),
             method=method,
+            device=device_resolved,
+            seed=seed,
             h2=h2,
             p_causal=p_causal,
             n_iter=n_iter,
@@ -82,16 +86,7 @@ def pgs_fit(
             grid_h2=grid_h2,
             grid_sparse=grid_sparse,
             phi=phi,
-            device=device_resolved,
-            seed=seed,
-            output=str(output_path),
         )
-
-        from ..cli import _cmd_pgs_fit
-
-        rc = _cmd_pgs_fit(ns)
-        if rc not in (None, 0):
-            raise RuntimeError(f"pgs_fit returned non-zero status {rc}")
 
         # Read back the result (CLI handler writes <output>.tsv + meta)
         output_files: dict[str, Path] = {}
@@ -100,21 +95,16 @@ def pgs_fit(
             output_files["weights"] = tsv_path
 
         # Try to load PGSResult metadata for richer reporting
-        n_input = 0
-        n_used = 0
-        n_with_weights = 0
-        h2_est: float | None = None
-        converged = True
+        n_input = int(info["m"])
+        n_used = int(info["m"])
+        n_with_weights = int(info["m"])
+        h2_est = info["h2"]
+        converged = bool(info["converged"])
         diagnostics: dict = {}
         try:
             from ..pgs import PGSResult
 
             result = PGSResult.load(str(tsv_path))
-            n_with_weights = int(result.m)
-            n_input = int(result.m)
-            n_used = int(result.m)
-            h2_est = float(result.h2) if result.h2 is not None else None
-            converged = bool(result.converged)
             if result.diagnostics is not None:
                 diagnostics = {k: float(v) if hasattr(v, "__float__") else v for k, v in result.diagnostics.items()}
         except Exception:  # noqa: BLE001
@@ -168,21 +158,17 @@ def pgs_score(
     emit_progress(progress_callback, 0.0, "scoring individuals")
 
     with timed() as elapsed:
-        ns = argparse.Namespace(
-            genotype=str(genotype),
-            weights=str(weights),
+        from ..cli import _run_pgs_score
+
+        info = _run_pgs_score(
+            genotype_path=str(genotype),
+            weights_path=str(weights),
             output=str(output_path),
             standardize=standardize,
             handle_missing=handle_missing,
             chunk_size=chunk_size,
             device=device_resolved,
         )
-
-        from ..cli import _cmd_pgs_score
-
-        rc = _cmd_pgs_score(ns)
-        if rc not in (None, 0):
-            raise RuntimeError(f"pgs_score returned non-zero status {rc}")
 
         output_files: dict[str, Path] = {}
         if output_path.exists():

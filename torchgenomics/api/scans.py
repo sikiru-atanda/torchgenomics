@@ -7,7 +7,6 @@ end-to-end from file paths to a :class:`~torchgenomics.api._results.ScanRun`.
 """
 from __future__ import annotations
 
-import argparse
 import logging
 from pathlib import Path
 from typing import Literal
@@ -79,15 +78,6 @@ def _resolve_single_trait(phenotype: str | Path, trait: str | None) -> str | Non
     return trait_cols[0]
 
 
-def _build_scan_namespace(**kwargs) -> argparse.Namespace:
-    """Build a synthetic argparse.Namespace for the existing CLI orchestration.
-
-    The CLI handler chain (`_cmd_lmm_scan_single`, `_align_samples`,
-    `_apply_correction_and_save`) was written before the api layer existed
-    and reads ``args.foo`` directly. Until those helpers are refactored
-    to accept primitives (Task 25), the api layer passes a Namespace.
-    """
-    return argparse.Namespace(**kwargs)
 
 
 @tool(
@@ -191,12 +181,15 @@ def lmm_scan(
     emit_progress(progress_callback, 0.0, "starting LMM scan")
 
     with timed() as elapsed:
-        # Build the synthetic Namespace matching the CLI's expected shape
-        ns = _build_scan_namespace(
+        from ..cli import _run_lmm_scan
+
+        emit_progress(progress_callback, 0.1, "aligning samples + computing GRM")
+        info = _run_lmm_scan(
             genotype=str(genotype),
             phenotype=str(phenotype),
-            covariate=str(covariate) if covariate else None,
             output=str(output_prefix),
+            trait=selected_trait,
+            covariate=str(covariate) if covariate else None,
             test=test,
             correction=correction,
             chunk_size=chunk_size,
@@ -207,25 +200,9 @@ def lmm_scan(
             grm_method=grm_method,
             n_pcs=n_pcs,
             p3d=p3d,
-            traits=selected_trait,
-            loco=False,
-            approx_method=None,
-            approx_components=100,
-            approx_landmarks=500,
-            sparse_threshold=0.05,
-            id_column=None,
-            max_iter=None,
-            no_save_parquet=False,
         )
-
-        # Reuse the existing CLI dispatcher to do the heavy lifting.
-        # _cmd_lmm_scan_single writes ``<output>.tsv`` (and parquet) on disk.
-        from ..cli import _cmd_lmm_scan_single
-
-        emit_progress(progress_callback, 0.1, "aligning samples + computing GRM")
-        rc = _cmd_lmm_scan_single(ns)
-        if rc != 0:
-            raise RuntimeError(f"lmm_scan returned non-zero status {rc}")
+        if info["exit_code"] != 0:
+            raise RuntimeError(f"lmm_scan returned non-zero status {info['exit_code']}")
         emit_progress(progress_callback, 0.9, "reading results")
 
         # Read the produced TSV back to summarize
@@ -325,11 +302,14 @@ def glm_scan(
     emit_progress(progress_callback, 0.0, f"starting GLM ({family}) scan")
 
     with timed() as elapsed:
-        ns = _build_scan_namespace(
+        from ..cli import _run_glm_scan
+
+        info = _run_glm_scan(
             genotype=str(genotype),
             phenotype=str(phenotype),
-            covariate=str(covariate) if covariate else None,
             output=str(output_prefix),
+            trait=selected_trait,
+            covariate=str(covariate) if covariate else None,
             family=family,
             n_categories=n_categories,
             firth=firth,
@@ -339,16 +319,9 @@ def glm_scan(
             maf_min=maf_min,
             miss_max=miss_max,
             device=device_resolved,
-            traits=selected_trait,
-            id_column=None,
-            no_save_parquet=False,
         )
-
-        from ..cli import _cmd_glm_scan
-
-        rc = _cmd_glm_scan(ns)
-        if rc != 0:
-            raise RuntimeError(f"glm_scan returned non-zero status {rc}")
+        if info["exit_code"] != 0:
+            raise RuntimeError(f"glm_scan returned non-zero status {info['exit_code']}")
         emit_progress(progress_callback, 0.9, "reading results")
 
         # CLI writes <prefix>.assoc.tsv (and .assoc.parquet); fall back to
