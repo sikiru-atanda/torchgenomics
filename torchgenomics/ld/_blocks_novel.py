@@ -30,7 +30,7 @@ _EPS = 1e-10
 
 
 def _gwas_aligned_native_enabled() -> bool:
-    return HAS_NATIVE_GWAS_ALIGNED and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_GWAS_ALIGNED and not native_disabled()
 
 
 def _uncertainty_blocks_native_enabled() -> bool:

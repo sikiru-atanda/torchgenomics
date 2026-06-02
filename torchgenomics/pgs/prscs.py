@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 import os
+from .._dispatch import native_disabled
 import sys
 from typing import Any
 
@@ -45,7 +46,7 @@ from .ldpred2 import _block_iter, _marginal_beta_std
 def _native_enabled() -> bool:
     if sys.version_info >= (3, 12):
         return False
-    return HAS_NATIVE_PRSCS and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_PRSCS and not native_disabled()
 
 
 # ----------------------------------------------------------------------

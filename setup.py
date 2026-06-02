@@ -18,7 +18,12 @@ from setuptools import setup
 # the environment to force a serial build (useful on toolchains where OpenMP
 # is missing or misconfigured). When enabled, extensions listed in
 # OPENMP_EXTENSIONS get the platform-appropriate OpenMP compile/link flags.
-_DISABLE_OMP = bool(os.environ.get("TORCHGENOMICS_DISABLE_OPENMP"))
+# The legacy TORCHGWAS_DISABLE_OPENMP env var is also accepted through v0.x
+# (removed in v1.0.0).
+_DISABLE_OMP = bool(
+    os.environ.get("TORCHGENOMICS_DISABLE_OPENMP")
+    or os.environ.get("TORCHGWAS_DISABLE_OPENMP")
+)
 if sys.platform == "win32":
     _OMP_CFLAGS = ["/openmp"]
     _OMP_LFLAGS: list[str] = []

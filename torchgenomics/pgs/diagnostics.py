@@ -9,6 +9,7 @@ Provides:
 from __future__ import annotations
 
 import os
+from .._dispatch import native_disabled
 
 import torch
 from torch import Tensor
@@ -23,7 +24,7 @@ def _native_enabled() -> bool:
     Disabled when the extension was not built or when the user sets
     ``TORCHGENOMICS_DISABLE_NATIVE=1`` in the environment.
     """
-    return HAS_NATIVE_ESS and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_ESS and not native_disabled()
 
 
 def rhat(chains: Tensor) -> Tensor:

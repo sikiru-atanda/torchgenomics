@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+from .._dispatch import native_disabled
 
 import numpy as np
 import torch
@@ -30,17 +31,17 @@ _EPS = 1e-10
 
 def _big_ld_native_enabled() -> bool:
     """Whether the native C++ Big-LD accelerator should be used."""
-    return HAS_NATIVE_BIG_LD and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_BIG_LD and not native_disabled()
 
 
 def _dp_optimize_native_enabled() -> bool:
     """Whether the native C++ DP-optimize accelerator should be used."""
-    return HAS_NATIVE_DP_OPTIMIZE and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_DP_OPTIMIZE and not native_disabled()
 
 
 def _cc_graph_native_enabled() -> bool:
     """Whether the native C++ cc-graph accelerator should be used."""
-    return HAS_NATIVE_CC_GRAPH and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_CC_GRAPH and not native_disabled()
 
 
 # ── Big-LD ─────────────────────────────────────────────────────────

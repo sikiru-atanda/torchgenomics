@@ -9,6 +9,7 @@ with the LD module.
 from __future__ import annotations
 
 import os
+from .._dispatch import native_disabled
 from collections import deque
 
 import torch
@@ -30,7 +31,7 @@ def _native_enabled() -> bool:
     Disabled when the extension was not built or when the user sets
     ``TORCHGENOMICS_DISABLE_NATIVE=1`` in the environment.
     """
-    return HAS_NATIVE_GRAPH and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_GRAPH and not native_disabled()
 
 
 def _greedy_mwis_native_enabled() -> bool:

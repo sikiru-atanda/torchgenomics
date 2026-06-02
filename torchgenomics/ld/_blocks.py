@@ -12,6 +12,7 @@ All methods operate on pre-computed pairwise LD statistics (CPU-side logic).
 from __future__ import annotations
 
 import os
+from .._dispatch import native_disabled
 from dataclasses import dataclass
 
 import numpy as np
@@ -29,12 +30,12 @@ from ..io.regions import Region
 
 def _gabriel_native_enabled() -> bool:
     """Whether the native C++ Gabriel accelerator should be used."""
-    return HAS_NATIVE_GABRIEL and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_GABRIEL and not native_disabled()
 
 
 def _spine_native_enabled() -> bool:
     """Whether the native C++ spine accelerator should be used."""
-    return HAS_NATIVE_SPINE and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_SPINE and not native_disabled()
 
 
 @dataclass

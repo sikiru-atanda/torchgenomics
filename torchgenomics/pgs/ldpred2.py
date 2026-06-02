@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import os
+from .._dispatch import native_disabled
 import sys
 from typing import Any
 
@@ -43,7 +44,7 @@ def _native_enabled() -> bool:
     """
     if sys.version_info >= (3, 12):
         return False
-    return HAS_NATIVE_LDPRED2 and not os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
+    return HAS_NATIVE_LDPRED2 and not native_disabled()
 
 
 # ----------------------------------------------------------------------

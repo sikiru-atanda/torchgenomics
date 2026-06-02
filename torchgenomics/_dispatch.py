@@ -32,11 +32,45 @@ Environment knobs (both opt-out, default off):
 from __future__ import annotations
 
 import os
-from typing import Literal
+import warnings
+from typing import Literal, Optional
 
 import torch
 
 Path = Literal["gpu", "native", "python"]
+
+
+_NEW_ENV_PREFIX = "TORCHGENOMICS_"
+_OLD_ENV_PREFIX = "TORCHGWAS_"
+_warned_env_aliases: set[str] = set()
+
+
+def env_var(name: str) -> Optional[str]:
+    """Read a ``TORCHGENOMICS_*`` env var with backwards-compat for the legacy
+    ``TORCHGWAS_*`` name.
+
+    If only the legacy name is set, emits a one-shot :class:`DeprecationWarning`
+    the first time it is read in the process and returns its value. The legacy
+    alias is removed in v1.0.0.
+    """
+    new_val = os.environ.get(name)
+    if new_val is not None:
+        return new_val
+    if not name.startswith(_NEW_ENV_PREFIX):
+        return None
+    old_name = _OLD_ENV_PREFIX + name[len(_NEW_ENV_PREFIX):]
+    old_val = os.environ.get(old_name)
+    if old_val is None:
+        return None
+    if old_name not in _warned_env_aliases:
+        _warned_env_aliases.add(old_name)
+        warnings.warn(
+            f"Environment variable `{old_name}` is deprecated; use `{name}` instead. "
+            "The legacy alias will be removed in v1.0.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    return old_val
 
 
 # Default size thresholds. These are deliberately conservative — below the
@@ -48,13 +82,21 @@ DEFAULT_GPU_THRESHOLD = 10_000
 
 
 def native_disabled() -> bool:
-    """Whether ``TORCHGENOMICS_DISABLE_NATIVE`` is set in the environment."""
-    return bool(os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"))
+    """Whether ``TORCHGENOMICS_DISABLE_NATIVE`` is set in the environment.
+
+    Also accepts the legacy ``TORCHGWAS_DISABLE_NATIVE`` (with one-shot
+    DeprecationWarning) through v0.x; legacy alias removed in v1.0.0.
+    """
+    return bool(env_var("TORCHGENOMICS_DISABLE_NATIVE"))
 
 
 def gpu_disabled() -> bool:
-    """Whether ``TORCHGENOMICS_DISABLE_GPU`` is set in the environment."""
-    return bool(os.environ.get("TORCHGENOMICS_DISABLE_GPU"))
+    """Whether ``TORCHGENOMICS_DISABLE_GPU`` is set in the environment.
+
+    Also accepts the legacy ``TORCHGWAS_DISABLE_GPU`` (with one-shot
+    DeprecationWarning) through v0.x; legacy alias removed in v1.0.0.
+    """
+    return bool(env_var("TORCHGENOMICS_DISABLE_GPU"))
 
 
 def select_path(

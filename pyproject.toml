@@ -66,6 +66,7 @@ polyploid-phase = ["juliacall>=0.9"]
 
 [project.scripts]
 torchgenomics = "torchgenomics.cli:main"
+torchgwas = "torchgwas._legacy_cli:main"
 
 [project.urls]
 Repository = "https://github.com/sikiru-atanda/torchgenomics"
@@ -73,7 +74,7 @@ Documentation = "https://sikiru-atanda.github.io/torchgenomics/"
 Issues = "https://github.com/sikiru-atanda/torchgenomics/issues"
 
 [tool.setuptools.packages.find]
-include = ["torchgenomics*"]
+include = ["torchgenomics*", "torchgwas*"]
 
 [tool.setuptools.package-data]
 "torchgenomics._native" = ["*.pyi"]

@@ -10,6 +10,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from .._dispatch import env_var
 import re
 import shutil
 import subprocess
@@ -67,7 +68,7 @@ def _find_existing_julia(override: str | None) -> str | None:
             )
         return p
 
-    env = os.environ.get("TORCHGENOMICS_JULIA")
+    env = env_var("TORCHGENOMICS_JULIA")
     if env:
         if not os.path.isfile(env):
             raise ValueError(
@@ -162,7 +163,7 @@ def get_runtime(
                 chosen = found
                 logger.info("Using existing Julia at %s (v%s)", chosen, ver)
             else:
-                if julia_path is not None or os.environ.get("TORCHGENOMICS_JULIA"):
+                if julia_path is not None or env_var("TORCHGENOMICS_JULIA"):
                     raise RuntimeError(
                         f"Julia at {found!r} is v{ver}; PolyOrigin requires >= 1.10. "
                         "Install a newer Julia or unset the override."
