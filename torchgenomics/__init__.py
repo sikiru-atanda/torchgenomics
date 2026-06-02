@@ -22,7 +22,7 @@ Three audiences share one code path:
 """
 from __future__ import annotations
 
-__version__ = "0.3.10"
+__version__ = "0.4.0"
 
 # --- Top-level high-level API ------------------------------------------------
 # These re-exports give novice users a clean one-line surface. Advanced users
