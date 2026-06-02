@@ -7,15 +7,15 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.io.detect import detect_format
-from torchgwas.io.hapmap import HapMapReader
-from torchgwas.io.numeric import NumericDosageReader
+from torchgenomics.io.detect import detect_format
+from torchgenomics.io.hapmap import HapMapReader
+from torchgenomics.io.numeric import NumericDosageReader
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
 class TestFormatDetection:
-    """Tests for torchgwas.io.detect.detect_format."""
+    """Tests for torchgenomics.io.detect.detect_format."""
 
     def test_detect_bed(self):
         """Detects PLINK BED format from .bed file."""
@@ -43,7 +43,7 @@ class TestFormatDetection:
 
 
 class TestHapMapReader:
-    """Tests for torchgwas.io.hapmap.HapMapReader."""
+    """Tests for torchgenomics.io.hapmap.HapMapReader."""
 
     def test_read_hapmap(self):
         """HapMap reader loads correctly."""
@@ -75,7 +75,7 @@ class TestHapMapReader:
 
 
 class TestNumericDosageReader:
-    """Tests for torchgwas.io.numeric.NumericDosageReader."""
+    """Tests for torchgenomics.io.numeric.NumericDosageReader."""
 
     def test_read_csv(self):
         """CSV reader loads correctly."""
@@ -122,7 +122,7 @@ class TestFormatRoundTrip:
 
     def test_hapmap_bed_dosage_range(self):
         """Both HapMap and BED produce valid {0,1,2,NaN} dosages."""
-        from torchgwas.io.plink import PlinkBedReader
+        from torchgenomics.io.plink import PlinkBedReader
         bed = PlinkBedReader(FIXTURE_DIR / "tiny")
         hmp = HapMapReader(FIXTURE_DIR / "tiny.hmp.txt")
 

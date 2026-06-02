@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel", "pybind11>=2.11"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "torchgwas"
+name = "torchgenomics"
 version = "0.3.10"
 description = "GPU-accelerated Genome-Wide Association Studies with PyTorch"
 readme = "README.md"
@@ -65,19 +65,19 @@ docs = [
 polyploid-phase = ["juliacall>=0.9"]
 
 [project.scripts]
-torchgwas = "torchgwas.cli:main"
+torchgenomics = "torchgenomics.cli:main"
 
 [project.urls]
-Repository = "https://github.com/sikiru-atanda/torchgwas"
-Documentation = "https://sikiru-atanda.github.io/torchgwas/"
-Issues = "https://github.com/sikiru-atanda/torchgwas/issues"
+Repository = "https://github.com/sikiru-atanda/torchgenomics"
+Documentation = "https://sikiru-atanda.github.io/torchgenomics/"
+Issues = "https://github.com/sikiru-atanda/torchgenomics/issues"
 
 [tool.setuptools.packages.find]
-include = ["torchgwas*"]
+include = ["torchgenomics*"]
 
 [tool.setuptools.package-data]
-"torchgwas._native" = ["*.pyi"]
-"torchgwas.preprocess" = ["juliapkg.json"]
+"torchgenomics._native" = ["*.pyi"]
+"torchgenomics.preprocess" = ["juliapkg.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -143,7 +143,7 @@ build-verbosity = 1
 #   - torch supplies `torch/extension.h` used by every `csrc/` module
 before-build = "pip install pybind11>=2.11 numpy torch"
 test-requires = ["pytest>=7.0"]
-test-command = "python -c \"from torchgwas import __version__; print('torchgwas', __version__, 'wheel install ok')\""
+test-command = "python -c \"from torchgenomics import __version__; print('torchgenomics', __version__, 'wheel install ok')\""
 
 [tool.cibuildwheel.linux]
 manylinux-x86_64-image = "manylinux2014"
@@ -156,4 +156,4 @@ archs = ["AMD64"]
 archs = ["arm64"]
 # macOS-specific: OpenMP requires libomp (brew install libomp). Disable for
 # pre-built wheels so users on stock macOS toolchains aren't surprised.
-environment = { TORCHGWAS_DISABLE_OPENMP = "1" }
+environment = { TORCHGENOMICS_DISABLE_OPENMP = "1" }

@@ -21,7 +21,7 @@ The "marginal" OLS slope (fitting Y on g alone, no family-mean covariate) is
 We also report the attenuation factor:
     attenuation = beta_within / beta_marginal
 
-which is the same diagnostic that torchgwas.models.within_family_lmm.WithinFamilyLMM
+which is the same diagnostic that torchgenomics.models.within_family_lmm.WithinFamilyLMM
 exposes per-SNP (β_within / β_standard). Note the TG WithinFamilyLMM scores against
 the population GRM rather than the family-mean covariate, so the two attenuation
 estimates won't be bit-identical, but for a balanced sib-pair design with a

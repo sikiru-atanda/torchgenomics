@@ -1,4 +1,4 @@
-"""External-tool harness: PLINK 2.0 vs TorchGWAS reference comparison.
+"""External-tool harness: PLINK 2.0 vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require the PLINK 2 binary, the
 fetched fixture, and the harness reference outputs). To run:
@@ -65,12 +65,12 @@ def _require_binary() -> None:
 def compare_mod():
     # Ensure native is disabled so we exercise the pure-Python reference path
     # (matches docs/validation.md golden CI gate).
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
 def test_glm_linear(compare_mod) -> None:
-    """PLINK 2 --glm linear vs TorchGWAS GLM Wald scan on MDP fixture."""
+    """PLINK 2 --glm linear vs TorchGenomics GLM Wald scan on MDP fixture."""
     _require_binary()
     _require_artifacts(
         DATA / "mdp.bed", DATA / "mdp.bim", DATA / "mdp.fam", DATA / "mdp_pheno.txt",
@@ -83,7 +83,7 @@ def test_glm_linear(compare_mod) -> None:
 
 
 def test_kinship_relative(compare_mod) -> None:
-    """PLINK 2 --make-rel cov vs TorchGWAS grm_vanraden on MDP fixture."""
+    """PLINK 2 --make-rel cov vs TorchGenomics grm_vanraden on MDP fixture."""
     _require_binary()
     _require_artifacts(
         OUT / "kinship.rel", OUT / "kinship.rel.id", OUT / "kinship_snps.snplist",
@@ -95,7 +95,7 @@ def test_kinship_relative(compare_mod) -> None:
 
 
 def test_pairwise_r2(compare_mod) -> None:
-    """PLINK 2 --r2-unphased square vs TorchGWAS compute_r2_matrix on MDP."""
+    """PLINK 2 --r2-unphased square vs TorchGenomics compute_r2_matrix on MDP."""
     _require_binary()
     _require_artifacts(
         OUT / "r2.unphased.vcor2", OUT / "r2.unphased.vcor2.vars",

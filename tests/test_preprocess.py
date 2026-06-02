@@ -5,16 +5,16 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.preprocess.covariates import build_covariate_matrix
-from torchgwas.preprocess.impute import impute_mean, impute_mode
-from torchgwas.preprocess.qc import (
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.preprocess.covariates import build_covariate_matrix
+from torchgenomics.preprocess.impute import impute_mean, impute_mode
+from torchgenomics.preprocess.qc import (
     QCFilterConfig,
     apply_qc_filters,
     compute_variant_qc,
     write_variant_qc_parquet,
 )
-from torchgwas.preprocess.standardize import (
+from torchgenomics.preprocess.standardize import (
     center_genotypes,
     compute_allele_frequencies,
     compute_maf,
@@ -52,7 +52,7 @@ def vmeta_5():
 
 
 class TestStandardize:
-    """Tests for torchgwas.preprocess.standardize."""
+    """Tests for torchgenomics.preprocess.standardize."""
 
     def test_allele_frequencies_range(self, G_with_nan):
         af = compute_allele_frequencies(G_with_nan, ploidy=2)
@@ -106,7 +106,7 @@ class TestStandardize:
 
 
 class TestImputation:
-    """Tests for torchgwas.preprocess.impute."""
+    """Tests for torchgenomics.preprocess.impute."""
 
     def test_impute_mean(self, G_with_nan):
         G_imp = impute_mean(G_with_nan)
@@ -135,7 +135,7 @@ class TestImputation:
 
 
 class TestQCFilters:
-    """Tests for torchgwas.preprocess.qc."""
+    """Tests for torchgenomics.preprocess.qc."""
 
     def test_compute_variant_qc(self, G_with_nan, vmeta_5):
         stats = compute_variant_qc(G_with_nan, vmeta_5, ploidy=2)
@@ -230,7 +230,7 @@ class TestQCFilters:
 
 
 class TestCovariates:
-    """Tests for torchgwas.preprocess.covariates."""
+    """Tests for torchgenomics.preprocess.covariates."""
 
     def test_build_covariate_matrix_intercept(self):
         X0 = build_covariate_matrix(n_samples=10)

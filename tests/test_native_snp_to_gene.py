@@ -1,13 +1,13 @@
 """Regression tests for the native C++ MAGMA snp_to_gene window scan.
 
 The native kernel
-(``torchgwas._native._snp_to_gene_native.snp_to_gene_scan``) replaces
+(``torchgenomics._native._snp_to_gene_native.snp_to_gene_scan``) replaces
 the per-gene Python loop in
-``torchgwas.postgwas._enrichment.snp_to_gene``. These tests assert:
+``torchgenomics.postgwas._enrichment.snp_to_gene``. These tests assert:
 
 1.  **Parity** — native and Python paths produce identical gene-level
     statistics, p-values, and n_snps counts at the FP64 floor.
-2.  **Env-var fallthrough** — ``TORCHGWAS_DISABLE_NATIVE=1`` forces
+2.  **Env-var fallthrough** — ``TORCHGENOMICS_DISABLE_NATIVE=1`` forces
     the Python reference path.
 3.  **Below-threshold input** — for fewer than 64 genes the dispatcher
     routes to Python.
@@ -22,9 +22,9 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas._native import HAS_NATIVE_SNP_TO_GENE
-from torchgwas.postgwas._enrichment import snp_to_gene
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics._native import HAS_NATIVE_SNP_TO_GENE
+from torchgenomics.postgwas._enrichment import snp_to_gene
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _make_sumstats(
@@ -72,18 +72,18 @@ def _make_genes(
 
 
 def _run_with(env_value, fn, *args, **kwargs):
-    prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+    prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
     if env_value is None:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     else:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = env_value
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = env_value
     try:
         return fn(*args, **kwargs)
     finally:
         if prev is None:
-            os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+            os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
         else:
-            os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+            os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
 
 @unittest.skipUnless(

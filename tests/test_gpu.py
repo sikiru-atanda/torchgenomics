@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE
+from torchgenomics.config import STAT_DTYPE
 
 HAS_CUDA = torch.cuda.is_available()
 skip_no_gpu = pytest.mark.skipif(not HAS_CUDA, reason="No CUDA GPU available")
@@ -17,7 +17,7 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_grm_cpu_gpu_match(self):
         """GRM on GPU matches CPU within FP tolerance."""
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.kinship import grm_vanraden
 
         torch.manual_seed(42)
         G = torch.randint(0, 3, (50, 200), dtype=STAT_DTYPE)
@@ -31,8 +31,8 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_scan_cpu_gpu_match(self):
         """Scan p-values on GPU match CPU within declared tolerance (<=1e-4 relative)."""
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.models.glm import GLM
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.models.glm import GLM
 
         torch.manual_seed(42)
         n, m = 100, 50
@@ -64,8 +64,8 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_deterministic_mode(self):
         """torch.use_deterministic_algorithms(True) produces reproducible results."""
-        from torchgwas.config import set_deterministic
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.config import set_deterministic
+        from torchgenomics.linalg.kinship import grm_vanraden
 
         set_deterministic(True)
         try:
@@ -84,8 +84,8 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_eigendecompose_gpu(self):
         """Eigendecomposition on GPU matches CPU."""
-        from torchgwas.linalg.eigh import eigendecompose
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.eigh import eigendecompose
+        from torchgenomics.linalg.kinship import grm_vanraden
 
         torch.manual_seed(42)
         G = torch.randint(0, 3, (30, 100), dtype=STAT_DTYPE)
@@ -102,9 +102,9 @@ class TestGPUEquivalence:
     @skip_no_gpu
     def test_lmm_scan_gpu(self):
         """LMM scan on GPU matches CPU."""
-        from torchgwas.linalg.kinship import grm_vanraden
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.linalg.kinship import grm_vanraden
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         torch.manual_seed(42)
         n, m = 80, 40
@@ -140,7 +140,7 @@ class TestAMP:
     @skip_no_gpu
     def test_amp_grm_accumulates_fp64(self):
         """GRM accumulation stays in float64 even with AMP enabled."""
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         torch.manual_seed(42)
         G = torch.randint(0, 3, (30, 100), dtype=STAT_DTYPE).cuda()
@@ -160,8 +160,8 @@ class TestAMP:
     @skip_no_gpu
     def test_amp_inference_fp64(self):
         """Statistical inference (p-values, SE) uses float64 regardless of AMP."""
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.models.glm import GLM
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.models.glm import GLM
 
         torch.manual_seed(42)
         n, m = 50, 20
@@ -192,7 +192,7 @@ class TestPermutation:
 
     def test_permutation_pvalue_range(self):
         """Permutation p-values are in (0, 1]."""
-        from torchgwas.stats.permutation import permutation_maxT
+        from torchgenomics.stats.permutation import permutation_maxT
 
         torch.manual_seed(42)
         n, m = 50, 30
@@ -208,7 +208,7 @@ class TestPermutation:
 
     def test_maxT_controls_fwer(self):
         """Under null (no true signal), max-T adjusted p > 0.05 for most SNPs."""
-        from torchgwas.stats.permutation import permutation_maxT
+        from torchgenomics.stats.permutation import permutation_maxT
 
         torch.manual_seed(123)
         n, m = 100, 50
@@ -225,7 +225,7 @@ class TestPermutation:
 
     def test_permutation_detects_signal(self):
         """Strong causal SNP should have small adjusted p-value."""
-        from torchgwas.stats.permutation import permutation_maxT
+        from torchgenomics.stats.permutation import permutation_maxT
 
         torch.manual_seed(42)
         n, m = 200, 30
@@ -242,7 +242,7 @@ class TestPermutation:
     @skip_no_gpu
     def test_permutation_gpu(self):
         """Permutation test runs on GPU and produces valid results."""
-        from torchgwas.stats.permutation import permutation_maxT
+        from torchgenomics.stats.permutation import permutation_maxT
 
         torch.manual_seed(42)
         n, m = 100, 20
@@ -262,8 +262,8 @@ class TestPrefetch:
 
     def test_prefetch_cpu_passthrough(self):
         """On CPU, PrefetchIterator passes through without overhead."""
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.scan.prefetch import PrefetchIterator
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.scan.prefetch import PrefetchIterator
 
         chunks = [
             (torch.randn(10, 5), VariantMeta(
@@ -279,8 +279,8 @@ class TestPrefetch:
 
     def test_move_nullfit_to_device(self):
         """move_nullfit_to_device handles all tensor fields."""
-        from torchgwas.models.base import NullFit
-        from torchgwas.scan.prefetch import move_nullfit_to_device
+        from torchgenomics.models.base import NullFit
+        from torchgenomics.scan.prefetch import move_nullfit_to_device
 
         nf = NullFit(
             sig2_g=1.0, sig2_e=1.0,
@@ -298,8 +298,8 @@ class TestPrefetch:
     @skip_no_gpu
     def test_move_nullfit_to_gpu(self):
         """NullFit tensors move to GPU correctly."""
-        from torchgwas.models.base import NullFit
-        from torchgwas.scan.prefetch import move_nullfit_to_device
+        from torchgenomics.models.base import NullFit
+        from torchgenomics.scan.prefetch import move_nullfit_to_device
 
         nf = NullFit(
             sig2_g=1.0, sig2_e=1.0,

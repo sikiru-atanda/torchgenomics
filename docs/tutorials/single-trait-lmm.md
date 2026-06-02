@@ -12,13 +12,13 @@ against GEMMA 0.98.5.
 - Apply Benjamini–Hochberg correction
 - Save a Manhattan + QQ plot
 
-Prerequisite: `pip install "torchgwas[all]"` and a local clone of the repo (for
+Prerequisite: `pip install "torchgenomics[all]"` and a local clone of the repo (for
 the `benchmark/data/` fixtures). The full working script is at
-[`examples/python/01_single_trait_lmm.py`](https://github.com/sikiru-atanda/torchgwas/blob/master/examples/python/01_single_trait_lmm.py).
+[`examples/python/01_single_trait_lmm.py`](https://github.com/sikiru-atanda/torchgenomics/blob/master/examples/python/01_single_trait_lmm.py).
 
 ## 1. Load the MDP fixture
 
-TorchGWAS exposes its loaders through model-specific dataclasses rather than a
+TorchGenomics exposes its loaders through model-specific dataclasses rather than a
 single monolithic reader — the canonical path is pandas → torch tensors →
 `VariantMeta`:
 
@@ -26,8 +26,8 @@ single monolithic reader — the canonical path is pandas → torch tensors →
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.models import VariantMeta
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.models import VariantMeta
 
 geno = pd.read_csv("benchmark/data/mdp_numeric.txt", sep="\t")
 pheno = pd.read_csv("benchmark/data/mdp_traits.txt", sep="\t")
@@ -77,14 +77,14 @@ K = torch.tensor(
 )
 ```
 
-If you want TorchGWAS to compute the GRM itself, use
-`torchgwas.linalg.kinship.grm_vanraden(G)` which returns `(K, n_snps)`.
+If you want TorchGenomics to compute the GRM itself, use
+`torchgenomics.linalg.kinship.grm_vanraden(G)` which returns `(K, n_snps)`.
 
 ## 4. Fit null and scan
 
 ```python
-from torchgwas.config import NumericalConfig
-from torchgwas.models import SingleTraitLMM
+from torchgenomics.config import NumericalConfig
+from torchgenomics.models import SingleTraitLMM
 
 model = SingleTraitLMM(config=NumericalConfig(reml_method="emma"))
 nf = model.fit_null(Y, X0, K=K)
@@ -100,7 +100,7 @@ torch tensors, shape `(m,)`).
 ## 5. Multiple-testing correction
 
 ```python
-from torchgwas.stats import benjamini_hochberg
+from torchgenomics.stats import benjamini_hochberg
 
 p_t = result.p.cpu()
 valid = torch.isfinite(p_t)  # NaN rare-allele SNPs
@@ -122,7 +122,7 @@ print(df.nsmallest(10, "pval").to_string(index=False))
 
 ```python
 import numpy as np
-from torchgwas.viz import manhattan_plot, qq_plot
+from torchgenomics.viz import manhattan_plot, qq_plot
 
 chr_numeric = np.array([int(c) for c in chrs], dtype=int)
 manhattan_plot(
@@ -155,7 +155,7 @@ result = model.score_chunk(G, nf, vmeta, test="wald")
 
 ## Reference agreement
 
-With the default settings, TorchGWAS's Wald, LRT, and score p-values agree
+With the default settings, TorchGenomics's Wald, LRT, and score p-values agree
 with GEMMA 0.98.5's to the 4th decimal place (−log₁₀ p correlation > 0.998,
 β correlation > 0.9999, SE correlation > 0.9999). See the
 [validation page](../validation.md) and

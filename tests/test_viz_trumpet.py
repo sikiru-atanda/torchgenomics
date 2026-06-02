@@ -1,4 +1,4 @@
-"""Tests for torchgwas.viz.trumpet_plot (trumpet plot visualization)."""
+"""Tests for torchgenomics.viz.trumpet_plot (trumpet plot visualization)."""
 
 import matplotlib
 
@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.viz import trumpet_plot
+from torchgenomics.viz import trumpet_plot
 
 # ---------------------------------------------------------------------------
 # Shared synthetic data

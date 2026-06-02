@@ -1,4 +1,4 @@
-"""External-tool harness: LDSC 1.0.1 vs TorchGWAS reference comparison.
+"""External-tool harness: LDSC 1.0.1 vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require the LDSC conda env, the
 fetched 1000G LD-score / weights archives, and the harness reference
@@ -68,12 +68,12 @@ def _require_env() -> None:
 def compare_mod():
     # Ensure native is disabled so we exercise the pure-Python reference path
     # (matches docs/validation.md golden CI gate).
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
 def test_h2_trait1(compare_mod) -> None:
-    """LDSC --h2 (single-pass IRWLS) vs TorchGWAS ldsc_h2 on simulated trait 1."""
+    """LDSC --h2 (single-pass IRWLS) vs TorchGenomics ldsc_h2 on simulated trait 1."""
     _require_env()
     _require_artifacts(
         DATA / "sim_trait1.sumstats.gz",
@@ -89,7 +89,7 @@ def test_h2_trait1(compare_mod) -> None:
 
 
 def test_h2_trait2(compare_mod) -> None:
-    """LDSC --h2 (single-pass IRWLS) vs TorchGWAS ldsc_h2 on simulated trait 2."""
+    """LDSC --h2 (single-pass IRWLS) vs TorchGenomics ldsc_h2 on simulated trait 2."""
     _require_env()
     _require_artifacts(
         DATA / "sim_trait2.sumstats.gz",
@@ -105,7 +105,7 @@ def test_h2_trait2(compare_mod) -> None:
 
 
 def test_rg(compare_mod) -> None:
-    """LDSC --rg vs TorchGWAS ldsc_rg_from_z on simulated traits 1,2."""
+    """LDSC --rg vs TorchGenomics ldsc_rg_from_z on simulated traits 1,2."""
     _require_env()
     _require_artifacts(
         DATA / "sim_trait1.sumstats.gz",

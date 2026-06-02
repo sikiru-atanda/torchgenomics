@@ -19,7 +19,7 @@ Option beta wins on:
 1. **Smallest download** -- meets the brief preference for the smallest fetch.
 2. **License clean** -- 1001 Genomes consortium SNP matrix is CC0 (Cao et al. 2011 / 1001G consortium 2016 Cell 166:481-491); Kawakatsu et al. 2016 transcriptomes were deposited at GEO (GSE80744) under the standard NCBI/EBI public-domain terms; Atwell et al. 2010 phenotypes are released as supplementary data under the publisher / NIH PMC open-access mandate.
 3. **Sample-ID interop** -- all three layers key on the 1001 Genomes ecotype ID (numeric, e.g. 6909 = Col-0); makes the three-way intersection trivial and well-defined.
-4. **Downstream demo** -- Paper F4 panel C demonstrates `torchgwas.multiomics.scan_mediation` on a known biology (FLC / FRI flowering pathway in Arabidopsis), which is the canonical worked example in the plant-mediation literature.
+4. **Downstream demo** -- Paper F4 panel C demonstrates `torchgenomics.multiomics.scan_mediation` on a known biology (FLC / FRI flowering pathway in Arabidopsis), which is the canonical worked example in the plant-mediation literature.
 
 ## Canonical source URLs
 
@@ -39,7 +39,7 @@ All three sources are well-cited canonical references. Re-running `fetch.sh` re-
 | 1001 Transcriptomes (GEO GSE80744) | NCBI GEO standard (functionally public domain) | YES (NCBI submissions are explicitly free of redistribution restrictions) |
 | Atwell-2010 phenotypes (Nature suppl.) | Nature Publishing Group open-access supplementary data | YES (the SI tables accompany the open-access article) |
 
-**Verdict: PASS** -- all three layers are public-domain or CC-BY equivalent; the derived `aligned.parquet` is published under the same open terms as the rest of the TorchGWAS repository.
+**Verdict: PASS** -- all three layers are public-domain or CC-BY equivalent; the derived `aligned.parquet` is published under the same open terms as the rest of the TorchGenomics repository.
 
 ## Fixture layout
 
@@ -115,7 +115,7 @@ On the full upstream files, the three-way intersection contains ~150 ecotypes (t
 - Rows: 50 (the three-way intersection)
 - Columns: `sample_id` + 100 SNP dosages (prefixed `snp_`) + 20 expression values (prefixed `expr_`) + 1 phenotype (`FT10`)
 - Total columns: 122
-- This is the canonical joined view; downstream `torchgwas.multiomics.scan_mediation` consumes it directly.
+- This is the canonical joined view; downstream `torchgenomics.multiomics.scan_mediation` consumes it directly.
 
 ## Provenance + reproducibility note
 
@@ -130,5 +130,5 @@ This is a **fixture-only** harness (not a parity test); there is no external com
 ## Future work / scaling
 
 - Replace the 50-ecotype downsample with the full ~150-ecotype intersection (would push `aligned.parquet` to ~100 MB; suitable for a Zenodo release rather than git commit).
-- Extend to the Cao-2011 / 1001G v3.1 indel layer once `torchgwas.io` learns indel-aware dosage encoding.
+- Extend to the Cao-2011 / 1001G v3.1 indel layer once `torchgenomics.io` learns indel-aware dosage encoding.
 - Add maize (Option alpha) as a second-panel cross-reference once the WiDiv RNA-seq corpus has a CC-BY release.

@@ -6,7 +6,7 @@
 #     hosts per-cohort genotype + RNA-seq + phenotype tables; full datasets
 #     are 100+ MB per cohort and require manual navigation through the
 #     web UI to download. This breaks reproducibility under CI.
-#   - The mediation estimator we test (`torchgwas.multiomics.mediate_lmm`
+#   - The mediation estimator we test (`torchgenomics.multiomics.mediate_lmm`
 #     vs `mediation::mediate`) is *triple-only* — it does not need real
 #     biology to test correctness. Simulated data with a planted causal
 #     effect tests every code path.

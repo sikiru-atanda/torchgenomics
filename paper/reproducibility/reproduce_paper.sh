@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TorchGWAS Genome Biology Methods paper — one-command reproducibility.
+# TorchGenomics Genome Biology Methods paper — one-command reproducibility.
 #
 # Regenerates every number in every figure / table from the validation
 # harnesses + bench infrastructure committed under
@@ -45,7 +45,7 @@ else
 fi
 
 bash stages/03_run_references.sh
-bash stages/04_run_torchgwas.sh
+bash stages/04_run_torchgenomics.sh
 bash stages/05_run_streaming_bench.sh
 bash stages/06_run_native_bench.sh
 bash stages/07_run_multiomics.sh

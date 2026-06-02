@@ -12,11 +12,11 @@ import torch
 from scipy.stats import kstest
 
 # Use lazy imports inside test methods to avoid circular import
-# through torchgwas.optim.__init__ → controller → models → optim
+# through torchgenomics.optim.__init__ → controller → models → optim
 
 
 def _make_vmeta(m):
-    from torchgwas.models.base import VariantMeta
+    from torchgenomics.models.base import VariantMeta
     return VariantMeta(
         snp=[f"s{i}" for i in range(m)],
         chr=["1"] * m, pos=list(range(m)),
@@ -143,14 +143,14 @@ def _simulate_me_ordinal(n=200, E=3, m=20, J=3, seed=42, m_grm=100):
 class TestMultiEnvBinaryNull:
 
     def test_pql_converges(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=200, E=3, seed=10)
         model = MultiEnvGLMM(family="binary", use_spa=False)
         nf = model.fit_null(Y, X0, K=K)
         assert nf.converged or nf._me_glmm_mu is not None
 
     def test_sigma_g_positive(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=200, E=3, seed=11)
         model = MultiEnvGLMM(family="binary", use_spa=False)
         nf = model.fit_null(Y, X0, K=K)
@@ -161,7 +161,7 @@ class TestMultiEnvBinaryNull:
 
     def test_sigma_g_is_valid_covariance(self):
         """Σ_g should be a valid (PSD) covariance matrix with correct shape."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=300, E=3, rg=0.7, seed=12)
         model = MultiEnvGLMM(family="binary", use_spa=False)
         nf = model.fit_null(Y, X0, K=K)
@@ -176,7 +176,7 @@ class TestMultiEnvBinaryNull:
         assert (torch.diagonal(Sg) > 0).all()
 
     def test_requires_kinship(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=100, E=2, seed=13)
         model = MultiEnvGLMM(family="binary")
         with pytest.raises(ValueError, match="kinship"):
@@ -190,7 +190,7 @@ class TestMultiEnvBinaryNull:
 class TestMultiEnvBinaryScore:
 
     def test_joint_pvalues_valid(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=200, E=3, m=20, seed=20)
         vmeta = _make_vmeta(20)
         model = MultiEnvGLMM(family="binary", use_spa=False)
@@ -200,7 +200,7 @@ class TestMultiEnvBinaryScore:
         assert result.p.shape == (20,)
 
     def test_per_env_marginals_valid(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=200, E=3, m=20, seed=21)
         vmeta = _make_vmeta(20)
         model = MultiEnvGLMM(family="binary", use_spa=False)
@@ -211,7 +211,7 @@ class TestMultiEnvBinaryScore:
 
     def test_null_calibration(self):
         """Under null, p-values should be approximately uniform."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=300, E=3, m=200, seed=22)
         vmeta = _make_vmeta(200)
         model = MultiEnvGLMM(family="binary", use_spa=False)
@@ -229,7 +229,7 @@ class TestMultiEnvBinaryScore:
 
     def test_power_detects_planted_signal(self):
         """Joint test should detect a planted heterogeneous effect."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(23)
         np.random.seed(23)
@@ -271,7 +271,7 @@ class TestMultiEnvBinaryHomogeneity:
 
     def test_homogeneous_effect_small_stat(self):
         """Homogeneous effect should have small homogeneity statistic."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(30)
         np.random.seed(30)
@@ -304,7 +304,7 @@ class TestMultiEnvBinaryHomogeneity:
 
     def test_heterogeneous_effect_large_stat(self):
         """Heterogeneous effect should have significant homogeneity stat."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(31)
         np.random.seed(31)
@@ -345,7 +345,7 @@ class TestMultiEnvBinarySPA:
 
     def test_spa_per_env_valid(self):
         """SPA should produce valid per-env p-values."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=200, E=3, m=15, seed=40)
         vmeta = _make_vmeta(15)
         model = MultiEnvGLMM(family="binary", use_spa=True)
@@ -355,7 +355,7 @@ class TestMultiEnvBinarySPA:
 
     def test_spa_less_conservative_than_chi2(self):
         """SPA per-env p-values should be <= chi2 p-values (hybrid clamping)."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(
             n=300, E=2, m=20, seed=41, prevalence=[0.05, 0.05])
         vmeta = _make_vmeta(20)
@@ -381,7 +381,7 @@ class TestMultiEnvBinarySPA:
 class TestMultiEnvOrdinalNull:
 
     def test_ordinal_pql_converges(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G, J = _simulate_me_ordinal(n=200, E=3, m=15, J=3, seed=50)
         model = MultiEnvGLMM(family="ordinal", n_categories=J, use_spa=False)
         nf = model.fit_null(Y, X0, K=K)
@@ -389,7 +389,7 @@ class TestMultiEnvOrdinalNull:
         assert nf._me_glmm_Sigma_g is not None
 
     def test_ordinal_sigma_g_positive(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G, J = _simulate_me_ordinal(n=200, E=3, seed=51)
         model = MultiEnvGLMM(family="ordinal", n_categories=J, use_spa=False)
         nf = model.fit_null(Y, X0, K=K)
@@ -397,7 +397,7 @@ class TestMultiEnvOrdinalNull:
         assert (evals >= -1e-6).all()
 
     def test_ordinal_score_pvalues_valid(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G, J = _simulate_me_ordinal(n=200, E=3, m=15, seed=52)
         vmeta = _make_vmeta(15)
         model = MultiEnvGLMM(family="ordinal", n_categories=J, use_spa=False)
@@ -414,7 +414,7 @@ class TestMultiEnvOrdinalNull:
 class TestReactionNorm:
 
     def test_reaction_norm_fields_populated(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=200, E=3, m=10, seed=60)
         vmeta = _make_vmeta(10)
         model = MultiEnvGLMM(family="binary", parameterization="reaction_norm",
@@ -429,7 +429,7 @@ class TestReactionNorm:
 
     def test_stable_effect_detected(self):
         """Reaction-norm stable test should detect a homogeneous causal effect."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(61)
         np.random.seed(61)
@@ -469,7 +469,7 @@ class TestEdgeCases:
 
     def test_two_environments(self):
         """Minimum E=2 should work."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=200, E=2, m=10, seed=70)
         vmeta = _make_vmeta(10)
         model = MultiEnvGLMM(family="binary", use_spa=False)
@@ -480,7 +480,7 @@ class TestEdgeCases:
 
     def test_near_zero_kinship_reduces_to_glm(self):
         """With K ≈ εI, should behave like multi-env GLM."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, _, G = _simulate_me_binary(n=200, E=3, m=10, seed=71)
         K = 1e-6 * torch.eye(200, dtype=torch.float64)
         vmeta = _make_vmeta(10)
@@ -492,7 +492,7 @@ class TestEdgeCases:
 
     def test_polyploid(self):
         """Polyploid genotypes should produce correct AF."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(72)
         np.random.seed(72)
@@ -522,13 +522,13 @@ class TestEdgeCases:
 class TestProtocol:
 
     def test_has_fit_null_and_score_chunk(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         model = MultiEnvGLMM(family="binary")
         assert hasattr(model, "fit_null")
         assert hasattr(model, "score_chunk")
 
     def test_env_scan_result_fields(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         Y, X0, K, G = _simulate_me_binary(n=150, E=2, m=5, seed=80)
         vmeta = _make_vmeta(5)
         model = MultiEnvGLMM(family="binary", use_spa=False)

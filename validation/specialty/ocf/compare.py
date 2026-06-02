@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# OCF C6 compare: reference (hand-coded DML2) vs TorchGWAS OCFLMM.
+# OCF C6 compare: reference (hand-coded DML2) vs TorchGenomics OCFLMM.
 #
 # Acceptance gates (Plan B C6 brief, observed-then-floored at the empirical extreme):
 #   * empirical_coverage_95 in [0.92, 0.98] for BOTH implementations.
@@ -66,8 +66,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reference",         required=True, type=Path)
     ap.add_argument("--reference-summary", required=True, type=Path)
-    ap.add_argument("--torchgwas",         required=True, type=Path)
-    ap.add_argument("--torchgwas-summary", required=True, type=Path)
+    ap.add_argument("--torchgenomics",         required=True, type=Path)
+    ap.add_argument("--torchgenomics-summary", required=True, type=Path)
     ap.add_argument("--fixture-meta",      required=True, type=Path)
     ap.add_argument("--output-dir",        required=True, type=Path)
     args = ap.parse_args()
@@ -76,9 +76,9 @@ def main():
 
     # --- Load --------------------------------------------------------------
     ref = pd.read_csv(args.reference, sep="\t")
-    tg  = pd.read_csv(args.torchgwas, sep="\t")
+    tg  = pd.read_csv(args.torchgenomics, sep="\t")
     with open(args.reference_summary) as f: ref_summary = json.load(f)
-    with open(args.torchgwas_summary) as f: tg_summary  = json.load(f)
+    with open(args.torchgenomics_summary) as f: tg_summary  = json.load(f)
     with open(args.fixture_meta)      as f: fix_meta    = json.load(f)
 
     assert len(ref) == len(tg) == int(fix_meta["reps"]), \
@@ -122,7 +122,7 @@ def main():
         direction = "range",
     ))
     checks.append(CheckResult(
-        name = "torchgwas empirical coverage in [0.92, 0.98]",
+        name = "torchgenomics empirical coverage in [0.92, 0.98]",
         passed = TOL_COV_LO <= tg_cov <= TOL_COV_HI,
         observed = tg_cov,
         threshold = [TOL_COV_LO, TOL_COV_HI],
@@ -140,7 +140,7 @@ def main():
 
     # --- agreement.json ---------------------------------------------------
     agreement = {
-        "name": "OCF (Plan B C6) -- hand-coded DML2 vs TorchGWAS OCFLMM",
+        "name": "OCF (Plan B C6) -- hand-coded DML2 vs TorchGenomics OCFLMM",
         "reference_kind": ref_summary.get(
             "reference_kind",
             "hand-coded DML (Chernozhukov 2018 eq. 3.1)",
@@ -164,7 +164,7 @@ def main():
         },
         "tool_versions": {
             "reference": ref_summary,
-            "torchgwas": tg_summary,
+            "torchgenomics": tg_summary,
             "fixture_meta": fix_meta,
         },
     }
@@ -200,7 +200,7 @@ def main():
         print(f"  [{flag}] {c.name}: observed={obs_s} threshold={thr_s} ({c.direction})")
     print("")
     print(f"  reference coverage = {ref_cov:.3f}  (mean theta_hat={ref_mean_theta:.4f}, bias={ref_bias:+.4f})")
-    print(f"  torchgwas coverage = {tg_cov:.3f}  (mean theta_hat={tg_mean_theta:.4f}, bias={tg_bias:+.4f})")
+    print(f"  torchgenomics coverage = {tg_cov:.3f}  (mean theta_hat={tg_mean_theta:.4f}, bias={tg_bias:+.4f})")
     print(f"  |delta mean theta_hat| = {delta_theta:.4f}  (gate {TOL_DELTA_THETA})")
     print("")
     print("  -> agreement.json written to " + str(args.output_dir / "agreement.json"))

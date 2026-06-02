@@ -1,6 +1,6 @@
 """End-to-end CLI smoke matrix (Pillar C / spec §6).
 
-This is the parametric harness that runs every public ``torchgwas`` CLI
+This is the parametric harness that runs every public ``torchgenomics`` CLI
 subcommand against every supported committed fixture format and asserts
 the documented exit-0 + output-files-exist + p-values-in-[0,1] +
 row-count contract.
@@ -53,7 +53,7 @@ from tests.cli_matrix_spec import (
 pytestmark = pytest.mark.cli_matrix
 
 # Repo root (this file's parent's parent). The CLI subprocess uses
-# PYTHONPATH=<repo_root> so `python -m torchgwas.cli` resolves the
+# PYTHONPATH=<repo_root> so `python -m torchgenomics.cli` resolves the
 # in-tree package without a pip install.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -207,7 +207,7 @@ def _write_regions_bed(tmp: Path) -> None:
 def _write_sumstats_lc(tmp: Path) -> None:
     """Lowercase-column sumstats by running glm-scan + relabeling.
 
-    `torchgwas.postgwas.load_sumstats` (and its consumers: meta, clump,
+    `torchgenomics.postgwas.load_sumstats` (and its consumers: meta, clump,
     ldsc, ldsc-rg) expect lowercase column names ``chr/pos/snp/a1/a2/
     beta/se/p/n``. The scanner emits uppercase. We run glm-scan once
     and lowercase the columns + add an ``n`` column so this fixture is
@@ -217,7 +217,7 @@ def _write_sumstats_lc(tmp: Path) -> None:
         return
     base = tmp / "_glm_for_sumstats"
     cmd = [
-        sys.executable, "-m", "torchgwas.cli", "glm-scan",
+        sys.executable, "-m", "torchgenomics.cli", "glm-scan",
         "--genotype", str(FIXTURES / "tiny.bed"),
         "--phenotype", str(FIXTURES / "tiny_pheno.txt"),
         "--traits", "Y1",
@@ -251,8 +251,8 @@ def _write_ld_ref(tmp: Path) -> None:
     """LD reference panel built from the tiny BED fixture (full mode)."""
     if (tmp / "ld_ref.pt").exists():
         return
-    from torchgwas.io.plink import PlinkBedReader
-    from torchgwas.pgs import build_ld_reference, save_ld_reference
+    from torchgenomics.io.plink import PlinkBedReader
+    from torchgenomics.pgs import build_ld_reference, save_ld_reference
 
     reader = PlinkBedReader(str(FIXTURES / "tiny"))
     chunks = []
@@ -571,12 +571,12 @@ def _assert_mediate_scan_output(prefix: Path) -> None:
 
 
 def _run_cli(subcmd: str, args: list[str], tmp: Path) -> subprocess.CompletedProcess:
-    """Run ``python -m torchgwas.cli <subcmd> <args>`` from ``tmp``.
+    """Run ``python -m torchgenomics.cli <subcmd> <args>`` from ``tmp``.
 
     Sets PYTHONPATH so the in-tree package resolves without a pip install.
     Captures stdout + stderr for diagnostic output on failure.
     """
-    cmd = [sys.executable, "-m", "torchgwas.cli", subcmd, *args]
+    cmd = [sys.executable, "-m", "torchgenomics.cli", subcmd, *args]
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     return subprocess.run(
@@ -775,14 +775,14 @@ def test_cli_gpu_cell(subcmd: str, fmt: str, tmp_path: Path) -> None:
 
 
 def test_cli_matrix_covers_every_subcommand() -> None:
-    """The matrix must enumerate every subcommand exposed by ``torchgwas.cli``.
+    """The matrix must enumerate every subcommand exposed by ``torchgenomics.cli``.
 
-    Guards against the case where a new subparser lands in ``torchgwas/cli.py``
+    Guards against the case where a new subparser lands in ``torchgenomics/cli.py``
     but no one updated CELL_SPEC. Failure here means an entry must be added
     (with ``skip_reason`` if the subcommand can't run on the tiny fixture).
     """
     import argparse
-    import torchgwas.cli as cli_mod
+    import torchgenomics.cli as cli_mod
 
     # Build the parser the same way `cli_mod.main` does, then enumerate the
     # subparsers it registers. We don't dispatch.
@@ -799,7 +799,7 @@ def test_cli_matrix_covers_every_subcommand() -> None:
 
     # Fallback: parse the help output of the in-tree CLI to be authoritative.
     proc = subprocess.run(
-        [sys.executable, "-m", "torchgwas.cli", "--help"],
+        [sys.executable, "-m", "torchgenomics.cli", "--help"],
         capture_output=True, text=True,
         env={**os.environ, "PYTHONPATH": str(REPO_ROOT) + os.pathsep + os.environ.get("PYTHONPATH", "")},
         timeout=30,

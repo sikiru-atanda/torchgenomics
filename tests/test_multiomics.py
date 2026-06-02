@@ -1,4 +1,4 @@
-"""Tests for `torchgwas.multiomics` (Phase 49).
+"""Tests for `torchgenomics.multiomics` (Phase 49).
 
 Covers:
 - `mediate_lmm` core: recovery, c = c' + ab, inconsistent flag, covariate adjust,
@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.multiomics import (
+from torchgenomics.multiomics import (
     MediationResult,
     MediationScanResult,
     MultiKernelH2Result,
@@ -31,8 +31,8 @@ from torchgwas.multiomics import (
     mkernel_h2,
     scan_mediation,
 )
-from torchgwas.multiomics._mediate import _mediate_from_nullfit, fit_mediation_null
-from torchgwas.multiomics._se import bootstrap_se, monte_carlo_se, sobel_se  # noqa: F401
+from torchgenomics.multiomics._mediate import _mediate_from_nullfit, fit_mediation_null
+from torchgenomics.multiomics._se import bootstrap_se, monte_carlo_se, sobel_se  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,21 +1,21 @@
-# TorchGWAS
+# TorchGenomics
 
-[![PyPI version](https://img.shields.io/pypi/v/torchgwas.svg)](https://pypi.org/project/torchgwas/)
-[![Python](https://img.shields.io/pypi/pyversions/torchgwas.svg)](https://pypi.org/project/torchgwas/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/sikiru-atanda/torchgwas/blob/master/LICENSE)
-[![Tests](https://img.shields.io/badge/tests-3038%20passing-brightgreen.svg)](https://github.com/sikiru-atanda/torchgwas/tree/master/tests)
+[![PyPI version](https://img.shields.io/pypi/v/torchgenomics.svg)](https://pypi.org/project/torchgenomics/)
+[![Python](https://img.shields.io/pypi/pyversions/torchgenomics.svg)](https://pypi.org/project/torchgenomics/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/sikiru-atanda/torchgenomics/blob/master/LICENSE)
+[![Tests](https://img.shields.io/badge/tests-3038%20passing-brightgreen.svg)](https://github.com/sikiru-atanda/torchgenomics/tree/master/tests)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 **GPU-accelerated Genome-Wide Association Studies with PyTorch.**
 
-TorchGWAS is a modular Python library for running GWAS on CPU or GPU. It
+TorchGenomics is a modular Python library for running GWAS on CPU or GPU. It
 replicates GEMMA and GAPIT to the 4th decimal on shared benchmarks, then
 extends the feature surface with novel mixed-model variants, post-GWAS
 analyses, haplotype tests, polygenic scoring, and causal mediation — all in a
 single `pip install`.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sikiru-atanda/torchgwas/master/docs/assets/mdp_earht_manhattan.png" alt="Manhattan plot — MDP maize EarHT" width="720"/>
+  <img src="https://raw.githubusercontent.com/sikiru-atanda/torchgenomics/master/docs/assets/mdp_earht_manhattan.png" alt="Manhattan plot — MDP maize EarHT" width="720"/>
   <br/>
   <em>Example output from <code>examples/python/01_single_trait_lmm.py</code>
   (MDP maize Ear Height, SingleTraitLMM, 276 samples × 3093 SNPs).</em>
@@ -59,7 +59,7 @@ prior, coloc_pairwise H3 outer-minus-diagonal, heidi_test LD-weighted
 variance, OCFLMM `nuisance_learner='ridge_quadratic'`) with closed-form
 agreement against the upstream R hyprcoloc / coloc / SMR v1.3.1 / DoubleML
 references. Plus the **observed-expression TWAS surface** (`twas_observed_expression`,
-`torchgwas twas-scan` CLI, rank-INT / quantile-norm / PEER residualization
+`torchgenomics twas-scan` CLI, rank-INT / quantile-norm / PEER residualization
 helpers), the **PrediXcan / FUSION `.db` reader**, **multi-tissue stacking**
 + S-MultiXcan-style aggregation, **gene-level TWAS plots** (Manhattan / QQ /
 λ_TWAS), and the **GWAS↔TWAS integration entry point** with 14 combination
@@ -74,30 +74,30 @@ validation surface. CLI subcommand count: 38 → 40.
 ## Install
 
 ```bash
-pip install torchgwas             # wheel where available; sdist fallback
-pip install "torchgwas[all]"      # + zarr, h5py, pyarrow, seaborn
-pip install "torchgwas[dev]"      # + pytest, ruff, mypy (editable development)
-pip install "torchgwas[docs]"     # + mkdocs + mkdocs-material + mkdocstrings
+pip install torchgenomics             # wheel where available; sdist fallback
+pip install "torchgenomics[all]"      # + zarr, h5py, pyarrow, seaborn
+pip install "torchgenomics[dev]"      # + pytest, ruff, mypy (editable development)
+pip install "torchgenomics[docs]"     # + mkdocs + mkdocs-material + mkdocstrings
 ```
 
 From source:
 
 ```bash
-git clone https://github.com/sikiru-atanda/torchgwas.git
-cd torchgwas
+git clone https://github.com/sikiru-atanda/torchgenomics.git
+cd torchgenomics
 pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
 GPU support: install the matching PyTorch CUDA wheel first (see
-[docs/getting-started/installation.md](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/getting-started/installation.md)),
-then `pip install torchgwas`. The same Python code runs on CPU or CUDA by
+[docs/getting-started/installation.md](https://github.com/sikiru-atanda/torchgenomics/blob/master/docs/getting-started/installation.md)),
+then `pip install torchgenomics`. The same Python code runs on CPU or CUDA by
 changing one tensor device.
 
 ## Quickstart
 
 ```bash
-torchgwas lmm-scan \
+torchgenomics lmm-scan \
   --genotype benchmark/data/mdp_numeric.txt \
   --map benchmark/data/mdp_SNP_information.txt \
   --phenotype benchmark/data/mdp_traits.txt \
@@ -106,15 +106,15 @@ torchgwas lmm-scan \
 ```
 
 The equivalent Python (trimmed; full script at
-[`examples/python/01_single_trait_lmm.py`](https://github.com/sikiru-atanda/torchgwas/blob/master/examples/python/01_single_trait_lmm.py)):
+[`examples/python/01_single_trait_lmm.py`](https://github.com/sikiru-atanda/torchgenomics/blob/master/examples/python/01_single_trait_lmm.py)):
 
 ```python
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig
-from torchgwas.models import SingleTraitLMM, VariantMeta
-from torchgwas.stats import benjamini_hochberg
+from torchgenomics.config import STAT_DTYPE, NumericalConfig
+from torchgenomics.models import SingleTraitLMM, VariantMeta
+from torchgenomics.stats import benjamini_hochberg
 
 geno = pd.read_csv("benchmark/data/mdp_numeric.txt", sep="\t")
 pheno = pd.read_csv("benchmark/data/mdp_traits.txt", sep="\t")
@@ -138,17 +138,17 @@ fdr = benjamini_hochberg(result.p.cpu())
 
 ## Learn more
 
-- [**Docs site**](https://sikiru-atanda.github.io/torchgwas/) — installation,
+- [**Docs site**](https://sikiru-atanda.github.io/torchgenomics/) — installation,
   tutorials, full API reference, and validation protocol. Built with MkDocs
   Material; deployed on pushes to `master` / `main`.
-- [**examples/python/**](https://github.com/sikiru-atanda/torchgwas/tree/master/examples/python) — 10 working end-to-end scripts
+- [**examples/python/**](https://github.com/sikiru-atanda/torchgenomics/tree/master/examples/python) — 10 working end-to-end scripts
   (single/multi-trait LMM, MET, threshold-linear, PGS, SuSiE fine-mapping,
   mediation, NCBI annotation, polyploid, haplotype).
-- [**examples/notebooks/quickstart.ipynb**](https://github.com/sikiru-atanda/torchgwas/blob/master/examples/notebooks/quickstart.ipynb)
+- [**examples/notebooks/quickstart.ipynb**](https://github.com/sikiru-atanda/torchgenomics/blob/master/examples/notebooks/quickstart.ipynb)
   — same as example 01 but renders the Manhattan inline.
-- [**docs/cli.md**](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/cli.md) — every CLI subcommand with expected inputs.
-- [**docs/validation.md**](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/validation.md) — GEMMA / GAPIT agreement tables.
-- [**docs/ROADMAP.md**](https://github.com/sikiru-atanda/torchgwas/blob/master/docs/ROADMAP.md) — deferred internal improvements and
+- [**docs/cli.md**](https://github.com/sikiru-atanda/torchgenomics/blob/master/docs/cli.md) — every CLI subcommand with expected inputs.
+- [**docs/validation.md**](https://github.com/sikiru-atanda/torchgenomics/blob/master/docs/validation.md) — GEMMA / GAPIT agreement tables.
+- [**docs/ROADMAP.md**](https://github.com/sikiru-atanda/torchgenomics/blob/master/docs/ROADMAP.md) — deferred internal improvements and
   candidate Phase 50+ features.
 
 ## Features
@@ -212,7 +212,7 @@ fdr = benjamini_hochberg(result.p.cpu())
 ## Architecture
 
 ```
-torchgwas/
+torchgenomics/
   io/          Format detection & readers (PLINK, VCF, BGEN, HapMap, Zarr, CSV)
   preprocess/  Imputation (built-in + BEAGLE/IMPUTE5/Minimac4), QC, standardization
   linalg/      GRM (diploid + polyploid), eigendecomposition, batched Cholesky
@@ -287,7 +287,7 @@ pandas ≥ 2.0, SciPy ≥ 1.10, matplotlib ≥ 3.7, requests ≥ 2.28.
 
 Optional: `zarr`, `h5py`, `pyarrow`, `seaborn`. A C++ compiler with pybind11 is
 optional; if unavailable, every native path falls back to the pure-torch
-reference implementation (`TORCHGWAS_DISABLE_NATIVE=1` forces this).
+reference implementation (`TORCHGENOMICS_DISABLE_NATIVE=1` forces this).
 
 ## License
 
@@ -296,11 +296,11 @@ MIT License — see [LICENSE](LICENSE).
 ## Citation
 
 ```bibtex
-@software{torchgwas2026,
-  title  = {TorchGWAS: GPU-accelerated Genome-Wide Association Studies with PyTorch},
+@software{torchgenomics2026,
+  title  = {TorchGenomics: GPU-accelerated Genome-Wide Association Studies with PyTorch},
   author = {Atanda, Sikiru A.},
   year   = {2026},
-  url    = {https://github.com/sikiru-atanda/torchgwas},
+  url    = {https://github.com/sikiru-atanda/torchgenomics},
   note   = {Version 0.3.8},
 }
 ```

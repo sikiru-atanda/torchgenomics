@@ -1,4 +1,4 @@
-"""Tests for torchgwas.pgs.sumstats_io."""
+"""Tests for torchgenomics.pgs.sumstats_io."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ import math
 import pytest
 import torch
 
-from torchgwas.pgs.base import LDReference
-from torchgwas.pgs.sumstats_io import (
+from torchgenomics.pgs.base import LDReference
+from torchgenomics.pgs.sumstats_io import (
     _Harmonizer,
     _resolve,
     harmonize_to_reference,
     load_pgs_sumstats,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _write_tsv(path, header, rows, sep="\t"):

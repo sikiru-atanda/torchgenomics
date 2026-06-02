@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Streaming vs materialized memory bench (paper Figure 6 panel B).
 
-Measures the peak Python-tensor allocation budget of TorchGWAS's streaming
+Measures the peak Python-tensor allocation budget of TorchGenomics's streaming
 single-trait LMM scan path across a p-sweep, at fixed n. Plots streaming
 peak (measured via ``tracemalloc``) against the analytically-known
 materialized peak (``n * p * dtype_bytes``) to demonstrate the slope
@@ -62,8 +62,8 @@ def _max_rss_bytes() -> int:
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
-from torchgwas.linalg.kinship import grm_vanraden  # noqa: E402
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
+from torchgenomics.linalg.kinship import grm_vanraden  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

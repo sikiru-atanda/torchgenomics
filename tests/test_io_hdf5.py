@@ -16,7 +16,7 @@ h5py = pytest.importorskip("h5py")
 
 @pytest.fixture
 def reader():
-    from torchgwas.io.hdf5 import HDF5Reader
+    from torchgenomics.io.hdf5 import HDF5Reader
     return HDF5Reader(str(HDF5_PATH))
 
 

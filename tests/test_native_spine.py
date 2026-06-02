@@ -1,5 +1,5 @@
 """Tests for the native C++ solid-spine LD block accelerator
-(``torchgwas._native._spine_native``).
+(``torchgenomics._native._spine_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_SPINE, _spine_native
-from torchgwas.ld import detect_blocks
-from torchgwas.ld._blocks import _spine_native_enabled
+from torchgenomics._native import HAS_NATIVE_SPINE, _spine_native
+from torchgenomics.ld import detect_blocks
+from torchgenomics.ld._blocks import _spine_native_enabled
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_SPINE,
@@ -34,7 +34,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _spine_native_enabled() is True
 
@@ -122,12 +122,12 @@ def test_dispatch_native_matches_python_blocks(monkeypatch):
     chrs = ["1"] * m
     ids = [f"snp{i}" for i in range(m)]
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks(
         G, pos, chrs, ids, method="spine",
         d_prime_threshold=0.5, max_kb=1e6,
     )
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks(
         G, pos, chrs, ids, method="spine",
         d_prime_threshold=0.5, max_kb=1e6,
@@ -145,12 +145,12 @@ def test_dispatch_native_matches_python_random(monkeypatch):
     chrs = ["1"] * m
     ids = [f"snp{i}" for i in range(m)]
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks(
         G, pos, chrs, ids, method="spine",
         d_prime_threshold=0.7, max_kb=1e6,
     )
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks(
         G, pos, chrs, ids, method="spine",
         d_prime_threshold=0.7, max_kb=1e6,
@@ -166,12 +166,12 @@ def test_dispatch_native_matches_python_relaxed(monkeypatch):
     chrs = ["1"] * m
     ids = [f"snp{i}" for i in range(m)]
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks(
         G, pos, chrs, ids, method="spine",
         d_prime_threshold=0.3, max_kb=1e6,
     )
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks(
         G, pos, chrs, ids, method="spine",
         d_prime_threshold=0.3, max_kb=1e6,

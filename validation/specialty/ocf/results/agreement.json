@@ -1,5 +1,5 @@
 {
-  "name": "OCF (Plan B C6) -- hand-coded DML2 vs TorchGWAS OCFLMM",
+  "name": "OCF (Plan B C6) -- hand-coded DML2 vs TorchGenomics OCFLMM",
   "reference_kind": "hand-coded DML2 (Chernozhukov 2018 Algorithm 2 / eq. 3.1, 3.3, 3.10)",
   "n_reps": 100,
   "passed": false,
@@ -16,7 +16,7 @@
       "note": ""
     },
     {
-      "name": "torchgwas empirical coverage in [0.92, 0.98]",
+      "name": "torchgenomics empirical coverage in [0.92, 0.98]",
       "passed": false,
       "observed": 0.41,
       "threshold": [
@@ -67,7 +67,7 @@
       "R_version": "R version 4.5.1 (2025-06-13)",
       "timestamp": "2026-05-18T14:25:03Z"
     },
-    "torchgwas": {
+    "torchgenomics": {
       "n_reps": 100,
       "theta0": 0.3,
       "mean_theta_hat": 0.4975646454546734,

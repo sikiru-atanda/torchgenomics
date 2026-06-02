@@ -1,4 +1,4 @@
-"""Tier-2 behavioral coverage tests for ``torchgwas.postgwas`` MR, SMR/HEIDI,
+"""Tier-2 behavioral coverage tests for ``torchgenomics.postgwas`` MR, SMR/HEIDI,
 and TWAS public symbols.
 
 Bar (Pillar A spec section 4.3 Tier 2):
@@ -23,23 +23,23 @@ Bar (Pillar A spec section 4.3 Tier 2):
 
 Covers 15 public symbols across 3 submodules:
 
-- ``torchgwas.postgwas._mr.MRResult`` (dataclass)
-- ``torchgwas.postgwas._mr.mr_ivw`` (function)
-- ``torchgwas.postgwas._mr.mr_egger`` (function)
-- ``torchgwas.postgwas._mr.mr_weighted_median`` (function)
-- ``torchgwas.postgwas._mr.mr_presso`` (function)
-- ``torchgwas.postgwas._mr.mr_all`` (function)
-- ``torchgwas.postgwas._smr.SMRResult`` (dataclass)
-- ``torchgwas.postgwas._smr.SMRSummary`` (dataclass)
-- ``torchgwas.postgwas._smr.smr_test`` (function)
-- ``torchgwas.postgwas._smr.heidi_test`` (function)
-- ``torchgwas.postgwas._smr.smr_heidi`` (function)
-- ``torchgwas.postgwas._twas.TWASGeneResult`` (dataclass)
-- ``torchgwas.postgwas._twas.TWASResult`` (dataclass)
-- ``torchgwas.postgwas._twas.twas_individual`` (function)
-- ``torchgwas.postgwas._twas.twas_sumstat`` (function)
+- ``torchgenomics.postgwas._mr.MRResult`` (dataclass)
+- ``torchgenomics.postgwas._mr.mr_ivw`` (function)
+- ``torchgenomics.postgwas._mr.mr_egger`` (function)
+- ``torchgenomics.postgwas._mr.mr_weighted_median`` (function)
+- ``torchgenomics.postgwas._mr.mr_presso`` (function)
+- ``torchgenomics.postgwas._mr.mr_all`` (function)
+- ``torchgenomics.postgwas._smr.SMRResult`` (dataclass)
+- ``torchgenomics.postgwas._smr.SMRSummary`` (dataclass)
+- ``torchgenomics.postgwas._smr.smr_test`` (function)
+- ``torchgenomics.postgwas._smr.heidi_test`` (function)
+- ``torchgenomics.postgwas._smr.smr_heidi`` (function)
+- ``torchgenomics.postgwas._twas.TWASGeneResult`` (dataclass)
+- ``torchgenomics.postgwas._twas.TWASResult`` (dataclass)
+- ``torchgenomics.postgwas._twas.twas_individual`` (function)
+- ``torchgenomics.postgwas._twas.twas_sumstat`` (function)
 
-All re-exported via ``torchgwas.postgwas.__init__``.
+All re-exported via ``torchgenomics.postgwas.__init__``.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ from dataclasses import fields
 import pytest
 import torch
 
-from torchgwas.postgwas import (
+from torchgenomics.postgwas import (
     MRResult,
     SMRResult,
     SMRSummary,

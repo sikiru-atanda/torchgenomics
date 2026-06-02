@@ -1,4 +1,4 @@
-"""External-tool harness: TwoSampleMR + MRPRESSO vs TorchGWAS reference.
+"""External-tool harness: TwoSampleMR + MRPRESSO vs TorchGenomics reference.
 
 These tests are skipped by default (they require the R packages installed
 by the harness install.sh, the simulated sumstats from fetch_data.sh, and
@@ -70,12 +70,12 @@ def _require_install() -> None:
 @pytest.fixture(scope="module")
 def compare_mod():
     # Disable native so we exercise the pure-Python reference path.
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
 def test_ivw(compare_mod) -> None:
-    """TwoSampleMR mr_ivw vs TorchGWAS mr_ivw."""
+    """TwoSampleMR mr_ivw vs TorchGenomics mr_ivw."""
     _require_install()
     _require_artifacts(
         DATA / "sumstats.tsv",
@@ -89,7 +89,7 @@ def test_ivw(compare_mod) -> None:
 
 
 def test_egger(compare_mod) -> None:
-    """TwoSampleMR mr_egger_regression vs TorchGWAS mr_egger."""
+    """TwoSampleMR mr_egger_regression vs TorchGenomics mr_egger."""
     _require_install()
     _require_artifacts(
         DATA / "sumstats.tsv",
@@ -103,7 +103,7 @@ def test_egger(compare_mod) -> None:
 
 
 def test_weighted_median(compare_mod) -> None:
-    """TwoSampleMR mr_weighted_median vs TorchGWAS mr_weighted_median."""
+    """TwoSampleMR mr_weighted_median vs TorchGenomics mr_weighted_median."""
     _require_install()
     _require_artifacts(
         DATA / "sumstats.tsv",
@@ -117,7 +117,7 @@ def test_weighted_median(compare_mod) -> None:
 
 
 def test_mr_presso(compare_mod) -> None:
-    """MRPRESSO mr_presso vs TorchGWAS mr_presso."""
+    """MRPRESSO mr_presso vs TorchGenomics mr_presso."""
     _require_install()
     _require_artifacts(
         DATA / "sumstats.tsv",

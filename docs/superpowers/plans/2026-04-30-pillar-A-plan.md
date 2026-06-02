@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Drive every public function in `torchgwas/` through tier-appropriate validation (math correctness for Tier 1, behavioral for Tier 2, smoke for Tier 3), per the campaign spec at `docs/superpowers/specs/2026-04-30-validation-campaign-design.md` (commit `dc6654e`).
+**Goal:** Drive every public function in `torchgenomics/` through tier-appropriate validation (math correctness for Tier 1, behavioral for Tier 2, smoke for Tier 3), per the campaign spec at `docs/superpowers/specs/2026-04-30-validation-campaign-design.md` (commit `dc6654e`).
 
 **Architecture:** Setup the campaign infrastructure (branch, audit script, reviewer prompts, findings ledger), run an audit producing JSON of `{module.symbol → has_direct_test}`, then close every `has_direct_test=false` row with a tier-appropriate test. Two-track reviewer agent dispatch at the end of each tier.
 
@@ -16,7 +16,7 @@
 
 | Path | Responsibility |
 |---|---|
-| `scripts/audit_public_coverage.py` | Walks `torchgwas/`, emits `coverage_audit.json` |
+| `scripts/audit_public_coverage.py` | Walks `torchgenomics/`, emits `coverage_audit.json` |
 | `docs/validation_findings/coverage_audit.json` | Audit output; key input to Tier 1/2/3 work |
 | `docs/validation_findings.md` | Master findings ledger (append-only) |
 | `docs/superpowers/reviewer_prompts/code_review.md` | Track-1 reviewer prompt template |
@@ -91,7 +91,7 @@ Create `docs/superpowers/reviewer_prompts/code_review.md` with content:
 ````markdown
 # Code-Review Reviewer Prompt — Pillar {{PILLAR}} Tier {{TIER}}
 
-You are reviewing tier {{TIER}} of pillar {{PILLAR}} of the TorchGWAS validation campaign.
+You are reviewing tier {{TIER}} of pillar {{PILLAR}} of the TorchGenomics validation campaign.
 
 ## What was just done
 
@@ -117,7 +117,7 @@ git diff {{TIER_START_SHA}}..HEAD -- tests/test_coverage_*.py scripts/ pyproject
 
 ## What I do NOT want you to do
 
-- Do not propose refactors to TorchGWAS production code beyond what F3 already drove.
+- Do not propose refactors to TorchGenomics production code beyond what F3 already drove.
 - Do not propose adding test cases beyond the tier's bar.
 - Do not propose new dependencies.
 
@@ -139,11 +139,11 @@ Create `docs/superpowers/reviewer_prompts/rerun_verification.md` with content:
 ````markdown
 # Re-Run Reviewer Prompt — Pillar {{PILLAR}} Tier {{TIER}}
 
-You are an independent verifier for pillar {{PILLAR}} tier {{TIER}} of the TorchGWAS validation campaign. You have NOT seen the conversation that produced these tests.
+You are an independent verifier for pillar {{PILLAR}} tier {{TIER}} of the TorchGenomics validation campaign. You have NOT seen the conversation that produced these tests.
 
 ## Context
 
-TorchGWAS commit under verification: {{COMMIT_SHA}}. Branch: `validation/pillar-{{PILLAR}}-coverage`.
+TorchGenomics commit under verification: {{COMMIT_SHA}}. Branch: `validation/pillar-{{PILLAR}}-coverage`.
 
 The campaign claims this tier validates {{TIER_CLAIM}}. The spec is at `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`. Don't take its word for the result — independently verify.
 
@@ -222,7 +222,7 @@ EOF
 Create `docs/validation_findings.md` with content:
 
 ```markdown
-# TorchGWAS Validation Findings Ledger
+# TorchGenomics Validation Findings Ledger
 
 Append-only ledger of every divergence found during the validation
 campaign. Schema and policy: spec §11 + §9.
@@ -343,7 +343,7 @@ def test_audit_summary_includes_tier_counts(tmp_path):
 
 
 def test_audit_classifies_known_module():
-    """Sanity: torchgwas.linalg.eigendecompose should be Tier 1."""
+    """Sanity: torchgenomics.linalg.eigendecompose should be Tier 1."""
     out_path = Path("/tmp/_audit_test.json")
     subprocess.run(
         [sys.executable, str(REPO / "scripts" / "audit_public_coverage.py"),
@@ -352,7 +352,7 @@ def test_audit_classifies_known_module():
     )
     data = json.loads(out_path.read_text())
     eig_rows = [r for r in data["rows"]
-                if r["module"] == "torchgwas.linalg" and r["symbol"] == "eigendecompose"]
+                if r["module"] == "torchgenomics.linalg" and r["symbol"] == "eigendecompose"]
     assert len(eig_rows) == 1
     assert eig_rows[0]["tier"] == 1
 ```
@@ -371,9 +371,9 @@ Create `scripts/audit_public_coverage.py`:
 
 ```python
 #!/usr/bin/env python3
-"""Audit public-symbol test coverage in torchgwas/.
+"""Audit public-symbol test coverage in torchgenomics/.
 
-Walks every module under torchgwas/, enumerates public symbols (via __all__
+Walks every module under torchgenomics/, enumerates public symbols (via __all__
 when present, else top-level non-underscore names), and for each symbol
 checks whether at least one file under tests/ directly imports or invokes it.
 
@@ -397,25 +397,25 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PKG_ROOT = REPO / "torchgwas"
+PKG_ROOT = REPO / "torchgenomics"
 TESTS_ROOT = REPO / "tests"
 
 TIER_MAP = {
-    "torchgwas.models": 1,
-    "torchgwas.linalg": 1,
-    "torchgwas.stats": 1,
-    "torchgwas.optim": 1,
-    "torchgwas.scan": 1,
-    "torchgwas.io": 2,
-    "torchgwas.preprocess": 2,
-    "torchgwas.ld": 2,
-    "torchgwas.pgs": 2,
-    "torchgwas.postgwas": 2,
-    "torchgwas.multiomics": 2,
-    "torchgwas.viz": 3,
-    "torchgwas.annotate": 3,
-    "torchgwas.results": 3,
-    "torchgwas.cli": 3,
+    "torchgenomics.models": 1,
+    "torchgenomics.linalg": 1,
+    "torchgenomics.stats": 1,
+    "torchgenomics.optim": 1,
+    "torchgenomics.scan": 1,
+    "torchgenomics.io": 2,
+    "torchgenomics.preprocess": 2,
+    "torchgenomics.ld": 2,
+    "torchgenomics.pgs": 2,
+    "torchgenomics.postgwas": 2,
+    "torchgenomics.multiomics": 2,
+    "torchgenomics.viz": 3,
+    "torchgenomics.annotate": 3,
+    "torchgenomics.results": 3,
+    "torchgenomics.cli": 3,
 }
 
 
@@ -442,7 +442,7 @@ def public_symbols(mod):
             continue
         # Only count things actually defined in the package.
         defining_module = getattr(obj, "__module__", None)
-        if defining_module is not None and not defining_module.startswith("torchgwas"):
+        if defining_module is not None and not defining_module.startswith("torchgenomics"):
             continue
         out.append((name, obj))
     return out
@@ -482,7 +482,7 @@ def find_test_files_for_symbol(symbol: str) -> list[str]:
 
 
 def walk_package(root: Path):
-    """Yield (module_name, module_obj) for every submodule under torchgwas/."""
+    """Yield (module_name, module_obj) for every submodule under torchgenomics/."""
     for path in sorted(root.rglob("*.py")):
         if path.name.startswith("_") and path.name != "__init__.py":
             continue
@@ -491,7 +491,7 @@ def walk_package(root: Path):
         if parts[-1] == "__init__":
             parts = parts[:-1]
         modname = ".".join(parts)
-        if not modname.startswith("torchgwas"):
+        if not modname.startswith("torchgenomics"):
             continue
         try:
             mod = importlib.import_module(modname)
@@ -585,7 +585,7 @@ git add scripts/audit_public_coverage.py tests/test_audit_coverage_script.py
 git -c user.email=sikiruandfriends@gmail.com -c user.name="Sikiru Atanda" commit -m "$(cat <<'EOF'
 Pillar A: coverage auditor
 
-Walks torchgwas/, identifies public symbols, classifies by tier
+Walks torchgenomics/, identifies public symbols, classifies by tier
 (1 math / 2 behavioral / 3 smoke), and conservatively flags whether
 each symbol is directly tested by any file under tests/.
 
@@ -730,7 +730,7 @@ def tiny_covariates():
 
 @pytest.fixture(scope="module")
 def stat_dtype():
-    """The statistical-inference dtype TorchGWAS uses."""
+    """The statistical-inference dtype TorchGenomics uses."""
     return torch.float64
 ```
 
@@ -739,7 +739,7 @@ def stat_dtype():
 Create `tests/test_coverage_linalg.py`:
 
 ```python
-"""Tier-1 math-correctness coverage tests for torchgwas.linalg.
+"""Tier-1 math-correctness coverage tests for torchgenomics.linalg.
 
 Bar (spec §4.3 Tier 1):
 - Closed-form / scipy / Monte-Carlo verification per public function.
@@ -754,7 +754,7 @@ import pytest
 import scipy.linalg as sla
 import torch
 
-from torchgwas.linalg import eigendecompose
+from torchgenomics.linalg import eigendecompose
 
 
 pytestmark = pytest.mark.timeout(30)
@@ -805,7 +805,7 @@ Expected: both tests pass. If `eigendecompose` returns a different type than exp
 
 If a test fails:
 1. Inspect: is this a V1-core math error (linalg is V1)?
-2. If yes: this is **fix-now** per F3. Diagnose, fix in `torchgwas/linalg/`, commit fix + the test, append findings ledger row.
+2. If yes: this is **fix-now** per F3. Diagnose, fix in `torchgenomics/linalg/`, commit fix + the test, append findings ledger row.
 3. If the failure is a tolerance miss only (e.g., `1e-9` vs `1e-10`), tighten or loosen the test tolerance to the observed level *with a comment explaining the floor*, per the spec's "tolerances calibrated to observed reality" rule.
 
 If the test passes (expected case for `eigendecompose`), continue.
@@ -849,7 +849,7 @@ For each untested Tier-1 symbol `module.symbol`:
   - Closed-form expression (e.g., `bonferroni` is `min(1, p × m)`).
   - Standard-library reference (`scipy.stats.<dist>`, `scipy.linalg`, `numpy.linalg`).
   - Monte-Carlo expectation (≥ 10 000 reps; assert empirical mean / variance / coverage).
-  - For an existing accelerator: parity with the pure-torch reference under `TORCHGWAS_DISABLE_NATIVE=1`.
+  - For an existing accelerator: parity with the pure-torch reference under `TORCHGENOMICS_DISABLE_NATIVE=1`.
 
 - [ ] **Write the test in `tests/test_coverage_<module>.py`** under a `class Test<Symbol>:` block. At minimum:
 
@@ -860,7 +860,7 @@ class TestSymbolName:
     def test_<verb>(self, <fixtures>):
         """Specific assertion, with the reference identified inline."""
         # Build input from fixtures or rng-seeded synthetic.
-        # Call torchgwas function.
+        # Call torchgenomics function.
         # Compute reference value via scipy / numpy / closed-form.
         # np.testing.assert_allclose(actual, ref, rtol=…, atol=…)
 ```
@@ -881,7 +881,7 @@ git -c user.email=sikiruandfriends@gmail.com -c user.name="Sikiru Atanda" commit
 Add to `tests/test_coverage_stats.py`:
 
 ```python
-"""Tier-1 math-correctness coverage tests for torchgwas.stats."""
+"""Tier-1 math-correctness coverage tests for torchgenomics.stats."""
 
 from __future__ import annotations
 
@@ -890,7 +890,7 @@ import pytest
 import torch
 from scipy.stats import false_discovery_control
 
-from torchgwas.stats import benjamini_hochberg
+from torchgenomics.stats import benjamini_hochberg
 
 
 class TestBenjaminiHochberg:
@@ -1058,7 +1058,7 @@ class TestSymbolName:
 ### 8.2 Worked example: `io.detect_format`
 
 ```python
-"""Tier-2 behavioral coverage tests for torchgwas.io."""
+"""Tier-2 behavioral coverage tests for torchgenomics.io."""
 
 from __future__ import annotations
 
@@ -1066,7 +1066,7 @@ from pathlib import Path
 
 import pytest
 
-from torchgwas.io import detect_format
+from torchgenomics.io import detect_format
 
 
 class TestDetectFormat:
@@ -1164,7 +1164,7 @@ def test_<symbol>_smoke(self, <fixtures>):
 ### 10.2 Worked example: `viz.qq_plot`
 
 ```python
-"""Tier-3 smoke coverage tests for torchgwas.viz."""
+"""Tier-3 smoke coverage tests for torchgenomics.viz."""
 
 from __future__ import annotations
 
@@ -1174,7 +1174,7 @@ matplotlib.use("Agg")  # headless
 import numpy as np
 import pytest
 
-from torchgwas.viz import qq_plot
+from torchgenomics.viz import qq_plot
 
 
 class TestQQPlot:
@@ -1209,7 +1209,7 @@ cat /tmp/tier3_worklist.txt
 
 - [ ] **Walk module-by-module.** Smoke test per row. Network-required functions (`annotate.*`) get `@pytest.mark.skipif(os.environ.get("CI") or not _network_ok(), reason="network required")`.
 
-- [ ] **For CLI subcommands:** smoke test invokes the subcommand via `subprocess.run([sys.executable, "-m", "torchgwas.cli", "<subcommand>", "--help"])` and asserts exit code 0 + non-empty stdout. Full end-to-end CLI runs are Pillar C.
+- [ ] **For CLI subcommands:** smoke test invokes the subcommand via `subprocess.run([sys.executable, "-m", "torchgenomics.cli", "<subcommand>", "--help"])` and asserts exit code 0 + non-empty stdout. Full end-to-end CLI runs are Pillar C.
 
 - [ ] **Re-audit at Tier-3 close:**
 
@@ -1308,11 +1308,11 @@ Expected: full test suite passes. The new coverage tests are part of the default
 - [ ] **Step 12.5: Run lint + type check**
 
 ```bash
-ruff check torchgwas tests scripts
-mypy torchgwas
+ruff check torchgenomics tests scripts
+mypy torchgenomics
 ```
 
-Address blockers. ruff format if needed: `ruff format torchgwas tests scripts`.
+Address blockers. ruff format if needed: `ruff format torchgenomics tests scripts`.
 
 - [ ] **Step 12.6: Final commit**
 
@@ -1342,11 +1342,11 @@ git push -u origin validation/pillar-A-coverage
 gh pr create --title "Validation campaign — Pillar A: coverage audit + tiered fill" --body "$(cat <<'EOF'
 ## Summary
 
-Pillar A of the TorchGWAS validation campaign per
+Pillar A of the TorchGenomics validation campaign per
 `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`.
 
 - New auditor: `scripts/audit_public_coverage.py` enumerates public
-  symbols across `torchgwas/`, classifies them by tier, and conservatively
+  symbols across `torchgenomics/`, classifies them by tier, and conservatively
   flags whether each has a direct test.
 - Tier 1 (math correctness): scipy / closed-form / Monte-Carlo tests
   for every public symbol in `models/`, `linalg/`, `stats/`, plus

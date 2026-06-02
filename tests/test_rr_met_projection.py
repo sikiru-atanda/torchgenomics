@@ -3,8 +3,8 @@
 import pytest
 import torch
 
-from torchgwas.models.rr_lmm import longitudinal_to_wide
-from torchgwas.models.rr_met import (
+from torchgenomics.models.rr_lmm import longitudinal_to_wide
+from torchgenomics.models.rr_met import (
     MultiEnvLongitudinalProjection,
     project_multi_env,
 )

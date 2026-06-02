@@ -1,4 +1,4 @@
-"""External-tool harness: SoyMD reference (mediation R package) vs TorchGWAS
+"""External-tool harness: SoyMD reference (mediation R package) vs TorchGenomics
 multiomics module.
 
 These tests are skipped by default (they require the R `mediation` package
@@ -71,12 +71,12 @@ def _require_install() -> None:
 @pytest.fixture(scope="module")
 def compare_mod():
     # Disable native so we exercise the pure-Python reference path.
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
 def test_stage_coefficients(compare_mod) -> None:
-    """mediation::mediate stage-wise coefs vs TorchGWAS mediate_lmm a, b, c'."""
+    """mediation::mediate stage-wise coefs vs TorchGenomics mediate_lmm a, b, c'."""
     _require_install()
     _require_artifacts(
         DATA / "triple.tsv",
@@ -91,7 +91,7 @@ def test_stage_coefficients(compare_mod) -> None:
 
 
 def test_acme(compare_mod) -> None:
-    """mediation::mediate ACME vs TorchGWAS indirect; both vs planted truth."""
+    """mediation::mediate ACME vs TorchGenomics indirect; both vs planted truth."""
     _require_install()
     _require_artifacts(
         DATA / "triple.tsv",
@@ -106,7 +106,7 @@ def test_acme(compare_mod) -> None:
 
 
 def test_total_and_ade(compare_mod) -> None:
-    """mediation::mediate total/ADE vs TorchGWAS total/c_prime."""
+    """mediation::mediate total/ADE vs TorchGenomics total/c_prime."""
     _require_install()
     _require_artifacts(
         DATA / "triple.tsv",

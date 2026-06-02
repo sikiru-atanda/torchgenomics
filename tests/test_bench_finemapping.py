@@ -1,4 +1,4 @@
-"""Benchmark: torchgwas fine-mapping utilities vs manual numpy calculations.
+"""Benchmark: torchgenomics fine-mapping utilities vs manual numpy calculations.
 
 Validates credible set extraction, PIP annotation, and locus summary
 against ground-truth manual calculations using numpy.
@@ -10,13 +10,13 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from torchgwas.postgwas._finemapping import (
+from torchgenomics.postgwas._finemapping import (
     annotate_sumstats,
     extract_credible_sets,
     locus_summary,
     to_coloc_sumstats,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Mock BayesianVSResult (mirrors the real dataclass without importing the
@@ -113,7 +113,7 @@ class TestBenchCredibleSetCoverageMatchesNumpyCumsum:
         expected_indices = order[:n_needed].tolist()
         expected_coverage = float(cumsum[n_needed - 1])
 
-        # --- torchgwas ---
+        # --- torchgenomics ---
         cs_list = extract_credible_sets(bvs, coverage=0.95)
         assert len(cs_list) == 1
         cs = cs_list[0]
@@ -167,7 +167,7 @@ class TestBenchSuSiECredibleSetPerLayerMatchesNumpy:
             expected_coverages.append(cum)
             used.update(indices)
 
-        # --- torchgwas ---
+        # --- torchgenomics ---
         cs_list = extract_credible_sets(bvs, coverage=0.95)
         assert len(cs_list) == 2
 

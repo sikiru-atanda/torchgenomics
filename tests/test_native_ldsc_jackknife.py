@@ -1,9 +1,9 @@
 """Tests for the native C++ LDSC block-jackknife accelerator.
 
 The native module replaces the n_blocks=200 leave-one-block-out WLS loop in
-``torchgwas.postgwas._ldsc._block_jackknife_se``. The Python loop remains
+``torchgenomics.postgwas._ldsc._block_jackknife_se``. The Python loop remains
 in-tree as the algorithmic spec; the dispatcher routes to C++ when the
-build is present, the tensors are CPU+float64, and ``TORCHGWAS_DISABLE_NATIVE``
+build is present, the tensors are CPU+float64, and ``TORCHGENOMICS_DISABLE_NATIVE``
 is unset.
 """
 
@@ -15,8 +15,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_LDSC, _ldsc_native
-from torchgwas.postgwas._ldsc import (
+from torchgenomics._native import HAS_NATIVE_LDSC, _ldsc_native
+from torchgenomics.postgwas._ldsc import (
     _block_jackknife_se,
     _weighted_lstsq,
     ldsc_h2,
@@ -78,13 +78,13 @@ def test_smoke_returns_positive_se():
 
 def _run_jackknife_with(disable_native: bool, X, y, w, n_blocks, full):
     if disable_native:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     else:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     try:
         return _block_jackknife_se(X, y, w, n_blocks, full)
     finally:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
 
 
 def test_native_matches_python_default_blocks():
@@ -139,11 +139,11 @@ def test_native_matches_python_p3_design():
 def test_ldsc_h2_dispatcher_native_matches_python():
     chi2, ld = _make_ldsc_problem(m=3000, h2=0.4, n=20000, m_total=20000, seed=5)
 
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         res_python = ldsc_h2(chi2, ld, n=20000, m_total=20000, n_blocks=200)
     finally:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
 
     res_native = ldsc_h2(chi2, ld, n=20000, m_total=20000, n_blocks=200)
 

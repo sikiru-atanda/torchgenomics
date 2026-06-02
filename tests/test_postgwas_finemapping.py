@@ -1,4 +1,4 @@
-"""Tests for ``torchgwas.postgwas._finemapping`` — fine-mapping utilities."""
+"""Tests for ``torchgenomics.postgwas._finemapping`` — fine-mapping utilities."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,13 +7,13 @@ import pytest
 import torch
 from torch import Tensor
 
-from torchgwas.postgwas._finemapping import (
+from torchgenomics.postgwas._finemapping import (
     annotate_sumstats,
     extract_credible_sets,
     locus_summary,
     to_coloc_sumstats,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Mock BayesianVSResult (avoids importing the real class which needs NullFit)

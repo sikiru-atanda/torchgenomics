@@ -1,5 +1,5 @@
 """Tests for the native C++ greedy_mwis accelerator
-(``torchgwas._native._greedy_mwis_native``).
+(``torchgenomics._native._greedy_mwis_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,8 +13,8 @@ import random
 import numpy as np
 import pytest
 
-from torchgwas._native import HAS_NATIVE_GREEDY_MWIS, _greedy_mwis_native
-from torchgwas.ld._graph_utils import (
+from torchgenomics._native import HAS_NATIVE_GREEDY_MWIS, _greedy_mwis_native
+from torchgenomics.ld._graph_utils import (
     _greedy_mwis_native_enabled,
     greedy_mwis,
 )
@@ -36,7 +36,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _greedy_mwis_native_enabled() is True
 
@@ -96,15 +96,15 @@ def test_native_invalid_shape_raises():
 
 
 def _python_reference(intervals):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return greedy_mwis(intervals)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 def _native_dispatch(intervals):
-    os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+    os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     return greedy_mwis(intervals)
 
 

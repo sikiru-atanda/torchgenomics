@@ -1,13 +1,13 @@
 """Regression tests for the native C++ mediation σ-block kernels.
 
-The native kernels (``torchgwas._native._mediate_native.sigma_v_block``
+The native kernels (``torchgenomics._native._mediate_native.sigma_v_block``
 and ``sigma_u_block``) replace the per-(SNP, mediator) Python WLS loops
-in ``torchgwas.multiomics._scan_batched._sigma_v_block`` and
+in ``torchgenomics.multiomics._scan_batched._sigma_v_block`` and
 ``_sigma_u_block``. These tests assert:
 
 1.  **Parity** — native and Python paths produce numerically identical
     per-pair σ_v / σ_u at the FP64 observed-then-floored tolerance.
-2.  **Env-var fallthrough** — ``TORCHGWAS_DISABLE_NATIVE=1`` forces the
+2.  **Env-var fallthrough** — ``TORCHGENOMICS_DISABLE_NATIVE=1`` forces the
     Python reference path; results match.
 3.  **Below-threshold input** — for ``s_b*f_b < 64`` the dispatcher
     routes to Python; results identical.
@@ -23,8 +23,8 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas._native import HAS_NATIVE_MEDIATE
-from torchgwas.multiomics._scan_batched import _sigma_u_block, _sigma_v_block
+from torchgenomics._native import HAS_NATIVE_MEDIATE
+from torchgenomics.multiomics._scan_batched import _sigma_u_block, _sigma_v_block
 
 
 def _make_rotated_inputs(
@@ -61,19 +61,19 @@ def _make_rotated_inputs(
 
 
 def _run_with(env_value: str | None, fn, *args, **kwargs):
-    """Toggle TORCHGWAS_DISABLE_NATIVE around a single call."""
-    prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+    """Toggle TORCHGENOMICS_DISABLE_NATIVE around a single call."""
+    prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
     if env_value is None:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     else:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = env_value
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = env_value
     try:
         return fn(*args, **kwargs)
     finally:
         if prev is None:
-            os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+            os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
         else:
-            os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+            os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
 
 @unittest.skipUnless(

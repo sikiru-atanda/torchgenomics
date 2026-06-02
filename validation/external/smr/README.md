@@ -1,7 +1,7 @@
 # SMR + HEIDI harness (Tier 1 A2)
 
 Reference-tool comparison between **Yang lab SMR** (`smr` v1.3.1) and
-**TorchGWAS** `torchgwas.postgwas.smr_test` / `heidi_test`. Part of the
+**TorchGenomics** `torchgenomics.postgwas.smr_test` / `heidi_test`. Part of the
 Genome Biology Methods paper Tier 1 Pillar B harness suite.
 
 ## Pinned tool version
@@ -19,9 +19,9 @@ The Yang lab does not publish point-release git tags; v1.3.1 is the most
 recent stable Linux binary release as of harness authorship (2026-05-15).
 The zip SHA256 is the authoritative identifier.
 
-## TorchGWAS comparison targets
+## TorchGenomics comparison targets
 
-`torchgwas/postgwas/_smr.py`:
+`torchgenomics/postgwas/_smr.py`:
 
 - `smr_test(gwas, eqtl, gene_id, probe_snp, eqtl_p_threshold)` --- single-probe
   SMR (chi-squared 1 d.f.). Formula:
@@ -29,7 +29,7 @@ The zip SHA256 is the authoritative identifier.
   Wald-ratio causal estimate `beta_SMR = beta_GWAS / beta_eQTL` with
   delta-method standard error.
 - `heidi_test(gwas, eqtl, probe_snp, nearby_snps, ld_r2_threshold, max_snps)`
-  --- heterogeneity in dependent instruments. TorchGWAS uses a
+  --- heterogeneity in dependent instruments. TorchGenomics uses a
   **delta-method diagonal** variance estimator.
 
 ## Fixture
@@ -73,7 +73,7 @@ a well-formed (GWAS, eQTL, BED) triple. Same strategy as
 
 The harness brief originally proposed K i.i.d. SNPs so the SMR LD-weighted
 HEIDI covariance reduces to the diagonal (delta-method) variance that
-TorchGWAS computes. In practice SMR HEIDI applies an inclusion filter
+TorchGenomics computes. In practice SMR HEIDI applies an inclusion filter
 `0.05 <= r^2 <= 0.9` to the cis-SNPs --- under perfect i.i.d. genotypes
 every helper drops below `r^2 = 0.05` (max observed r^2 = 0.012 at n=500),
 HEIDI sees `nsnp_HEIDI = 0`, and SMR crashes inside `routine gammp`
@@ -120,7 +120,7 @@ HEIDI shows a documented systematic divergence; see below.
 The SMR (Yang lab) HEIDI implementation computes the variance of
 `d_i = b_g_i / b_e_i - b_g_top / b_e_top` from a full LD-weighted
 covariance matrix derived from the PLINK BED reference panel (Zhu 2016
-supplementary, HEIDI test, computation of variance of d). TorchGWAS
+supplementary, HEIDI test, computation of variance of d). TorchGenomics
 `heidi_test` uses a delta-method diagonal variance that assumes the
 SNPs being tested are mutually uncorrelated.
 
@@ -129,12 +129,12 @@ For perfectly independent SNPs the two estimators agree (LD off-diagonals
 perfectly-independent regime. With the fixtures mild LD (rho ~ 0.6,
 mean r^2 ~ 0.12) the LD-weighted variance is systematically larger than
 the diagonal-only delta-method variance, so SMRs chi^2 is smaller (and
-p larger) than TorchGWASs on the same input. Observed: SMR chi^2 =
+p larger) than TorchGenomicss on the same input. Observed: SMR chi^2 =
 6.86, TG chi^2 = 9.47 (rel diff 38%); SMR p = 0.232, TG p = 0.092.
 
 Classification per the F3 policy:
   - SMR / HEIDI is Phase 45 (post-V1).
-  - The TorchGWAS implementation is conservative (smaller HEIDI variance
+  - The TorchGenomics implementation is conservative (smaller HEIDI variance
     -> larger chi^2 -> smaller p -> more likely to reject single-causal),
     so it does not silently inflate false positives in SMRs
     pleiotropy-vs-linkage verdict.
@@ -144,8 +144,8 @@ Classification per the F3 policy:
     produces a same-order-of-magnitude answer, NOT bit-precision agreement.
 
 To remove this divergence in a future release, port the LD-weighted
-variance from Zhu 2016 supplementary into `torchgwas.postgwas._smr`
-(takes a `ld_matrix` argument symmetric to `torchgwas.postgwas._twas`).
+variance from Zhu 2016 supplementary into `torchgenomics.postgwas._smr`
+(takes a `ld_matrix` argument symmetric to `torchgenomics.postgwas._twas`).
 
 ## Re-run paths
 

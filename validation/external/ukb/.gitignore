@@ -3,7 +3,7 @@
 bin/
 data/
 reference_outputs/
-torchgwas_outputs/
+torchgenomics_outputs/
 __pycache__/
 *.pyc
 comparison.json

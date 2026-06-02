@@ -1,4 +1,4 @@
-"""Print a side-by-side TorchGWAS vs GEMMA agreement report on MDP EarHT/dpoll.
+"""Print a side-by-side TorchGenomics vs GEMMA agreement report on MDP EarHT/dpoll.
 
 Same fixtures and same fit calls as ``tests/test_golden_gemma.py`` — but prints
 the actual measured numbers instead of asserting thresholds.
@@ -12,10 +12,10 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
-from torchgwas.models.multi_trait_lmm import MultiTraitLMM
+from torchgenomics.config import STAT_DTYPE, NumericalConfig
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
 
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -128,7 +128,7 @@ def report():
     _require_fixtures()
     d = load_mdp()
     print("=" * 78)
-    print("  TorchGWAS vs GEMMA 0.98.5  -  MDP maize (276 samples, 3093 SNPs)")
+    print("  TorchGenomics vs GEMMA 0.98.5  -  MDP maize (276 samples, 3093 SNPs)")
     print("=" * 78)
     print(f"Samples common to geno+pheno: {d['n']}")
     print(f"SNPs: {d['m']}")
@@ -142,17 +142,17 @@ def report():
     print("+" + "-" * 76 + "+")
     print("| SINGLE-TRAIT LMM (EarHT) - null-model estimates" + " " * 28 + "|")
     print("+" + "-" * 76 + "+")
-    print(f"  vg (sig2_g)      TorchGWAS = {float(nf.sig2_g):.6f}   "
+    print(f"  vg (sig2_g)      TorchGenomics = {float(nf.sig2_g):.6f}   "
           f"GEMMA = {ref1['vg']:.6f}   "
           f"rel diff = {abs(float(nf.sig2_g) - ref1['vg'])/ref1['vg']:.2e}")
-    print(f"  ve (sig2_e)      TorchGWAS = {float(nf.sig2_e):.6f}   "
+    print(f"  ve (sig2_e)      TorchGenomics = {float(nf.sig2_e):.6f}   "
           f"GEMMA = {ref1['ve']:.6f}   "
           f"rel diff = {abs(float(nf.sig2_e) - ref1['ve'])/ref1['ve']:.2e}")
-    print(f"  REML log-lik     TorchGWAS = {float(nf.log_likelihood):.4f}   "
+    print(f"  REML log-lik     TorchGenomics = {float(nf.log_likelihood):.4f}   "
           f"GEMMA = {ref1['ll_reml']:.4f}   "
           f"abs diff = {abs(float(nf.log_likelihood) - ref1['ll_reml']):.2e}")
     pve_tg = float(nf.sig2_g) / (float(nf.sig2_g) + float(nf.sig2_e))
-    print(f"  PVE (h2)         TorchGWAS = {pve_tg:.6f}   "
+    print(f"  PVE (h2)         TorchGenomics = {pve_tg:.6f}   "
           f"GEMMA = {ref1.get('pve', float('nan')):.6f}")
     print()
 
@@ -228,11 +228,11 @@ def report():
     print("| MULTI-TRAIT LMM (EarHT, dpoll) - variance-covariance matrices" + " " * 14 + "|")
     print("+" + "-" * 76 + "+")
     print("  Vg (genetic) matrix")
-    print(f"    TorchGWAS:\n{Vg_tg}")
+    print(f"    TorchGenomics:\n{Vg_tg}")
     print(f"    GEMMA:\n{ref2['Vg']}")
     print(f"    max rel diff: {np.max(np.abs(Vg_tg - ref2['Vg'])/np.maximum(np.abs(ref2['Vg']), 1e-9)):.2e}")
     print("  Ve (residual) matrix")
-    print(f"    TorchGWAS:\n{Ve_tg}")
+    print(f"    TorchGenomics:\n{Ve_tg}")
     print(f"    GEMMA:\n{ref2['Ve']}")
     print(f"    max rel diff: {np.max(np.abs(Ve_tg - ref2['Ve'])/np.maximum(np.abs(ref2['Ve']), 1e-9)):.2e}")
     print()

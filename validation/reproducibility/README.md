@@ -1,8 +1,8 @@
 # Pillar D — Reproducibility audit
 
-The TorchGWAS validation campaign committed reference outputs from three
+The TorchGenomics validation campaign committed reference outputs from three
 upstream tools (GEMMA, GAPIT, GWASpoly) before the Pillar A campaign
-began. Pillars A / B / C diff *TorchGWAS* against those committed
+began. Pillars A / B / C diff *TorchGenomics* against those committed
 fixtures. **Pillar D asks the converse question:**
 
 > If we install a fresh upstream tool today and re-run it on the same
@@ -157,7 +157,7 @@ python3 validation/reproducibility/rerun_goldens.py
 A fixture appears in this list if and only if a Pillar D drift finding
 exceeds tolerance. The user (NOT the agent) decides regeneration. Until
 the user acts, the committed fixture remains the canonical reference for
-TorchGWAS regression checks.
+TorchGenomics regression checks.
 
 | Fixture | Reason | Captured By |
 |---------|--------|-------------|
@@ -167,7 +167,7 @@ TorchGWAS regression checks.
 
 Pillar D adds **infra-blocker** rows for tools that can't be re-installed
 on this host (e.g., GAPIT3 mirror failure). It does not add
-`torchgwas-divergence` findings — Pillars A / B / C are the source of those.
+`torchgenomics-divergence` findings — Pillars A / B / C are the source of those.
 
 The complete cumulative tally (carried forward from
 `docs/superpowers/SESSION_HANDOFF.md`) is at the top of
@@ -179,7 +179,7 @@ The complete cumulative tally (carried forward from
 - Tolerances tight (1e-6 absolute / 1e-10 GRM / 1e-4 -log10p / 0.7 top-K).
 - F3 / fixture-drift findings (when present) are recorded in
   `docs/validation_findings.md` with classification `fixture-drift`,
-  separately from `torchgwas-divergence` findings logged in earlier
+  separately from `torchgenomics-divergence` findings logged in earlier
   pillars.
 - Pytest skips cleanly on hosts without the upstream tools installed.
 - README documents protocol + tolerances + drift table + regenerate list.

@@ -28,13 +28,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from torchgwas.postgwas import (
+from torchgenomics.postgwas import (
     TWASGeneResult,
     TWASResult,
     twas_multi_tissue_aggregate,
     twas_multi_tissue_stack,
 )
-from torchgwas.viz import (
+from torchgenomics.viz import (
     genomic_inflation_factor_twas,
     manhattan_twas,
     qq_twas,

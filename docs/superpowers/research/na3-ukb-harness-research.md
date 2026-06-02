@@ -85,7 +85,7 @@ script; provides `preflight_check`, `preflight_check_with_data_size`,
 | `--bsize 1000` (vs `--bsize 100/200` in Pillar B) | Mbatchou 2021 §"Computational cost" recommends `--bsize 1000` for biobank-scale Step 1; Pillar B used 100 because the MDP fixture had m=3093. |
 | `--threads ${UKB_THREADS:-4}` (vs `--threads 1` in Pillar B) | Pillar B forced single-thread for determinism in the small-fixture comparison; at UKB scale we let REGENIE parallelize per host. |
 | `fetch_data.sh` symlinks UKB (vs MDP staging in Pillar B) | UKB is DUA-controlled and lives wherever the user keeps it; we never duplicate it (could be hundreds of GB). |
-| `run_torchgwas.sh` is new (no Pillar-B equivalent) | Pillar B harnesses only ran the *reference* tool; TG was invoked from `compare.py`. NA3 needs the TG side as a separate process so we can measure its peak RSS independently for the third gate. |
+| `run_torchgenomics.sh` is new (no Pillar-B equivalent) | Pillar B harnesses only ran the *reference* tool; TG was invoked from `compare.py`. NA3 needs the TG side as a separate process so we can measure its peak RSS independently for the third gate. |
 | Quant-only (no Firth path) | Phase 57 modernization MVP scope; Pillar B regenie ran both qt + binary because the MDP fixture had EarHT_bin too. |
 | Three-comparison structure (β corr, h² Δ, peak RAM) | Pillar B harnesses had per-tool comparisons (3 each for regenie + ldsc). NA3 compresses them into the three NA3 success-criteria axes (SESSION_HANDOFF line 102). |
 
@@ -126,7 +126,7 @@ script; provides `preflight_check`, `preflight_check_with_data_size`,
   > S-LDSC papers continue to cite.
 
 - LDSC `--two-step 99999` (single-pass IRWLS) is used to match
-  TorchGWAS' `ldsc_h2(n_iter=2)` IRWLS port — see the resolved
+  TorchGenomics' `ldsc_h2(n_iter=2)` IRWLS port — see the resolved
   finding in `docs/validation_findings.md` (B2 row, validation-branch
   ledger):
 
@@ -135,11 +135,11 @@ script; provides `preflight_check`, `preflight_check_with_data_size`,
 
 ## 4. Comparison metric thresholds + literature basis
 
-### β Pearson r > 0.999 (TorchGWAS vs REGENIE)
+### β Pearson r > 0.999 (TorchGenomics vs REGENIE)
 
 - **Source:** Task NA3 success criteria (SESSION_HANDOFF line 102):
   "β corr > 0.999".
-- **Literature basis:** REGENIE and TorchGWAS' SingleTraitLMM both
+- **Literature basis:** REGENIE and TorchGenomics' SingleTraitLMM both
   implement a per-SNP score test on the same null model
   (intercept + covariates + LOCO-corrected GRM-leveraged variance
   components). When both tools see the same dosage, same covariates,
@@ -155,7 +155,7 @@ script; provides `preflight_check`, `preflight_check_with_data_size`,
   (`validation/external/regenie/README.md` line 67-72). At UKB scale
   (N ≥ 50K) the design regime supports the > 0.999 gate.
 
-### \|Δ h²\| < 5e-3 (TorchGWAS vs LDSC)
+### \|Δ h²\| < 5e-3 (TorchGenomics vs LDSC)
 
 - **Source:** Task NA3 success criteria (SESSION_HANDOFF line 102):
   "h² Δ < 5e-3".
@@ -273,7 +273,7 @@ mirror" claim is anchored to a specific Pillar B harness file:
 - GPU lmm-scan (NA2 covers GPU CI infra).
 - Auto-running the harness (the user — or future-Claude with user
   approval — runs).
-- Modifying `torchgwas/` source (harness consumes the CLI as-is).
+- Modifying `torchgenomics/` source (harness consumes the CLI as-is).
 - A separate UKB K-builder script (out of scope; user supplies K via
   --kinship if they need to break the n × n RAM ceiling, or
   subsamples to n ≤ 50K).
@@ -281,7 +281,7 @@ mirror" claim is anchored to a specific Pillar B harness file:
 ## 9. Verification done at scaffold time
 
 - `bash -n` passes on all four shell scripts (install.sh, fetch_data.sh,
-  run_torchgwas.sh, run_reference.sh).
+  run_torchgenomics.sh, run_reference.sh).
 - `python -m py_compile` passes on `compare.py`.
 - All shell scripts marked executable (`chmod +x`).
 - Pre-flight calls in `install.sh` and run scripts use real

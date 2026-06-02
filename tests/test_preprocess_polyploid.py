@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.preprocess.polyploid import (
+from torchgenomics.preprocess.polyploid import (
     detect_ploidy,
     list_gene_action_models,
     recode_gene_action,
@@ -116,7 +116,7 @@ class TestMaxGenoFreqFilter:
     def test_binary_nearly_monomorphic(self):
         """After 1-dom encoding, a marker where nearly all samples have dose >= 1
         should have max genotype freq close to 1."""
-        from torchgwas.preprocess.qc import compute_max_genotype_freq
+        from torchgenomics.preprocess.qc import compute_max_genotype_freq
 
         # 99 samples with dose >= 1 (encoded as 1), 1 sample with dose 0
         G_encoded = torch.ones(100, 3, dtype=torch.float64)
@@ -133,7 +133,7 @@ class TestMaxGenoFreqFilter:
     def test_multicolumn_general_model(self):
         """For general model with (n, m, k-1), check each column independently
         and return the max across columns per marker."""
-        from torchgwas.preprocess.qc import compute_max_genotype_freq
+        from torchgenomics.preprocess.qc import compute_max_genotype_freq
 
         # Shape (10, 2, 3) — 2 markers, 3 columns each
         # Mix values so no column is all-zero (which would give max_freq=1.0)
@@ -157,7 +157,7 @@ class TestMaxGenoFreqFilter:
 
     def test_nan_handling(self):
         """NaN samples should be excluded from frequency computation."""
-        from torchgwas.preprocess.qc import compute_max_genotype_freq
+        from torchgenomics.preprocess.qc import compute_max_genotype_freq
 
         G_encoded = torch.ones(10, 1, dtype=torch.float64)
         G_encoded[0, 0] = 0.0
@@ -169,7 +169,7 @@ class TestMaxGenoFreqFilter:
 
     def test_additive_dosage(self):
         """Additive encoding with varied dosages — max freq is most common class."""
-        from torchgwas.preprocess.qc import compute_max_genotype_freq
+        from torchgenomics.preprocess.qc import compute_max_genotype_freq
 
         G = torch.tensor([[0], [0], [1], [1], [1], [2], [2], [2], [2], [2]], dtype=torch.float64)
         freqs = compute_max_genotype_freq(G, ploidy=2)
@@ -183,7 +183,7 @@ class TestPolyploidQC:
 
     @pytest.fixture
     def vmeta_4(self):
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         return VariantMeta(
             snp=["s1", "s2", "s3", "s4"],
             chr=["1", "1", "2", "2"],
@@ -221,20 +221,20 @@ class TestPolyploidQC:
         return G
 
     def test_dosage_class_freq_shape(self, G_tetra_qc, vmeta_4):
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         assert stats.dosage_class_freq is not None
         assert stats.dosage_class_freq.shape == (4, 5)  # (m, k+1)
 
     def test_dosage_class_freq_sums_to_one(self, G_tetra_qc, vmeta_4):
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         row_sums = stats.dosage_class_freq.sum(dim=1)
         torch.testing.assert_close(row_sums, torch.ones(4, dtype=torch.float64), atol=1e-10, rtol=0)
 
     def test_dosage_class_freq_monomorphic(self, G_tetra_qc, vmeta_4):
         """Marker 2 is nearly monomorphic — dose=4 should dominate."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         # dose=4 has 19/20 = 0.95
         assert stats.dosage_class_freq[2, 4].item() == pytest.approx(0.95, abs=1e-6)
@@ -242,14 +242,14 @@ class TestPolyploidQC:
         assert stats.dosage_class_freq[2, 3].item() == pytest.approx(0.05, abs=1e-6)
 
     def test_het_per_class_shape(self, G_tetra_qc, vmeta_4):
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         assert stats.het_per_class is not None
         assert stats.het_per_class.shape == (4, 3)  # (m, k-1) = (4, 3)
 
     def test_het_per_class_values(self, G_tetra_qc, vmeta_4):
         """Per-class het should match dosage_class_freq for doses 1,2,3."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         # het_per_class[:, h] = dosage_class_freq[:, h+1] for h in 0..k-2
         for h in range(3):
@@ -261,13 +261,13 @@ class TestPolyploidQC:
 
     def test_het_per_class_sums_to_total_het(self, G_tetra_qc, vmeta_4):
         """Sum of per-class het should equal total observed het."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         total_het_from_classes = stats.het_per_class.sum(dim=1)
         torch.testing.assert_close(total_het_from_classes, stats.het, atol=1e-10, rtol=0)
 
     def test_double_reduction_alpha_shape(self, G_tetra_qc, vmeta_4):
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         assert stats.double_reduction_alpha is not None
         assert stats.double_reduction_alpha.shape == (4,)
@@ -276,7 +276,7 @@ class TestPolyploidQC:
         assert torch.all(stats.double_reduction_alpha <= 1.0 / 6.0 + 1e-10)
 
     def test_hwe_p_dr_shape(self, G_tetra_qc, vmeta_4):
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         assert stats.hwe_p_dr is not None
         assert stats.hwe_p_dr.shape == (4,)
@@ -285,15 +285,15 @@ class TestPolyploidQC:
 
     def test_double_reduction_higher_for_excess_hom(self, G_tetra_qc, vmeta_4):
         """Marker 1 has excess homozygosity — should have higher DR alpha than marker 0."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         # Marker 1 was designed with excess dose=0 and dose=4
         assert stats.double_reduction_alpha[1] >= stats.double_reduction_alpha[0]
 
     def test_dr_not_computed_for_diploid(self):
         """DR fields should be None for diploid data."""
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.preprocess.qc import compute_variant_qc
         G = torch.tensor([[0, 1], [1, 2], [2, 0]], dtype=torch.float64)
         vmeta = VariantMeta(snp=["s1", "s2"], chr=["1", "1"], pos=[1, 2], a1=["A", "A"], a2=["T", "T"])
         stats = compute_variant_qc(G, vmeta, ploidy=2)
@@ -304,8 +304,8 @@ class TestPolyploidQC:
 
     def test_dosage_certainty_filter(self):
         """Markers with high mean dosage variance should be filtered."""
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.preprocess.qc import QCFilterConfig, apply_qc_filters, compute_variant_qc
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.preprocess.qc import QCFilterConfig, apply_qc_filters, compute_variant_qc
 
         n, m, ploidy = 40, 3, 4
         # Well-behaved genotypes that will pass MAF/HWE: balanced dosages
@@ -350,7 +350,7 @@ class TestPolyploidQC:
 
     def test_dr_hwe_filter_integration(self, G_tetra_qc, vmeta_4):
         """use_double_reduction_hwe should use hwe_p_dr instead of hwe_p."""
-        from torchgwas.preprocess.qc import QCFilterConfig, apply_qc_filters, compute_variant_qc
+        from torchgenomics.preprocess.qc import QCFilterConfig, apply_qc_filters, compute_variant_qc
 
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
 
@@ -372,7 +372,7 @@ class TestPolyploidQC:
 
     def test_polyploid_maf_correct(self, G_tetra_qc, vmeta_4):
         """MAF should be computed as mean(dosage)/(ploidy), not mean(dosage)/2."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
 
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         # All MAF values should be in [0, 0.5]
@@ -384,7 +384,7 @@ class TestPolyploidQC:
 
     def test_polyploid_mac_uses_ploidy(self, G_tetra_qc, vmeta_4):
         """MAC = ploidy * n_obs * MAF for polyploids."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
 
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         # Marker 0: no missing, so n_obs = 20
@@ -393,7 +393,7 @@ class TestPolyploidQC:
 
     def test_polyploid_het_counts_all_het_classes(self, G_tetra_qc, vmeta_4):
         """Observed het for polyploid should count all doses 1..k-1."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
 
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         # For marker 0: doses 1,2,3 are heterozygous
@@ -405,8 +405,8 @@ class TestPolyploidQC:
     def test_polyploid_hwe_uses_binomial_expansion(self, vmeta_4):
         """HWE test for polyploid uses C(k,d)*p^d*q^(k-d) expected frequencies."""
 
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.preprocess.qc import compute_variant_qc
 
         # Create data that perfectly matches HWE expectation for p=0.5, k=4
         # Expected: C(4,d)*0.5^4 = [1, 4, 6, 4, 1]/16
@@ -425,7 +425,7 @@ class TestPolyploidQC:
 
     def test_missing_data_excluded_from_polyploid_qc(self, G_tetra_qc, vmeta_4):
         """Missing samples should not affect dosage class freq computation."""
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
 
         stats = compute_variant_qc(G_tetra_qc, vmeta_4, ploidy=4)
         # Marker 3 has 2 missing → n_obs = 18

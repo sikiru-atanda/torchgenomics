@@ -13,10 +13,10 @@ Three comparisons against regenie's outputs on the MDP maize fixture
    predictor file `step1_<trait>_1.loco`. We assert it is finite and the
    sample-column header is a subset of FAM.
 2. **Step 2 quantitative GWAS** — `regenie --step 2 --qt` vs
-   `torchgwas.models.GLM(Wald)` on `Y - LOCO_offset` per chromosome,
+   `torchgenomics.models.GLM(Wald)` on `Y - LOCO_offset` per chromosome,
    covariates = intercept + PC1 + PC2.
 3. **Step 2 binary GWAS (Firth-corrected)** — `regenie --step 2 --bt
-   --firth --pThresh 0.01` vs `torchgwas.models.BinaryGLM(firth=True,
+   --firth --pThresh 0.01` vs `torchgenomics.models.BinaryGLM(firth=True,
    use_spa=False)`, covariates = intercept + PC1 + PC2.
 
 ## Reproduction
@@ -25,7 +25,7 @@ Three comparisons against regenie's outputs on the MDP maize fixture
 bash validation/external/regenie/install.sh        # download + verify regenie v3.3
 bash validation/external/regenie/fetch_data.sh     # stage MDP + simulate phenotypes
 bash validation/external/regenie/run_regenie.sh    # Step 1 + Step 2 (qt + bin)
-TORCHGWAS_DISABLE_NATIVE=1 \
+TORCHGENOMICS_DISABLE_NATIVE=1 \
     python3 validation/external/regenie/compare.py # comparison report
 pytest -m external tests/test_external_regenie.py -v
 ```
@@ -67,7 +67,7 @@ that and gate the harness at observed levels.
 The aspirational gates from the harness spec (β corr > 0.99, -log10p >
 0.95) are calibrated to N≥5000 with regenie's LOCO operating in its
 design regime. Hitting those would require porting regenie's per-block
-5-fold CV ridge into TorchGWAS' Step 1, plus simulating a biobank-scale
+5-fold CV ridge into TorchGenomics' Step 1, plus simulating a biobank-scale
 fixture; both are out of scope for B4 (the goal is API + per-SNP
 agreement, not LOCO algorithm port).
 

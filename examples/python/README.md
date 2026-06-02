@@ -1,13 +1,13 @@
-# TorchGWAS — Python example scripts
+# TorchGenomics — Python example scripts
 
 Numbered, runnable demonstrations of each major capability in
-TorchGWAS. Every script is self-contained: simulates or loads a small
+TorchGenomics. Every script is self-contained: simulates or loads a small
 fixture, runs the relevant scan / integration / visualization, and
 writes results (TSV + PNG) under `results/` next to the script.
 
 ## Run convention
 
-The scripts assume TorchGWAS resolves on the Python path. From the
+The scripts assume TorchGenomics resolves on the Python path. From the
 repository root:
 
 ```bash
@@ -21,7 +21,7 @@ Or, without an editable install:
 PYTHONPATH=. python examples/python/01_single_trait_lmm.py
 ```
 
-Each script is also CLI-runnable through `torchgwas <subcommand>` —
+Each script is also CLI-runnable through `torchgenomics <subcommand>` —
 see the comments at the top of each file for the CLI equivalent.
 
 ## Index
@@ -49,16 +49,16 @@ see the comments at the top of each file for the CLI equivalent.
 | # | Script | What it shows |
 |---|---|---|
 | 07 | `07_mediation.py` | GRM-corrected causal mediation (`mediate_lmm`) with Imai ρ-sensitivity. |
-| 08 | `08_annotate_hits.py` | NCBI gene annotation for GWAS hits (`torchgwas annotate`). |
+| 08 | `08_annotate_hits.py` | NCBI gene annotation for GWAS hits (`torchgenomics annotate`). |
 
 ### TWAS + GWAS↔TWAS integration (2026-05-26)
 
 | # | Script | What it shows |
 |---|---|---|
 | 11 | `11_twas_observed_expression.py` | FUSION measured-expression workflow on normalized RNA-seq counts. Compares OLS vs LMM (kinship-corrected) paths through `twas_observed_expression`. Demonstrates the GTEx-style rank-INT + quantile-norm preprocessing chain. |
-| 12 | `12_twas_sumstat_predixcan_db.py` | S-PrediXcan TWAS reading three tissues' weights from PrediXcan-format `.db` files via `torchgwas.io.read_predixcan_db`, then multi-tissue stacking + S-MultiXcan-style χ² aggregation. |
+| 12 | `12_twas_sumstat_predixcan_db.py` | S-PrediXcan TWAS reading three tissues' weights from PrediXcan-format `.db` files via `torchgenomics.io.read_predixcan_db`, then multi-tissue stacking + S-MultiXcan-style χ² aggregation. |
 | 13 | `13_gwas_twas_integration.py` | All 8 classical combination methods (Fisher / Stouffer / Cauchy / Brown / Empirical Brown / HMP / truncated product / min-p) run against the same 5-gene fixture so the relative behavior across methods is directly comparable. Wide TSV output. |
-| 14 | `14_multi_tissue_twas.py` | 4-tissue TWAS with `twas_multi_tissue_stack` + `twas_multi_tissue_aggregate`; gene-level Manhattan + QQ plots + λ_TWAS via `torchgwas.viz.{manhattan_twas, qq_twas, genomic_inflation_factor_twas}`. |
+| 14 | `14_multi_tissue_twas.py` | 4-tissue TWAS with `twas_multi_tissue_stack` + `twas_multi_tissue_aggregate`; gene-level Manhattan + QQ plots + λ_TWAS via `torchgenomics.viz.{manhattan_twas, qq_twas, genomic_inflation_factor_twas}`. |
 | 15 | `15_combine_methods_comparison.py` | Showcase of the **six novel methods**: R²-weighted Stouffer, LD-aware Brown via eigenMT, polyploid gene-action Fisher, multi-tissue ACAT + lead-SNP, conditional GWAS+TWAS via COJO, hyprcoloc-PPFC-gated combination. Each section is compact so the calling shape of each function is visible in one place. |
 
 ## Outputs
@@ -73,5 +73,5 @@ Parallel R-side examples live under `examples/R/`. The TWAS + GWAS↔TWAS
 integration work in `examples/python/11_*` – `15_*` is Python-only at
 present (no R port yet); the underlying integration kernels (Fisher,
 Stouffer, etc.) have R-side references in `validation/external/metap/`
-for users who want to compare TorchGWAS outputs against `metap` /
+for users who want to compare TorchGenomics outputs against `metap` /
 `EmpiricalBrownsMethod`.

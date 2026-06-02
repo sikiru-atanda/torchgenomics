@@ -2,7 +2,7 @@
 
 The native extensions are *optional*: if a C++17 compiler is not available,
 the install still succeeds and the pure-Python reference implementations in
-``torchgwas/pgs/`` are used at runtime. Set ``TORCHGWAS_DISABLE_NATIVE=1`` in
+``torchgenomics/pgs/`` are used at runtime. Set ``TORCHGENOMICS_DISABLE_NATIVE=1`` in
 the environment to force the Python paths even when the extension is built.
 """
 from __future__ import annotations
@@ -14,17 +14,17 @@ from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup
 
 # --- OpenMP support ----------------------------------------------------------
-# Phase 41af: per-extension opt-in OpenMP. Set TORCHGWAS_DISABLE_OPENMP=1 in
+# Phase 41af: per-extension opt-in OpenMP. Set TORCHGENOMICS_DISABLE_OPENMP=1 in
 # the environment to force a serial build (useful on toolchains where OpenMP
 # is missing or misconfigured). When enabled, extensions listed in
 # OPENMP_EXTENSIONS get the platform-appropriate OpenMP compile/link flags.
-_DISABLE_OMP = bool(os.environ.get("TORCHGWAS_DISABLE_OPENMP"))
+_DISABLE_OMP = bool(os.environ.get("TORCHGENOMICS_DISABLE_OPENMP"))
 if sys.platform == "win32":
     _OMP_CFLAGS = ["/openmp"]
     _OMP_LFLAGS: list[str] = []
 elif sys.platform == "darwin":
     # Apple Clang needs libomp + -Xpreprocessor; users on mac can set
-    # TORCHGWAS_DISABLE_OPENMP=1 if libomp isn't available.
+    # TORCHGENOMICS_DISABLE_OPENMP=1 if libomp isn't available.
     _OMP_CFLAGS = ["-Xpreprocessor", "-fopenmp"]
     _OMP_LFLAGS = ["-lomp"]
 else:
@@ -41,7 +41,7 @@ def _with_omp(ext: Pybind11Extension) -> Pybind11Extension:
 
 ext_modules = [
     Pybind11Extension(
-        "torchgwas._native._prscs_native",
+        "torchgenomics._native._prscs_native",
         sources=[
             "csrc/pgs/gig_sampler.cpp",
             "csrc/pgs/prscs_gibbs.cpp",
@@ -51,7 +51,7 @@ ext_modules = [
         optional=True,  # build failure -> install proceeds, fallback active
     ),
     Pybind11Extension(
-        "torchgwas._native._ldpred2_native",
+        "torchgenomics._native._ldpred2_native",
         sources=[
             "csrc/pgs/ldpred2_gibbs.cpp",
         ],
@@ -60,7 +60,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._ct_native",
+        "torchgenomics._native._ct_native",
         sources=[
             "csrc/pgs/ct_clump.cpp",
         ],
@@ -69,7 +69,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._pelt_native",
+        "torchgenomics._native._pelt_native",
         sources=[
             "csrc/ld/pelt_changepoint.cpp",
         ],
@@ -78,7 +78,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._ess_native",
+        "torchgenomics._native._ess_native",
         sources=[
             "csrc/stats/ess_geyer.cpp",
         ],
@@ -87,7 +87,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._graph_native",
+        "torchgenomics._native._graph_native",
         sources=[
             "csrc/ld/graph_utils.cpp",
         ],
@@ -96,7 +96,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._gabriel_native",
+        "torchgenomics._native._gabriel_native",
         sources=[
             "csrc/ld/gabriel_blocks.cpp",
         ],
@@ -105,7 +105,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._big_ld_native",
+        "torchgenomics._native._big_ld_native",
         sources=[
             "csrc/ld/big_ld.cpp",
         ],
@@ -114,7 +114,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._dp_optimize_native",
+        "torchgenomics._native._dp_optimize_native",
         sources=[
             "csrc/ld/dp_optimize.cpp",
         ],
@@ -123,7 +123,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._cc_graph_native",
+        "torchgenomics._native._cc_graph_native",
         sources=[
             "csrc/ld/cc_graph_adj.cpp",
         ],
@@ -132,7 +132,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._gwas_aligned_native",
+        "torchgenomics._native._gwas_aligned_native",
         sources=[
             "csrc/ld/gwas_aligned.cpp",
         ],
@@ -141,7 +141,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._spine_native",
+        "torchgenomics._native._spine_native",
         sources=[
             "csrc/ld/spine.cpp",
         ],
@@ -150,7 +150,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._ld_decay_signal_native",
+        "torchgenomics._native._ld_decay_signal_native",
         sources=[
             "csrc/ld/ld_decay_signal.cpp",
         ],
@@ -159,7 +159,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._greedy_mwis_native",
+        "torchgenomics._native._greedy_mwis_native",
         sources=[
             "csrc/ld/greedy_mwis.cpp",
         ],
@@ -168,7 +168,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._uncertainty_blocks_native",
+        "torchgenomics._native._uncertainty_blocks_native",
         sources=[
             "csrc/ld/uncertainty_blocks.cpp",
         ],
@@ -177,7 +177,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._wall_pritchard_native",
+        "torchgenomics._native._wall_pritchard_native",
         sources=[
             "csrc/ld/wall_pritchard_perm.cpp",
         ],
@@ -186,7 +186,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._impute_mode_native",
+        "torchgenomics._native._impute_mode_native",
         sources=[
             "csrc/preprocess/impute_mode.cpp",
         ],
@@ -195,7 +195,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._impute_knn_native",
+        "torchgenomics._native._impute_knn_native",
         sources=[
             "csrc/preprocess/impute_knn.cpp",
         ],
@@ -204,7 +204,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._impute_ld_native",
+        "torchgenomics._native._impute_ld_native",
         sources=[
             "csrc/preprocess/impute_ld.cpp",
         ],
@@ -213,7 +213,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._cavi_native",
+        "torchgenomics._native._cavi_native",
         sources=[
             "csrc/models/cavi_sweep.cpp",
         ],
@@ -222,7 +222,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._ibss_native",
+        "torchgenomics._native._ibss_native",
         sources=[
             "csrc/models/susie_rss_ibss.cpp",
         ],
@@ -231,7 +231,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._mediate_native",
+        "torchgenomics._native._mediate_native",
         sources=[
             "csrc/multiomics/mediate_sigma_blocks.cpp",
         ],
@@ -240,7 +240,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._pcht_native",
+        "torchgenomics._native._pcht_native",
         sources=[
             "csrc/models/pcht_compat.cpp",
         ],
@@ -249,7 +249,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._snp_to_gene_native",
+        "torchgenomics._native._snp_to_gene_native",
         sources=[
             "csrc/postgwas/snp_to_gene.cpp",
         ],
@@ -258,7 +258,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._expression_native",
+        "torchgenomics._native._expression_native",
         sources=[
             "csrc/preprocess/expression_norm.cpp",
         ],
@@ -267,7 +267,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._hyprcoloc_native",
+        "torchgenomics._native._hyprcoloc_native",
         sources=[
             "csrc/postgwas/hyprcoloc_subsets.cpp",
         ],
@@ -276,7 +276,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._ordinal_threshold_native",
+        "torchgenomics._native._ordinal_threshold_native",
         sources=[
             "csrc/models/ordinal_threshold_nr.cpp",
         ],
@@ -285,7 +285,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._spa_native",
+        "torchgenomics._native._spa_native",
         sources=[
             "csrc/stats/spa_lugannani_rice.cpp",
         ],
@@ -294,7 +294,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._ldsc_native",
+        "torchgenomics._native._ldsc_native",
         sources=[
             "csrc/postgwas/ldsc_jackknife.cpp",
         ],
@@ -303,7 +303,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._hwe_native",
+        "torchgenomics._native._hwe_native",
         sources=[
             "csrc/preprocess/hwe.cpp",
         ],
@@ -312,7 +312,7 @@ ext_modules = [
         optional=True,
     ),
     Pybind11Extension(
-        "torchgwas._native._cross_pop_native",
+        "torchgenomics._native._cross_pop_native",
         sources=[
             "csrc/ld/cross_pop_stability.cpp",
         ],
@@ -323,18 +323,18 @@ ext_modules = [
 ]
 
 _OMP_TARGETS = {
-    "torchgwas._native._hwe_native",
-    "torchgwas._native._impute_knn_native",
-    "torchgwas._native._impute_mode_native",
-    "torchgwas._native._impute_ld_native",
-    "torchgwas._native._spa_native",
-    "torchgwas._native._dp_optimize_native",
-    "torchgwas._native._mediate_native",
-    "torchgwas._native._pcht_native",
-    "torchgwas._native._snp_to_gene_native",
-    "torchgwas._native._expression_native",
-    "torchgwas._native._hyprcoloc_native",
-    "torchgwas._native._ordinal_threshold_native",
+    "torchgenomics._native._hwe_native",
+    "torchgenomics._native._impute_knn_native",
+    "torchgenomics._native._impute_mode_native",
+    "torchgenomics._native._impute_ld_native",
+    "torchgenomics._native._spa_native",
+    "torchgenomics._native._dp_optimize_native",
+    "torchgenomics._native._mediate_native",
+    "torchgenomics._native._pcht_native",
+    "torchgenomics._native._snp_to_gene_native",
+    "torchgenomics._native._expression_native",
+    "torchgenomics._native._hyprcoloc_native",
+    "torchgenomics._native._ordinal_threshold_native",
 }
 for _ext in ext_modules:
     if _ext.name in _OMP_TARGETS:

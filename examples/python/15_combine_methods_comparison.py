@@ -1,7 +1,7 @@
 """Showcase the six novel GWAS↔TWAS integration methods.
 
 Demonstrates each of the six novel combination kernels added in v0.3.9,
-illustrating how each one exploits a specific piece of TorchGWAS
+illustrating how each one exploits a specific piece of TorchGenomics
 infrastructure that no published TWAS-integration tool currently uses
 (to our knowledge):
 
@@ -25,7 +25,7 @@ from pathlib import Path
 
 import torch
 
-from torchgwas.postgwas import (
+from torchgenomics.postgwas import (
     brown_ld_aware,
     cauchy_multi_tissue_plus_lead_snp,
     fisher_polyploid_gene_action,

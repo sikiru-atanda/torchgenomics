@@ -1,4 +1,4 @@
-"""Phase D.1 — direct tests for torchgwas.scan.
+"""Phase D.1 — direct tests for torchgenomics.scan.
 
 Complements tests/test_scan_unified.py with coverage the plan identified
 as missing:
@@ -17,10 +17,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE, TorchGWASConfig
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.conditional_lmm import ConditionalScanResult
-from torchgwas.scan.unified import UnifiedScanner, merge_scan_results
+from torchgenomics.config import STAT_DTYPE, TorchGenomicsConfig
+from torchgenomics.models.base import NullFit, ScanResult, VariantMeta
+from torchgenomics.models.conditional_lmm import ConditionalScanResult
+from torchgenomics.scan.unified import UnifiedScanner, merge_scan_results
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -152,7 +152,7 @@ def test_scanner_covers_every_variant_across_chunk_boundary(n_variants):
     vmeta = _make_vmeta(n_variants)
 
     model = _CountingModel()
-    config = TorchGWASConfig(chunk_size=1024)
+    config = TorchGenomicsConfig(chunk_size=1024)
     scanner = UnifiedScanner(_ListReader(G, vmeta), model, config)
     nf = model.fit_null(torch.zeros(n, 1), torch.ones(n, 1))
     result = scanner.scan(nf)
@@ -182,7 +182,7 @@ def test_scan_calls_score_chunk_once_per_chunk():
     model = _CountingModel()
     scanner = UnifiedScanner(
         _ListReader(G, vmeta), model,
-        TorchGWASConfig(chunk_size=chunk_size),
+        TorchGenomicsConfig(chunk_size=chunk_size),
     )
     nf = NullFit(converged=True)
     scanner.scan(nf)
@@ -200,7 +200,7 @@ def test_scan_does_not_refit_null():
     model = _CountingModel()
     scanner = UnifiedScanner(
         _ListReader(G, _make_vmeta(40)), model,
-        TorchGWASConfig(chunk_size=16),
+        TorchGenomicsConfig(chunk_size=16),
     )
     scanner.scan(NullFit(converged=True))
     assert model.fit_null_calls == 0
@@ -218,7 +218,7 @@ def test_scan_cpu_keeps_chunks_on_cpu():
     model = _CountingModel()
     scanner = UnifiedScanner(
         _ListReader(G, _make_vmeta(50)), model,
-        TorchGWASConfig(chunk_size=25, device=torch.device("cpu")),
+        TorchGenomicsConfig(chunk_size=25, device=torch.device("cpu")),
     )
     scanner.scan(NullFit(converged=True))
     assert model.seen_device is not None
@@ -233,7 +233,7 @@ def test_scan_moves_cpu_chunks_to_cuda():
     model = _CountingModel()
     scanner = UnifiedScanner(
         _ListReader(G, _make_vmeta(64)), model,
-        TorchGWASConfig(chunk_size=32, device=torch.device("cuda")),
+        TorchGenomicsConfig(chunk_size=32, device=torch.device("cuda")),
     )
     scanner.scan(NullFit(converged=True))
     assert model.seen_device is not None

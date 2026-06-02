@@ -1,4 +1,4 @@
-"""Tests for torchgwas.pgs.prscs — PRS-CS and the Devroye GIG sampler."""
+"""Tests for torchgenomics.pgs.prscs — PRS-CS and the Devroye GIG sampler."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ import math
 import pytest
 import torch
 
-from torchgwas.pgs.ld_ref import build_ld_reference
-from torchgwas.pgs.prscs import (
+from torchgenomics.pgs.ld_ref import build_ld_reference
+from torchgenomics.pgs.prscs import (
     PRSCS,
     _prscs_gibbs_block,
     _sample_gig_scalar,
     sample_gig,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _make_ss_and_ld(m=10, n=2000, seed=0):

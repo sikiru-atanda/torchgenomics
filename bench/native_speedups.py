@@ -1,17 +1,17 @@
-"""Benchmark every TorchGWAS native C++ accelerator against its pure-Python
+"""Benchmark every TorchGenomics native C++ accelerator against its pure-Python
 reference and emit a markdown table or machine-readable JSON.
 
 Why this exists
 ---------------
 By the end of Phase 41ab the project ships 28 native extensions under
-``torchgwas._native``. Most were added on the assumption that the C++
+``torchgenomics._native``. Most were added on the assumption that the C++
 kernel beats the pure-Python path on realistic inputs — but until now
 that assumption was never measured end-to-end. This script:
 
 1. Picks one realistic input size per kernel (small enough to run in
    seconds, large enough that the per-call pybind11 / GIL-release
    overhead is amortized).
-2. Runs the kernel under both ``TORCHGWAS_DISABLE_NATIVE=1`` and unset.
+2. Runs the kernel under both ``TORCHGENOMICS_DISABLE_NATIVE=1`` and unset.
 3. Reports the median wall time over a small number of repeats and the
    resulting speedup.
 4. Writes the table to ``bench/native_speedups.md`` and stdout — or, in
@@ -39,10 +39,10 @@ Run with::
         --output-path benchmarks.json \\
         --kernel-subset gabriel_blocks,pelt,cc_graph,impute_knn,...
 
-Set ``TORCHGWAS_BENCH_QUICK=1`` to use ``n_repeats=2`` for a fast
+Set ``TORCHGENOMICS_BENCH_QUICK=1`` to use ``n_repeats=2`` for a fast
 sanity check.
 
-Set ``TORCHGWAS_BENCH_REALISTIC=1`` to scale each kernel's input 2–4×
+Set ``TORCHGENOMICS_BENCH_REALISTIC=1`` to scale each kernel's input 2–4×
 beyond the small defaults (capped per-kernel so the pure-Python path
 still finishes within a few minutes). This validates that the Phase 41
 speedups do not regress at sizes closer to what real users hit, which
@@ -63,8 +63,8 @@ from typing import Any, Callable
 # Ensure the repo root is on sys.path when invoked as ``python
 # bench/native_speedups.py`` from the repo root — Python adds the
 # script's directory (``bench/``) to ``sys.path[0]``, which would shadow
-# the in-tree ``torchgwas/`` package. Inserting the parent (the repo
-# root) first makes ``import torchgwas...`` resolve to the editable
+# the in-tree ``torchgenomics/`` package. Inserting the parent (the repo
+# root) first makes ``import torchgenomics...`` resolve to the editable
 # checkout regardless of whether the package is also pip-installed.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
@@ -78,8 +78,8 @@ import torch
 # Timing harness
 # ---------------------------------------------------------------------
 
-QUICK = bool(os.environ.get("TORCHGWAS_BENCH_QUICK"))
-REALISTIC = bool(os.environ.get("TORCHGWAS_BENCH_REALISTIC"))
+QUICK = bool(os.environ.get("TORCHGENOMICS_BENCH_QUICK"))
+REALISTIC = bool(os.environ.get("TORCHGENOMICS_BENCH_REALISTIC"))
 # CI mode: input sizes shrunk so the *python* reference path finishes
 # under ~5 s per kernel even in the unrolled-loop kernels (Gabriel,
 # PELT, Big-LD, etc). The native path is still measured at full
@@ -87,7 +87,7 @@ REALISTIC = bool(os.environ.get("TORCHGWAS_BENCH_REALISTIC"))
 # reference to run a 90 s O(m⁴) scan inside a 6-min CI budget. The
 # regression test itself only cares that the native p50 doesn't
 # regress; the CI-mode python timing is purely a sanity sentinel.
-CI = bool(os.environ.get("TORCHGWAS_BENCH_CI"))
+CI = bool(os.environ.get("TORCHGENOMICS_BENCH_CI"))
 DEFAULT_REPEATS = 2 if (QUICK or CI) else 5
 
 
@@ -179,12 +179,12 @@ def run_bench(b: Bench) -> tuple[BenchResult, BenchResult]:
     state across paths.
     """
     # Python path
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     args_py = b.builder()
     py_med, py_p50, py_p95 = _time_call(b.runner, args_py, b.repeats)
 
     # Native path
-    os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+    os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     args_nat = b.builder()
     nat_med, nat_p50, nat_p95 = _time_call(b.runner, args_nat, b.repeats)
 
@@ -218,7 +218,7 @@ def _build_prscs_block():
 
 
 def _run_prscs_block(beta_std, R, n_eff, phi, a, b, n_iter, n_burnin, rng):
-    from torchgwas.pgs.prscs import _prscs_gibbs_block_dispatch
+    from torchgenomics.pgs.prscs import _prscs_gibbs_block_dispatch
     rng2 = torch.Generator().manual_seed(0)
     return _prscs_gibbs_block_dispatch(
         beta_std, R, n_eff, phi, a, b, n_iter, n_burnin, rng2,
@@ -238,7 +238,7 @@ def _build_ldpred2_block():
 
 
 def _run_ldpred2_block(beta_std, R, p_causal, h2, n_eff, n_iter, n_burnin, sparse):
-    from torchgwas.pgs.ldpred2 import _ldpred2_gibbs_block_dispatch
+    from torchgenomics.pgs.ldpred2 import _ldpred2_gibbs_block_dispatch
     rng = torch.Generator().manual_seed(0)
     return _ldpred2_gibbs_block_dispatch(
         beta_std, R, p_causal, h2, n_eff, n_iter, n_burnin, sparse, rng,
@@ -248,7 +248,7 @@ def _run_ldpred2_block(beta_std, R, p_causal, h2, n_eff, n_iter, n_burnin, spars
 # ---------- PGS: C+T clumping ----------------------------------------
 
 def _build_ct():
-    from torchgwas.pgs.base import LDReference
+    from torchgenomics.pgs.base import LDReference
     rng = torch.Generator().manual_seed(0)
     m = _pick(1500, 3000)
     R = torch.eye(m, dtype=torch.float64) + 0.05 * torch.randn(
@@ -270,7 +270,7 @@ def _build_ct():
 
 
 def _run_ct(p, ld_ref, chr_labels, pos, p_thr, r2_thr, window_kb):
-    from torchgwas.pgs.ct import _clump_with_ld_reference_dispatch
+    from torchgenomics.pgs.ct import _clump_with_ld_reference_dispatch
     return _clump_with_ld_reference_dispatch(
         p, ld_ref, chr_labels, pos,
         p_threshold=p_thr, r2_threshold=r2_thr, window_kb=window_kb,
@@ -296,7 +296,7 @@ def _build_pelt():
 
 
 def _run_pelt(signal, penalty):
-    from torchgwas.ld._changepoint import dp_changepoint
+    from torchgenomics.ld._changepoint import dp_changepoint
     return dp_changepoint(signal, penalty, cost_fn="gaussian")
 
 
@@ -313,7 +313,7 @@ def _build_ess():
 
 
 def _run_ess(chains):
-    from torchgwas.pgs.diagnostics import ess
+    from torchgenomics.pgs.diagnostics import ess
     return ess(chains)
 
 
@@ -328,7 +328,7 @@ def _build_cc():
 
 
 def _run_cc(A, t):
-    from torchgwas.ld._graph_utils import connected_components
+    from torchgenomics.ld._graph_utils import connected_components
     return connected_components(A, threshold=t)
 
 
@@ -338,7 +338,7 @@ def _build_gabriel():
     # NOTE: realistic mode keeps m=300 because the small-bench Python
     # path is already ~120s (O(m⁴) Python scan); doubling m → 1000s+.
     # CI mode uses m=80 to keep python under ~3 s.
-    from torchgwas.ld import compute_pairwise_ld
+    from torchgenomics.ld import compute_pairwise_ld
     rng = torch.Generator().manual_seed(0)
     n = 400
     m = _pick(300, 300, ci=80)
@@ -350,7 +350,7 @@ def _build_gabriel():
 
 
 def _run_gabriel(pld, pos, chrs):
-    from torchgwas.ld._blocks import detect_blocks_gabriel
+    from torchgenomics.ld._blocks import detect_blocks_gabriel
     return detect_blocks_gabriel(pld, pos, chrs)
 
 
@@ -366,7 +366,7 @@ def _build_big_ld():
 
 
 def _run_big_ld(G, pos, chrs):
-    from torchgwas.ld._blocks_literature import detect_blocks_big_ld
+    from torchgenomics.ld._blocks_literature import detect_blocks_big_ld
     return detect_blocks_big_ld(G, pos, chrs, r2_threshold=0.2)
 
 
@@ -382,7 +382,7 @@ def _build_dp_opt():
 
 
 def _run_dp_opt(G, pos, chrs):
-    from torchgwas.ld._blocks_literature import detect_blocks_dp_optimize
+    from torchgenomics.ld._blocks_literature import detect_blocks_dp_optimize
     return detect_blocks_dp_optimize(G, pos, chrs, objective="haplotype_diversity")
 
 
@@ -398,7 +398,7 @@ def _build_cc_graph():
 
 
 def _run_cc_graph(G, pos, chrs):
-    from torchgwas.ld._blocks_literature import detect_blocks_cc_graph
+    from torchgenomics.ld._blocks_literature import detect_blocks_cc_graph
     return detect_blocks_cc_graph(G, pos, chrs, r2_threshold=0.3, window=80)
 
 
@@ -414,14 +414,14 @@ def _build_gwas_aligned():
 
 
 def _run_gwas_aligned(G, pos, chrs):
-    from torchgwas.ld._blocks_novel import detect_blocks_gwas_aligned
+    from torchgenomics.ld._blocks_novel import detect_blocks_gwas_aligned
     return detect_blocks_gwas_aligned(G, pos, chrs, max_block_snps=20)
 
 
 # ---------- LD: spine ------------------------------------------------
 
 def _build_spine():
-    from torchgwas.ld import compute_pairwise_ld
+    from torchgenomics.ld import compute_pairwise_ld
     rng = torch.Generator().manual_seed(0)
     n, m = 400, _pick(250, 500)
     G = torch.randint(0, 3, (n, m), generator=rng).to(torch.float64)
@@ -432,7 +432,7 @@ def _build_spine():
 
 
 def _run_spine(pld, pos, chrs):
-    from torchgwas.ld._blocks import detect_blocks_spine
+    from torchgenomics.ld._blocks import detect_blocks_spine
     return detect_blocks_spine(pld, pos, chrs, d_prime_threshold=0.5)
 
 
@@ -449,7 +449,7 @@ def _build_ld_decay():
 
 
 def _run_ld_decay(r2, idx_i, idx_j, n_var, k):
-    from torchgwas.ld._changepoint import ld_decay_signal
+    from torchgenomics.ld._changepoint import ld_decay_signal
     return ld_decay_signal(r2, idx_i, idx_j, n_var, k_neighbors=k)
 
 
@@ -465,14 +465,14 @@ def _build_mwis():
 
 
 def _run_mwis(intervals):
-    from torchgwas.ld._graph_utils import greedy_mwis
+    from torchgenomics.ld._graph_utils import greedy_mwis
     return greedy_mwis(intervals)
 
 
 # ---------- LD: Wall-Pritchard permutation ---------------------------
 
 def _build_wall_pritchard():
-    from torchgwas.ld import compute_pairwise_ld
+    from torchgenomics.ld import compute_pairwise_ld
     rng = torch.Generator().manual_seed(0)
     n, m = 200, _pick(150, 250)
     n_perm = _pick(200, 300)
@@ -484,7 +484,7 @@ def _build_wall_pritchard():
 
 
 def _run_wall_pritchard(pld, pos, chrs, n_perm):
-    from torchgwas.ld._blocks_diagnostics import compute_wall_pritchard_diagnostics
+    from torchgenomics.ld._blocks_diagnostics import compute_wall_pritchard_diagnostics
     return compute_wall_pritchard_diagnostics(
         pld, pos, chrs, n_permutations=n_perm,
     )
@@ -510,7 +510,7 @@ def _build_uncertainty():
 
 
 def _run_uncertainty(G, gp, ploidy, pos, chrs):
-    from torchgwas.ld._blocks_novel import detect_blocks_uncertainty
+    from torchgenomics.ld._blocks_novel import detect_blocks_uncertainty
     return detect_blocks_uncertainty(G, gp, ploidy, pos, chrs)
 
 
@@ -528,7 +528,7 @@ def _build_cross_pop():
 
 
 def _run_cross_pop(G, pop_ids, weights, pos, chrs):
-    from torchgwas.ld._blocks_novel import detect_blocks_cross_pop
+    from torchgenomics.ld._blocks_novel import detect_blocks_cross_pop
     return detect_blocks_cross_pop(
         G, pop_ids, weights, pos, chrs,
         n_blocks_hint=4, stability_threshold=0.0, min_block_snps=2,
@@ -548,7 +548,7 @@ def _build_impute_mode():
 
 
 def _run_impute_mode(G):
-    from torchgwas.preprocess.impute import impute_mode
+    from torchgenomics.preprocess.impute import impute_mode
     return impute_mode(G)
 
 
@@ -567,7 +567,7 @@ def _build_impute_knn():
 
 
 def _run_impute_knn(G, K, k):
-    from torchgwas.preprocess.impute import impute_knn
+    from torchgenomics.preprocess.impute import impute_knn
     return impute_knn(G, K, k=k)
 
 
@@ -583,7 +583,7 @@ def _build_impute_ld():
 
 
 def _run_impute_ld(G, w):
-    from torchgwas.preprocess.impute import impute_ld
+    from torchgenomics.preprocess.impute import impute_ld
     return impute_ld(G, window_size=w)
 
 
@@ -599,7 +599,7 @@ def _build_hwe():
 
 
 def _run_hwe(G, af, ploidy):
-    from torchgwas.preprocess.qc import _compute_hwe_pvalue
+    from torchgenomics.preprocess.qc import _compute_hwe_pvalue
     return _compute_hwe_pvalue(G, af, ploidy=ploidy)
 
 
@@ -613,7 +613,7 @@ def _build_hwe_dr():
 
 
 def _run_hwe_dr(G, af, ploidy):
-    from torchgwas.preprocess.qc import _compute_hwe_double_reduction
+    from torchgenomics.preprocess.qc import _compute_hwe_double_reduction
     return _compute_hwe_double_reduction(G, af, ploidy)
 
 
@@ -631,7 +631,7 @@ def _build_spa():
 
 
 def _run_spa(score, mu, G, thr):
-    from torchgwas.stats.spa import saddlepoint_pvalue
+    from torchgenomics.stats.spa import saddlepoint_pvalue
     return saddlepoint_pvalue(score, mu, G, threshold=thr)
 
 
@@ -651,7 +651,7 @@ def _build_ldsc():
 
 
 def _run_ldsc(chi2, ld, n_eff, m):
-    from torchgwas.postgwas._ldsc import ldsc_h2
+    from torchgenomics.postgwas._ldsc import ldsc_h2
     return ldsc_h2(chi2, ld, n_eff, m_total=m, n_blocks=200)
 
 
@@ -681,7 +681,7 @@ def _build_grm_streaming():
 
 
 def _run_grm_streaming(chunks, n):
-    from torchgwas.linalg.kinship import grm_vanraden_streaming
+    from torchgenomics.linalg.kinship import grm_vanraden_streaming
     return grm_vanraden_streaming(iter(chunks), n_samples=n, ploidy=2)
 
 
@@ -704,7 +704,7 @@ def _build_grm_vanraden():
 
 
 def _run_grm_vanraden(G):
-    from torchgwas.linalg.kinship import grm_vanraden
+    from torchgenomics.linalg.kinship import grm_vanraden
     return grm_vanraden(G, ploidy=2)
 
 
@@ -741,7 +741,7 @@ def bench_bayes_scan_rss(p: int = 1000, n: int = 5000) -> dict[str, Any]:
         emitted by the main ``bench/native_speedups.py`` flow, so it can
         be appended to a regression record.
     """
-    from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+    from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
 
     rng = torch.Generator()
     rng.manual_seed(0)
@@ -1007,7 +1007,7 @@ def _emit_markdown(rows: list[tuple], out_path: str) -> str:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=(
-            "Benchmark TorchGWAS native C++ kernels vs pure-Python "
+            "Benchmark TorchGenomics native C++ kernels vs pure-Python "
             "reference. Default: write a markdown table to "
             "bench/native_speedups[_realistic].md. Use --output json "
             "for the JSON schema consumed by bench/diff_perf.py."
@@ -1041,7 +1041,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help="Override per-kernel n_repeats. Defaults to 5 (or 2 if "
-        "TORCHGWAS_BENCH_QUICK=1).",
+        "TORCHGENOMICS_BENCH_QUICK=1).",
     )
     return p.parse_args(argv)
 
@@ -1062,7 +1062,7 @@ def main(argv: list[str] | None = None) -> int:
         for b in benches:
             b.repeats = args.n_repeats
 
-    print(f"# TorchGWAS native acceleration benchmark")
+    print(f"# TorchGenomics native acceleration benchmark")
     print(
         f"# repeats={benches[0].repeats if benches else DEFAULT_REPEATS}, "
         f"quick={QUICK}, realistic={REALISTIC}, "

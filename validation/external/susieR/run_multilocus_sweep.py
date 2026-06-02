@@ -1,7 +1,7 @@
 """Benchmark 3: chromosome-spanning multi-locus wall-time profile.
 
 Partition all surviving MDP SNPs (~2953 after monomorphic drop) into
-non-overlapping p=200 windows. Run TorchGWAS bayes-scan-rss on each window;
+non-overlapping p=200 windows. Run TorchGenomics bayes-scan-rss on each window;
 record per-locus wall-time, peak β_sd, and convergence. Compare aggregate
 runtime against the per-locus susieR equivalent on a sub-sampled set of
 loci (full susieR sweep would take many minutes; we sample 5 loci for
@@ -22,7 +22,7 @@ import pandas as pd
 import torch
 from scipy.stats import pearsonr
 
-from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
 
 OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,7 +61,7 @@ p_total = G.shape[1]
 n_loci = p_total // WINDOW_SIZE
 print(f"MDP genome sweep: n={n}, total p={p_total}, {n_loci} loci of {WINDOW_SIZE} SNPs each")
 
-# Run TorchGWAS on every locus
+# Run TorchGenomics on every locus
 model = BayesianVSRss(max_num_causal=10, coverage=0.95, purity=0.5)
 results = []
 total_t = 0.0
@@ -92,7 +92,7 @@ for li in range(n_loci):
 df = pd.DataFrame(results)
 df.to_csv(OUT_DIR / "multilocus_sweep.tsv", sep="\t", index=False)
 
-print(f"\nTorchGWAS multi-locus sweep: {total_t:.2f}s total")
+print(f"\nTorchGenomics multi-locus sweep: {total_t:.2f}s total")
 print(f"  per-locus: mean {df['wall_time_s'].mean()*1000:.1f}ms,"
       f" median {df['wall_time_s'].median()*1000:.1f}ms,"
       f" max {df['wall_time_s'].max()*1000:.1f}ms")
@@ -158,11 +158,11 @@ cat(dt, file="{OUT_DIR}/_dt.txt")
 
 # Aggregate
 print(f"\n=== Aggregate genome-sweep (extrapolated) ===")
-print(f"  TorchGWAS full {n_loci}-locus sweep: {total_t:.2f}s ({total_t/n_loci*1000:.1f}ms/locus avg)")
+print(f"  TorchGenomics full {n_loci}-locus sweep: {total_t:.2f}s ({total_t/n_loci*1000:.1f}ms/locus avg)")
 mean_su = sum(p[4] for p in parity) / len(parity)
 mean_ours = sum(p[5] for p in parity) / len(parity)
 print(f"  susieR per-locus avg ({len(parity)} loci sampled): {mean_su*1000:.1f}ms")
-print(f"  TorchGWAS per-locus avg (same {len(parity)} loci): {mean_ours*1000:.1f}ms")
+print(f"  TorchGenomics per-locus avg (same {len(parity)} loci): {mean_ours*1000:.1f}ms")
 print(f"  Per-locus ratio: {mean_ours/mean_su:.2f}× susieR")
 print(f"  Extrapolated full susieR sweep: {mean_su*n_loci:.2f}s")
-print(f"  Extrapolated full TorchGWAS sweep: {mean_ours*n_loci:.2f}s")
+print(f"  Extrapolated full TorchGenomics sweep: {mean_ours*n_loci:.2f}s")

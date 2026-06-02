@@ -1,7 +1,7 @@
 """GU (Genotype-Uncertainty LMM) internal-consistency simulator.
 
 Phase 28 — no external reference tool exists. This harness validates
-``torchgwas.models.gu_lmm.GULM`` by:
+``torchgenomics.models.gu_lmm.GULM`` by:
 
   1. Simulating genotypes with KNOWN per-sample dosage variance σ²,
   2. Running the GU-corrected score test under (a) zero uncertainty and
@@ -36,9 +36,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from torchgwas.linalg.kinship import grm_vanraden  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.gu_lmm import GULM  # noqa: E402
+from torchgenomics.linalg.kinship import grm_vanraden  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.gu_lmm import GULM  # noqa: E402
 
 
 SEED = 42

@@ -1,4 +1,4 @@
-// Native accelerator for ``torchgwas.ld._blocks_novel.detect_blocks_gwas_aligned``.
+// Native accelerator for ``torchgenomics.ld._blocks_novel.detect_blocks_gwas_aligned``.
 //
 // The pure-Python loop runs an O(m * K) DP where each candidate (i, j) calls
 // ``torch.linalg.eigvalsh(R[i:j, i:j])`` and ``.item()`` round-trips both the

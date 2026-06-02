@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.farmcpu import FarmCPU
-from torchgwas.models.iterative import IterativeGWASLoop
+from torchgenomics.models.base import NullFit, ScanResult, VariantMeta
+from torchgenomics.models.farmcpu import FarmCPU
+from torchgenomics.models.iterative import IterativeGWASLoop
 
 # ---------------------------------------------------------------
 # Fixtures

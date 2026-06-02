@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-30
 **Branch:** `efficiency/streaming-scan-audit`
-**Scope:** every CLI subcommand registered in `torchgwas/cli.py` that ingests
+**Scope:** every CLI subcommand registered in `torchgenomics/cli.py` that ingests
 genotype data, classified by whether it streams chunks through the scan loop
 or materializes the full `(n_samples × n_variants)` genotype matrix at any
 point.
@@ -269,7 +269,7 @@ keeps the existing per-chunk scan loop unchanged.
 ### Group C — impute methods (4 rewrites)
 
 Each method splits into streaming-friendly building blocks in
-`torchgwas.preprocess.impute`. Output sink is `.zarr` (per-chunk
+`torchgenomics.preprocess.impute`. Output sink is `.zarr` (per-chunk
 write, peak memory bounded by chunk size) or fallback `.pt`
 (legacy in-memory materialization, kept for backward compat).
 
@@ -478,7 +478,7 @@ fits are arithmetic-identical; bit-for-bit zero diff on a
 `_load_scan_data`)". The actual CLI uses `_load_array(args.genotype)`
 on a `.npy` / `.pt` / `.tsv` flat file — the user-side input cost is
 irreducible without a CLI input-format extension (a separate feature,
-deferred). The TorchGWAS-internal rotated-genotype cost is now
+deferred). The TorchGenomics-internal rotated-genotype cost is now
 bounded by per-block streaming.
 
 ### Group C — pipeline mechanical follow-on

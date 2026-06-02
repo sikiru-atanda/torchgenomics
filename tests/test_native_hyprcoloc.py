@@ -1,13 +1,13 @@
 """Regression tests for the native C++ hyprcoloc subset enumeration.
 
 The native kernel
-(``torchgwas._native._hyprcoloc_native.enumerate_subset_log_bf``)
+(``torchgenomics._native._hyprcoloc_native.enumerate_subset_log_bf``)
 replaces the per-subset Python loop in
-``torchgwas.postgwas._hyprcoloc.hyprcoloc``. These tests assert:
+``torchgenomics.postgwas._hyprcoloc.hyprcoloc``. These tests assert:
 
 1.  **Parity** — native and Python paths produce numerically identical
     posterior outputs at the FP64 floor for K ∈ {6, 8, 10, 12}.
-2.  **Env-var fallthrough** — ``TORCHGWAS_DISABLE_NATIVE=1`` forces
+2.  **Env-var fallthrough** — ``TORCHGENOMICS_DISABLE_NATIVE=1`` forces
     the Python reference path.
 3.  **Below-threshold input** — K < 6 routes to Python.
 """
@@ -19,9 +19,9 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas._native import HAS_NATIVE_HYPRCOLOC
-from torchgwas.postgwas._hyprcoloc import hyprcoloc
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics._native import HAS_NATIVE_HYPRCOLOC
+from torchgenomics.postgwas._hyprcoloc import hyprcoloc
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _planted_K_traits(
@@ -56,18 +56,18 @@ def _planted_K_traits(
 
 
 def _run_with(env_value, fn, *args, **kwargs):
-    prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+    prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
     if env_value is None:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     else:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = env_value
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = env_value
     try:
         return fn(*args, **kwargs)
     finally:
         if prev is None:
-            os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+            os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
         else:
-            os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+            os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
 
 @unittest.skipUnless(

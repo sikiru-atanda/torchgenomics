@@ -30,7 +30,7 @@ source "${HERE}/../_lib/preflight.sh"
 GEMMA_VERSION="0.98.5"
 GEMMA_BUILD_DATE="2021-08-25"
 # SHA-256 of the static AMD64 binary as committed at gemma_demo/gemma-0.98.5.
-# Captured 2026-05-04 against the canonical TorchGWAS checkout. If upstream
+# Captured 2026-05-04 against the canonical TorchGenomics checkout. If upstream
 # rebuilds the same release artifact under the same name, the checksum will
 # mismatch and we'll know — which is exactly what we want for reproducibility.
 GEMMA_BINARY_SHA256="ad3f3f43a2f8a1c00e71fae8f43676614170e06c99fc766a947acfe45605969b"
@@ -58,7 +58,7 @@ if [[ -z "${SOURCE_BIN}" ]]; then
     echo "[gemma install]   ${ROOT}/gemma_demo/gemma-0.98.5"
     echo "[gemma install]   ${HOME}/Documents/GWAS_Expert/gemma_demo/gemma-0.98.5"
     echo "[gemma install] GEMMA was wired BEFORE Pillar A; the binary is part"
-    echo "[gemma install] of the canonical TorchGWAS checkout. Restore"
+    echo "[gemma install] of the canonical TorchGenomics checkout. Restore"
     echo "[gemma install] gemma_demo/ before retrying."
     exit 1
 fi

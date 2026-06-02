@@ -1,6 +1,6 @@
 {
   "kernel": "sigma_u_block + sigma_v_block",
-  "ext": "torchgwas._native._mediate_native",
+  "ext": "torchgenomics._native._mediate_native",
   "date": "2026-05-29",
   "host": "linux-x86_64",
   "notes": "Both kernels combined; random rotated-basis inputs; c0 covariates; warm-up + 3-trial mean. Python path uses nested torch.linalg.solve over per-pair Xy. Native path precomputes weighted cross-products via torch BLAS once per block, then inline Cholesky + solve + SSR per pair. OpenMP across the outer SNP loop.",

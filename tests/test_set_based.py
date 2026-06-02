@@ -7,10 +7,10 @@ import pytest
 import torch
 from scipy.stats import kstest
 
-from torchgwas.io.regions import Region, compute_skat_weights, load_regions, map_regions_to_variants
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.set_based import SetBasedResult, SetBasedScanner
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.io.regions import Region, compute_skat_weights, load_regions, map_regions_to_variants
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.set_based import SetBasedResult, SetBasedScanner
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 # ---------------------------------------------------------------
 # Fixtures

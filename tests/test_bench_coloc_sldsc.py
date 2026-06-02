@@ -1,4 +1,4 @@
-"""Benchmark: torchgwas colocalization and S-LDSC vs manual scipy/numpy.
+"""Benchmark: torchgenomics colocalization and S-LDSC vs manual scipy/numpy.
 
 Part 1 -- Colocalization (coloc_pairwise, hyprcoloc):
     Validates the Wakefield approximate Bayes factor, per-SNP and per-subset
@@ -19,13 +19,13 @@ import itertools
 import numpy as np
 import torch
 
-from torchgwas.postgwas._hyprcoloc import (
+from torchgenomics.postgwas._hyprcoloc import (
     _wakefield_log_abf,
     coloc_pairwise,
     hyprcoloc,
 )
-from torchgwas.postgwas._sldsc import sldsc_h2_partitioned
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sldsc import sldsc_h2_partitioned
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -507,7 +507,7 @@ class TestBenchSLDSCSingleAnnotation:
 
     def test_bench_sldsc_single_annotation_matches_ldsc_h2(self):
         """Single-annotation S-LDSC should match univariate ldsc_h2."""
-        from torchgwas.postgwas._ldsc import ldsc_h2
+        from torchgenomics.postgwas._ldsc import ldsc_h2
 
         rng = np.random.default_rng(202)
         m = 400

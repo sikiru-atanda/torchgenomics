@@ -1,4 +1,4 @@
-"""Compare TorchGWAS WithinFamilyLMM vs the paper-OLS direct/indirect estimator.
+"""Compare TorchGenomics WithinFamilyLMM vs the paper-OLS direct/indirect estimator.
 
 Maps:
   - β_direct_TG    ≡ result._wf_beta (within-family scan β; estimates β_d)
@@ -46,10 +46,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE  # noqa: E402
-from torchgwas.linalg.kinship import grm_vanraden  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.within_family_lmm import WithinFamilyLMM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE  # noqa: E402
+from torchgenomics.linalg.kinship import grm_vanraden  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.within_family_lmm import WithinFamilyLMM  # noqa: E402
 
 
 TOL_BETA_DIRECT_3SF = 5e-5
@@ -108,8 +108,8 @@ def _check_min(name: str, obs: float, thr: float, note: str = "") -> CheckResult
     return CheckResult(name=name, passed=obs >= thr, observed=obs, threshold=thr, direction="min", note=note)
 
 
-def run_torchgwas(data_dir: Path):
-    """Run torchgwas WithinFamilyLMM on the simulated fixture.
+def run_torchgenomics(data_dir: Path):
+    """Run torchgenomics WithinFamilyLMM on the simulated fixture.
 
     Returns a dict with the per-SNP results aligned to the SNP IDs in the
     reference output.
@@ -161,7 +161,7 @@ def run_torchgwas(data_dir: Path):
 def compare_direct_indirect(data_dir, out_dir):
     ref = pd.read_csv(out_dir / "reference.tsv", sep="\t")
     truth = pd.read_csv(data_dir / "truth.tsv", sep="\t")
-    tg = run_torchgwas(data_dir)
+    tg = run_torchgenomics(data_dir)
     rows = {}
     rows["SNP"] = tg["snp"]
     rows["beta_d_tg"] = tg["beta_within"]

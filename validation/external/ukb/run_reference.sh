@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run REGENIE Step 1 + Step 2 + LDSC h² on the same UKB chr22 fixture as
-# run_torchgwas.sh.
+# run_torchgenomics.sh.
 #
 # Comparison anchor (per Task NA3 spec; SESSION_HANDOFF lines 91-104):
 #   - REGENIE quantitative-trait LMM (Step 1 ridge LOCO predictor + Step 2
@@ -16,7 +16,7 @@
 #   - Outputs go to reference_outputs/ (cached; re-running compare.py
 #     reuses these without re-invoking REGENIE / LDSC unless --force).
 #   - Peak RSS recorded via `/usr/bin/time -v` for fair comparison vs
-#     run_torchgwas.sh.
+#     run_torchgenomics.sh.
 #
 # Outputs:
 #   reference_outputs/regenie_step1_pred.list  (LOCO predictor manifest)

@@ -324,7 +324,7 @@ def _render_panel_c(ax) -> dict:
     ax.set_xlim(0, mx * 1.05)
     ax.set_ylim(0, mx * 1.05)
     ax.set_xlabel("GWASpoly -log10(p)  [additive]")
-    ax.set_ylabel("TorchGWAS -log10(p)  [additive]")
+    ax.set_ylabel("TorchGenomics -log10(p)  [additive]")
 
     corr_str = "{:.3f}".format(float(info["correlation"]))
     n_str = str(int(info["n_compared"]))
@@ -368,10 +368,10 @@ def _run_polyploid_scan_demo(
     """
     import torch
 
-    from torchgwas.config import STAT_DTYPE, NumericalConfig
-    from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
-    from torchgwas.models.base import VariantMeta
-    from torchgwas.models.single_trait_lmm import SingleTraitLMM
+    from torchgenomics.config import STAT_DTYPE, NumericalConfig
+    from torchgenomics.linalg.kinship_polyploid import grm_polyploid_gene_action
+    from torchgenomics.models.base import VariantMeta
+    from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
     rng = np.random.default_rng(seed + ploidy)
     af = rng.uniform(0.2, 0.8, size=m)

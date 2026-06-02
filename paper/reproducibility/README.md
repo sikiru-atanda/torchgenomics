@@ -1,7 +1,7 @@
-# TorchGWAS — Genome Biology Methods paper reproducibility
+# TorchGenomics — Genome Biology Methods paper reproducibility
 
 One-command pipeline that regenerates every number in every figure and
-table of the Genome Biology Methods manuscript on TorchGWAS.
+table of the Genome Biology Methods manuscript on TorchGenomics.
 
 ## Running
 
@@ -19,7 +19,7 @@ Environment overrides:
 - `REPRODUCE_SKIP_INSTALL=1` — skip stage 01 (use installed tools as-is).
 - `REPRODUCE_SKIP_FETCH=1` — skip stage 02 (use staged fixtures as-is).
 - `REPRODUCE_QUICK=1` — pass `--quick` to bench scripts when they support it.
-- `TORCHGWAS_DISABLE_NATIVE=1` — force pure-torch reference paths (set by default in stages 04 / 07 so figure renders are reproducible across hosts with and without the C++ extensions installed).
+- `TORCHGENOMICS_DISABLE_NATIVE=1` — force pure-torch reference paths (set by default in stages 04 / 07 so figure renders are reproducible across hosts with and without the C++ extensions installed).
 
 ## Pipeline stages
 
@@ -29,7 +29,7 @@ Environment overrides:
 | 01 | `stages/01_install_references.sh` | Idempotently install the 15 reference-tool harnesses under `validation/external/`. |
 | 02 | `stages/02_stage_fixtures.sh` | Stage every reference-tool fixture + the 3 multi-omics fixtures + the 6 specialty fixtures. |
 | 03 | `stages/03_run_references.sh` | Run each reference tool against its staged fixture. |
-| 04 | `stages/04_run_torchgwas.sh` | Run each harness's `compare.py` (TorchGWAS head-to-head vs reference). |
+| 04 | `stages/04_run_torchgenomics.sh` | Run each harness's `compare.py` (TorchGenomics head-to-head vs reference). |
 | 05 | `stages/05_run_streaming_bench.sh` | Streaming memory slope sweep (F6 panel B). |
 | 06 | `stages/06_run_native_bench.sh` | 25 native-kernel speedup distribution (F6 panel A). |
 | 07 | `stages/07_run_multiomics.sh` | Multi-omics integration (F4 panels A/B/C). |

@@ -76,7 +76,7 @@ echo "[plink2 run] (2/3) GRM via --make-rel cov (matches grm_vanraden up to scal
     --make-rel triangle cov \
     --out "${OUT}/kinship" \
     --threads 1
-# Also dump the SNP list used for kinship so TorchGWAS scores against the same set
+# Also dump the SNP list used for kinship so TorchGenomics scores against the same set
 "${PLINK2}" \
     --bfile "${DATA}" \
     --maf 1e-6 \
@@ -88,8 +88,8 @@ ls "${OUT}"/kinship.* 2>/dev/null
 # --- 3. Pairwise r² (square matrix; allows full-set comparison) -------------
 echo "[plink2 run] (3/3) pairwise r² via --r2-unphased square"
 # --r2-unphased gives the unphased (allele-count) r² that matches the formula
-# implemented in TorchGWAS' LD module. We request `square` output so we get
-# an n_var × n_var matrix that's directly comparable to TorchGWAS' tensor.
+# implemented in TorchGenomics' LD module. We request `square` output so we get
+# an n_var × n_var matrix that's directly comparable to TorchGenomics' tensor.
 "${PLINK2}" \
     --bfile "${DATA}" \
     --r2-unphased square \

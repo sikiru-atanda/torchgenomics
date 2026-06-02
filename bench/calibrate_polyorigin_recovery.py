@@ -53,7 +53,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import torch  # noqa: F401  (needed by downstream torchgwas calls)
+import torch  # noqa: F401  (needed by downstream torchgenomics calls)
 from scipy.stats import binom  # type: ignore[import-untyped]
 
 N_REPS = 10
@@ -257,7 +257,7 @@ def _simulate_f1_reads(depth: int, seed: int):
     the underlying genomic origin is identical. Dosage is free of this
     ambiguity and is the quantity that matters for GWAS.
     """
-    from torchgwas.preprocess.phase_polyorigin import _enumerate_state_table
+    from torchgenomics.preprocess.phase_polyorigin import _enumerate_state_table
 
     ploidy = 4
     n_off = N_OFFSPRING
@@ -350,7 +350,7 @@ def _simulate_f1_reads(depth: int, seed: int):
     # -----------------------------------------------------------------------
     # 7. Simulate ALT read counts via rflexdog (R subprocess)
     # -----------------------------------------------------------------------
-    with tempfile.TemporaryDirectory(prefix="torchgwas_calib_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="torchgenomics_calib_") as tmp:
         tmp_path = Path(tmp)
         alt_mat = _simulate_alt_counts(
             dosage_mat=geno_matrix,  # (n_total, m)
@@ -393,14 +393,14 @@ def _run_recovery(depth: int, seed: int) -> float:
     """
     import os
 
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     probs, truth_dosage, sample_ids, variant_ids = _simulate_f1_reads(
         depth=depth, seed=seed
     )
     n_off, m = truth_dosage.shape
 
-    with tempfile.TemporaryDirectory(prefix="torchgwas_recovery_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="torchgenomics_recovery_") as tmp:
         tmp_path = Path(tmp)
 
         ped = tmp_path / "ped.tsv"
@@ -422,7 +422,7 @@ def _run_recovery(depth: int, seed: int) -> float:
         )
 
         out = tmp_path / "phased"
-        auto = bool(os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"))
+        auto = bool(os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"))
         result = run_polyorigin(
             probs=probs,
             pedigree_tsv=str(ped),

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.models.bayesian_vs_rss import (
+from torchgenomics.models.bayesian_vs_rss import (
     BayesianVSRss,
     BayesianVSRssResult,
     ser_posterior,
@@ -76,7 +76,7 @@ def test_bayesian_vs_rss_class_constructs():
     assert model.purity == 0.5
 
 
-from torchgwas.models.bayesian_vs_rss import compute_alpha
+from torchgenomics.models.bayesian_vs_rss import compute_alpha
 
 
 def test_softmax_uniform_prior_recovers_softmax_over_bf():
@@ -114,7 +114,7 @@ def test_per_snp_prior_normalized_internally():
     assert torch.allclose(alpha_unnorm, alpha_norm, atol=1e-12)
 
 
-from torchgwas.models.bayesian_vs_rss import ibss_residual_update
+from torchgenomics.models.bayesian_vs_rss import ibss_residual_update
 
 
 def test_ibss_residual_subtracts_other_layers():
@@ -329,7 +329,7 @@ def test_block_decomp_recovers_planted_causals_and_credible_sets():
     z[35] += 4.0  # planted causal in block 1
     n = 1000
 
-    from torchgwas.postgwas._ld_ref_loader import BlockSpec
+    from torchgenomics.postgwas._ld_ref_loader import BlockSpec
     blocks = [BlockSpec(start=0, stop=25), BlockSpec(start=25, stop=50)]
 
     # Total L=2 in dense; L=1 per block in blocked (sum to 2 globally)
@@ -361,7 +361,7 @@ def test_block_decomp_recovers_planted_causals_and_credible_sets():
 
 def test_output_writer_matches_polyfun_schema(tmp_path):
     """Output TSV matches Phase 59 PolyFun column schema exactly."""
-    from torchgwas.models.bayesian_vs_rss import write_results_tsv
+    from torchgenomics.models.bayesian_vs_rss import write_results_tsv
 
     rng = np.random.default_rng(41)
     p = 5
@@ -499,7 +499,7 @@ def test_estimate_prior_variance_false_keeps_all_layers_active():
 
 def test_find_optimal_V_returns_zero_for_pure_noise():
     """Pure-noise z (no signal) → optim picks V=0 (null layer)."""
-    from torchgwas.models.bayesian_vs_rss import find_optimal_V
+    from torchgenomics.models.bayesian_vs_rss import find_optimal_V
 
     rng = np.random.default_rng(2026)
     p = 200
@@ -515,7 +515,7 @@ def test_find_optimal_V_returns_zero_for_pure_noise():
 
 def test_find_optimal_V_recovers_signal_when_present():
     """A planted causal with |z|=8 → optim picks V > 0 close to data-driven scale."""
-    from torchgwas.models.bayesian_vs_rss import find_optimal_V
+    from torchgenomics.models.bayesian_vs_rss import find_optimal_V
 
     rng = np.random.default_rng(2026)
     p = 200
@@ -562,7 +562,7 @@ def test_estimate_prior_method_optim_is_default():
 
 def test_apply_z_score_adjustment_matches_susieR_formula():
     """Direct formula check vs the susieR 0.14.2 source (susie_rss.R lines ~36-39)."""
-    from torchgwas.models.bayesian_vs_rss import apply_z_score_adjustment
+    from torchgenomics.models.bayesian_vs_rss import apply_z_score_adjustment
 
     z = torch.tensor([0.0, 1.0, 5.27, 8.0, -3.5], dtype=torch.float64)
     n = 279
@@ -578,7 +578,7 @@ def test_apply_z_score_adjustment_matches_susieR_formula():
 
 def test_z_adjustment_vanishes_for_large_n():
     """For large n, the adjustment factor ~ 1 and z is essentially unchanged."""
-    from torchgwas.models.bayesian_vs_rss import apply_z_score_adjustment
+    from torchgenomics.models.bayesian_vs_rss import apply_z_score_adjustment
 
     z = torch.tensor([0.0, 1.0, 5.0, 8.0], dtype=torch.float64)
     z_adj = apply_z_score_adjustment(z, n=1_000_000)

@@ -1,4 +1,4 @@
-// Native accelerator for ``torchgwas.preprocess.impute.impute_knn``.
+// Native accelerator for ``torchgenomics.preprocess.impute.impute_knn``.
 //
 // The Python reference iterates ``len(miss)`` missing entries and for each
 // runs a small fixed-size walk over ``k`` neighbours. At realistic dosage
@@ -26,7 +26,7 @@
 // Output: G_out is modified in place. Returns Py_None.
 //
 // Semantics mirror the Python loop in
-// ``torchgwas/preprocess/impute.py::impute_knn`` line-for-line:
+// ``torchgenomics/preprocess/impute.py::impute_knn`` line-for-line:
 //   1. valid = ~isnan(G[neighbours, j])
 //   2. if any valid:
 //        w = clamp(K[i, neighbours][valid], min=0)

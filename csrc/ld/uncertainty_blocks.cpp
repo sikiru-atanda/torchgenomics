@@ -1,5 +1,5 @@
 // Native accelerator for the per-chromosome inner loop of
-// ``torchgwas.ld._blocks_novel.detect_blocks_uncertainty``.
+// ``torchgenomics.ld._blocks_novel.detect_blocks_uncertainty``.
 //
 // The Python reference does three things per chromosome:
 //   1. Walks every (li, lj) pair within the bp window, calling

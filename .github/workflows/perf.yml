@@ -18,7 +18,7 @@ name: Performance regression CI (Efficiency E5)
 # 4. Post the markdown diff as a PR comment (replacing any prior
 #    comment from this bot).
 #
-# Wall-time budget: ~6 min. The CI subset uses ``TORCHGWAS_BENCH_CI=1``
+# Wall-time budget: ~6 min. The CI subset uses ``TORCHGENOMICS_BENCH_CI=1``
 # input sizes (smaller than the realistic-mode sweep) so each python+
 # native pair runs in <5 s; 12 kernels × 2 checkouts ≈ 2-3 min of bench
 # wall-time after warmup, plus ~3 min for the editable install + native
@@ -94,20 +94,20 @@ jobs:
       # We install master first so its build artifacts get cached;
       # then install PR head (which OVERWRITES the editable install).
       # Right before each benchmark run we re-install the relevant
-      # tree to be sure ``import torchgwas`` resolves to the right code.
+      # tree to be sure ``import torchgenomics`` resolves to the right code.
 
       - name: Install master and run baseline benchmark
         working-directory: master
         env:
-          TORCHGWAS_BENCH_CI: "1"
+          TORCHGENOMICS_BENCH_CI: "1"
         run: |
           pip install -e ".[dev]"
           # Sanity: confirm native extensions imported.
-          python -c "import torchgwas; print(f'master: torchgwas {torchgwas.__file__}')"
+          python -c "import torchgenomics; print(f'master: torchgenomics {torchgenomics.__file__}')"
           python -c "
           import os
           try:
-              import torchgwas._native
+              import torchgenomics._native
               print('master: native package importable')
           except Exception as e:
               print(f'master: native NOT importable: {e}')
@@ -121,14 +121,14 @@ jobs:
       - name: Install PR head and run benchmark
         working-directory: pr
         env:
-          TORCHGWAS_BENCH_CI: "1"
+          TORCHGENOMICS_BENCH_CI: "1"
         run: |
           pip install -e ".[dev]"
-          python -c "import torchgwas; print(f'pr: torchgwas {torchgwas.__file__}')"
+          python -c "import torchgenomics; print(f'pr: torchgenomics {torchgenomics.__file__}')"
           python -c "
           import os
           try:
-              import torchgwas._native
+              import torchgenomics._native
               print('pr: native package importable')
           except Exception as e:
               print(f'pr: native NOT importable: {e}')
@@ -195,7 +195,7 @@ jobs:
               return;
             }
             const body = fs.readFileSync(path, 'utf8');
-            const tag = '<!-- torchgwas-perf-regression-bot -->';
+            const tag = '<!-- torchgenomics-perf-regression-bot -->';
             const fullBody = `${tag}\n${body}`;
 
             // Replace any prior comment from this bot rather than

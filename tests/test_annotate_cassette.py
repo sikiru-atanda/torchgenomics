@@ -1,11 +1,11 @@
-"""Phase D.4 — NCBI cassette replay test for ``torchgwas.annotate``.
+"""Phase D.4 — NCBI cassette replay test for ``torchgenomics.annotate``.
 
 The cassette at ``tests/fixtures/ncbi_cassette/maize_chr1_one_hit.json`` is a
 recorded end-to-end exchange against the live NCBI Datasets v2 + E-utilities
 APIs for a one-hit maize scenario. Response payloads use the **live** schema
 (``annotations[].genomic_locations[]`` + ``gene_ontology`` process/function/
 component buckets), so replaying the cassette actually drives the shape
-adapters in ``torchgwas.annotate._genes`` —
+adapters in ``torchgenomics.annotate._genes`` —
 :func:`_ensure_legacy_genomic_ranges` and
 :func:`_ensure_legacy_ontology_terms`.
 
@@ -14,7 +14,7 @@ something else), these tests fail: the adapter can no longer find the GO
 terms, the GO-terms list comes back empty, and the assertion trips. That is
 the canary the plan's Phase D.4 calls for.
 
-Refreshing the cassette: set ``TORCHGWAS_NCBI_LIVE=1`` and re-run the
+Refreshing the cassette: set ``TORCHGENOMICS_NCBI_LIVE=1`` and re-run the
 recorder (see ``_metadata.refresh_instructions`` in the cassette file).
 """
 
@@ -28,9 +28,9 @@ from typing import Any
 import pytest
 import torch
 
-from torchgwas.annotate import AnnotationResult, annotate_hits
-from torchgwas.annotate._client import NCBIClient
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.annotate import AnnotationResult, annotate_hits
+from torchgenomics.annotate._client import NCBIClient
+from torchgenomics.postgwas._sumstats import SumStats
 
 CASSETTE_DIR = Path(__file__).parent / "fixtures" / "ncbi_cassette"
 CASSETTE_PATH = CASSETTE_DIR / "maize_chr1_one_hit.json"
@@ -111,7 +111,7 @@ class _CassetteClient(NCBIClient):
 def cassette() -> dict[str, Any]:
     assert CASSETTE_PATH.exists(), (
         f"Cassette {CASSETTE_PATH} is missing — run scripts/record_ncbi_cassette.py "
-        f"with TORCHGWAS_NCBI_LIVE=1 to regenerate."
+        f"with TORCHGENOMICS_NCBI_LIVE=1 to regenerate."
     )
     return _load_cassette()
 

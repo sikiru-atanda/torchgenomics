@@ -1,4 +1,4 @@
-// Native accelerator for ``torchgwas.preprocess.qc._compute_hwe_pvalue``.
+// Native accelerator for ``torchgenomics.preprocess.qc._compute_hwe_pvalue``.
 //
 // The Python reference does, for each of m SNPs:
 //
@@ -205,7 +205,7 @@ py::array_t<double> hwe_pvalues(
 // ── Tetraploid HWE with double reduction (Haldane 1930) ──────────────────
 //
 // Mirrors ``_compute_hwe_double_reduction`` in
-// ``torchgwas.preprocess.qc``. For each SNP at allele frequency p:
+// ``torchgenomics.preprocess.qc``. For each SNP at allele frequency p:
 //
 //   1. Count observed dosage classes 0..4.
 //   2. Method-of-moments estimate of the DR parameter alpha from

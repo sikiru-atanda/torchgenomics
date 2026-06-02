@@ -1,6 +1,6 @@
 {
   "kernel": "snp_to_gene_scan",
-  "ext": "torchgwas._native._snp_to_gene_native",
+  "ext": "torchgenomics._native._snp_to_gene_native",
   "date": "2026-05-29",
   "host": "linux-x86_64",
   "notes": "MAGMA per-gene window scan. Python preprocesses inputs once (encode chromosomes, sort SNPs by (chr_id, pos), build chr_offsets), then OpenMP across genes with binary-search + linear walk + std::erfc per gene. window_kb=10 in all benchmarks.",

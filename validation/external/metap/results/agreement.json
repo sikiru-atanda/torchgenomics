@@ -1,5 +1,5 @@
 {
-  "name": "p-value combination (metap CRAN + EmpiricalBrownsMethod BioC vs torchgwas.postgwas)",
+  "name": "p-value combination (metap CRAN + EmpiricalBrownsMethod BioC vs torchgenomics.postgwas)",
   "n_compared": 0,
   "passed": true,
   "checks": [],

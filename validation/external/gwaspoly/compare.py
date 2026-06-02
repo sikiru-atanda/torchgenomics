@@ -1,4 +1,4 @@
-"""Compare GWASpoly vs TorchGWAS on tetraploid potato across 5 gene-action models.
+"""Compare GWASpoly vs TorchGenomics on tetraploid potato across 5 gene-action models.
 
 GWASpoly is the canonical reference for polyploid GWAS (Rosyara et al. 2016).
 This harness re-runs the existing pre-Pillar-A comparison (mirroring
@@ -52,11 +52,11 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig  # noqa: E402
-from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
-from torchgwas.preprocess.polyploid import recode_gene_action  # noqa: E402
+from torchgenomics.config import STAT_DTYPE, NumericalConfig  # noqa: E402
+from torchgenomics.linalg.kinship_polyploid import grm_polyploid_gene_action  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
+from torchgenomics.preprocess.polyploid import recode_gene_action  # noqa: E402
 
 
 # ── Result dataclasses ───────────────────────────────────────────────────────

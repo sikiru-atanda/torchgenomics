@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.preprocess.impute_gpu import (
+from torchgenomics.preprocess.impute_gpu import (
     GenotypeAutoencoder,
     _build_emissions,
     _compute_posteriors,

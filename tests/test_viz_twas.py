@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.viz import (
+from torchgenomics.viz import (
     genomic_inflation_factor_twas,
     manhattan_twas,
     qq_twas,
@@ -21,7 +21,7 @@ from torchgwas.viz import (
 def _fake_twas_result(n_genes: int = 50, n_strong: int = 3,
                      with_coords: bool = True, seed: int = 1):
     """Build a minimal TWASResult-like object from per-gene attributes."""
-    from torchgwas.postgwas._twas import TWASGeneResult, TWASResult
+    from torchgenomics.postgwas._twas import TWASGeneResult, TWASResult
 
     gen = torch.Generator().manual_seed(seed)
     z = torch.randn(n_genes, generator=gen, dtype=torch.float64)
@@ -118,7 +118,7 @@ class TestGenomicInflationFactor:
         """λ_TWAS should be ~1 when z-scores come from N(0, 1)."""
         gen = torch.Generator().manual_seed(7)
         z = torch.randn(2000, generator=gen, dtype=torch.float64)
-        from torchgwas.postgwas._twas import TWASGeneResult, TWASResult
+        from torchgenomics.postgwas._twas import TWASGeneResult, TWASResult
         genes = [
             TWASGeneResult(
                 gene_id=f"G{i}", z_twas=float(z[i].item()),
@@ -136,7 +136,7 @@ class TestGenomicInflationFactor:
         """Inflate z-scores by 1.4×; λ_TWAS should rise."""
         gen = torch.Generator().manual_seed(11)
         z = 1.4 * torch.randn(2000, generator=gen, dtype=torch.float64)
-        from torchgwas.postgwas._twas import TWASGeneResult, TWASResult
+        from torchgenomics.postgwas._twas import TWASGeneResult, TWASResult
         genes = [
             TWASGeneResult(
                 gene_id=f"G{i}", z_twas=float(z[i].item()),

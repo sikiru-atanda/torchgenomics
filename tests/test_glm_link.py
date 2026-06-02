@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.glm_link import (
+from torchgenomics.models.glm_link import (
     CumulativeLogitLink,
     LinkFunction,
     LogitLink,

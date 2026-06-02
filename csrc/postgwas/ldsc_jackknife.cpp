@@ -1,6 +1,6 @@
 // LDSC block-jackknife standard errors for weighted least squares.
 //
-// C++ port of torchgwas.postgwas._ldsc._block_jackknife_se. The Python
+// C++ port of torchgenomics.postgwas._ldsc._block_jackknife_se. The Python
 // reference dispatches one torch.linalg.lstsq per leave-one-block-out fit
 // (default n_blocks = 200), and the launch overhead of those tiny calls
 // dominates the actual math: each problem has at most p = 2 columns

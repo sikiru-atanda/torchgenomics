@@ -1,8 +1,8 @@
-"""Compare PLINK 2.0 vs TorchGWAS on the MDP fixture across three computations:
+"""Compare PLINK 2.0 vs TorchGenomics on the MDP fixture across three computations:
 
   1. GLM linear regression (Wald β, SE, p) — `--glm`
-  2. GRM (--make-rel) vs torchgwas.linalg.kinship.grm_vanraden
-  3. Pairwise r² matrix (--r2-unphased square) vs torchgwas.ld._pairwise.compute_r2_matrix
+  2. GRM (--make-rel) vs torchgenomics.linalg.kinship.grm_vanraden
+  3. Pairwise r² matrix (--r2-unphased square) vs torchgenomics.ld._pairwise.compute_r2_matrix
 
 Tolerance policy (per the harness spec): we anchor in docs/validation.md §16,
 but tolerances are calibrated to *observed* values from the first successful
@@ -47,7 +47,7 @@ TOL_GLM_BETA_MEDIAN_ABSDIFF = 1e-3  # observed 1.5e-6   → floor 1e-3 (PLINK 6-
 TOL_GLM_SE_MEDIAN_ABSDIFF = 1e-2    # observed 2.9e-3   → floor 1e-2 (spec §16 says < 2e-2)
 TOL_GLM_NLOG10P_CORR = 0.999        # observed 0.99972  → floor 0.999
 
-# PLINK 2 `--make-rel cov` computes (G−2p)(G−2p)^T / m; TorchGWAS' grm_vanraden
+# PLINK 2 `--make-rel cov` computes (G−2p)(G−2p)^T / m; TorchGenomics' grm_vanraden
 # computes (G−2p)(G−2p)^T / sum(2p(1−p)). They differ only in a global
 # normalizer, so element-wise after trace-rescale they should agree tightly.
 # Observed (MDP, 281×281, m=2935):
@@ -71,13 +71,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE  # noqa: E402
-from torchgwas.io.plink import PlinkBedReader  # noqa: E402
-from torchgwas.linalg.kinship import grm_vanraden  # noqa: E402
-from torchgwas.linalg.kinship_advanced import grm_yang_gcta  # noqa: E402
-from torchgwas.ld._pairwise import compute_r2_matrix  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.glm import GLM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE  # noqa: E402
+from torchgenomics.io.plink import PlinkBedReader  # noqa: E402
+from torchgenomics.linalg.kinship import grm_vanraden  # noqa: E402
+from torchgenomics.linalg.kinship_advanced import grm_yang_gcta  # noqa: E402
+from torchgenomics.ld._pairwise import compute_r2_matrix  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.glm import GLM  # noqa: E402
 
 
 @dataclass
@@ -144,7 +144,7 @@ def _safe_corr(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def _load_mdp_fileset(data_dir: Path) -> tuple[torch.Tensor, list[str], VariantMeta]:
-    """Load the MDP PLINK fileset via TorchGWAS' reader, mean-impute, return (G, sample_ids, vmeta)."""
+    """Load the MDP PLINK fileset via TorchGenomics' reader, mean-impute, return (G, sample_ids, vmeta)."""
     reader = PlinkBedReader(data_dir / "mdp")
     chunks = []
     for G_chunk, _ in reader.iter_chunks(chunk_size=4096):
@@ -152,7 +152,7 @@ def _load_mdp_fileset(data_dir: Path) -> tuple[torch.Tensor, list[str], VariantM
     G = torch.cat(chunks, dim=1)  # (n, m)
 
     # Mean-impute (PLINK 2's --glm and --make-rel do per-variant mean handling
-    # internally; for TorchGWAS we mean-impute up front to keep the comparison
+    # internally; for TorchGenomics we mean-impute up front to keep the comparison
     # apples-to-apples).
     for j in range(G.shape[1]):
         col = G[:, j]
@@ -166,7 +166,7 @@ def _load_mdp_fileset(data_dir: Path) -> tuple[torch.Tensor, list[str], VariantM
 # ── Comparison 1: GLM linear regression ──────────────────────────────────────
 
 def compare_glm(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """PLINK 2 --glm linear vs TorchGWAS GLM Wald scan."""
+    """PLINK 2 --glm linear vs TorchGenomics GLM Wald scan."""
     plink2_path = out_dir / "glm.EarHT.glm.linear"
     plink2_df = pd.read_csv(plink2_path, sep="\t")
     plink2_df = plink2_df.rename(columns={"#CHROM": "CHROM"})
@@ -202,7 +202,7 @@ def compare_glm(data_dir: Path, out_dir: Path) -> ComparisonReport:
     merged = pd.merge(plink2_df, tg_df, on="ID", how="inner")
 
     # PLINK 2's A1 is the *minor* allele by default — sometimes "A", sometimes
-    # "G" depending on which is rarer at that SNP. TorchGWAS' PlinkBedReader
+    # "G" depending on which is rarer at that SNP. TorchGenomics' PlinkBedReader
     # decodes raw 2-bit codes via _GENO_DECODE=[2, NaN, 1, 0] (post-fix
     # 2026-05-13), i.e. PLINK code 0b00 (homozygous-for-first-allele = .bim A1
     # = "A") -> TG dosage 2. So TG dosage *counts the .bim A1 allele = "A"*,
@@ -233,7 +233,7 @@ def compare_glm(data_dir: Path, out_dir: Path) -> ComparisonReport:
     p_tg = np.clip(merged["p_tg"].to_numpy(), 1e-300, 1.0)
     nlog10_corr = _safe_corr(-np.log10(p_plk), -np.log10(p_tg))
 
-    rep = ComparisonReport(name="GLM linear (PLINK 2 --glm vs TorchGWAS GLM Wald)", n_compared=len(merged))
+    rep = ComparisonReport(name="GLM linear (PLINK 2 --glm vs TorchGenomics GLM Wald)", n_compared=len(merged))
     rep.checks.append(_check_min("β correlation (full set)", beta_corr, TOL_GLM_BETA_CORR))
     rep.checks.append(_check_max(
         f"β median |Δ| (AF [0.03,0.97], n={n_band})", beta_med_absdiff, TOL_GLM_BETA_MEDIAN_ABSDIFF
@@ -252,10 +252,10 @@ def compare_glm(data_dir: Path, out_dir: Path) -> ComparisonReport:
 # ── Comparison 2: GRM (--make-rel) ───────────────────────────────────────────
 
 def compare_grm(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """PLINK 2 --make-rel cov vs TorchGWAS grm_vanraden.
+    """PLINK 2 --make-rel cov vs TorchGenomics grm_vanraden.
 
     Algorithm match: with `cov`, PLINK 2 computes K_plink = (G−2p)(G−2p)^T / m,
-    while TorchGWAS' grm_vanraden computes K_vr = (G−2p)(G−2p)^T / sum(2p(1−p)).
+    while TorchGenomics' grm_vanraden computes K_vr = (G−2p)(G−2p)^T / sum(2p(1−p)).
     These differ ONLY by a global scalar (the per-SNP variance is summed
     instead of taking m), so K_plink and K_vr have:
       - identical structure (Pearson corr = 1.0 modulo float ordering)
@@ -292,7 +292,7 @@ def compare_grm(data_dir: Path, out_dir: Path) -> ComparisonReport:
     # SNP set used by PLINK (after --maf 1e-6)
     snps_used = set(open(snplist_path).read().split())
 
-    # Load fileset into TorchGWAS, restrict to PLINK's SNP subset
+    # Load fileset into TorchGenomics, restrict to PLINK's SNP subset
     G, tg_samples, vmeta = _load_mdp_fileset(data_dir)
     keep_idx = [j for j, s in enumerate(vmeta.snp) if s in snps_used]
     G_sub = G[:, keep_idx]
@@ -330,7 +330,7 @@ def compare_grm(data_dir: Path, out_dir: Path) -> ComparisonReport:
         rel_err = np.array([0.0])
 
     rep = ComparisonReport(
-        name=f"GRM (PLINK 2 --make-rel vs TorchGWAS grm_vanraden, n={n}×{n}, m={len(keep_idx)} SNPs)",
+        name=f"GRM (PLINK 2 --make-rel vs TorchGenomics grm_vanraden, n={n}×{n}, m={len(keep_idx)} SNPs)",
         n_compared=n * n,
     )
     rep.checks.append(_check_min("Off-diagonal Pearson corr", od_corr, TOL_GRM_CORR))
@@ -351,7 +351,7 @@ def compare_grm(data_dir: Path, out_dir: Path) -> ComparisonReport:
 # ── Comparison 3: Pairwise r² ────────────────────────────────────────────────
 
 def compare_r2(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """PLINK 2 --r2-unphased square vs TorchGWAS compute_r2_matrix."""
+    """PLINK 2 --r2-unphased square vs TorchGenomics compute_r2_matrix."""
     vcor_path = out_dir / "r2.unphased.vcor2"
     vars_path = out_dir / "r2.unphased.vcor2.vars"
 
@@ -368,7 +368,7 @@ def compare_r2(data_dir: Path, out_dir: Path) -> ComparisonReport:
                 else:
                     R_plink[i, j] = float(tok)
 
-    # Load TorchGWAS r²
+    # Load TorchGenomics r²
     G, _, vmeta = _load_mdp_fileset(data_dir)
 
     # Reorder G columns to PLINK's variant order (should be identical, but be safe)
@@ -378,7 +378,7 @@ def compare_r2(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
     R_tg = compute_r2_matrix(G_ord).cpu().numpy()
 
-    # PLINK marks NaN where a variant is monomorphic; TorchGWAS gives 0 there.
+    # PLINK marks NaN where a variant is monomorphic; TorchGenomics gives 0 there.
     valid = ~np.isnan(R_plink)
 
     # Off-diagonal only
@@ -392,7 +392,7 @@ def compare_r2(data_dir: Path, out_dir: Path) -> ComparisonReport:
     median_absdiff = float(np.median(np.abs(a - b)))
 
     rep = ComparisonReport(
-        name=f"Pairwise r² (PLINK 2 --r2-unphased vs TorchGWAS compute_r2_matrix, m={m})",
+        name=f"Pairwise r² (PLINK 2 --r2-unphased vs TorchGenomics compute_r2_matrix, m={m})",
         n_compared=int(iu_valid.sum()),
     )
     rep.checks.append(_check_min("Off-diagonal Pearson corr", corr, TOL_R2_CORR))

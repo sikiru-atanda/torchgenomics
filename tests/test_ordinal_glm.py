@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.ordinal_glm import OrdinalGLM
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.ordinal_glm import OrdinalGLM
 
 
 def _simulate_ordinal_data(

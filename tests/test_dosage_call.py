@@ -9,8 +9,8 @@ import pandas as pd
 import pytest
 import torch
 
-from torchgwas.preprocess import dosage_call as dc_module
-from torchgwas.preprocess.dosage_call import _VALID_MODELS, DosageCallResult
+from torchgenomics.preprocess import dosage_call as dc_module
+from torchgenomics.preprocess.dosage_call import _VALID_MODELS, DosageCallResult
 
 
 def test_dosage_call_result_dataclass_fields():
@@ -685,7 +685,7 @@ def test_run_updog_partial_output_raises_and_leaves_no_artifacts(
 
 
 def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch):
-    from torchgwas.cli import main as cli_main
+    from torchgenomics.cli import main as cli_main
 
     fake_vcf = tmp_path / "fake.vcf"
     fake_vcf.write_text("#placeholder\n")
@@ -705,9 +705,9 @@ def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch):
             input_hash="x", cmd="",
         )
 
-    monkeypatch.setattr("torchgwas.cli.run_updog", fake_run_updog,
+    monkeypatch.setattr("torchgenomics.cli.run_updog", fake_run_updog,
                         raising=False)
-    monkeypatch.setattr("torchgwas.preprocess.dosage_call.run_updog",
+    monkeypatch.setattr("torchgenomics.preprocess.dosage_call.run_updog",
                         fake_run_updog)
 
     out_prefix = tmp_path / "out"
@@ -732,7 +732,7 @@ def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch):
 
 
 def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch):
-    from torchgwas.cli import main as cli_main
+    from torchgenomics.cli import main as cli_main
 
     fake_vcf = tmp_path / "fake.vcf"
     fake_vcf.write_text("#placeholder\n")
@@ -749,7 +749,7 @@ def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch):
             n_missing=0, missing_mask=torch.zeros(1, 1, dtype=torch.bool),
             input_hash="x", cmd="",
         )
-    monkeypatch.setattr("torchgwas.preprocess.dosage_call.run_updog",
+    monkeypatch.setattr("torchgenomics.preprocess.dosage_call.run_updog",
                         fake_run_updog)
 
     cli_main([
@@ -761,18 +761,18 @@ def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch):
     assert captured["seq_error"] == 0.005
 
 
-def test_reexports_from_torchgwas_preprocess():
-    from torchgwas.preprocess import DosageCallResult, run_updog
+def test_reexports_from_torchgenomics_preprocess():
+    from torchgenomics.preprocess import DosageCallResult, run_updog
     assert callable(run_updog)
     assert DosageCallResult is dc_module.DosageCallResult
 
 
 def test_preprocess_reexport_run_updog_points_to_dosage_call():
     # Disambiguate from the legacy polyrad_wrapper re-export that was
-    # removed in this commit: `torchgwas.preprocess.run_updog` is now the
+    # removed in this commit: `torchgenomics.preprocess.run_updog` is now the
     # Phase 55 dosage_call implementation, not the older flexdog-loop one.
-    from torchgwas.preprocess import run_updog as reexported
-    from torchgwas.preprocess.dosage_call import run_updog as canonical
+    from torchgenomics.preprocess import run_updog as reexported
+    from torchgenomics.preprocess.dosage_call import run_updog as canonical
     assert reexported is canonical
 
 
@@ -906,12 +906,12 @@ def test_sha256_file_uses_chunked_read(tmp_path, monkeypatch):
 def test_gu_scan_probs_passthrough_derives_genotype_and_dosage_var(
     tmp_path, monkeypatch,
 ):
-    """Phase 55 QoL: `torchgwas gu-scan --probs <x.probs.pt>` should auto-
+    """Phase 55 QoL: `torchgenomics gu-scan --probs <x.probs.pt>` should auto-
     derive `--genotype` and `--dosage-var` from the probs tensor via
     expected_dosage / dosage_variance, matching the two-step Python recipe
     byte-for-byte.
     """
-    from torchgwas.cli import main as cli_main
+    from torchgenomics.cli import main as cli_main
 
     # 1) Build a minimal Phase 55 artifact set (probs.pt + meta.json).
     n_samples, n_markers, ploidy = 4, 3, 4
@@ -941,7 +941,7 @@ def test_gu_scan_probs_passthrough_derives_genotype_and_dosage_var(
         captured["dvar"] = torch.load(args.dosage_var, weights_only=True)
         return 0
 
-    import torchgwas.cli as cli_mod
+    import torchgenomics.cli as cli_mod
     monkeypatch.setattr(cli_mod, "_cmd_gu_scan_inner", fake_inner)
 
     # --genotype is optional after Phase-55 wiring; pass only --probs + pheno.
@@ -957,10 +957,10 @@ def test_gu_scan_probs_passthrough_derives_genotype_and_dosage_var(
 
     # The derived tempfile paths must exist during the inner call.
     # _cmd_gu_scan cleans up after, so we only assert on captured contents.
-    from torchgwas.preprocess.dosage_uncertainty import (
+    from torchgenomics.preprocess.dosage_uncertainty import (
         dosage_variance as _dv,
     )
-    from torchgwas.preprocess.dosage_uncertainty import (
+    from torchgenomics.preprocess.dosage_uncertainty import (
         expected_dosage as _ed,
     )
     torch.testing.assert_close(captured["G"], _ed(probs, ploidy))
@@ -969,7 +969,7 @@ def test_gu_scan_probs_passthrough_derives_genotype_and_dosage_var(
 
 def test_gu_scan_rejects_both_probs_and_genotype(tmp_path):
     """Mutual exclusion — passing both --probs and --genotype should error."""
-    from torchgwas.cli import main as cli_main
+    from torchgenomics.cli import main as cli_main
 
     probs_path = tmp_path / "x.probs.pt"
     torch.save(torch.ones(1, 1, 5, dtype=torch.float64) / 5, str(probs_path))
@@ -989,7 +989,7 @@ def test_gu_scan_rejects_both_probs_and_genotype(tmp_path):
 
 def test_gu_scan_rejects_neither_probs_nor_genotype(tmp_path):
     """Neither --probs nor --genotype given must fail cleanly."""
-    from torchgwas.cli import main as cli_main
+    from torchgenomics.cli import main as cli_main
 
     pheno_path = tmp_path / "p.txt"
     pheno_path.write_text("IID\tY\nS0\t1.0\n")

@@ -46,7 +46,7 @@ def _simulate_binary_with_kinship(
 
 class TestPQLConvergence:
     def test_pql_converges(self):
-        from torchgwas.optim.pql import pql_fit
+        from torchgenomics.optim.pql import pql_fit
         Y, X0, K, mu_true = _simulate_binary_with_kinship()
 
         p_bar = Y.mean().clamp(min=0.01, max=0.99)
@@ -64,7 +64,7 @@ class TestPQLConvergence:
         assert result["converged"] or result["n_outer"] <= 30
 
     def test_pql_mu_valid(self):
-        from torchgwas.optim.pql import pql_fit
+        from torchgenomics.optim.pql import pql_fit
         Y, X0, K, _ = _simulate_binary_with_kinship()
         p_bar = Y.mean().clamp(min=0.01, max=0.99)
         mu_init = torch.full_like(Y, p_bar.item())
@@ -80,7 +80,7 @@ class TestPQLConvergence:
         assert (mu > 0).all() and (mu < 1).all()
 
     def test_pql_variance_components_positive(self):
-        from torchgwas.optim.pql import pql_fit
+        from torchgenomics.optim.pql import pql_fit
         Y, X0, K, _ = _simulate_binary_with_kinship()
         p_bar = Y.mean().clamp(min=0.01, max=0.99)
         mu_init = torch.full_like(Y, p_bar.item())
@@ -98,7 +98,7 @@ class TestPQLConvergence:
 
 class TestProfileREML:
     def test_profile_reml_returns_positive(self):
-        from torchgwas.optim.pql import _profile_reml_vc
+        from torchgenomics.optim.pql import _profile_reml_vc
         torch.manual_seed(50)
         n, c = 100, 2
         evals = torch.rand(n, dtype=torch.float64) * 2.0

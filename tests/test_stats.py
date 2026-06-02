@@ -8,9 +8,9 @@ import pytest
 import scipy.stats as sp_stats
 import torch
 
-from torchgwas.stats.calibrate import compare_pvalues
-from torchgwas.stats.genomic_control import diagnose_inflation, lambda_gc
-from torchgwas.stats.multipletesting import (
+from torchgenomics.stats.calibrate import compare_pvalues
+from torchgenomics.stats.genomic_control import diagnose_inflation, lambda_gc
+from torchgenomics.stats.multipletesting import (
     benjamini_hochberg,
     benjamini_yekutieli,
     bonferroni,
@@ -18,8 +18,8 @@ from torchgwas.stats.multipletesting import (
     sidak,
     storey_qvalue,
 )
-from torchgwas.stats.simplem import effective_test_count, ld_correlation_eigenvalues
-from torchgwas.stats.tests import chi2_sf, lrt_test, score_test, wald_test
+from torchgenomics.stats.simplem import effective_test_count, ld_correlation_eigenvalues
+from torchgenomics.stats.tests import chi2_sf, lrt_test, score_test, wald_test
 
 # ---------------------------------------------------------------
 # Test statistic utilities
@@ -262,7 +262,7 @@ class TestMoskvinaSchmidt:
 
     def test_independent_snps(self):
         """For independent SNPs, eigenvalues ≈ 1 each → M_eff ≈ M."""
-        from torchgwas.stats.simplem import effective_test_count_moskvina
+        from torchgenomics.stats.simplem import effective_test_count_moskvina
         # All eigenvalues exactly 1 → each counts as 1
         evals = torch.ones(20, dtype=torch.float64)
         m_eff = effective_test_count_moskvina(evals)
@@ -270,7 +270,7 @@ class TestMoskvinaSchmidt:
 
     def test_perfect_ld(self):
         """Perfect LD: one eigenvalue = M, rest = 0 → M_eff = 1."""
-        from torchgwas.stats.simplem import effective_test_count_moskvina
+        from torchgenomics.stats.simplem import effective_test_count_moskvina
         evals = torch.zeros(20, dtype=torch.float64)
         evals[0] = 20.0
         m_eff = effective_test_count_moskvina(evals)
@@ -278,7 +278,7 @@ class TestMoskvinaSchmidt:
 
     def test_fractional_eigenvalues(self):
         """Eigenvalues < 1 contribute their fractional part."""
-        from torchgwas.stats.simplem import effective_test_count_moskvina
+        from torchgenomics.stats.simplem import effective_test_count_moskvina
         # 2 eigenvalues >= 1 (count as 2) + 3 eigenvalues of 0.5 each (count as 1.5)
         evals = torch.tensor([3.0, 1.5, 0.5, 0.5, 0.5], dtype=torch.float64)
         m_eff = effective_test_count_moskvina(evals)
@@ -287,7 +287,7 @@ class TestMoskvinaSchmidt:
 
     def test_moskvina_leq_gao(self):
         """Moskvina-Schmidt typically gives M_eff <= simpleM (Gao)."""
-        from torchgwas.stats.simplem import effective_test_count_moskvina
+        from torchgenomics.stats.simplem import effective_test_count_moskvina
         torch.manual_seed(42)
         n, m = 500, 50
         G = torch.randn(n, m, dtype=torch.float64)
@@ -297,7 +297,7 @@ class TestMoskvinaSchmidt:
         assert m_eff_mosk <= m_eff_gao + 2  # allow small numerical tolerance
 
     def test_empty_returns_one(self):
-        from torchgwas.stats.simplem import effective_test_count_moskvina
+        from torchgenomics.stats.simplem import effective_test_count_moskvina
         m_eff = effective_test_count_moskvina(torch.tensor([], dtype=torch.float64))
         assert m_eff == 1
 
@@ -350,7 +350,7 @@ class TestCauchyCombination:
 
     def test_single_method_roundtrip(self):
         """With k=1, combining should approximately preserve original p-values."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p = torch.tensor([0.001, 0.01, 0.05, 0.5, 0.99], dtype=torch.float64)
         p_combined = cauchy_combination(p.unsqueeze(1))
@@ -358,7 +358,7 @@ class TestCauchyCombination:
 
     def test_all_significant_combined(self):
         """All small p-values → combined should be very small."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p = torch.tensor([[0.001, 0.002, 0.003]], dtype=torch.float64)
         result = cauchy_combination(p)
@@ -366,7 +366,7 @@ class TestCauchyCombination:
 
     def test_mixed_signals_cauchy_sensitive(self):
         """One very small p + several large → combined still small (Cauchy is sensitive to min)."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p = torch.tensor([[1e-10, 0.5, 0.8, 0.9]], dtype=torch.float64)
         result = cauchy_combination(p)
@@ -374,7 +374,7 @@ class TestCauchyCombination:
 
     def test_all_null_combined(self):
         """All p ~ 0.5 → combined should be moderate."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p = torch.tensor([[0.4, 0.5, 0.6]], dtype=torch.float64)
         result = cauchy_combination(p)
@@ -382,7 +382,7 @@ class TestCauchyCombination:
 
     def test_known_values(self):
         """Verify against hand-computed Cauchy combination."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p1, p2 = 0.01, 0.5
         T1 = math.tan((0.5 - p1) * math.pi)
@@ -396,7 +396,7 @@ class TestCauchyCombination:
 
     def test_weighted_combination(self):
         """Weights should shift the combined p-value."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p = torch.tensor([[0.001, 0.5]], dtype=torch.float64)
         w_equal = torch.tensor([0.5, 0.5], dtype=torch.float64)
@@ -409,7 +409,7 @@ class TestCauchyCombination:
 
     def test_range(self):
         """Output should be in [0, 1]."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         torch.manual_seed(42)
         p = torch.rand(50, 3, dtype=torch.float64)
@@ -419,7 +419,7 @@ class TestCauchyCombination:
 
     def test_scalar_mode(self):
         """1-D input → scalar output."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p = torch.tensor([0.01, 0.05, 0.5], dtype=torch.float64)
         result = cauchy_combination(p)
@@ -427,7 +427,7 @@ class TestCauchyCombination:
 
     def test_extreme_p_no_nan(self):
         """Very small or near-1 p-values should not produce NaN."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
 
         p = torch.tensor([[1e-300, 1.0 - 1e-16]], dtype=torch.float64)
         result = cauchy_combination(p)
@@ -439,7 +439,7 @@ class TestWeightedBH:
 
     def test_uniform_weights_equals_bh(self):
         """With uniform weights (all 1), wBH should equal standard BH."""
-        from torchgwas.stats.weighted_fdr import weighted_bh
+        from torchgenomics.stats.weighted_fdr import weighted_bh
 
         torch.manual_seed(42)
         p = torch.rand(50, dtype=torch.float64)
@@ -451,7 +451,7 @@ class TestWeightedBH:
 
     def test_higher_weight_more_power(self):
         """A SNP with higher weight should get a smaller adjusted p-value."""
-        from torchgwas.stats.weighted_fdr import weighted_bh
+        from torchgenomics.stats.weighted_fdr import weighted_bh
 
         p = torch.tensor([0.01, 0.03, 0.05, 0.10, 0.50], dtype=torch.float64)
         w_uniform = torch.ones(5, dtype=torch.float64)
@@ -464,7 +464,7 @@ class TestWeightedBH:
 
     def test_zero_weight_never_rejected(self):
         """A SNP with weight=0 should have p_adj = 1.0."""
-        from torchgwas.stats.weighted_fdr import weighted_bh
+        from torchgenomics.stats.weighted_fdr import weighted_bh
 
         p = torch.tensor([0.001, 0.001, 0.001], dtype=torch.float64)
         w = torch.tensor([0.0, 1.5, 1.5], dtype=torch.float64)
@@ -473,7 +473,7 @@ class TestWeightedBH:
 
     def test_auto_normalization(self):
         """Weights not summing to m should be auto-normalized."""
-        from torchgwas.stats.weighted_fdr import weighted_bh
+        from torchgenomics.stats.weighted_fdr import weighted_bh
 
         p = torch.tensor([0.01, 0.05, 0.1], dtype=torch.float64)
         w = torch.tensor([10.0, 10.0, 10.0], dtype=torch.float64)  # mean=10, should be normalized
@@ -484,7 +484,7 @@ class TestWeightedBH:
 
     def test_range(self):
         """Adjusted p-values should be in [0, 1]."""
-        from torchgwas.stats.weighted_fdr import weighted_bh
+        from torchgenomics.stats.weighted_fdr import weighted_bh
 
         torch.manual_seed(42)
         p = torch.rand(100, dtype=torch.float64)
@@ -499,7 +499,7 @@ class TestLocalFDR:
 
     def test_all_null_high_lfdr(self):
         """Under pure null (uniform p), most lfdr should be near 1."""
-        from torchgwas.stats.weighted_fdr import local_fdr
+        from torchgenomics.stats.weighted_fdr import local_fdr
 
         torch.manual_seed(42)
         p = torch.rand(1000, dtype=torch.float64)
@@ -509,7 +509,7 @@ class TestLocalFDR:
 
     def test_strong_signals_low_lfdr(self):
         """Mixture: 90% null + 10% signal → signal SNPs should have low lfdr."""
-        from torchgwas.stats.weighted_fdr import local_fdr
+        from torchgenomics.stats.weighted_fdr import local_fdr
 
         torch.manual_seed(42)
         n_null = 900
@@ -526,7 +526,7 @@ class TestLocalFDR:
 
     def test_range(self):
         """lfdr should be in [0, 1]."""
-        from torchgwas.stats.weighted_fdr import local_fdr
+        from torchgenomics.stats.weighted_fdr import local_fdr
 
         torch.manual_seed(42)
         p = torch.rand(500, dtype=torch.float64)
@@ -536,7 +536,7 @@ class TestLocalFDR:
 
     def test_few_tests_returns_ones(self):
         """Fewer than 10 tests → return conservative lfdr = 1."""
-        from torchgwas.stats.weighted_fdr import local_fdr
+        from torchgenomics.stats.weighted_fdr import local_fdr
 
         p = torch.tensor([0.01, 0.05], dtype=torch.float64)
         lfdr = local_fdr(p)
@@ -548,7 +548,7 @@ class TestHierarchicalFDR:
 
     def test_single_group_matches_bh(self):
         """With all SNPs in one group, should match BH."""
-        from torchgwas.stats.weighted_fdr import hierarchical_fdr
+        from torchgenomics.stats.weighted_fdr import hierarchical_fdr
 
         torch.manual_seed(42)
         p = torch.rand(20, dtype=torch.float64)
@@ -564,7 +564,7 @@ class TestHierarchicalFDR:
 
     def test_nonsig_group_all_one(self):
         """SNPs in a non-significant group should all get p_adj = 1.0."""
-        from torchgwas.stats.weighted_fdr import hierarchical_fdr
+        from torchgenomics.stats.weighted_fdr import hierarchical_fdr
 
         # Create two groups: one with signal, one without
         p_signal = torch.tensor([0.001, 0.002, 0.003], dtype=torch.float64)
@@ -578,7 +578,7 @@ class TestHierarchicalFDR:
 
     def test_simes_method(self):
         """Simes group p-value should work."""
-        from torchgwas.stats.weighted_fdr import hierarchical_fdr
+        from torchgenomics.stats.weighted_fdr import hierarchical_fdr
 
         p = torch.tensor([0.001, 0.5, 0.01, 0.9], dtype=torch.float64)
         group_ids = ["g1", "g1", "g2", "g2"]
@@ -588,7 +588,7 @@ class TestHierarchicalFDR:
 
     def test_fisher_method(self):
         """Fisher group p-value should work."""
-        from torchgwas.stats.weighted_fdr import hierarchical_fdr
+        from torchgenomics.stats.weighted_fdr import hierarchical_fdr
 
         p = torch.tensor([0.001, 0.5, 0.01, 0.9], dtype=torch.float64)
         group_ids = ["g1", "g1", "g2", "g2"]
@@ -598,7 +598,7 @@ class TestHierarchicalFDR:
 
     def test_singleton_group(self):
         """Groups with a single SNP should work correctly."""
-        from torchgwas.stats.weighted_fdr import hierarchical_fdr
+        from torchgenomics.stats.weighted_fdr import hierarchical_fdr
 
         p = torch.tensor([0.001, 0.5], dtype=torch.float64)
         group_ids = ["g1", "g2"]
@@ -608,7 +608,7 @@ class TestHierarchicalFDR:
 
     def test_range(self):
         """Adjusted p-values should be in [0, 1]."""
-        from torchgwas.stats.weighted_fdr import hierarchical_fdr
+        from torchgenomics.stats.weighted_fdr import hierarchical_fdr
 
         torch.manual_seed(42)
         p = torch.rand(50, dtype=torch.float64)
@@ -623,7 +623,7 @@ class TestAdaptivePermutation:
 
     def test_valid_p_values(self):
         """Adaptive permutation should produce valid p-values in (0, 1]."""
-        from torchgwas.stats.permutation import adaptive_permutation_maxT
+        from torchgenomics.stats.permutation import adaptive_permutation_maxT
 
         torch.manual_seed(42)
         n, m = 50, 20
@@ -638,7 +638,7 @@ class TestAdaptivePermutation:
 
     def test_detects_strong_signal(self):
         """A very strong signal should get a small p-value."""
-        from torchgwas.stats.permutation import adaptive_permutation_maxT
+        from torchgenomics.stats.permutation import adaptive_permutation_maxT
 
         torch.manual_seed(42)
         n, m = 100, 30
@@ -655,7 +655,7 @@ class TestAdaptivePermutation:
 
     def test_matches_maxT_same_seed(self):
         """With min=max perms, adaptive should behave like standard maxT."""
-        from torchgwas.stats.permutation import adaptive_permutation_maxT, permutation_maxT
+        from torchgenomics.stats.permutation import adaptive_permutation_maxT, permutation_maxT
 
         torch.manual_seed(42)
         n, m = 50, 10

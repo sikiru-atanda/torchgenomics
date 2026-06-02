@@ -1,4 +1,4 @@
-"""Real-data sanity check for `torchgwas.annotate` against live NCBI.
+"""Real-data sanity check for `torchgenomics.annotate` against live NCBI.
 
 Uses the MDP maize top-5 EarHT hits from the multi-omics sanity script plus
 their real chromosome / bp positions from mdp_SNP_information.txt. Calls NCBI
@@ -20,8 +20,8 @@ import os
 import pandas as pd
 import torch
 
-from torchgwas.annotate import annotate_hits
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.annotate import annotate_hits
+from torchgenomics.postgwas._sumstats import SumStats
 
 DATA = "C:/Users/Sikiru/Documents/GWAS_Expert/benchmark/data"
 

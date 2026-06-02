@@ -1,4 +1,4 @@
-"""Tier-2 behavioral coverage tests for ``torchgwas.postgwas`` heritability,
+"""Tier-2 behavioral coverage tests for ``torchgenomics.postgwas`` heritability,
 LD-score, and clumping public symbols.
 
 Bar (Pillar A spec section 4.3 Tier 2):
@@ -9,24 +9,24 @@ Bar (Pillar A spec section 4.3 Tier 2):
 
 Covers 16 public symbols across 5 submodules:
 
-- ``torchgwas.postgwas._clump.ClumpResult`` (dataclass)
-- ``torchgwas.postgwas._clump.ld_clump`` (function)
-- ``torchgwas.postgwas._hess.HESSResult`` (dataclass)
-- ``torchgwas.postgwas._hess.HESSRegionResult`` (dataclass)
-- ``torchgwas.postgwas._hess.hess_local_h2`` (function)
-- ``torchgwas.postgwas._hess.hess_local_rg`` (function)
-- ``torchgwas.postgwas._ld_scores.compute_ld_scores`` (function)
-- ``torchgwas.postgwas._ld_scores.compute_cross_ld_scores`` (function)
-- ``torchgwas.postgwas._ldsc.LDSCResult`` (dataclass)
-- ``torchgwas.postgwas._ldsc.LDSCRgResult`` (dataclass)
-- ``torchgwas.postgwas._ldsc.ldsc_h2`` (function)
-- ``torchgwas.postgwas._ldsc.ldsc_intercept`` (function)
-- ``torchgwas.postgwas._ldsc.ldsc_rg`` (function)
-- ``torchgwas.postgwas._ldsc.ldsc_rg_from_z`` (function)
-- ``torchgwas.postgwas._sldsc.SLDSCResult`` (dataclass)
-- ``torchgwas.postgwas._sldsc.sldsc_h2_partitioned`` (function)
+- ``torchgenomics.postgwas._clump.ClumpResult`` (dataclass)
+- ``torchgenomics.postgwas._clump.ld_clump`` (function)
+- ``torchgenomics.postgwas._hess.HESSResult`` (dataclass)
+- ``torchgenomics.postgwas._hess.HESSRegionResult`` (dataclass)
+- ``torchgenomics.postgwas._hess.hess_local_h2`` (function)
+- ``torchgenomics.postgwas._hess.hess_local_rg`` (function)
+- ``torchgenomics.postgwas._ld_scores.compute_ld_scores`` (function)
+- ``torchgenomics.postgwas._ld_scores.compute_cross_ld_scores`` (function)
+- ``torchgenomics.postgwas._ldsc.LDSCResult`` (dataclass)
+- ``torchgenomics.postgwas._ldsc.LDSCRgResult`` (dataclass)
+- ``torchgenomics.postgwas._ldsc.ldsc_h2`` (function)
+- ``torchgenomics.postgwas._ldsc.ldsc_intercept`` (function)
+- ``torchgenomics.postgwas._ldsc.ldsc_rg`` (function)
+- ``torchgenomics.postgwas._ldsc.ldsc_rg_from_z`` (function)
+- ``torchgenomics.postgwas._sldsc.SLDSCResult`` (dataclass)
+- ``torchgenomics.postgwas._sldsc.sldsc_h2_partitioned`` (function)
 
-All re-exported via ``torchgwas.postgwas.__init__``.
+All re-exported via ``torchgenomics.postgwas.__init__``.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from dataclasses import fields
 import pytest
 import torch
 
-from torchgwas.postgwas import (
+from torchgenomics.postgwas import (
     ClumpResult,
     HESSRegionResult,
     HESSResult,

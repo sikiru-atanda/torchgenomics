@@ -1,7 +1,7 @@
 # Tier 2 B2: GTEx v8 Liver eQTL x UKB-derived LDL GWAS (SORT1 locus)
 
 Real-data multi-omics worked example for **F4 panel B** of the
-TorchGWAS Genome Biology methods paper. Stages two public summary
+TorchGenomics Genome Biology methods paper. Stages two public summary
 statistics resources, slices them at the **SORT1 / chr1p13** cis
 window, harmonizes them onto a common GRCh38 SNP set, and writes a
 reproducible aligned.parquet fixture with full provenance.

@@ -20,7 +20,7 @@
 #   the kinship-aware reweighting tightens the per-coefficient SE without
 #   biasing the point estimate.
 #
-#   This is the regime where TorchGWAS' `mediate_lmm` and R's
+#   This is the regime where TorchGenomics' `mediate_lmm` and R's
 #   `mediation::mediate` should agree on point estimates of a, b, c',
 #   ACME, and total — both are unbiased; only the SEs differ.
 #
@@ -46,7 +46,7 @@
 #
 # Why R (not Python):
 #   - Single source of truth for the simulated data; both the R reference
-#     run and the Python TorchGWAS run read from data/triple.tsv +
+#     run and the Python TorchGenomics run read from data/triple.tsv +
 #     data/K.tsv.
 #   - The simulator is small (~30 LOC of math) and `mediation` already
 #     requires R; keeping the simulator in R avoids a Python-only

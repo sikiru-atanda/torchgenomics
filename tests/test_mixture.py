@@ -7,7 +7,7 @@ import math
 import torch
 from scipy.stats import chi2
 
-from torchgwas.stats.mixture import davies_pvalue, liu_pvalue, mixture_chi2_pvalue
+from torchgenomics.stats.mixture import davies_pvalue, liu_pvalue, mixture_chi2_pvalue
 
 
 class TestDavies:

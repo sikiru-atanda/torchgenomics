@@ -1,6 +1,6 @@
 # LRO — Leave-Region-Out LMM internal-consistency harness (Phase 29)
 
-`torchgwas.models.lro_lmm.LROLMM` implements **block-level proximal
+`torchgenomics.models.lro_lmm.LROLMM` implements **block-level proximal
 decontamination**: for each LD block, the genome-wide GRM is subtracted
 by the block's own contribution before testing SNPs in that block. This
 removes the well-known LMM under-power on a causal SNP due to its own
@@ -46,7 +46,7 @@ data, and asserts:
 ```bash
 bash validation/specialty/lro/run.sh
 # Or directly:
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/specialty/lro/generate_and_compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/specialty/lro/generate_and_compare.py
 ```
 
 Outputs (committed):

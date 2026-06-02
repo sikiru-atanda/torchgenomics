@@ -1,4 +1,4 @@
-"""External-tool harness: GEMMA 0.98.5 vs TorchGWAS reference comparison.
+"""External-tool harness: GEMMA 0.98.5 vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require the GEMMA binary symlinked
 into ``validation/external/gemma/bin/``, the fetched fixture, and the harness
@@ -13,7 +13,7 @@ Each test invokes one comparison function from
 ``validation/external/gemma/compare.py`` and asserts every check in the
 ComparisonReport passed. Tolerances are pinned to ``docs/validation.md`` §16
 and mirror the existing ``tests/test_golden_gemma.py`` golden contract — this
-harness re-runs GEMMA + TorchGWAS end-to-end to confirm zero regression from
+harness re-runs GEMMA + TorchGenomics end-to-end to confirm zero regression from
 the 9 Pillar A V1-core / V1-platform fixes.
 """
 
@@ -68,12 +68,12 @@ def _require_binary() -> None:
 def compare_mod():
     # Ensure native is disabled so we exercise the pure-Python reference path
     # (matches docs/validation.md golden CI gate).
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
 def test_grm_round_trip(compare_mod) -> None:
-    """GEMMA -gk 1 cXX kinship round-trips exactly through TorchGWAS dtype."""
+    """GEMMA -gk 1 cXX kinship round-trips exactly through TorchGenomics dtype."""
     _require_binary()
     _require_artifacts(OUT / "mdp_kinship.cXX.txt")
     rep = compare_mod.compare_grm(DATA, OUT)

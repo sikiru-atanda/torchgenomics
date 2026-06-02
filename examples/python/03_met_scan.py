@@ -15,9 +15,9 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models import MultiEnvLMM, VariantMeta
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models import MultiEnvLMM, VariantMeta
 
 OUT_DIR = Path(__file__).resolve().parent / "results"
 OUT_DIR.mkdir(parents=True, exist_ok=True)

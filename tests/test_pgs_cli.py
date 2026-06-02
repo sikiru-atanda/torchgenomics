@@ -8,9 +8,9 @@ from contextlib import redirect_stdout
 
 import torch
 
-from torchgwas.cli import main as cli_main
-from torchgwas.pgs.base import PGSResult
-from torchgwas.pgs.ld_ref import build_ld_reference, save_ld_reference
+from torchgenomics.cli import main as cli_main
+from torchgenomics.pgs.base import PGSResult
+from torchgenomics.pgs.ld_ref import build_ld_reference, save_ld_reference
 
 
 def _write_sumstats(path, m=10, n_obs=2000, seed=0):
@@ -143,7 +143,7 @@ def test_cli_pgs_fit_prscs_smoke(tmp_path):
 def test_cli_registers_pgs_commands_in_dispatch():
     # Confirm pgs-fit and pgs-score appear in the handlers dispatch table
     # without actually running them.
-    from torchgwas.cli import main as cli_main  # noqa: F401 — import side effects
+    from torchgenomics.cli import main as cli_main  # noqa: F401 — import side effects
     p = _run_cli("--help")
     assert "pgs-fit" in p.stdout
     assert "pgs-score" in p.stdout

@@ -1,15 +1,15 @@
-"""Tier-3 (smoke) coverage tests for torchgwas.annotate and torchgwas.cli.
+"""Tier-3 (smoke) coverage tests for torchgenomics.annotate and torchgenomics.cli.
 
 Bar (spec section 4.3 Tier 3):
 - One test per public function: import + invoke with simplest valid input.
 - Assert: doesn't raise, returns documented type, non-trivial output.
 
 Symbols covered:
-- torchgwas.annotate.NCBIError (exception class)
-- torchgwas.annotate.AnnotatedGene (dataclass)
-- torchgwas.annotate.AnnotatedHit (dataclass)
+- torchgenomics.annotate.NCBIError (exception class)
+- torchgenomics.annotate.AnnotatedGene (dataclass)
+- torchgenomics.annotate.AnnotatedHit (dataclass)
 
-Removed (post-campaign cleanup): ``torchgwas.cli.TYPE_CHECKING`` was a
+Removed (post-campaign cleanup): ``torchgenomics.cli.TYPE_CHECKING`` was a
 ``typing.TYPE_CHECKING`` re-export at module top-level. The cli.py
 import was renamed to ``from typing import TYPE_CHECKING as
 _TYPE_CHECKING`` so the symbol no longer surfaces in audit
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from torchgwas.annotate import AnnotatedGene, AnnotatedHit, NCBIError
+from torchgenomics.annotate import AnnotatedGene, AnnotatedHit, NCBIError
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -100,7 +100,7 @@ class TestAnnotatedHit:
         assert "AnnotatedHit" in s
 
 
-# TestCliTypeChecking removed post-campaign: ``torchgwas.cli.TYPE_CHECKING``
+# TestCliTypeChecking removed post-campaign: ``torchgenomics.cli.TYPE_CHECKING``
 # was a stdlib re-export at module top-level. The cli.py import is now
 # ``from typing import TYPE_CHECKING as _TYPE_CHECKING`` so the symbol
 # no longer appears in public-symbol enumeration. Conditional type-only

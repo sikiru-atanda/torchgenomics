@@ -5,7 +5,7 @@
 #   PLINK 1.9 --hap-* family was REMOVED upstream (cog-genomics docs note
 #   deprecation since 1.07). PLINK 2 has NO haplotype-association commands.
 #   There is therefore no PLINK reference for the EM-based block / window
-#   haplotype scans implemented in torchgwas/models/haplotype_gwas.py.
+#   haplotype scans implemented in torchgenomics/models/haplotype_gwas.py.
 #
 #   The canonical CRAN substitute is R/haplo.stats (Schaid et al. 2002,
 #   AJHG). It implements:

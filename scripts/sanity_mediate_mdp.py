@@ -1,4 +1,4 @@
-"""Real-data sanity check for `torchgwas.multiomics` on MDP maize (GAPIT demo).
+"""Real-data sanity check for `torchgenomics.multiomics` on MDP maize (GAPIT demo).
 
 Dataset: MDP (Zhao et al. 2011 maize panel) — 281 samples, 3093 SNPs, 3 traits
 (EarHT, dpoll, EarDia). Publicly distributed with GAPIT.
@@ -19,9 +19,9 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
-from torchgwas.multiomics import (
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.multiomics import (
     build_expression_kernel,
     mediate_lmm,
     mkernel_h2,
@@ -56,7 +56,7 @@ model = SingleTraitLMM()
 intercept = torch.ones(Y.shape[0], 1, dtype=torch.float64)
 nf = model.fit_null(Y, intercept, K)
 # quick per-SNP Wald
-from torchgwas.linalg.eigh import rotate
+from torchgenomics.linalg.eigh import rotate
 U = nf.eigenvectors
 w = 1.0 / (nf.eigenvalues * nf.sig2_g + nf.sig2_e).clamp(min=1e-20)
 Y_r = nf.Y_rot.squeeze()

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.models.base import VariantMeta
+from torchgenomics.models.base import VariantMeta
 
 
 def _make_vmeta(m):
@@ -30,8 +30,8 @@ def _spearman_rank_corr(x: torch.Tensor, y: torch.Tensor) -> float:
 class TestReductions:
     def test_ordinal_j2_matches_binary(self):
         """OrdinalGLM with J=2 should produce similar results to BinaryGLM."""
-        from torchgwas.models.binary_glm import BinaryGLM
-        from torchgwas.models.ordinal_glm import OrdinalGLM
+        from torchgenomics.models.binary_glm import BinaryGLM
+        from torchgenomics.models.ordinal_glm import OrdinalGLM
 
         n, m = 200, 30
         torch.manual_seed(500)
@@ -55,7 +55,7 @@ class TestReductions:
 
     def test_spa_approx_chi2_body(self):
         """SPA and chi2 p-values should be highly rank-correlated."""
-        from torchgwas.models.binary_glm import BinaryGLM
+        from torchgenomics.models.binary_glm import BinaryGLM
 
         n, m = 300, 50
         torch.manual_seed(501)
@@ -79,8 +79,8 @@ class TestReductions:
 
     def test_binary_glmm_k_zero_matches_glm(self):
         """BinaryGLMM with near-zero K should behave like BinaryGLM."""
-        from torchgwas.models.binary_glm import BinaryGLM
-        from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.binary_glm import BinaryGLM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
 
         n, m = 150, 20
         torch.manual_seed(502)
@@ -104,8 +104,8 @@ class TestReductions:
 
     def test_multinomial_glmm_k_zero_matches_glm(self):
         """MultinomialGLMM with near-zero K should behave like MultinomialGLM."""
-        from torchgwas.models.multinomial_glm import MultinomialGLM
-        from torchgwas.models.multinomial_glmm import MultinomialGLMM
+        from torchgenomics.models.multinomial_glm import MultinomialGLM
+        from torchgenomics.models.multinomial_glmm import MultinomialGLMM
 
         n, m, J = 200, 15, 3
         torch.manual_seed(503)
@@ -131,8 +131,8 @@ class TestReductions:
 class TestCrossModel:
     def test_all_binary_models_on_same_data(self):
         """BinaryGLM, BinaryGLMM on same data: p-values should correlate."""
-        from torchgwas.models.binary_glm import BinaryGLM
-        from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.binary_glm import BinaryGLM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
 
         n, m = 200, 20
         torch.manual_seed(600)
@@ -168,8 +168,8 @@ class TestCrossModel:
 
     def test_all_ordinal_models_on_same_data(self):
         """OrdinalGLM, OrdinalGLMM on same data: p-values should correlate."""
-        from torchgwas.models.ordinal_glm import OrdinalGLM
-        from torchgwas.models.ordinal_glmm import OrdinalGLMM
+        from torchgenomics.models.ordinal_glm import OrdinalGLM
+        from torchgenomics.models.ordinal_glmm import OrdinalGLMM
 
         n, m, J = 200, 20, 3
         torch.manual_seed(601)
@@ -203,8 +203,8 @@ class TestCrossModel:
 
     def test_all_multinomial_models_on_same_data(self):
         """MultinomialGLM, MultinomialGLMM on same data: p-values should correlate."""
-        from torchgwas.models.multinomial_glm import MultinomialGLM
-        from torchgwas.models.multinomial_glmm import MultinomialGLMM
+        from torchgenomics.models.multinomial_glm import MultinomialGLM
+        from torchgenomics.models.multinomial_glmm import MultinomialGLMM
 
         n, m, J = 200, 15, 3
         torch.manual_seed(602)

@@ -16,12 +16,12 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.truncated_mvn import (
+from torchgenomics.linalg.truncated_mvn import (
     bivariate_truncated_moments,
     mvn_truncated_moments,
     truncated_normal_moments,
 )
-from torchgwas.optim.squarem import squarem
+from torchgenomics.optim.squarem import squarem
 
 # ===================================================================
 # Truncated MVN moments
@@ -433,7 +433,7 @@ class TestThresholdScanNullPvalues:
         nf = model.fit_null(Y, X0)
 
         G = torch.randn(n, m, dtype=torch.float64)
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vmeta = VariantMeta(
             snp=[f"SNP{i}" for i in range(m)],
             chr=["1"] * m, pos=list(range(m)),
@@ -464,7 +464,7 @@ class TestThresholdScanNullPvalues:
         nf = model.fit_null(Y, X0)
 
         G = torch.randn(n, m, dtype=torch.float64)
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vmeta = VariantMeta(
             snp=[f"SNP{i}" for i in range(m)],
             chr=["1"] * m, pos=list(range(m)),
@@ -509,7 +509,7 @@ class TestThresholdPowerDetection:
         G = torch.randn(n, m, dtype=torch.float64)
         G[:, 0] = g_causal  # plant causal at index 0
 
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vmeta = VariantMeta(
             snp=[f"SNP{i}" for i in range(m)],
             chr=["1"] * m, pos=list(range(m)),
@@ -600,7 +600,7 @@ class TestThresholdPolyploid:
 
         # Polyploid dosages in [0, 4]
         G = torch.randint(0, ploidy + 1, (n, m)).to(torch.float64)
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vmeta = VariantMeta(
             snp=[f"SNP{i}" for i in range(m)],
             chr=["1"] * m, pos=list(range(m)),
@@ -634,7 +634,7 @@ class TestThresholdProtocol:
         assert hasattr(model, "score_chunk")
 
     def test_isinstance_check(self):
-        from torchgwas.models.base import BaseModel
+        from torchgenomics.models.base import BaseModel
         model = ThresholdLinearModel(
             trait_types=["ordinal"],
             n_categories=[2],
@@ -709,7 +709,7 @@ class TestThresholdEdgeCases:
         nf = model.fit_null(Y, X0)
 
         G_empty = torch.zeros(n, 0, dtype=torch.float64)
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vmeta = VariantMeta(snp=[], chr=[], pos=[], a1=[], a2=[])
         result = model.score_chunk(G_empty, nf, vmeta)
         assert len(result) == 0
@@ -731,7 +731,7 @@ class TestThresholdEdgeCases:
         nf = model.fit_null(Y, X0)
 
         G = torch.randn(n, m, dtype=torch.float64)
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vmeta = VariantMeta(
             snp=[f"SNP{i}" for i in range(m)],
             chr=["1"] * m, pos=list(range(m)),
@@ -783,7 +783,7 @@ class TestThresholdEdgeCases:
         nf = model.fit_null(Y, X0)
 
         G = torch.randint(0, ploidy + 1, (n, m)).to(torch.float64)
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vmeta = VariantMeta(
             snp=[f"SNP{i}" for i in range(m)],
             chr=["1"] * m, pos=list(range(m)),
@@ -841,4 +841,4 @@ class TestThresholdEdgeCases:
 
 
 # Import here to avoid issues with existing circular imports
-from torchgwas.models.threshold_linear import ThresholdLinearModel
+from torchgenomics.models.threshold_linear import ThresholdLinearModel

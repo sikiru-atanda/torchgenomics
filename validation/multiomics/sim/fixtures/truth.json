@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "description": "Simulated multi-omics ground truth for TorchGWAS Genome Biology paper Figure 4 panel A. G -> expr -> trait with sparse beta_GE, sparse beta_ET, a pleiotropic direct-effect component, and a non-causal coloc/SMR negative control.",
+  "description": "Simulated multi-omics ground truth for TorchGenomics Genome Biology paper Figure 4 panel A. G -> expr -> trait with sparse beta_GE, sparse beta_ET, a pleiotropic direct-effect component, and a non-causal coloc/SMR negative control.",
   "config": {
     "n": 500,
     "p": 1000,
@@ -3546,11 +3546,11 @@
     }
   },
   "downstream_api_surfaces": {
-    "twas": "torchgwas.postgwas._twas.twas_sumstat (S-PrediXcan)",
-    "smr": "torchgwas.postgwas._smr.smr_test + smr_heidi",
-    "coloc": "torchgwas.postgwas._hyprcoloc.coloc_pairwise",
-    "mediation": "torchgwas.multiomics._mediate.mediate_lmm",
-    "batched_mediation": "torchgwas.multiomics._scan_batched.batched_scan_pairs"
+    "twas": "torchgenomics.postgwas._twas.twas_sumstat (S-PrediXcan)",
+    "smr": "torchgenomics.postgwas._smr.smr_test + smr_heidi",
+    "coloc": "torchgenomics.postgwas._hyprcoloc.coloc_pairwise",
+    "mediation": "torchgenomics.multiomics._mediate.mediate_lmm",
+    "batched_mediation": "torchgenomics.multiomics._scan_batched.batched_scan_pairs"
   },
   "references": {
     "twas": "Barbeira et al. 2018 Nat. Comm. 9:1825 (S-PrediXcan)",

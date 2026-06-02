@@ -1,15 +1,15 @@
 """Regression tests for the native C++ PCHT compat-pair kernel.
 
 The native kernel
-(``torchgwas._native._pcht_native.dosage_posterior_cov``) replaces the
+(``torchgenomics._native._pcht_native.dosage_posterior_cov``) replaces the
 nested per-sample compat-pair enumeration + posterior-covariance
 accumulation in
-``torchgwas.models.haplotype_novel.compute_dosage_posterior_cov``.
+``torchgenomics.models.haplotype_novel.compute_dosage_posterior_cov``.
 These tests assert:
 
 1.  **Parity** — native and Python paths produce numerically identical
     (H, H) summed posterior covariance at the FP64 floor.
-2.  **Env-var fallthrough** — ``TORCHGWAS_DISABLE_NATIVE=1`` forces
+2.  **Env-var fallthrough** — ``TORCHGENOMICS_DISABLE_NATIVE=1`` forces
     the Python reference path; results match.
 3.  **Below-threshold input** — for tiny problems (n*H² < 256) the
     dispatcher routes to Python.
@@ -29,8 +29,8 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas._native import HAS_NATIVE_PCHT
-from torchgwas.models.haplotype_novel import compute_dosage_posterior_cov
+from torchgenomics._native import HAS_NATIVE_PCHT
+from torchgenomics.models.haplotype_novel import compute_dosage_posterior_cov
 
 
 def _planted_haplotype_fixture(
@@ -81,18 +81,18 @@ def _planted_haplotype_fixture(
 
 
 def _run_with(env_value: str | None, fn, *args, **kwargs):
-    prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+    prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
     if env_value is None:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     else:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = env_value
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = env_value
     try:
         return fn(*args, **kwargs)
     finally:
         if prev is None:
-            os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+            os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
         else:
-            os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+            os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
 
 @unittest.skipUnless(

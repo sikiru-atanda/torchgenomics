@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from torchgwas.postgwas import (
+from torchgenomics.postgwas import (
     SumStats,
     TWASGeneResult,
     TWASResult,

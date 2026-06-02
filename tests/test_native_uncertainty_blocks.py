@@ -1,5 +1,5 @@
 """Tests for the native C++ uncertainty-blocks accelerator
-(``torchgwas._native._uncertainty_blocks_native``).
+(``torchgenomics._native._uncertainty_blocks_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,11 +13,11 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import (
+from torchgenomics._native import (
     HAS_NATIVE_UNCERTAINTY_BLOCKS,
     _uncertainty_blocks_native,
 )
-from torchgwas.ld._blocks_novel import (
+from torchgenomics.ld._blocks_novel import (
     _uncertainty_blocks_native_enabled,
     detect_blocks_uncertainty,
 )
@@ -39,7 +39,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _uncertainty_blocks_native_enabled() is True
 
@@ -155,15 +155,15 @@ def _make_gp_fixture(seed: int, n: int = 80, m: int = 8, ploidy: int = 2):
 
 
 def _python_reference(*args, **kwargs):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return detect_blocks_uncertainty(*args, **kwargs)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 def _native_dispatch(*args, **kwargs):
-    os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+    os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     return detect_blocks_uncertainty(*args, **kwargs)
 
 

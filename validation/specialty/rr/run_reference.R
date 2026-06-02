@@ -1,14 +1,14 @@
 #!/usr/bin/env Rscript
 # run_reference.R -- lme4 random-regression reference fit.
 #
-# Model fit on the same fixture run_torchgwas.py consumes:
+# Model fit on the same fixture run_torchgenomics.py consumes:
 #
 #   y_{i,t} = mu + beta1 P1(t) + beta2 P2(t)
 #           + ( u0_i + u1_i P1(t) + u2_i P2(t) ) + e_{i,t}
 #
 # where P_k are normalized Legendre polynomials in
 # t_std = 2 (t - t_min) / (t_max - t_min) - 1.  This matches
-# torchgwas.linalg.basis.legendre_basis exactly.  Random effects are
+# torchgenomics.linalg.basis.legendre_basis exactly.  Random effects are
 # correlated across the b=3 basis coefficients within subject (the
 # (0 + P0 + P1 + P2 | sid) term).  Residuals are iid Normal.
 #

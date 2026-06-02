@@ -34,7 +34,7 @@ Read this carefully before starting — the environment is unusual.
 
 ### Confirmed-installed tooling
 
-- Python 3.11 with editable torchgwas (`pip install -e ".[dev,polyploid-phase]"`).
+- Python 3.11 with editable torchgenomics (`pip install -e ".[dev,polyploid-phase]"`).
 - Julia 1.11.9, juliacall 0.9.31, PolyOrigin v1.0.3 — same as Task 7 of the shape-adapter plan.
 - R 4.3.0 + updog 2.1.7 (installed during Tier A #2).
 - `juliapkg.executable()` works for Julia discovery.
@@ -42,12 +42,12 @@ Read this carefully before starting — the environment is unusual.
 
 ### Key code surface used by this plan
 
-- `torchgwas.preprocess.phase_polyorigin.run_polyorigin(...)` — Phase 56 wrapper.
-- `torchgwas.preprocess.phase_polyorigin.PhasingResult` — has `state_table`, `haplotypes_per_copy` (Tier A #1).
-- `torchgwas.preprocess.phase_polyorigin._parse_genoprob`, `_parse_parentphased` — for the reference-run parsing (used in `test_parity_tetraploid_f1`).
-- `torchgwas.preprocess.dosage_uncertainty.expected_dosage(probs, ploidy)` — `(n,m,k+1) → (n,m)` dosage.
-- `torchgwas.models.HaplotypeGWAS(method, test, ploidy)` + `.scan(Y, G, haplotypes=...)` — Phase 46.
-- `torchgwas.preprocess.dosage_call.run_updog(...)` — Phase 55 wrapper for VCF → posterior dosage probs (only needed if the published dataset is raw read counts; many published datasets ship pre-called dosages).
+- `torchgenomics.preprocess.phase_polyorigin.run_polyorigin(...)` — Phase 56 wrapper.
+- `torchgenomics.preprocess.phase_polyorigin.PhasingResult` — has `state_table`, `haplotypes_per_copy` (Tier A #1).
+- `torchgenomics.preprocess.phase_polyorigin._parse_genoprob`, `_parse_parentphased` — for the reference-run parsing (used in `test_parity_tetraploid_f1`).
+- `torchgenomics.preprocess.dosage_uncertainty.expected_dosage(probs, ploidy)` — `(n,m,k+1) → (n,m)` dosage.
+- `torchgenomics.models.HaplotypeGWAS(method, test, ploidy)` + `.scan(Y, G, haplotypes=...)` — Phase 46.
+- `torchgenomics.preprocess.dosage_call.run_updog(...)` — Phase 55 wrapper for VCF → posterior dosage probs (only needed if the published dataset is raw read counts; many published datasets ship pre-called dosages).
 - `tests/test_phase_polyorigin_e2e.py::_ensure_potato_dataset` and `_CACHE` — already in place at `tests/fixtures/_cache/` (gitignored).
 
 ---
@@ -200,7 +200,7 @@ def _load_potato_dataset(tmp_path: Path) -> tuple[
 
     # ----- Concrete parsing — fill in based on Task 1 Step 3 inspection -----
     # Example A: dataset ships per-sample VCF with AD →
-    #   from torchgwas.preprocess.dosage_call import run_updog
+    #   from torchgenomics.preprocess.dosage_call import run_updog
     #   probs_obj = run_updog(str(unpack_dir / "calls.vcf.gz"),
     #                         str(tmp_path / "dcall"), ploidy=4)
     #   probs = probs_obj["probs"]  (or torch.load if it persisted)
@@ -291,11 +291,11 @@ def test_gwaspoly_potato_roundtrip(tmp_path):
         _parentphased.csv yields tensors that match result.origin_probs
         and result.parent_phased (atol=1e-4 / exact equality respectively).
     """
-    from torchgwas.preprocess.phase_polyorigin import (
+    from torchgenomics.preprocess.phase_polyorigin import (
         run_polyorigin, _parse_genoprob, _parse_parentphased,
     )
-    from torchgwas.preprocess.dosage_uncertainty import expected_dosage
-    from torchgwas.models import HaplotypeGWAS
+    from torchgenomics.preprocess.dosage_uncertainty import expected_dosage
+    from torchgenomics.models import HaplotypeGWAS
 
     probs, sample_ids, variant_ids, ped, mp, Y, ploidy = _load_potato_dataset(tmp_path)
     n_off = len(sample_ids) - 2  # parents are first 2
@@ -303,7 +303,7 @@ def test_gwaspoly_potato_roundtrip(tmp_path):
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    auto = bool(os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"))
+    auto = bool(os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"))
     result = run_polyorigin(
         probs=probs,
         pedigree_tsv=str(ped),

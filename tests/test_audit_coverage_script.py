@@ -64,7 +64,7 @@ def test_audit_summary_includes_tier_counts(tmp_path):
 
 
 def test_audit_classifies_known_module():
-    """Sanity: torchgwas.linalg.eigendecompose should be Tier 1."""
+    """Sanity: torchgenomics.linalg.eigendecompose should be Tier 1."""
     out_path = Path("/tmp/_audit_test.json")
     subprocess.run(
         [sys.executable, str(REPO / "scripts" / "audit_public_coverage.py"),
@@ -73,7 +73,7 @@ def test_audit_classifies_known_module():
     )
     data = json.loads(out_path.read_text())
     eig_rows = [r for r in data["rows"]
-                if r["module"] == "torchgwas.linalg" and r["symbol"] == "eigendecompose"]
+                if r["module"] == "torchgenomics.linalg" and r["symbol"] == "eigendecompose"]
     assert len(eig_rows) == 1
     assert eig_rows[0]["tier"] == 1
 
@@ -90,7 +90,7 @@ def test_no_false_positive_substring_match(tmp_path):
         cwd=REPO, check=True, timeout=120,
     )
     data = json.loads(out.read_text())
-    # PGSResult is in torchgwas.pgs. Find rows for any module-symbol that
+    # PGSResult is in torchgenomics.pgs. Find rows for any module-symbol that
     # claims has_direct_test=True; for at least one of them, verify the
     # claimed test_file actually imports that exact symbol from that exact
     # module. (We can't enumerate all but we can spot-check.)
@@ -103,10 +103,10 @@ def test_no_false_positive_substring_match(tmp_path):
         return  # nothing to check; PGSResult may not exist or may be untested
     test_path = REPO / sample["test_files"][0]
     text = test_path.read_text()
-    # Either explicit `from torchgwas.pgs import ... PGSResult ...`
-    # or `from torchgwas import pgs` + `pgs.PGSResult` somewhere.
+    # Either explicit `from torchgenomics.pgs import ... PGSResult ...`
+    # or `from torchgenomics import pgs` + `pgs.PGSResult` somewhere.
     assert (
         "PGSResult" in text and
-        ("torchgwas.pgs" in text or "torchgwas import pgs" in text or
-         "torchgwas import" in text)
+        ("torchgenomics.pgs" in text or "torchgenomics import pgs" in text or
+         "torchgenomics import" in text)
     )

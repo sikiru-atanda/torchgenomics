@@ -7,7 +7,7 @@ greedy algorithm with a hierarchical conditional prior. This harness installs
 hyprcoloc + its R-side prerequisites (Rmpfr, gmp via conda-forge headers; iterpc,
 arrangements via CRAN), simulates a 3-trait sumstats fixture with a planted
 shared causal SNP, runs hyprcoloc in R, and compares cluster membership +
-posterior PPs against TorchGWAS' `torchgwas.postgwas._hyprcoloc.hyprcoloc`.
+posterior PPs against TorchGenomics' `torchgenomics.postgwas._hyprcoloc.hyprcoloc`.
 
 ## Pinned reference
 
@@ -79,7 +79,7 @@ the upstream pipelines re-harmonize their meta-analyses. This breaks
 reproducibility. The hyprcoloc estimator is *summary-statistic only* — it does
 not need real biology to test correctness. Simulated data with a planted shared
 causal effect on all K = 3 traits tests every code path in
-`hyprcoloc::hyprcoloc()` and TG's `torchgwas.postgwas._hyprcoloc.hyprcoloc`.
+`hyprcoloc::hyprcoloc()` and TG's `torchgenomics.postgwas._hyprcoloc.hyprcoloc`.
 
 Per Foley et al. 2021, the minimal informative fixture is K = 3 correlated
 traits with one shared causal SNP. The expected cluster on this fixture is
@@ -92,7 +92,7 @@ traits with one shared causal SNP. The expected cluster on this fixture is
 bash validation/external/hyprcoloc/install.sh        # one-time R + conda install (~10 min wall time)
 bash validation/external/hyprcoloc/fetch_data.sh     # simulate 3-trait sumstats (<1 s)
 Rscript validation/external/hyprcoloc/run.R          # run hyprcoloc (~5 s)
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/hyprcoloc/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/hyprcoloc/compare.py
 
 # Outputs (gitignored except results/):
 #   data/sumstats.tsv, data/sim_truth.json
@@ -105,9 +105,9 @@ disk + RAM headroom before doing any work, per the Pillar B contract.
 
 ## Reference outputs
 
-| File | Source | TorchGWAS counterpart |
+| File | Source | TorchGenomics counterpart |
 |---|---|---|
-| `outputs/hyprcoloc_results.json` (key `results[0]`) | `hyprcoloc::hyprcoloc(snpscores=TRUE)` | `torchgwas.postgwas._hyprcoloc.hyprcoloc` |
+| `outputs/hyprcoloc_results.json` (key `results[0]`) | `hyprcoloc::hyprcoloc(snpscores=TRUE)` | `torchgenomics.postgwas._hyprcoloc.hyprcoloc` |
 | `outputs/hyprcoloc_results.json` (key `snpscores_per_iter[0]`) | `hyprcoloc::hyprcoloc(snpscores=TRUE)$snpscores` | (informational; not currently compared) |
 | `results/summary.tsv` | per-check observed/threshold/passed | — |
 | `results/agreement.json` | full structured comparison report + tool versions | — |
@@ -171,7 +171,7 @@ full fix is queued for the post-paper Pillar A documented-divergences-closeout.
 | install (conda + R compile) | 8 GB | 6 GB | ~600 MB during install_github compile |
 | fetch (simulate sumstats) | 4 GB | 6 GB | <50 MB |
 | run (hyprcoloc on 100 SNPs x 3 traits) | n/a (no preflight) | n/a | <100 MB R interpreter |
-| compare.py (Python 3 + torchgwas) | n/a | n/a | ~750 MB (torch + scipy + numpy at import) |
+| compare.py (Python 3 + torchgenomics) | n/a | n/a | ~750 MB (torch + scipy + numpy at import) |
 
 ## Layout
 

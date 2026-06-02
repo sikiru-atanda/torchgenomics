@@ -1,13 +1,13 @@
 # susieR external validation harness
 
 This harness runs `susieR::susie_rss()` (upstream R reference) and our
-`torchgwas bayes-scan-rss` on the same per-locus fixture and compares the
+`torchgenomics bayes-scan-rss` on the same per-locus fixture and compares the
 results against the 6-metric tolerance table from NA1 design spec section 5.2.
 
 ## Prerequisites
 
 - R >= 4.0 (`conda install -c conda-forge r-base` if missing)
-- TorchGWAS installed in the current Python environment (`pip install -e ".[dev]"`)
+- TorchGenomics installed in the current Python environment (`pip install -e ".[dev]"`)
 - >= 2 GB free disk
 - >= 4 GB free RAM
 
@@ -24,12 +24,12 @@ results against the 6-metric tolerance table from NA1 design spec section 5.2.
 ./run_susieR.sh
 
 # 4. Run our bayes-scan-rss (Tier A scaffold; full impl Tier B)
-./run_torchgwas.sh
+./run_torchgenomics.sh
 
 # 5. Compare and emit findings
 python compare.py \
     --upstream outputs/susieR.tsv \
-    --ours outputs/torchgwas.tsv \
+    --ours outputs/torchgenomics.tsv \
     --findings ../../../docs/validation_findings.md
 ```
 

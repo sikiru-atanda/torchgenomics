@@ -1,5 +1,5 @@
 // Native accelerator for the "solid spine of LD" block detector in
-// ``torchgwas.ld._blocks.detect_blocks_spine``.
+// ``torchgenomics.ld._blocks.detect_blocks_spine``.
 //
 // The pure-Python loop builds a Python dict from (i, j) -> |D'| keys and
 // then greedily extends each block, checking |D'(k, candidate)| for every

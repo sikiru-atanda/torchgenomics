@@ -1,4 +1,4 @@
-"""Profile peak RSS of a TorchGWAS lmm-scan run on the synthetic BED fixture.
+"""Profile peak RSS of a TorchGenomics lmm-scan run on the synthetic BED fixture.
 
 Runs the scan in a subprocess, polls memory via psutil at 50ms intervals,
 records:
@@ -46,17 +46,17 @@ def poll_memory(pid: int, sample_interval: float, samples: list, stop_event) -> 
 
 
 def measure_baseline_rss() -> dict:
-    """Subprocess that just imports torch + torchgwas and exits. Use this to
+    """Subprocess that just imports torch + torchgenomics and exits. Use this to
     subtract the Python/torch baseline from the scan-attributable memory."""
     cmd = [
         sys.executable, "-c",
         """
 import time, torch
-import torchgwas
-from torchgwas.io.plink import PlinkBedReader
-from torchgwas.linalg.kinship import grm_vanraden_streaming
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
-from torchgwas.models.base import VariantMeta
+import torchgenomics
+from torchgenomics.io.plink import PlinkBedReader
+from torchgenomics.linalg.kinship import grm_vanraden_streaming
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.models.base import VariantMeta
 import pandas as pd
 print('baseline: imports done', flush=True)
 time.sleep(0.5)  # give the polling thread a few samples
@@ -90,10 +90,10 @@ def run_scan(prefix: Path, chunk_size: int, work_dir: Path) -> dict:
         sys.executable, "-c",
         f"""
 import time, torch
-from torchgwas.io.plink import PlinkBedReader
-from torchgwas.linalg.kinship import grm_vanraden_streaming
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
-from torchgwas.models.base import VariantMeta
+from torchgenomics.io.plink import PlinkBedReader
+from torchgenomics.linalg.kinship import grm_vanraden_streaming
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.models.base import VariantMeta
 import pandas as pd
 
 t0 = time.time()

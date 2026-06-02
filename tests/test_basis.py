@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from torchgwas.linalg.basis import (
+from torchgenomics.linalg.basis import (
     bspline_basis,
     difference_penalty,
     evaluate_basis_at,

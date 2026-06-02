@@ -1,4 +1,4 @@
-scenario	hypothesis	r_coloc	torchgwas	delta
+scenario	hypothesis	r_coloc	torchgenomics	delta
 shared	PP.H0	2.9642e-20	2.9641819158489934e-20	1.808415100691997e-25
 shared	PP.H1	5.997e-07	5.997047595014956e-07	4.759501495602247e-12
 shared	PP.H2	4.9427e-17	4.94274274154065e-17	4.274154064978167e-22

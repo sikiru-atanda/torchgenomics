@@ -17,10 +17,10 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import ScanResult, VariantMeta
-from torchgwas.models.gu_lmm import GULM, GUResult
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import ScanResult, VariantMeta
+from torchgenomics.models.gu_lmm import GULM, GUResult
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 # ===================================================================
 # Helper: simulate data

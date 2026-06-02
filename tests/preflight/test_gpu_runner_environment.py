@@ -279,12 +279,12 @@ def test_scaffold_complete() -> None:
 
 
 def test_repo_root_resolution_is_sane() -> None:
-    """Sanity: REPO_ROOT should look like a TorchGWAS checkout."""
+    """Sanity: REPO_ROOT should look like a TorchGenomics checkout."""
     assert (REPO_ROOT / "pyproject.toml").is_file(), (
-        f"REPO_ROOT does not look like a TorchGWAS checkout: {REPO_ROOT}"
+        f"REPO_ROOT does not look like a TorchGenomics checkout: {REPO_ROOT}"
     )
-    assert (REPO_ROOT / "torchgwas").is_dir(), (
-        f"REPO_ROOT missing torchgwas/ package: {REPO_ROOT}"
+    assert (REPO_ROOT / "torchgenomics").is_dir(), (
+        f"REPO_ROOT missing torchgenomics/ package: {REPO_ROOT}"
     )
 
 

@@ -1,10 +1,10 @@
 """Tests for the native C++ CAVI inner-sweep accelerator.
 
 The native module replaces the per-SNP coordinate-update loop in
-``torchgwas.models.bayesian_vs.BayesianVS._cavi_loop``. The Python loop
+``torchgenomics.models.bayesian_vs.BayesianVS._cavi_loop``. The Python loop
 remains in-tree as the algorithmic spec; the dispatcher routes to C++
 when the build is present, the tensors are CPU+float64, and
-``TORCHGWAS_DISABLE_NATIVE`` is unset.
+``TORCHGENOMICS_DISABLE_NATIVE`` is unset.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import os
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_CAVI, _cavi_native
+from torchgenomics._native import HAS_NATIVE_CAVI, _cavi_native
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_CAVI, reason="native CAVI extension not built"
@@ -230,13 +230,13 @@ def test_shape_mismatch_raises():
 
 def _fit_cavi_with(disable_native: bool):
     if disable_native:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     else:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     try:
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.models.bayesian_vs import BayesianVS
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.models.bayesian_vs import BayesianVS
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         torch.manual_seed(0)
         n, m = 60, 25
@@ -261,7 +261,7 @@ def _fit_cavi_with(disable_native: bool):
         result = bvs.fit(G, vmeta, method="cavi", max_iter=20, n_signals=2)
         return result
     finally:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
 
 
 def test_dispatcher_native_matches_python_end_to_end():

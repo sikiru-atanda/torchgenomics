@@ -2,9 +2,9 @@
 
 The native module replaces the per-cluster, per-population, per-pair
 ``r2[..].item()`` round-trip loop in
-``torchgwas.ld._blocks_novel.detect_blocks_cross_pop``. The pure-Python loop
+``torchgenomics.ld._blocks_novel.detect_blocks_cross_pop``. The pure-Python loop
 remains in-tree as the algorithmic spec; the dispatcher routes to C++ when
-the build is present and ``TORCHGWAS_DISABLE_NATIVE`` is unset.
+the build is present and ``TORCHGENOMICS_DISABLE_NATIVE`` is unset.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_CROSS_POP, _cross_pop_native
-from torchgwas.ld._blocks_novel import detect_blocks_cross_pop
+from torchgenomics._native import HAS_NATIVE_CROSS_POP, _cross_pop_native
+from torchgenomics.ld._blocks_novel import detect_blocks_cross_pop
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_CROSS_POP, reason="native cross-pop extension not built"
@@ -169,13 +169,13 @@ def _make_two_pop_fixture(seed=0):
 def test_dispatcher_native_matches_python(monkeypatch):
     G, pop_ids, variant_pos, variant_chr = _make_two_pop_fixture(seed=42)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks_cross_pop(
         G, pop_ids, None, variant_pos, variant_chr,
         n_blocks_hint=3, stability_threshold=0.0, min_block_snps=2,
     )
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks_cross_pop(
         G, pop_ids, None, variant_pos, variant_chr,
         n_blocks_hint=3, stability_threshold=0.0, min_block_snps=2,
@@ -201,12 +201,12 @@ def test_dispatcher_three_pop_matches_python(monkeypatch):
     variant_pos = list(range(m))
     variant_chr = ["1"] * m
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     bn = detect_blocks_cross_pop(
         G, pop_ids, None, variant_pos, variant_chr,
         n_blocks_hint=4, stability_threshold=0.0, min_block_snps=2,
     )
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     bp = detect_blocks_cross_pop(
         G, pop_ids, None, variant_pos, variant_chr,
         n_blocks_hint=4, stability_threshold=0.0, min_block_snps=2,

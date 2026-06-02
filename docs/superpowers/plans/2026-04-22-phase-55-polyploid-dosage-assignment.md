@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship a thin external-wrapper around the R package `updog` that converts polyploid VCF read counts (AD field) into posterior `P(dosage=0..k)` tensors, plus a `torchgwas dosage-call` CLI subcommand, without touching any downstream consumer.
+**Goal:** Ship a thin external-wrapper around the R package `updog` that converts polyploid VCF read counts (AD field) into posterior `P(dosage=0..k)` tensors, plus a `torchgenomics dosage-call` CLI subcommand, without touching any downstream consumer.
 
-**Architecture:** Single new module `torchgwas/preprocess/dosage_call.py` exposing one public function `run_updog(...)` and one dataclass `DosageCallResult`. Python reads VCF via `cyvcf2`, writes `ref.tsv` / `size.tsv` to a tempdir, calls `Rscript driver.R` via subprocess, `driver.R` runs `updog::multidog()` and writes `k+1` wide TSVs + `snp_diag.tsv` via `format_multidog()`, Python reads them into a `(n, m, k+1)` float64 torch tensor, writes `<prefix>.probs.pt` + `<prefix>.meta.json` + `<prefix>.snp_diag.tsv` atomically. Tier 1 tests monkeypatch `subprocess.run` and never touch R. Tier 2 tests `pytest.mark.skipif` on missing R/updog.
+**Architecture:** Single new module `torchgenomics/preprocess/dosage_call.py` exposing one public function `run_updog(...)` and one dataclass `DosageCallResult`. Python reads VCF via `cyvcf2`, writes `ref.tsv` / `size.tsv` to a tempdir, calls `Rscript driver.R` via subprocess, `driver.R` runs `updog::multidog()` and writes `k+1` wide TSVs + `snp_diag.tsv` via `format_multidog()`, Python reads them into a `(n, m, k+1)` float64 torch tensor, writes `<prefix>.probs.pt` + `<prefix>.meta.json` + `<prefix>.snp_diag.tsv` atomically. Tier 1 tests monkeypatch `subprocess.run` and never touch R. Tier 2 tests `pytest.mark.skipif` on missing R/updog.
 
 **Tech Stack:** Python 3.10+, PyTorch, pandas, cyvcf2, subprocess, tempfile. External: R ≥ 4.0, `updog` ≥ 2.0.2 (Tier 2 only).
 
@@ -15,28 +15,28 @@
 ## File Structure
 
 **New files:**
-- `torchgwas/preprocess/dosage_call.py` — the wrapper (~400 LOC including R driver string).
+- `torchgenomics/preprocess/dosage_call.py` — the wrapper (~400 LOC including R driver string).
 - `tests/test_dosage_call.py` — Tier 1, always-on; subprocess stubbed.
 - `tests/test_dosage_call_updog_e2e.py` — Tier 2, skipif-gated; runs real R+updog.
 - `bench/calibrate_updog_recovery.py` — dev-time calibration helper.
 - `docs/getting-started/polyploid_dosage_call.md` — user recipe.
 
 **Modified files:**
-- `torchgwas/preprocess/__init__.py` — re-export `run_updog`, `DosageCallResult`.
-- `torchgwas/cli.py` — new `dosage-call` subcommand + dispatch entry.
+- `torchgenomics/preprocess/__init__.py` — re-export `run_updog`, `DosageCallResult`.
+- `torchgenomics/cli.py` — new `dosage-call` subcommand + dispatch entry.
 - `docs/ROADMAP.md` — remove Phase 55 entry (Phase 56 stays).
 - `docs/cli.md` — append `dosage-call --help` capture.
 - `CLAUDE.md` — bump subcommand count 35 → 36; add `dosage-call` example.
 
 **Unchanged:**
-- `torchgwas/preprocess/dosage_uncertainty.py`, `torchgwas/models/gu_lmm.py`, `torchgwas/preprocess/phase.py`, haplotype scans — all already correct downstream code.
+- `torchgenomics/preprocess/dosage_uncertainty.py`, `torchgenomics/models/gu_lmm.py`, `torchgenomics/preprocess/phase.py`, haplotype scans — all already correct downstream code.
 
 ---
 
 ## Task 1: Scaffold module + `DosageCallResult` dataclass + constants
 
 **Files:**
-- Create: `torchgwas/preprocess/dosage_call.py`
+- Create: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.preprocess.dosage_call import DosageCallResult, _VALID_MODELS
+from torchgenomics.preprocess.dosage_call import DosageCallResult, _VALID_MODELS
 
 
 def test_dosage_call_result_dataclass_fields():
@@ -79,11 +79,11 @@ def test_valid_models_contains_updog_flexdog_set():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_dosage_call.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'torchgwas.preprocess.dosage_call'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'torchgenomics.preprocess.dosage_call'`.
 
 - [ ] **Step 3: Create the module**
 
-Create `torchgwas/preprocess/dosage_call.py`:
+Create `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 """Polyploid allele dosage assignment via updog (Phase 55).
@@ -144,7 +144,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: scaffold dosage_call module + DosageCallResult dataclass"
 ```
 
@@ -153,7 +153,7 @@ git commit -m "Phase 55: scaffold dosage_call module + DosageCallResult dataclas
 ## Task 2: Environment probe (`_check_environment` with cache)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -163,7 +163,7 @@ Append to `tests/test_dosage_call.py`:
 ```python
 import pytest
 
-from torchgwas.preprocess import dosage_call as dc_module
+from torchgenomics.preprocess import dosage_call as dc_module
 
 
 def _reset_cache():
@@ -236,7 +236,7 @@ Expected: FAIL with `AttributeError: module ... has no attribute '_check_environ
 
 - [ ] **Step 3: Implement `_check_environment`**
 
-Append to `torchgwas/preprocess/dosage_call.py` (after the dataclass):
+Append to `torchgenomics/preprocess/dosage_call.py` (after the dataclass):
 
 ```python
 def _check_environment(rscript: Optional[str]) -> str:
@@ -285,7 +285,7 @@ Expected: PASS (6 tests total).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: environment probe for Rscript + updog with cache"
 ```
 
@@ -294,7 +294,7 @@ git commit -m "Phase 55: environment probe for Rscript + updog with cache"
 ## Task 3: Kwarg validation (`_validate_kwargs`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -328,7 +328,7 @@ Expected: FAIL with `AttributeError: ... no attribute '_validate_kwargs'`.
 
 - [ ] **Step 3: Implement `_validate_kwargs`**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 def _validate_kwargs(*, ploidy: int, model: str) -> None:
@@ -351,7 +351,7 @@ Expected: PASS (9 tests total).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: validate ploidy and model kwargs before R dispatch"
 ```
 
@@ -360,7 +360,7 @@ git commit -m "Phase 55: validate ploidy and model kwargs before R dispatch"
 ## Task 4: VCF AD extraction (`_extract_ad_from_vcf`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -460,7 +460,7 @@ Expected: FAIL with `AttributeError: ... no attribute '_extract_ad_from_vcf'` (o
 
 - [ ] **Step 3: Implement `_extract_ad_from_vcf`**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 def _extract_ad_from_vcf(
@@ -544,7 +544,7 @@ Expected: PASS (13 tests total), or SKIP if cyvcf2 is missing.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: VCF AD extraction with multi-allelic + missing handling"
 ```
 
@@ -553,7 +553,7 @@ git commit -m "Phase 55: VCF AD extraction with multi-allelic + missing handling
 ## Task 5: Write ref/size TSVs (`_write_input_tsvs`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -584,7 +584,7 @@ Expected: FAIL with `AttributeError`.
 
 - [ ] **Step 3: Implement `_write_input_tsvs`**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 def _write_input_tsvs(
@@ -617,7 +617,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: write ref/size TSVs with variant rownames + sample colnames"
 ```
 
@@ -626,7 +626,7 @@ git commit -m "Phase 55: write ref/size TSVs with variant rownames + sample coln
 ## Task 6: R driver string + subprocess invocation (`_run_r_subprocess`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -728,10 +728,10 @@ Expected: FAIL on all four new tests.
 
 - [ ] **Step 3: Implement the R driver string and subprocess helper**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
-_UPDOG_DRIVER_R = r"""# R driver for torchgwas.preprocess.dosage_call — invoked via Rscript.
+_UPDOG_DRIVER_R = r"""# R driver for torchgenomics.preprocess.dosage_call — invoked via Rscript.
 args <- commandArgs(trailingOnly = TRUE)
 ref_tsv <- args[1]
 size_tsv <- args[2]
@@ -823,7 +823,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: R driver script + subprocess invocation with error capture"
 ```
 
@@ -832,7 +832,7 @@ git commit -m "Phase 55: R driver script + subprocess invocation with error capt
 ## Task 7: Parse R output TSVs (`_parse_output`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -894,7 +894,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement `_parse_output`**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 def _parse_output(
@@ -938,7 +938,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: parse k+1 wide TSVs into (n, m, k+1) probs tensor"
 ```
 
@@ -947,7 +947,7 @@ git commit -m "Phase 55: parse k+1 wide TSVs into (n, m, k+1) probs tensor"
 ## Task 8: Output normalization (`_normalize_probs`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -996,7 +996,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement `_normalize_probs`**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 def _normalize_probs(probs: Tensor, ploidy: int) -> tuple[Tensor, int]:
@@ -1062,7 +1062,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: normalize probs, uniform-fill missing, clamp negatives"
 ```
 
@@ -1071,7 +1071,7 @@ git commit -m "Phase 55: normalize probs, uniform-fill missing, clamp negatives"
 ## Task 9: Assemble `DosageCallResult` + persist artifacts (`_build_result`, `_persist_artifacts`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1146,7 +1146,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement `_build_result` and `_persist_artifacts`**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 def _build_result(
@@ -1227,7 +1227,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: assemble DosageCallResult + atomic artifact persistence"
 ```
 
@@ -1236,7 +1236,7 @@ git commit -m "Phase 55: assemble DosageCallResult + atomic artifact persistence
 ## Task 10: Top-level `run_updog` integrating all helpers
 
 **Files:**
-- Modify: `torchgwas/preprocess/dosage_call.py`
+- Modify: `torchgenomics/preprocess/dosage_call.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1344,7 +1344,7 @@ Expected: FAIL with `AttributeError: ... no attribute 'run_updog'`.
 
 - [ ] **Step 3: Implement `run_updog`**
 
-Append to `torchgwas/preprocess/dosage_call.py`:
+Append to `torchgenomics/preprocess/dosage_call.py`:
 
 ```python
 def run_updog(
@@ -1397,7 +1397,7 @@ def run_updog(
 
     input_hash = hashlib.sha256(Path(input_vcf).read_bytes()).hexdigest()
 
-    tmp_obj = tempfile.TemporaryDirectory(prefix="torchgwas_dosage_")
+    tmp_obj = tempfile.TemporaryDirectory(prefix="torchgenomics_dosage_")
     tmpdir = Path(tmp_obj.name)
     try:
         ref_tsv, size_tsv = _write_input_tsvs(
@@ -1454,16 +1454,16 @@ Expected: PASS (all Tier 1 tests — around 20).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/dosage_call.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/dosage_call.py tests/test_dosage_call.py
 git commit -m "Phase 55: public run_updog wiring helpers end-to-end"
 ```
 
 ---
 
-## Task 11: CLI subcommand `torchgwas dosage-call`
+## Task 11: CLI subcommand `torchgenomics dosage-call`
 
 **Files:**
-- Modify: `torchgwas/cli.py`
+- Modify: `torchgenomics/cli.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1472,7 +1472,7 @@ Append to `tests/test_dosage_call.py`:
 
 ```python
 def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch, toy_vcf):
-    from torchgwas.cli import main as cli_main
+    from torchgenomics.cli import main as cli_main
 
     captured = {}
 
@@ -1488,9 +1488,9 @@ def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch, toy_vcf)
             n_missing=0, input_hash="x", cmd="",
         )
 
-    monkeypatch.setattr("torchgwas.cli.run_updog", fake_run_updog,
+    monkeypatch.setattr("torchgenomics.cli.run_updog", fake_run_updog,
                         raising=False)
-    monkeypatch.setattr("torchgwas.preprocess.dosage_call.run_updog",
+    monkeypatch.setattr("torchgenomics.preprocess.dosage_call.run_updog",
                         fake_run_updog)
 
     out_prefix = tmp_path / "out"
@@ -1515,7 +1515,7 @@ def test_cli_dosage_call_dispatches_to_run_updog(tmp_path, monkeypatch, toy_vcf)
 
 
 def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch, toy_vcf):
-    from torchgwas.cli import main as cli_main
+    from torchgenomics.cli import main as cli_main
 
     captured = {}
     def fake_run_updog(**kwargs):
@@ -1528,7 +1528,7 @@ def test_cli_dosage_call_no_bias_no_od(tmp_path, monkeypatch, toy_vcf):
             allele_freq=torch.zeros(1, dtype=torch.float64),
             n_missing=0, input_hash="x", cmd="",
         )
-    monkeypatch.setattr("torchgwas.preprocess.dosage_call.run_updog",
+    monkeypatch.setattr("torchgenomics.preprocess.dosage_call.run_updog",
                         fake_run_updog)
 
     cli_main([
@@ -1547,7 +1547,7 @@ Expected: FAIL with `SystemExit: 2` (argparse doesn't know the command).
 
 - [ ] **Step 3: Wire the CLI subcommand**
 
-In `torchgwas/cli.py`, locate the imports section near the top and add:
+In `torchgenomics/cli.py`, locate the imports section near the top and add:
 
 ```python
 from .preprocess.dosage_call import run_updog  # Phase 55 dosage-call
@@ -1641,7 +1641,7 @@ Expected: PASS.
 Then quickly verify the help text renders:
 
 ```bash
-python -m torchgwas dosage-call --help
+python -m torchgenomics dosage-call --help
 ```
 
 Expected: argparse usage + all options listed; exit 0.
@@ -1649,8 +1649,8 @@ Expected: argparse usage + all options listed; exit 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/cli.py tests/test_dosage_call.py
-git commit -m "Phase 55: wire torchgwas dosage-call CLI subcommand"
+git add torchgenomics/cli.py tests/test_dosage_call.py
+git commit -m "Phase 55: wire torchgenomics dosage-call CLI subcommand"
 ```
 
 ---
@@ -1658,7 +1658,7 @@ git commit -m "Phase 55: wire torchgwas dosage-call CLI subcommand"
 ## Task 12: Re-exports from `preprocess/__init__.py`
 
 **Files:**
-- Modify: `torchgwas/preprocess/__init__.py`
+- Modify: `torchgenomics/preprocess/__init__.py`
 - Test: `tests/test_dosage_call.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1666,20 +1666,20 @@ git commit -m "Phase 55: wire torchgwas dosage-call CLI subcommand"
 Append to `tests/test_dosage_call.py`:
 
 ```python
-def test_reexports_from_torchgwas_preprocess():
-    from torchgwas.preprocess import run_updog, DosageCallResult
+def test_reexports_from_torchgenomics_preprocess():
+    from torchgenomics.preprocess import run_updog, DosageCallResult
     assert callable(run_updog)
     assert DosageCallResult is dc_module.DosageCallResult
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_dosage_call.py::test_reexports_from_torchgwas_preprocess -v`
+Run: `pytest tests/test_dosage_call.py::test_reexports_from_torchgenomics_preprocess -v`
 Expected: FAIL with `ImportError: cannot import name 'run_updog'`.
 
 - [ ] **Step 3: Add re-exports**
 
-Edit `torchgwas/preprocess/__init__.py`. Append at the bottom (after the existing `noqa: F401` line for `dosage_uncertainty`):
+Edit `torchgenomics/preprocess/__init__.py`. Append at the bottom (after the existing `noqa: F401` line for `dosage_uncertainty`):
 
 ```python
 from .dosage_call import DosageCallResult, run_updog  # noqa: F401
@@ -1693,7 +1693,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/__init__.py tests/test_dosage_call.py
+git add torchgenomics/preprocess/__init__.py tests/test_dosage_call.py
 git commit -m "Phase 55: re-export run_updog and DosageCallResult from preprocess"
 ```
 
@@ -1723,7 +1723,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.preprocess import dosage_call as dc_module
+from torchgenomics.preprocess import dosage_call as dc_module
 
 
 def _updog_available() -> bool:
@@ -1823,7 +1823,7 @@ def test_parity_on_identical_ref_size_tsvs(tmp_path):
     # prefix that still has ref.tsv)
     import tempfile
     import glob
-    candidates = sorted(glob.glob(f"{tempfile.gettempdir()}/torchgwas_dosage_*"))
+    candidates = sorted(glob.glob(f"{tempfile.gettempdir()}/torchgenomics_dosage_*"))
     ours_tmpdir = next(c for c in candidates
                         if (tmp_path.resolve() != tmp_path)  # filter noop
                         or True)  # take latest
@@ -1910,11 +1910,11 @@ def test_gulm_end_to_end_on_simulated_dosages(tmp_path):
     (not a tight calibration — see test_gu_lmm.py for the full battery).
     """
     from scipy.stats import kstest
-    from torchgwas.models.gu_lmm import GULM
-    from torchgwas.preprocess.dosage_uncertainty import (
+    from torchgenomics.models.gu_lmm import GULM
+    from torchgenomics.preprocess.dosage_uncertainty import (
         expected_dosage, dosage_variance,
     )
-    from torchgwas.linalg.grm import compute_grm
+    from torchgenomics.linalg.grm import compute_grm
 
     n_samples, n_markers = 200, 500
     _, ref, alt, _ = _simulate_reads_tetraploid(
@@ -2009,7 +2009,7 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from torchgwas.preprocess import dosage_call as dc_module  # noqa: E402
+from torchgenomics.preprocess import dosage_call as dc_module  # noqa: E402
 
 
 def _updog_available() -> bool:
@@ -2131,7 +2131,7 @@ tensors and feeds them into the uncertainty-aware association test
 
 ## Prerequisites
 
-TorchGWAS `dosage-call` shells out to the R package
+TorchGenomics `dosage-call` shells out to the R package
 [`updog`](https://cran.r-project.org/package=updog). Install it once:
 
 ```bash
@@ -2146,7 +2146,7 @@ field. If you're starting from BAMs, GATK `HaplotypeCaller` and
 ## Step 1 — Call dosages
 
 ```bash
-torchgwas dosage-call \
+torchgenomics dosage-call \
   --vcf calls.vcf.gz \
   --output out/dcall \
   --ploidy 4 \
@@ -2166,7 +2166,7 @@ The downstream tensors are cheap reductions of `probs.pt`:
 
 ```python
 import torch
-from torchgwas.preprocess.dosage_uncertainty import (
+from torchgenomics.preprocess.dosage_uncertainty import (
     expected_dosage, dosage_variance,
 )
 probs = torch.load("out/dcall.probs.pt")
@@ -2177,7 +2177,7 @@ torch.save(dosage_variance(probs, 4), "out/dosage_var.pt")
 ## Step 3a — Run uncertainty-aware GWAS (GU-LMM)
 
 ```bash
-torchgwas gu-scan \
+torchgenomics gu-scan \
   --genotype out/dosage.pt \
   --phenotype pheno.txt \
   --dosage-var out/dosage_var.pt \
@@ -2187,7 +2187,7 @@ torchgwas gu-scan \
 ## Step 3b — Or run a standard polyploid scan (ignoring uncertainty)
 
 ```bash
-torchgwas poly-scan \
+torchgenomics poly-scan \
   --genotype out/dosage.pt \
   --phenotype pheno.txt \
   --ploidy 4 \
@@ -2226,7 +2226,7 @@ git commit -m "Phase 55: getting-started recipe for VCF → dosage-call → gu-s
 Run:
 
 ```bash
-python -m torchgwas dosage-call --help > /tmp/dosage-call-help.txt
+python -m torchgenomics dosage-call --help > /tmp/dosage-call-help.txt
 ```
 
 Then add a section to `docs/cli.md` under the "Data management" heading (locate with Grep for "impute" or similar). Use Edit with the contents of `/tmp/dosage-call-help.txt` inside a fenced code block labeled `text`. Concrete pattern:
@@ -2237,7 +2237,7 @@ Then add a section to `docs/cli.md` under the "Data management" heading (locate 
 Convert polyploid VCF read counts into posterior `P(dosage=0..k)` tensors.
 
 ```text
-<paste output of `torchgwas dosage-call --help` verbatim>
+<paste output of `torchgenomics dosage-call --help` verbatim>
 ```
 
 See `docs/getting-started/polyploid_dosage_call.md` for a full recipe.
@@ -2255,16 +2255,16 @@ Two edits in `CLAUDE.md`:
 
 1. Bump the subcommand count — find the string "35 as of Phase 49b" in the "CLI subcommand count" line and change to "36 as of Phase 55 (adds `dosage-call`)".
 
-2. Add an example under the "Data management" section of CLI commands. Locate the `torchgwas impute --genotype data.vcf.gz --method deep-learning --output imp.pt` line and append directly after:
+2. Add an example under the "Data management" section of CLI commands. Locate the `torchgenomics impute --genotype data.vcf.gz --method deep-learning --output imp.pt` line and append directly after:
 
 ```bash
 # --- Polyploid allele dosage calling (Phase 55) ---
-torchgwas dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4 --model norm
+torchgenomics dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4 --model norm
 ```
 
 - [ ] **Step 4: Verify CLI help text matches**
 
-Spot check: run `torchgwas dosage-call --help` and confirm the output in `docs/cli.md` matches byte-for-byte. If argparse wraps differently, capture the actual output again.
+Spot check: run `torchgenomics dosage-call --help` and confirm the output in `docs/cli.md` matches byte-for-byte. If argparse wraps differently, capture the actual output again.
 
 - [ ] **Step 5: Commit**
 
@@ -2290,13 +2290,13 @@ Create `C:\Users\Sikiru\.claude\projects\C--Users-Sikiru-Documents-GWAS-Expert\m
 ```markdown
 ---
 name: Phase 55 — Polyploid allele dosage calling (dosage_call)
-description: Phase 55 ships a thin external-wrapper around the R package updog for polyploid VCF dosage calling; new module torchgwas.preprocess.dosage_call, new CLI subcommand torchgwas dosage-call, Tier 1/Tier 2 test split.
+description: Phase 55 ships a thin external-wrapper around the R package updog for polyploid VCF dosage calling; new module torchgenomics.preprocess.dosage_call, new CLI subcommand torchgenomics dosage-call, Tier 1/Tier 2 test split.
 type: project
 ---
 
 Phase 55 shipped as a thin external-wrapper around R's `updog` package.
-Entry points: `torchgwas.preprocess.dosage_call.run_updog()` and
-`torchgwas dosage-call` CLI. Dataclass `DosageCallResult` holds
+Entry points: `torchgenomics.preprocess.dosage_call.run_updog()` and
+`torchgenomics dosage-call` CLI. Dataclass `DosageCallResult` holds
 `probs (n, m, k+1)` + `sample_ids`, `variant_ids`, `ploidy`, `tool_version`,
 `model`, `mean_dosage_var`, `allele_freq`, `n_missing`, `input_hash`, `cmd`.
 
@@ -2323,7 +2323,7 @@ we're semantically safe even below; 2.0.2 is the recommended floor.
 - `gu-scan --probs <probs.pt>` passthrough to remove the current
   Python one-liner between `dosage-call` and `gu-scan`.
 - `polyRAD` / `fitPoly` wrappers (same `DosageCallResult` pattern).
-- Wiring `dosage-call` into `torchgwas pipeline`.
+- Wiring `dosage-call` into `torchgenomics pipeline`.
 - Phase 56: polyploid phasing — separate brainstorm.
 ```
 

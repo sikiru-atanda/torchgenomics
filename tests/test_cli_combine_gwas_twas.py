@@ -1,4 +1,4 @@
-"""CLI smoke tests for ``torchgwas combine-gwas-twas``.
+"""CLI smoke tests for ``torchgenomics combine-gwas-twas``.
 
 Builds a 3-gene / 6-SNP synthetic fixture in tmp_path, invokes the
 CLI as a subprocess, parses the output TSV, and asserts the schema +
@@ -63,7 +63,7 @@ def _build_fixture(tmp_path: Path):
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess:
-    cmd = [sys.executable, "-m", "torchgwas.cli", *args]
+    cmd = [sys.executable, "-m", "torchgenomics.cli", *args]
     return subprocess.run(cmd, capture_output=True, text=True, check=False,
                           cwd=str(REPO_ROOT))
 

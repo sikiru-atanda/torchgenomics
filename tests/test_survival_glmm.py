@@ -15,7 +15,7 @@ from scipy.stats import kstest
 
 
 def _make_vmeta(m):
-    from torchgwas.models.base import VariantMeta
+    from torchgenomics.models.base import VariantMeta
     return VariantMeta(
         snp=[f"s{i}" for i in range(m)],
         chr=["1"] * m, pos=list(range(m)),
@@ -125,21 +125,21 @@ class TestSurvivalNullFit:
     """PQL convergence and variance component estimation."""
 
     def test_fit_null_converges(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=300, m=10, seed=42)
         model = SurvivalGLMM(use_spa=False, pql_max_iter=20)
         nf = model.fit_null(Y, X0, K)
         assert nf.converged or nf.b0 is not None
 
     def test_variance_positive(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=300, m=10, h2=0.3, seed=43)
         model = SurvivalGLMM(use_spa=False, pql_max_iter=20)
         nf = model.fit_null(Y, X0, K)
         assert nf.sig2_g > 0
 
     def test_requires_kinship(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=100, m=5, seed=44)
         model = SurvivalGLMM()
         with pytest.raises(ValueError, match="requires a kinship"):
@@ -147,7 +147,7 @@ class TestSurvivalNullFit:
 
     def test_handles_no_censoring(self):
         """All events (no censoring) should still work."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=200, m=10, censor_rate=0.0, seed=45)
         assert Y[:, 1].sum() == Y.shape[0]  # all events
         model = SurvivalGLMM(use_spa=False, pql_max_iter=15)
@@ -163,7 +163,7 @@ class TestSurvivalScoreTest:
     """Score test validity and calibration."""
 
     def test_pvalues_valid(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=300, m=20, seed=50)
         vmeta = _make_vmeta(20)
         model = SurvivalGLMM(use_spa=False, pql_max_iter=15)
@@ -172,7 +172,7 @@ class TestSurvivalScoreTest:
         assert (result.p >= 0).all() and (result.p <= 1).all()
 
     def test_stat_nonneg(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=300, m=20, seed=51)
         vmeta = _make_vmeta(20)
         model = SurvivalGLMM(use_spa=False, pql_max_iter=15)
@@ -182,7 +182,7 @@ class TestSurvivalScoreTest:
 
     def test_null_calibration(self):
         """Under null (no causal SNPs), p-values should be ~uniform."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=400, m=200, seed=52)
         vmeta = _make_vmeta(200)
         model = SurvivalGLMM(use_spa=False, pql_max_iter=15)
@@ -195,7 +195,7 @@ class TestSurvivalScoreTest:
 
     def test_power_detects_signal(self):
         """Causal SNP with HR=3 should be detected."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=500, m=20, seed=53,
             causal_effects={0: math.log(3.0)},  # HR=3
@@ -217,7 +217,7 @@ class TestSurvivalSPA:
     """SPA calibration under censoring."""
 
     def test_spa_valid_pvalues(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=300, m=20, seed=60)
         vmeta = _make_vmeta(20)
         model = SurvivalGLMM(use_spa=True, pql_max_iter=15)
@@ -227,7 +227,7 @@ class TestSurvivalSPA:
 
     def test_spa_heavy_censoring(self):
         """SPA should still produce valid p-values under 90% censoring."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=500, m=30, censor_rate=0.9, seed=61,
         )
@@ -249,7 +249,7 @@ class TestSurvivalCensoring:
         (0.1, 70), (0.5, 71), (0.9, 72),
     ])
     def test_calibration_at_censor_rate(self, censor_rate, seed):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=400, m=200, censor_rate=censor_rate, seed=seed,
         )
@@ -275,7 +275,7 @@ class TestSurvivalKnownTruth:
 
     def test_strong_signal_detected(self):
         """HR=3 on SNP 0 should be detected."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=500, m=15, seed=80,
             causal_effects={0: math.log(3.0)},
@@ -288,7 +288,7 @@ class TestSurvivalKnownTruth:
 
     def test_weak_signal_larger_n(self):
         """HR=1.5 with n=800 should be detectable."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=800, m=15, seed=81,
             causal_effects={0: math.log(1.5)},
@@ -303,7 +303,7 @@ class TestSurvivalKnownTruth:
 
     def test_null_snp_not_detected(self):
         """Null SNPs should not be significant (mostly)."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=400, m=15, seed=82,
             causal_effects={0: math.log(3.0)},
@@ -319,7 +319,7 @@ class TestSurvivalKnownTruth:
 
     def test_effect_direction(self):
         """Estimated beta sign should match planted log(HR) sign."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=500, m=10, seed=83,
             causal_effects={0: math.log(3.0)},  # positive log(HR)
@@ -334,7 +334,7 @@ class TestSurvivalKnownTruth:
 
     def test_null_fpr_controlled(self):
         """False positive rate among null SNPs should be near alpha."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=400, m=200, seed=84)
         vmeta = _make_vmeta(200)
         model = SurvivalGLMM(use_spa=False, pql_max_iter=15)
@@ -353,7 +353,7 @@ class TestSurvivalPolyploid:
     """Survival model should work with polyploid genotypes."""
 
     def test_tetraploid_af(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=300, m=15, seed=90, ploidy=4,
         )
@@ -365,7 +365,7 @@ class TestSurvivalPolyploid:
         assert torch.allclose(result.af, expected_af)
 
     def test_hexaploid_valid(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=200, m=10, seed=91, ploidy=6,
         )
@@ -385,7 +385,7 @@ class TestSurvivalEdgeCases:
 
     def test_all_events_no_censoring(self):
         """With no censoring, model should still work."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(
             n=200, m=10, censor_rate=0.0, seed=95,
         )
@@ -397,7 +397,7 @@ class TestSurvivalEdgeCases:
 
     def test_all_censored_raises(self):
         """All censored (no events) should raise ValueError."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         n = 100
         Y = torch.stack([
             torch.rand(n, dtype=torch.float64) + 0.1,
@@ -411,7 +411,7 @@ class TestSurvivalEdgeCases:
 
     def test_monomorphic_snp(self):
         """Monomorphic SNP should have stat ≈ 0."""
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=200, m=10, seed=96)
         G[:, 0] = 1.0  # monomorphic
         vmeta = _make_vmeta(10)
@@ -430,13 +430,13 @@ class TestSurvivalProtocol:
     """BaseModel protocol and ScanResult fields."""
 
     def test_has_fit_null_and_score_chunk(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         model = SurvivalGLMM()
         assert hasattr(model, "fit_null")
         assert hasattr(model, "score_chunk")
 
     def test_scanresult_fields(self):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         Y, G, X0, K = _simulate_survival(n=200, m=10, seed=99)
         vmeta = _make_vmeta(10)
         model = SurvivalGLMM(use_spa=False, pql_max_iter=15)

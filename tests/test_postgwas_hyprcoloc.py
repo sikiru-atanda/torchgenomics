@@ -18,13 +18,13 @@ import math
 
 import torch
 
-from torchgwas.postgwas._hyprcoloc import (
+from torchgenomics.postgwas._hyprcoloc import (
     ColocPairwiseResult,
     HyprcolocResult,
     coloc_pairwise,
     hyprcoloc,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _make_sumstats(beta: torch.Tensor, se: torch.Tensor) -> SumStats:

@@ -15,8 +15,8 @@ zarr = pytest.importorskip("zarr")
 class TestSampleAlignedReader:
     def test_reindexing(self):
         """SampleAlignedReader correctly reindexes rows."""
-        from torchgwas.io.aligned import SampleAlignedReader
-        from torchgwas.io.zarr import ZarrReader
+        from torchgenomics.io.aligned import SampleAlignedReader
+        from torchgenomics.io.zarr import ZarrReader
 
         inner = ZarrReader(str(FIXTURE_DIR / "tiny.zarr"))
 
@@ -39,8 +39,8 @@ class TestSampleAlignedReader:
 
     def test_multiple_iterations(self):
         """SampleAlignedReader supports repeated iter_chunks calls."""
-        from torchgwas.io.aligned import SampleAlignedReader
-        from torchgwas.io.zarr import ZarrReader
+        from torchgenomics.io.aligned import SampleAlignedReader
+        from torchgenomics.io.zarr import ZarrReader
 
         inner = ZarrReader(str(FIXTURE_DIR / "tiny.zarr"))
         aligned = SampleAlignedReader(inner, list(range(5)), inner.sample_ids[:5])
@@ -55,8 +55,8 @@ class TestSampleAlignedReader:
 class TestStreamingGRM:
     def test_streaming_matches_full(self):
         """Streaming VanRaden GRM matches full-materialized VanRaden GRM."""
-        from torchgwas.io.zarr import ZarrReader
-        from torchgwas.linalg.kinship import grm_vanraden, grm_vanraden_streaming
+        from torchgenomics.io.zarr import ZarrReader
+        from torchgenomics.linalg.kinship import grm_vanraden, grm_vanraden_streaming
 
         reader = ZarrReader(str(FIXTURE_DIR / "tiny.zarr"))
 
@@ -78,8 +78,8 @@ class TestStreamingGRM:
     def test_streaming_grm_from_hdf5(self):
         """Streaming GRM from HDF5 reader produces valid output."""
         h5py = pytest.importorskip("h5py")
-        from torchgwas.io.hdf5 import HDF5Reader
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.io.hdf5 import HDF5Reader
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         reader = HDF5Reader(str(FIXTURE_DIR / "tiny.h5"))
         K, meta = grm_vanraden_streaming(
@@ -98,7 +98,7 @@ class TestStreamingGRM:
 class TestPCGSolver:
     def test_solves_spd_system(self):
         """PCG solves Ax=b for a known SPD system."""
-        from torchgwas.optim.pcg_solver import pcg_solve
+        from torchgenomics.optim.pcg_solver import pcg_solve
 
         n = 50
         torch.manual_seed(42)
@@ -113,7 +113,7 @@ class TestPCGSolver:
 
     def test_with_preconditioner(self):
         """PCG with diagonal preconditioner converges faster."""
-        from torchgwas.optim.pcg_solver import diagonal_preconditioner, pcg_solve
+        from torchgenomics.optim.pcg_solver import diagonal_preconditioner, pcg_solve
 
         n = 100
         torch.manual_seed(42)
@@ -135,7 +135,7 @@ class TestPCGSolver:
 
     def test_zero_rhs(self):
         """PCG with zero RHS returns zero."""
-        from torchgwas.optim.pcg_solver import pcg_solve
+        from torchgenomics.optim.pcg_solver import pcg_solve
 
         b = torch.zeros(10, dtype=torch.float64)
         result = pcg_solve(lambda x: x, b)
@@ -146,8 +146,8 @@ class TestPCGSolver:
 class TestPrefetchIterator:
     def test_sync_passthrough(self):
         """PrefetchIterator passes through unchanged on CPU."""
-        from torchgwas.io.zarr import ZarrReader
-        from torchgwas.scan.prefetch import PrefetchIterator
+        from torchgenomics.io.zarr import ZarrReader
+        from torchgenomics.scan.prefetch import PrefetchIterator
 
         reader = ZarrReader(str(FIXTURE_DIR / "tiny.zarr"))
         raw_chunks = list(reader.iter_chunks(chunk_size=10))

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.glm import GLM
+from torchgenomics.models.base import NullFit, ScanResult, VariantMeta
+from torchgenomics.models.glm import GLM
 
 
 @pytest.fixture

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.blink import BLINK, _bic_forward_select, _ld_remove_block
+from torchgenomics.models.base import NullFit, ScanResult, VariantMeta
+from torchgenomics.models.blink import BLINK, _bic_forward_select, _ld_remove_block
 
 # ---------------------------------------------------------------
 # Fixtures

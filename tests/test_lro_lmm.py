@@ -17,9 +17,9 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.lro_lmm import LROLMM, LROResult, _block_grm_contribution
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.lro_lmm import LROLMM, LROResult, _block_grm_contribution
 
 # ===================================================================
 # Helper: simulate data
@@ -145,7 +145,7 @@ class TestNoProximalContamination:
         result_lro = lro.run(Y, X0, G, vmeta, vpos, vchr, test="wald")
 
         # Standard LMM scan (full K)
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
         lmm = SingleTraitLMM()
         nf = lmm.fit_null(Y, X0, K=K)
         result_std = lmm.score_chunk(G, nf, vmeta, test="wald")

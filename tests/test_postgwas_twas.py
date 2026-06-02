@@ -17,8 +17,8 @@ import warnings
 import pytest
 import torch
 
-from torchgwas.postgwas._sumstats import SumStats
-from torchgwas.postgwas._twas import (
+from torchgenomics.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._twas import (
     TWASGeneResult,
     TWASResult,
     twas_individual,
@@ -332,7 +332,7 @@ class TestObservedExpressionTWAS:
         return expr, y, gene_ids
 
     def test_observed_expression_ols_recovers_planted_gene(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         expr, y, gene_ids = self._simulate(
             n=200, n_genes=10, causal_idx=4, effect=0.5,
         )
@@ -348,7 +348,7 @@ class TestObservedExpressionTWAS:
         assert min(non_causal_p) > 5e-3
 
     def test_observed_expression_ols_with_covariates(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         expr, y, gene_ids = self._simulate(n=200, n_genes=5, causal_idx=2,
                                            effect=0.5, seed=11)
         gen = torch.Generator().manual_seed(99)
@@ -360,7 +360,7 @@ class TestObservedExpressionTWAS:
         assert abs(b1 - b2) < 2.0 * max(s1, s2)
 
     def test_observed_expression_lmm_matches_ols_under_identity_kinship(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         expr, y, gene_ids = self._simulate(n=150, n_genes=4, causal_idx=1,
                                            effect=0.5, seed=23)
         I = torch.eye(150, dtype=torch.float64)
@@ -376,7 +376,7 @@ class TestObservedExpressionTWAS:
         differ from OLS. Build y = β·expr + u + e with
         u ~ N(0, σ²_g·K) so REML estimates σ²_g > 0 and the LMM path
         materially diverges from OLS."""
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         n, n_genes = 120, 3
         gen = torch.Generator().manual_seed(37)
         expr = torch.randn(n, n_genes, generator=gen, dtype=torch.float64)
@@ -404,7 +404,7 @@ class TestObservedExpressionTWAS:
         )
 
     def test_observed_expression_standardize_preserves_p_values(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         expr, y, gene_ids = self._simulate(n=200, n_genes=6, causal_idx=3,
                                            effect=0.5, seed=53)
         r_raw = twas_observed_expression(expr, y, gene_ids)
@@ -413,7 +413,7 @@ class TestObservedExpressionTWAS:
             assert abs(g_raw.p_twas - g_std.p_twas) < 1e-12
 
     def test_observed_expression_null_gene_high_p(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         p_vals = []
         for seed in range(50):
             gen = torch.Generator().manual_seed(seed)
@@ -425,7 +425,7 @@ class TestObservedExpressionTWAS:
         assert 0.35 < mean_p < 0.65, f"mean p under null = {mean_p}"
 
     def test_observed_expression_bonferroni_count(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         expr, y, gene_ids = self._simulate(n=200, n_genes=20, causal_idx=5,
                                            effect=0.6, seed=71)
         res = twas_observed_expression(
@@ -435,7 +435,7 @@ class TestObservedExpressionTWAS:
         assert res.n_significant == direct
 
     def test_observed_expression_gene_annotation_propagates(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         expr, y, gene_ids = self._simulate(n=100, n_genes=3, seed=83)
         ann = {
             "G000": {"chr": "1", "start": 100, "end": 200,
@@ -454,7 +454,7 @@ class TestObservedExpressionTWAS:
         assert res.genes[2].gene_name is None
 
     def test_observed_expression_shape_mismatch_raises(self):
-        from torchgwas.postgwas import twas_observed_expression
+        from torchgenomics.postgwas import twas_observed_expression
         expr = torch.randn(50, 5, dtype=torch.float64)
         y = torch.randn(50, dtype=torch.float64)
         with pytest.raises(ValueError, match="gene_ids"):
@@ -477,7 +477,7 @@ class TestMultiTissueStack:
     @staticmethod
     def _build_per_tissue() -> dict:
         """Two tissues, three genes; tissue B has one extra gene."""
-        from torchgwas.postgwas._twas import TWASGeneResult, TWASResult
+        from torchgenomics.postgwas._twas import TWASGeneResult, TWASResult
         tissue_A = TWASResult(
             genes=[
                 TWASGeneResult(gene_id="G1", z_twas=4.0, p_twas=6.3e-05,
@@ -512,7 +512,7 @@ class TestMultiTissueStack:
         return {"Liver": tissue_A, "Blood": tissue_B}
 
     def test_stack_long_format_row_count_and_order(self):
-        from torchgwas.postgwas import twas_multi_tissue_stack
+        from torchgenomics.postgwas import twas_multi_tissue_stack
         per_t = self._build_per_tissue()
         rows = twas_multi_tissue_stack(per_t)
         # 3 + 4 = 7 rows
@@ -525,7 +525,7 @@ class TestMultiTissueStack:
         assert rows[-1].tissue == "Blood"
 
     def test_stack_preserves_per_gene_fields(self):
-        from torchgwas.postgwas import twas_multi_tissue_stack
+        from torchgenomics.postgwas import twas_multi_tissue_stack
         per_t = self._build_per_tissue()
         rows = twas_multi_tissue_stack(per_t)
         g1_blood = next(r for r in rows if r.gene_id == "G1" and r.tissue == "Blood")
@@ -536,7 +536,7 @@ class TestMultiTissueStack:
     def test_aggregate_chi2_and_p_multixcan(self):
         """S-MultiXcan-style approx: chi² = sum_t z_t² ~ χ²(n_tissues)."""
         from scipy.stats import chi2 as _chi2
-        from torchgwas.postgwas import twas_multi_tissue_aggregate
+        from torchgenomics.postgwas import twas_multi_tissue_aggregate
         per_t = self._build_per_tissue()
         summaries = twas_multi_tissue_aggregate(per_t)
         # All four unique genes
@@ -553,7 +553,7 @@ class TestMultiTissueStack:
         assert abs(g4.chi2_multixcan - 25.0) < 1e-12
 
     def test_aggregate_driver_tissue_is_min_p(self):
-        from torchgwas.postgwas import twas_multi_tissue_aggregate
+        from torchgenomics.postgwas import twas_multi_tissue_aggregate
         per_t = self._build_per_tissue()
         summaries = twas_multi_tissue_aggregate(per_t)
         # G1: Liver p=6.3e-05 vs Blood p=4.7e-04. Liver drives.

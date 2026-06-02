@@ -1,5 +1,5 @@
 """Tests for the native C++ impute_mode accelerator
-(``torchgwas._native._impute_mode_native``).
+(``torchgenomics._native._impute_mode_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,11 +13,11 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import (
+from torchgenomics._native import (
     HAS_NATIVE_IMPUTE_MODE,
     _impute_mode_native,
 )
-from torchgwas.preprocess.impute import (
+from torchgenomics.preprocess.impute import (
     _impute_mode_native_enabled,
     impute_mode,
 )
@@ -39,7 +39,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _impute_mode_native_enabled() is True
 
@@ -107,15 +107,15 @@ def test_native_invalid_max_dosage_raises():
 
 
 def _python_reference(G):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return impute_mode(G)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 def _native_dispatch(G):
-    os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+    os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     return impute_mode(G)
 
 

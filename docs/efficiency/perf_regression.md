@@ -125,7 +125,7 @@ This is also the fallback if the master artifact has expired
 
 ```bash
 # Run the same CI subset locally:
-TORCHGWAS_BENCH_CI=1 python bench/native_speedups.py \
+TORCHGENOMICS_BENCH_CI=1 python bench/native_speedups.py \
     --output json \
     --output-path /tmp/local.json \
     --kernel-subset ci \
@@ -139,6 +139,6 @@ python bench/diff_perf.py /tmp/before.json /tmp/after.json \
 For the full informational sweep (25 kernels, no CI shrinking):
 
 ```bash
-TORCHGWAS_BENCH_REALISTIC=1 python bench/native_speedups.py
+TORCHGENOMICS_BENCH_REALISTIC=1 python bench/native_speedups.py
 # writes bench/native_speedups_realistic.md
 ```

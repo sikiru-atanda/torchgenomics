@@ -1,6 +1,6 @@
 {
   "kernel": "rank_int_u_columns + quantile_normalize_columns",
-  "ext": "torchgwas._native._expression_native",
+  "ext": "torchgenomics._native._expression_native",
   "date": "2026-05-29",
   "host": "linux-x86_64",
   "notes": "TWAS expression preprocessing kernels. Per-column stateful average-tie rank scan replaced with OpenMP across columns + std::sort + tight tie-resolution loop. INT path: C++ produces u = (rank-c)/(n-2c+1) per column; Python applies sqrt(2)*erfinv(2u-1) via torch (vectorised). Quantile-norm path: Python precomputes reference = sorted_x.mean(dim=1); C++ scatters reference[i] back via column-wise tie-resolved index. Both bench against random Gaussian inputs.",

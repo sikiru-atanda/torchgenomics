@@ -1,6 +1,6 @@
 # Code-Review Reviewer Prompt — Pillar {{PILLAR}} Tier {{TIER}}
 
-You are reviewing tier {{TIER}} of pillar {{PILLAR}} of the TorchGWAS validation campaign.
+You are reviewing tier {{TIER}} of pillar {{PILLAR}} of the TorchGenomics validation campaign.
 
 ## What was just done
 
@@ -26,7 +26,7 @@ git diff {{TIER_START_SHA}}..HEAD -- tests/test_coverage_*.py scripts/ pyproject
 
 ## What I do NOT want you to do
 
-- Do not propose refactors to TorchGWAS production code beyond what F3 already drove.
+- Do not propose refactors to TorchGenomics production code beyond what F3 already drove.
 - Do not propose adding test cases beyond the tier's bar.
 - Do not propose new dependencies.
 

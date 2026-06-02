@@ -19,8 +19,8 @@ import pandas as pd
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.models.base import ScanResult
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.models.base import ScanResult
 
 pyarrow_available = importlib.util.find_spec("pyarrow") is not None
 

@@ -1,4 +1,4 @@
-"""Golden tests: TorchGWAS vs GWASpoly reference outputs.
+"""Golden tests: TorchGenomics vs GWASpoly reference outputs.
 
 GWASpoly references cover polyploid gene-action models on tetraploid potato data
 (957 genotypes, 9888 markers, vine.maturity trait, 6 environments).
@@ -19,11 +19,11 @@ import pandas as pd
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig
-from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
-from torchgwas.preprocess.polyploid import recode_gene_action
+from torchgenomics.config import STAT_DTYPE, NumericalConfig
+from torchgenomics.linalg.kinship_polyploid import grm_polyploid_gene_action
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.preprocess.polyploid import recode_gene_action
 
 pytestmark = pytest.mark.golden
 
@@ -107,7 +107,7 @@ def _load_gwaspoly_ref(model_fname):
 
 
 def _compute_logp_corr(p_torch, snp_names, gwaspoly_dict):
-    """Compute Pearson correlation of -log10(p) between TorchGWAS and GWASpoly."""
+    """Compute Pearson correlation of -log10(p) between TorchGenomics and GWASpoly."""
     from scipy.stats import pearsonr
 
     p1, p2 = [], []
@@ -185,7 +185,7 @@ class TestGWASPolyTetraploid:
         """Diplo-additive encoding differs from GWASpoly — correlation expected < 0.6.
 
         GWASpoly: {0->0, 1,2,3->1, 4->2} (diploidized)
-        TorchGWAS: min(dose, ploidy-dose) = {0->0, 1->1, 2->2, 3->1, 4->0}
+        TorchGenomics: min(dose, ploidy-dose) = {0->0, 1->1, 2->2, 3->1, 4->0}
         """
         Y, X0, G_obs, G_geno, Z, vmeta, snp_names = potato_data
         p = _run_p3d(Y, X0, G_obs, G_geno, Z, vmeta, "diplo-additive")

@@ -1,4 +1,4 @@
-"""Compare haplo.stats (R) vs TorchGWAS HaplotypeGWAS on a 5-SNP MDP window.
+"""Compare haplo.stats (R) vs TorchGenomics HaplotypeGWAS on a 5-SNP MDP window.
 
 Tool substitution rationale:
   PLINK 1.9 --hap-* family was REMOVED upstream; PLINK 2 has no haplotype
@@ -46,7 +46,7 @@ TOL_BETA_REL  = 5e-3   # relative error
 TOL_P_REL_PER_HAP = 1e-2   # relative error
 TOL_P_REL_GLOBAL  = 1e-1
 
-# TorchGWAS max_haplotypes override.  See README "F3 finding" for full
+# TorchGenomics max_haplotypes override.  See README "F3 finding" for full
 # rationale.  In short: TG _enumerate_haplotypes_unphased ranks haplotypes
 # by a marginal-allele-frequency product when the compatible-candidate count
 # exceeds max_haplotypes (default 20).  Under tight LD, common-but-recombinant
@@ -60,7 +60,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.models.haplotype_gwas import HaplotypeGWAS  # noqa: E402
+from torchgenomics.models.haplotype_gwas import HaplotypeGWAS  # noqa: E402
 
 
 @dataclass
@@ -270,7 +270,7 @@ def compare_haplotypes(data_dir: Path, out_dir: Path) -> tuple[ComparisonReport,
     global_rel = abs(r_global_p - tg_global_p) / max(abs(r_global_p), 1e-12)
 
     rep = ComparisonReport(
-        name="haplo.stats (R) vs TorchGWAS HaplotypeGWAS (5-SNP chr1 MDP window)",
+        name="haplo.stats (R) vs TorchGenomics HaplotypeGWAS (5-SNP chr1 MDP window)",
         n_compared=n_align,
     )
     rep.checks.append(_check_exact(

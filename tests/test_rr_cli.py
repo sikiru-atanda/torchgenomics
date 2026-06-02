@@ -1,4 +1,4 @@
-"""End-to-end tests for the ``torchgwas rr-scan`` CLI subcommand
+"""End-to-end tests for the ``torchgenomics rr-scan`` CLI subcommand
 (Phase 38, Step 12)."""
 
 import json
@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import torch
 
-from torchgwas.cli import main
+from torchgenomics.cli import main
 
 
 def _write_plink_files(G, ids, out_prefix):

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import ScanResult
-from torchgwas.stats.peak_pruning import prune_peaks
+from torchgenomics.models.base import ScanResult
+from torchgenomics.stats.peak_pruning import prune_peaks
 
 
 def _make_scan_result(chrs, positions, p_values):

@@ -39,7 +39,7 @@ if [[ -z "${SOURCE_DIR}" ]]; then
     echo "[gemma fetch]   ${ROOT}/gemma_demo/"
     echo "[gemma fetch]   ${HOME}/Documents/GWAS_Expert/gemma_demo/"
     echo "[gemma fetch] These are committed fixtures from the canonical"
-    echo "[gemma fetch] TorchGWAS checkout. Restore gemma_demo/ before retrying."
+    echo "[gemma fetch] TorchGenomics checkout. Restore gemma_demo/ before retrying."
     exit 1
 fi
 
@@ -74,7 +74,7 @@ if (( all_present == 1 )); then
 fi
 
 # --- Pinned source checksums (committed BIMBAM fixtures) ---------------------
-# Captured 2026-05-04 against the canonical TorchGWAS checkout.
+# Captured 2026-05-04 against the canonical TorchGenomics checkout.
 declare -A FIXTURE_SHA256=(
     [mdp_geno_bimbam.txt]="9a33dad98be41ea9d6059588b1dc855a9ddf6dc553e282148c75eee9c7541635"
     [mdp_pheno1.txt]="bf5cf095db55e2fd37e3731c312f8911cb08763c824a433e7be28bb4b5d1ece7"
@@ -106,8 +106,8 @@ for f in "${required_files[@]}"; do
 done
 
 # --- Also copy the source MDP map files for cross-reference ------------------
-# These are needed by compare.py to align GEMMA output with TorchGWAS
-# (same trait values, but TorchGWAS reads from benchmark/data/mdp_traits.txt).
+# These are needed by compare.py to align GEMMA output with TorchGenomics
+# (same trait values, but TorchGenomics reads from benchmark/data/mdp_traits.txt).
 # We copy them so the harness is self-contained.
 for src_dir in \
     "${ROOT}/benchmark/data" \

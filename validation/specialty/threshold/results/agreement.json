@@ -1,5 +1,5 @@
 {
-  "name": "BLUPF90+ gibbsf90+ vs torchgwas.models.threshold_linear.ThresholdLinearModel",
+  "name": "BLUPF90+ gibbsf90+ vs torchgenomics.models.threshold_linear.ThresholdLinearModel",
   "n_compared": 3,
   "passed": true,
   "checks": [

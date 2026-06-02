@@ -1,5 +1,5 @@
 // Native accelerator for the mediation rho-sensitivity per-pair WLS in
-// ``torchgwas.multiomics._scan_batched``.
+// ``torchgenomics.multiomics._scan_batched``.
 //
 // Background. The Imai-Keele-Yamamoto rho-sensitivity analysis requires
 // the per-(SNP, mediator) residual scales σ_v (Stage-M residual) and

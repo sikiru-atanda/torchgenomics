@@ -1,14 +1,14 @@
-"""Tier-1 math-correctness coverage tests for torchgwas.stats.
+"""Tier-1 math-correctness coverage tests for torchgenomics.stats.
 
 Bar (spec section 4.3 Tier 1):
 - Closed-form / scipy / statsmodels / Monte-Carlo verification per public function.
 - One function in isolation per test. No compositional tests.
 - Tolerance <= 1e-10 absolute for closed-form; documented otherwise.
 
-Covers 13 symbols: 7 in ``torchgwas.stats.multipletesting``
+Covers 13 symbols: 7 in ``torchgenomics.stats.multipletesting``
 (``benjamini_hochberg``, ``benjamini_yekutieli``, ``bonferroni``, ``holm``,
 ``sidak``, ``storey_qvalue``, ``eigenmt_adjust``) and 6 in
-``torchgwas.stats.tests`` (``chi2_sf``, ``lrt_test``, ``score_test``,
+``torchgenomics.stats.tests`` (``chi2_sf``, ``lrt_test``, ``score_test``,
 ``score_test_multi_df``, ``wald_test``, ``apply_contrast``).
 """
 
@@ -20,7 +20,7 @@ import scipy.stats as sp_stats
 import torch
 from statsmodels.stats.multitest import multipletests
 
-from torchgwas.stats import (
+from torchgenomics.stats import (
     AdaPTResult,
     BestModelResult,
     IHWResult,
@@ -58,11 +58,11 @@ from torchgwas.stats import (
     wald_test,
     weighted_bh,
 )
-from torchgwas.models.base import ScanResult
-from torchgwas.stats.calibrate import compare_pvalues
-from torchgwas.stats.genomic_control import CHI2_1_MEDIAN
-from torchgwas.stats.multipletesting import eigenmt_adjust
-from torchgwas.stats.tests import apply_contrast
+from torchgenomics.models.base import ScanResult
+from torchgenomics.stats.calibrate import compare_pvalues
+from torchgenomics.stats.genomic_control import CHI2_1_MEDIAN
+from torchgenomics.stats.multipletesting import eigenmt_adjust
+from torchgenomics.stats.tests import apply_contrast
 
 
 pytestmark = pytest.mark.timeout(30)
@@ -77,7 +77,7 @@ class TestBenjaminiHochberg:
     """``benjamini_hochberg`` matches ``scipy.stats.false_discovery_control``."""
 
     def test_matches_scipy_bh(self, stat_dtype):
-        """Random p-values: torchgwas BH agrees with scipy BH to 1e-10."""
+        """Random p-values: torchgenomics BH agrees with scipy BH to 1e-10."""
         gen = torch.Generator().manual_seed(0)
         p = torch.rand(200, generator=gen, dtype=stat_dtype)
         out = benjamini_hochberg(p).cpu().numpy()
@@ -104,7 +104,7 @@ class TestBenjaminiYekutieli:
     """``benjamini_yekutieli`` matches scipy BY and dominates BH."""
 
     def test_matches_scipy_by(self, stat_dtype):
-        """Random p-values: torchgwas BY agrees with scipy BY to 1e-10."""
+        """Random p-values: torchgenomics BY agrees with scipy BY to 1e-10."""
         gen = torch.Generator().manual_seed(2)
         p = torch.rand(200, generator=gen, dtype=stat_dtype)
         out = benjamini_yekutieli(p).cpu().numpy()

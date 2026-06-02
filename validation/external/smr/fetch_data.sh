@@ -3,7 +3,7 @@
 # Generates a deterministic simulated SMR-compatible fixture under
 # validation/external/smr/data/. The fixture is independent-SNP by
 # construction so the LD-weighted HEIDI test inside SMR reduces to the
-# diagonal (delta-method) variance form that torchgwas/postgwas/_smr.py
+# diagonal (delta-method) variance form that torchgenomics/postgwas/_smr.py
 # computes. See README for the rationale (Zhu 2016 simulation framework).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

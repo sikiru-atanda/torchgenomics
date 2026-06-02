@@ -1,4 +1,4 @@
-"""External-tool harness: GWASpoly vs TorchGWAS reference comparison.
+"""External-tool harness: GWASpoly vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require the harness reference
 outputs in validation/external/gwaspoly/outputs/). To run::
@@ -12,7 +12,7 @@ Each test invokes one comparison function from
 ``validation/external/gwaspoly/compare.py``. Tolerances mirror the existing
 ``tests/test_golden_gwaspoly.py`` golden contract on 5 polyploid gene-action
 models (additive, 1-dom, 2-dom, 3-dom, diplo-additive) — this harness re-runs
-GWASpoly (or uses the committed pre-Pillar-A reference) + TorchGWAS
+GWASpoly (or uses the committed pre-Pillar-A reference) + TorchGenomics
 end-to-end to confirm zero regression from the 9 Pillar A V1-core /
 V1-platform fixes.
 """
@@ -55,7 +55,7 @@ def _require_artifacts(*paths: Path) -> None:
 
 @pytest.fixture(scope="module")
 def compare_mod():
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 

@@ -1,4 +1,4 @@
-"""Tests for ``torchgwas.pgs.validation`` -- PGS predictive performance metrics."""
+"""Tests for ``torchgenomics.pgs.validation`` -- PGS predictive performance metrics."""
 from __future__ import annotations
 
 import math
@@ -6,7 +6,7 @@ import math
 import pytest
 import torch
 
-from torchgwas.pgs.validation import validate_pgs
+from torchgenomics.pgs.validation import validate_pgs
 
 # ---------------------------------------------------------------------------
 # Continuous-trait tests

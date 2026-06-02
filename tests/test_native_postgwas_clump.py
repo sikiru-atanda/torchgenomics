@@ -1,10 +1,10 @@
-"""Tests for the native LD-clumping fast path in ``torchgwas.postgwas._clump``.
+"""Tests for the native LD-clumping fast path in ``torchgenomics.postgwas._clump``.
 
 Phase 41y reuses the existing ``_ct_native.clump_block`` kernel (built in
 Phase 41c for the C+T PGS method) by mapping each chromosome to one block of
 a synthetic block-diagonal LD reference. The Python loop in ``ld_clump``
 remains in-tree as the algorithmic spec; the dispatcher routes through C++
-when the build is present, the tensors are CPU, and ``TORCHGWAS_DISABLE_NATIVE``
+when the build is present, the tensors are CPU, and ``TORCHGENOMICS_DISABLE_NATIVE``
 is unset.
 """
 
@@ -16,8 +16,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_CT
-from torchgwas.postgwas._clump import ClumpResult, ld_clump
+from torchgenomics._native import HAS_NATIVE_CT
+from torchgenomics.postgwas._clump import ClumpResult, ld_clump
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_CT, reason="native C+T extension not built"
@@ -66,13 +66,13 @@ def _make_clump_problem(n=200, m=60, n_chroms=3, seed=0):
 
 def _run_ld_clump_with(disable_native: bool, p, G, pos, chr_labels, **kwargs):
     if disable_native:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     else:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     try:
         return ld_clump(p, G, pos, chr_labels, **kwargs)
     finally:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
 
 
 # ---------------------------------------------------------------------------

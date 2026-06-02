@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from torchgwas.postgwas._clump import ld_clump
+from torchgenomics.postgwas._clump import ld_clump
 
 
 def _make_genotypes(n=200, m=50, seed=0):

@@ -48,7 +48,7 @@ mkdir -p "${DATA_DIR}"
 # --- Inline R simulator ------------------------------------------------------
 # All three scenarios share the same seed = 42 and the same MAF / SE schedule.
 # We emit one tidy TSV per scenario (sumstats_<name>.tsv) plus a manifest
-# scenarios.json listing them. The TorchGWAS comparator (compare.py) and the
+# scenarios.json listing them. The TorchGenomics comparator (compare.py) and the
 # R reference (run.R) both read from these TSVs -- single source of truth.
 echo "[coloc fetch] simulating 3 two-trait coloc scenarios (seed=42, m=50, causal_idx=25)"
 Rscript --vanilla - <<RSCRIPT_EOF

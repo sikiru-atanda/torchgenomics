@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.config import NumericalConfig
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multi_env_lmm import (
+from torchgenomics.config import NumericalConfig
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multi_env_lmm import (
     EnvScanResult,
     MultiEnvLMM,
     complete_case_filter,

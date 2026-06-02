@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import ScanResult
-from torchgwas.stats.best_model import select_best_model
+from torchgenomics.models.base import ScanResult
+from torchgenomics.stats.best_model import select_best_model
 
 
 def _make_scan_result(p_values: list[float]) -> ScanResult:

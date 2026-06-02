@@ -1,6 +1,6 @@
 """Polyploid compatibility tests for Phase 44 post-GWAS methods.
 
-TorchGWAS targets polyploid organisms (tetraploid, hexaploid, etc.).
+TorchGenomics targets polyploid organisms (tetraploid, hexaploid, etc.).
 These tests verify that all Phase 44 methods produce valid results when
 given summary statistics and PGS scores derived from polyploid GWAS:
 
@@ -22,12 +22,12 @@ import numpy as np
 import torch
 from scipy import stats as sp_stats
 
-from torchgwas.pgs.validation import validate_pgs
-from torchgwas.postgwas._enrichment import gene_set_enrichment, snp_to_gene
-from torchgwas.postgwas._finemapping import annotate_sumstats, extract_credible_sets
-from torchgwas.postgwas._mr import mr_all, mr_egger, mr_ivw
-from torchgwas.postgwas._multi_ancestry import mantra, mr_mega
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.pgs.validation import validate_pgs
+from torchgenomics.postgwas._enrichment import gene_set_enrichment, snp_to_gene
+from torchgenomics.postgwas._finemapping import annotate_sumstats, extract_credible_sets
+from torchgenomics.postgwas._mr import mr_all, mr_egger, mr_ivw
+from torchgenomics.postgwas._multi_ancestry import mantra, mr_mega
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Mock BayesianVSResult for fine-mapping tests

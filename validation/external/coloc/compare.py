@@ -1,4 +1,4 @@
-"""Compare R `coloc::coloc.abf` vs `torchgwas.postgwas.coloc_pairwise`.
+"""Compare R `coloc::coloc.abf` vs `torchgenomics.postgwas.coloc_pairwise`.
 
 Three scenarios (one per branch of the H0..H4 decomposition):
   1. shared    -- both traits share a causal variant -> H4 dominant
@@ -32,7 +32,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import (  # noqa: E402
+from torchgenomics.postgwas import (  # noqa: E402
     SumStats,
     coloc_pairwise,
 )
@@ -213,14 +213,14 @@ def run_all(data_dir, out_dir, results_dir=None):
                     "scenario": scenario_name,
                     "hypothesis": f"PP.H{k}",
                     "r_coloc": r_pp[k],
-                    "torchgwas": tg_pp[k],
+                    "torchgenomics": tg_pp[k],
                     "delta": abs(r_pp[k] - tg_pp[k]),
                 })
         pd.DataFrame(rows).to_csv(results_dir / "summary.tsv", sep="\t", index=False)
         print(f"[compare] wrote {results_dir}/summary.tsv")
 
         agreement = {
-            "name": "R coloc::coloc.abf vs torchgwas.postgwas.coloc_pairwise (3 scenarios)",
+            "name": "R coloc::coloc.abf vs torchgenomics.postgwas.coloc_pairwise (3 scenarios)",
             "n_compared": sum(r.n_compared for r in reports),
             "passed": all(r.passed for r in reports),
             "reports": [

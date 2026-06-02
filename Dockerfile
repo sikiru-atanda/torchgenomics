@@ -1,7 +1,7 @@
-# TorchGWAS Dockerfile
+# TorchGenomics Dockerfile
 # Build:
-#   CPU:  docker build -t torchgwas .
-#   GPU:  docker build -t torchgwas:gpu --build-arg BASE_IMAGE=pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime .
+#   CPU:  docker build -t torchgenomics .
+#   GPU:  docker build -t torchgenomics:gpu --build-arg BASE_IMAGE=pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime .
 
 ARG BASE_IMAGE=python:3.11-slim
 
@@ -20,7 +20,7 @@ COPY pyproject.toml setup.py ./
 RUN pip install --no-cache-dir "torch>=2.0" "pybind11>=2.11" setuptools wheel numpy
 
 # Copy source and build
-COPY torchgwas/ torchgwas/
+COPY torchgenomics/ torchgenomics/
 COPY csrc/ csrc/
 RUN pip wheel --no-deps --wheel-dir /wheels .
 
@@ -42,7 +42,7 @@ COPY bench/ bench/
 COPY scripts/ scripts/
 
 # Verify installation
-RUN python -c "import torchgwas; print(f'TorchGWAS v{torchgwas.__version__} installed successfully')"
+RUN python -c "import torchgenomics; print(f'TorchGenomics v{torchgenomics.__version__} installed successfully')"
 
-ENTRYPOINT ["torchgwas"]
+ENTRYPOINT ["torchgenomics"]
 CMD ["--help"]

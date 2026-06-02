@@ -15,7 +15,7 @@
 #   data/sumstats.tsv     # long format: SNP, trait, beta, se
 #   data/sim_truth.json   # ground truth manifest
 #
-# The TorchGWAS side reads the long-format sumstats and reshapes to per-trait
+# The TorchGenomics side reads the long-format sumstats and reshapes to per-trait
 # SumStats objects. The R side reshapes to (m x K) matrices.
 
 suppressPackageStartupMessages({

@@ -1,4 +1,4 @@
-"""Compare GAPIT3 vs TorchGWAS on the MDP fixture across:
+"""Compare GAPIT3 vs TorchGenomics on the MDP fixture across:
 
   1. GLM (-log10p corr; TG GLM Wald)
   2. MLM (-log10p corr; TG SingleTraitLMM Wald + VanRaden K)
@@ -49,13 +49,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig  # noqa: E402
-from torchgwas.linalg.kinship import grm_zhang  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.blink import BLINK  # noqa: E402
-from torchgwas.models.farmcpu import FarmCPU  # noqa: E402
-from torchgwas.models.glm import GLM  # noqa: E402
-from torchgwas.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE, NumericalConfig  # noqa: E402
+from torchgenomics.linalg.kinship import grm_zhang  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.blink import BLINK  # noqa: E402
+from torchgenomics.models.farmcpu import FarmCPU  # noqa: E402
+from torchgenomics.models.glm import GLM  # noqa: E402
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
 
 
 @dataclass
@@ -138,7 +138,7 @@ def _topk_overlap(
     return len(top_ref & top_tg) / len(top_ref)
 
 
-# ── Data loader (mirrors benchmark/run_torchgwas.py + golden test) ───────────
+# ── Data loader (mirrors benchmark/run_torchgenomics.py + golden test) ───────────
 
 
 def _load_mdp(data_dir: Path) -> dict:
@@ -212,7 +212,7 @@ def _normalise_gapit_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compare_glm(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """GAPIT GLM (no kinship) vs TorchGWAS GLM Wald."""
+    """GAPIT GLM (no kinship) vs TorchGenomics GLM Wald."""
     ref = _normalise_gapit_df(pd.read_csv(out_dir / "GLM_GWAS.csv"))
     d = _load_mdp(data_dir)
 

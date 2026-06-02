@@ -58,7 +58,7 @@ Three new pybind11 extensions on branch
 extensions. All Python reference bodies remain in place as the
 algorithmic spec; dispatcher guards (`HAS_NATIVE_*` + CPU + FP64 +
 size threshold) route to the C++ shortcut by default and fall through
-on `TORCHGWAS_DISABLE_NATIVE=1` or below-threshold input.
+on `TORCHGENOMICS_DISABLE_NATIVE=1` or below-threshold input.
 
 - **csrc/models/susie_rss_ibss.cpp** (Extension A): one full IBSS
   inner sweep (residual + 1-D Brent V optimiser + SER + softmax +
@@ -156,7 +156,7 @@ The streaming + validation campaigns are saturated. The user has explicitly assi
 - **SuSiE-RSS** (already in literature): runs on summary statistics + LD reference, not raw G — not "streaming" but "different input shape." Could be wired as a CLI alternative.
 
 **Where to start:**
-- `torchgwas/models/bayesian_vs.py::BayesianVS` — current impl.
+- `torchgenomics/models/bayesian_vs.py::BayesianVS` — current impl.
 - `docs/efficiency/streaming_audit.md` — O3 observation explaining why bayes-scan is currently materialized.
 - Brainstorm scope with the user (this is research-grade — needs explicit scope alignment, not autonomous execution).
 - Output: either an approximate-streaming variant under a new `--method susie-streaming` flag (preferred), or a documented SuSiE-RSS alternative.
@@ -172,7 +172,7 @@ The streaming + validation campaigns are saturated. The user has explicitly assi
 **Where to start:**
 - The user has access to `NVIDIA RTX 2000 Ada Generation` (16 GB VRAM) on this machine. A self-hosted runner pointed at this hardware would suffice for PR-time GPU regression catching.
 - Set up `.github/workflows/gpu.yml` triggered on PR (or nightly to amortize the runner cost) — runs `pytest -m gpu`.
-- Consider a self-hosted-runner Docker image with TorchGWAS + CUDA preinstalled to avoid per-PR install overhead.
+- Consider a self-hosted-runner Docker image with TorchGenomics + CUDA preinstalled to avoid per-PR install overhead.
 
 **Where it gets infra-political:** self-hosted runners on PR triggers are a well-known security risk if the repo accepts community PRs (PR code runs on your hardware). Restrict to `pull_request_target` + `if: contains(github.event.pull_request.labels.*.name, 'gpu-tested')` so only opted-in PRs run on the GPU runner.
 
@@ -191,8 +191,8 @@ gap surfaced during the audit.**
 
 **Where to start:**
 - The user has UKB access in their day job (per `bench/data/` references). If access is in place, a single LMM scan + a single LDSC h² estimate at UKB chr22 scale (~1.6M variants) is the right first target.
-- Harness at `validation/external/ukb/` is **ready** — 7 files (install / fetch_data / run_reference / run_torchgwas / compare / README / .gitignore) on master, all syntax-clean, CLI flags verified against `torchgwas lmm-scan --help`. Operator runbook is in `validation/external/ukb/README.md`.
-- Compare: TorchGWAS LMM vs regenie LMM (already wired), TorchGWAS h² vs LDSC h² (already wired), peak memory observed vs the projected `O(n × chunk_size)` invariant.
+- Harness at `validation/external/ukb/` is **ready** — 7 files (install / fetch_data / run_reference / run_torchgenomics / compare / README / .gitignore) on master, all syntax-clean, CLI flags verified against `torchgenomics lmm-scan --help`. Operator runbook is in `validation/external/ukb/README.md`.
+- Compare: TorchGenomics LMM vs regenie LMM (already wired), TorchGenomics h² vs LDSC h² (already wired), peak memory observed vs the projected `O(n × chunk_size)` invariant.
 
 **Operator runbook (when UKB data is locally available):**
 
@@ -201,7 +201,7 @@ cd validation/external/ukb
 bash install.sh        # one-time: REGENIE v4.x + LDSC 1.0.1
 bash fetch_data.sh     # writes .env_marker; assumes UKB chr22 PLINK/PGEN on a local path
 bash run_reference.sh  # ~few hours: REGENIE chr22 LMM + LDSC h²
-bash run_torchgwas.sh  # ~few hours: TorchGWAS lmm-scan + ldsc_h2 driver
+bash run_torchgenomics.sh  # ~few hours: TorchGenomics lmm-scan + ldsc_h2 driver
 python compare.py      # ledger row: β Pearson, |Δh²|, peak RSS vs invariant
 ```
 
@@ -223,7 +223,7 @@ The existing `bench/streaming_p_sweep.py` fixes n=2000 and validates p-scaling (
 
 ## TL;DR for the next agent
 
-You're picking up a multi-pillar function-by-function validation campaign for TorchGWAS. Pillars A (coverage audit + tiered fill) and ~half of B (external reference-tool comparisons) are complete on a long-lived branch. **Resume by checking out the worktree, reading this file end-to-end, then dispatching the next subagent against the still-pending Pillar B tasks.**
+You're picking up a multi-pillar function-by-function validation campaign for TorchGenomics. Pillars A (coverage audit + tiered fill) and ~half of B (external reference-tool comparisons) are complete on a long-lived branch. **Resume by checking out the worktree, reading this file end-to-end, then dispatching the next subagent against the still-pending Pillar B tasks.**
 
 ```bash
 cd /home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/validation-pillar-A-coverage
@@ -389,7 +389,7 @@ Each subagent reported back lessons; consolidate here for next subagent's prompt
 
 4. **Simulate known-truth data** when full reference datasets are too heavy. LDSC simulated chi² + LD scores; TwoSampleMR simulated MR data. This is the pragmatic choice when datasets are >5 GB or need API tokens.
 
-5. **Allele convention** — `torchgwas.io.PlinkBedReader._GENO_DECODE = [0, NaN, 1, 2]` decodes PLINK's `0b11` → dosage 2. **TG dosage counts the .bim A2** (not A1). PLINK 2's `--glm` autopicks A1 = minor allele, regenie counts ALLELE1. Compare scripts must `2.0 - G` to align allele bookkeeping.
+5. **Allele convention** — `torchgenomics.io.PlinkBedReader._GENO_DECODE = [0, NaN, 1, 2]` decodes PLINK's `0b11` → dosage 2. **TG dosage counts the .bim A2** (not A1). PLINK 2's `--glm` autopicks A1 = minor allele, regenie counts ALLELE1. Compare scripts must `2.0 - G` to align allele bookkeeping.
 
 6. **MDP fixture path** — `benchmark/data/mdp_*` lives at the project-root checkout, NOT inside the worktree. Harness `fetch_data.sh` falls back to `${HOME}/Documents/GWAS_Expert/benchmark/data/...` when worktree path is missing.
 
@@ -410,7 +410,7 @@ Each subagent reported back lessons; consolidate here for next subagent's prompt
 
 12. **GWASpoly is slow** — per-marker LMM serial loop is 12-15 min on tetraploid potato fixture. Harness defaults to canonical reference output; `GWASPOLY_FORCE_RERUN=1` enables fresh re-run.
 
-13. **GWASpoly diplo-additive encoding** — known parameterization mismatch with TorchGWAS. Tolerance bracket [0.3, 0.7] preserved (NOT a bug).
+13. **GWASpoly diplo-additive encoding** — known parameterization mismatch with TorchGenomics. Tolerance bracket [0.3, 0.7] preserved (NOT a bug).
 
 14. **MR-PRESSO null distribution** — TwoSampleMR uses parametric LOO bootstrap; TG uses permutation null. P-values can disagree by orders of magnitude on the same data; β estimates agree fine. Documented, not F3.
 
@@ -440,7 +440,7 @@ These were surfaced during Pillar A and Pillar B reviews:
 
 **Open architectural concerns:**
 
-- Pre-existing circular import: `optim.controller` ↔ `models.single_trait_lmm` ↔ `optim.controller`. Works under pytest collection order; cold `import torchgwas.optim` fails. Fix is out of scope for the validation campaign.
+- Pre-existing circular import: `optim.controller` ↔ `models.single_trait_lmm` ↔ `optim.controller`. Works under pytest collection order; cold `import torchgenomics.optim` fails. Fix is out of scope for the validation campaign.
 - `pytest-timeout` not in dev deps; `pytest.mark.timeout(...)` markers are silently ignored. Either install or drop the markers.
 
 ---
@@ -533,8 +533,8 @@ git push -u origin validation/pillar-A-coverage   # opens Pillar A PR target
 git push -u origin validation/pillar-B-references  # opens Pillar B PR target
 
 # gh CLI is NOT installed in this env. PRs created via web UI or after gh install:
-# https://github.com/sikiru-atanda/torchgwas/compare/master...validation/pillar-A-coverage
-# https://github.com/sikiru-atanda/torchgwas/compare/master...validation/pillar-B-references
+# https://github.com/sikiru-atanda/torchgenomics/compare/master...validation/pillar-A-coverage
+# https://github.com/sikiru-atanda/torchgenomics/compare/master...validation/pillar-B-references
 ```
 
 `git push` will need interactive auth (https://github.com username + PAT). The Co-Authored-By trailer on every commit is `Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.

@@ -1,4 +1,4 @@
-"""Benchmark: torchgwas gene-set enrichment vs statsmodels / scipy reference.
+"""Benchmark: torchgenomics gene-set enrichment vs statsmodels / scipy reference.
 
 Validates SNP-to-gene p-values against scipy.stats.norm and the
 enrichment regression against statsmodels OLS.
@@ -10,8 +10,8 @@ import statsmodels.api as sm
 import torch
 from scipy import stats as sp_stats
 
-from torchgwas.postgwas._enrichment import GeneResult, gene_set_enrichment, snp_to_gene
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._enrichment import GeneResult, gene_set_enrichment, snp_to_gene
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Helpers

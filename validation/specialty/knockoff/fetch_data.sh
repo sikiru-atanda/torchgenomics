@@ -5,12 +5,12 @@
 #   - The knockoff filter is a generic FDR-control procedure - it does not
 #     need real biology to test correctness. A block-LD simulation with a
 #     known causal set tests every code path in both R `knockoff::knockoff.filter`
-#     and `torchgwas.models.knockoff_lmm.KnockoffLMM`.
+#     and `torchgenomics.models.knockoff_lmm.KnockoffLMM`.
 #   - Real-data injection adds confounding sources (population structure,
 #     family relatedness, allele-flip orientation) that would mix into the
 #     FDR estimate and defeat the comparison.
 #
-# The same fixture is read by both run_torchgwas.py and run_reference.R, so
+# The same fixture is read by both run_torchgenomics.py and run_reference.R, so
 # the only source of disagreement is the FDR-control algorithm itself, not
 # the data prep.
 #

@@ -17,9 +17,9 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import ScanResult, VariantMeta
-from torchgwas.models.ocf_lmm import (
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import ScanResult, VariantMeta
+from torchgenomics.models.ocf_lmm import (
     OCFLMM,
     OCFNullFit,
     _create_folds,
@@ -122,7 +122,7 @@ class TestFitFold:
     def test_fold_reml_converges(self):
         """Per-fold REML should converge."""
         data = _simulate_ocf_data(n=150, n_snps=100, seed=10)
-        from torchgwas.config import NumericalConfig
+        from torchgenomics.config import NumericalConfig
         config = NumericalConfig()
 
         folds = _create_folds(150, n_folds=3, seed=10)
@@ -143,7 +143,7 @@ class TestFitFold:
     def test_blup_prediction_nonzero(self):
         """BLUP predictions should be nonzero when h2 > 0."""
         data = _simulate_ocf_data(n=150, n_snps=100, h2=0.5, seed=11)
-        from torchgwas.config import NumericalConfig
+        from torchgenomics.config import NumericalConfig
         config = NumericalConfig()
 
         folds = _create_folds(150, n_folds=3, seed=11)
@@ -164,7 +164,7 @@ class TestFitFold:
     def test_cross_fit_residual_shape(self):
         """Cross-fit residual should have shape (n_test,)."""
         data = _simulate_ocf_data(n=100, n_snps=50, seed=12)
-        from torchgwas.config import NumericalConfig
+        from torchgenomics.config import NumericalConfig
         config = NumericalConfig()
 
         folds = _create_folds(100, n_folds=5, seed=12)
@@ -325,7 +325,7 @@ class TestVsStandardLMM:
         data = _simulate_ocf_data(n=200, n_snps=100, h2=0.4, seed=50)
 
         # Standard LMM
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
         model_std = SingleTraitLMM()
         nf_std = model_std.fit_null(data["Y"], data["X0"], K=data["K"])
         result_std = model_std.score_chunk(data["G"], nf_std, data["vmeta"])
@@ -347,7 +347,7 @@ class TestVsStandardLMM:
             n=250, n_snps=100, h2=0.3, causal_beta=0.8, seed=51,
         )
 
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
         model_std = SingleTraitLMM()
         nf_std = model_std.fit_null(data["Y"], data["X0"], K=data["K"])
         result_std = model_std.score_chunk(data["G"], nf_std, data["vmeta"])

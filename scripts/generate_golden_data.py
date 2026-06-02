@@ -1,7 +1,7 @@
 """Regenerate GEMMA / GAPIT3 / GWASpoly reference outputs used by the golden tests.
 
 The golden tests in ``tests/test_golden_{gemma,gapit,gwaspoly}.py`` compare
-TorchGWAS results against reference outputs from established tools. This script
+TorchGenomics results against reference outputs from established tools. This script
 is the one-time orchestrator that a maintainer runs (on a machine with the
 tools installed) to regenerate those reference outputs.
 

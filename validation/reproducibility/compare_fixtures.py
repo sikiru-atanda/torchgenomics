@@ -2,7 +2,7 @@
 """Pillar D — diff fresh upstream tool output vs committed reference fixture.
 
 This is fundamentally different from the Pillar B compare scripts:
-  - Pillar B (validation/external/<tool>/compare.py) diffs <tool> ↔ TorchGWAS.
+  - Pillar B (validation/external/<tool>/compare.py) diffs <tool> ↔ TorchGenomics.
   - Pillar D (this script)                            diffs <tool> ↔ committed fixture.
 
 The "committed fixture" lives at:
@@ -24,7 +24,7 @@ so the tolerance bar is *tight*:
 
 Drift beyond these thresholds is a `fixture-drift` finding (the upstream
 tool's behavior or the input data has changed since the fixture was
-captured) — distinct from a `torchgwas-divergence` finding logged in
+captured) — distinct from a `torchgenomics-divergence` finding logged in
 Pillars A/B/C.
 
 CLI:

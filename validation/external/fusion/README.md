@@ -1,6 +1,6 @@
 # validation/external/fusion — FUSION measured-expression harness
 
-Head-to-head agreement test of TorchGWAS's `twas_observed_expression`
+Head-to-head agreement test of TorchGenomics's `twas_observed_expression`
 against the FUSION TWAS pipeline's **measured-expression mode** —
 i.e., the FUSION workflow where the user has observed normalized
 expression in the discovery cohort and wants gene-trait associations
@@ -13,8 +13,8 @@ Both paths fit the same OLS per gene:
     y ~ intercept + covariates + expression_g
 
 and emit the Wald statistic for the `expression_g` coefficient (F(1,
-n-p) under FUSION's R `lm.fit`; F(1, n-c-1) under TorchGWAS's
-`torchgwas.models.glm.GLM`). With matching covariates and matching
+n-p) under FUSION's R `lm.fit`; F(1, n-c-1) under TorchGenomics's
+`torchgenomics.models.glm.GLM`). With matching covariates and matching
 residual-variance estimators the two should agree at floating-point
 precision — gates are `1e-8` on β/SE and `1e-6` on z and -log10 p.
 
@@ -37,7 +37,7 @@ fetch_data.sh        Generate the in-process fixture (300 × 15, planted causal)
 simulate_fixture.py  The fixture generator (deterministic on --seed)
 run_reference.R      The reference OLS Wald per gene (FAQ mode)
 run.sh               Invoke run_reference.R with the right args
-compare.py           Side-by-side vs torchgwas.postgwas.twas_observed_expression
+compare.py           Side-by-side vs torchgenomics.postgwas.twas_observed_expression
 data/                Fixture inputs (expression.tsv, phenotype.tsv, covariates.tsv, genes.bed)
 outputs/             FUSION reference output (fusion_results.tsv)
 results/             agreement.json + summary.tsv + manifest.sha256

@@ -1,4 +1,4 @@
-"""Compare rrBLUP reference vs TorchGWAS on the SoyNAM 4-family RIL panel.
+"""Compare rrBLUP reference vs TorchGenomics on the SoyNAM 4-family RIL panel.
 
 Three comparisons:
 
@@ -9,7 +9,7 @@ Three comparisons:
       in {0,1,2}). After accounting for the encoding, the matrices
       should agree to within rounding.
 
-  (B) Single-trait LMM equivalence — TorchGWAS ``SingleTraitLMM`` vs
+  (B) Single-trait LMM equivalence — TorchGenomics ``SingleTraitLMM`` vs
       ``rrBLUP::GWAS(P3D=TRUE, n.PC=0)``. Same kinship K (we feed both
       the rrBLUP-computed A.mat to remove kinship as a confounder) and
       the same yield BLUP phenotype. Compare:
@@ -20,7 +20,7 @@ Three comparisons:
       with TG is implied by agreement on −log10(p) modulo the small-
       sample t² vs χ² difference between rrBLUP and TG.
 
-  (C) Within-family LMM dual-scan — TorchGWAS ``WithinFamilyLMM``.
+  (C) Within-family LMM dual-scan — TorchGenomics ``WithinFamilyLMM``.
       The reference here is *internal consistency*, not an external
       tool: assert that the standard scan and the within-family scan
       both run to completion with finite β / SE / p, that the
@@ -65,8 +65,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.linalg import grm_vanraden  # noqa: E402
-from torchgwas.models import (  # noqa: E402
+from torchgenomics.linalg import grm_vanraden  # noqa: E402
+from torchgenomics.models import (  # noqa: E402
     SingleTraitLMM,
     VariantMeta,
     WithinFamilyLMM,
@@ -262,7 +262,7 @@ def compare_kinship(data_dir: Path, out_dir: Path) -> ComparisonReport:
     rel_diff = (K_amat - K_tg_scaled).norm().item() / K_amat.norm().item()
 
     rep = ComparisonReport(
-        name="Kinship: rrBLUP A.mat vs TorchGWAS grm_vanraden",
+        name="Kinship: rrBLUP A.mat vs TorchGenomics grm_vanraden",
         n_compared=K_amat.shape[0],
     )
     rep.checks.append(_check_min("Pearson(K_amat, K_tg)", pearson, TOL_KINSHIP_PEARSON))
@@ -333,7 +333,7 @@ def compare_stlmm(data_dir: Path, out_dir: Path) -> ComparisonReport:
     max_abs = float(np.max(np.abs(ref_aligned[mask] - tg_neg_log10p[mask])))
 
     rep = ComparisonReport(
-        name="STLMM: rrBLUP::GWAS vs TorchGWAS SingleTraitLMM",
+        name="STLMM: rrBLUP::GWAS vs TorchGenomics SingleTraitLMM",
         n_compared=n_compared,
     )
     rep.checks.append(_check_max("|Δ h²|/|h²|", d_h2, TOL_VC_RELDIFF))

@@ -1,4 +1,4 @@
-"""Tests for torchgwas.annotate (NCBI gene annotation)."""
+"""Tests for torchgenomics.annotate (NCBI gene annotation)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.annotate import (
+from torchgenomics.annotate import (
     AssemblyNotFoundError,
     CropNotFoundError,
     NCBIClient,
@@ -21,11 +21,11 @@ from torchgwas.annotate import (
     resolve_assembly,
     resolve_taxid,
 )
-from torchgwas.annotate._annotate import _signed_distance
-from torchgwas.annotate._client import _TokenBucket
-from torchgwas.annotate._genes import extract_go_terms, genomic_range
-from torchgwas.annotate._resolve import normalise_chrom
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.annotate._annotate import _signed_distance
+from torchgenomics.annotate._client import _TokenBucket
+from torchgenomics.annotate._genes import extract_go_terms, genomic_range
+from torchgenomics.annotate._resolve import normalise_chrom
+from torchgenomics.postgwas._sumstats import SumStats
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ncbi"
 
@@ -93,7 +93,7 @@ def test_normalise_chrom_matches_plain_and_prefixed():
 
 def test_strip_chr_prefix_does_not_char_set_strip():
     """Regression: str.lstrip('chr') strips chars in the set {c,h,r}, not the prefix."""
-    from torchgwas.annotate._resolve import _strip_chr_prefix
+    from torchgenomics.annotate._resolve import _strip_chr_prefix
 
     assert _strip_chr_prefix("chr1") == "1"
     assert _strip_chr_prefix("CHR1") == "1"
@@ -166,7 +166,7 @@ def test_resolve_taxid_from_datasets():
 def test_resolve_taxid_falls_back_to_eutils():
     eutils_payload = {"esearchresult": {"idlist": ["4577"]}}
 
-    from torchgwas.annotate._client import NCBIError
+    from torchgenomics.annotate._client import NCBIError
 
     def datasets_raise(url, params):
         raise NCBIError("datasets offline")
@@ -469,8 +469,8 @@ def test_annotate_hits_caches_repeat_requests():
 
 
 @pytest.mark.skipif(
-    os.getenv("TORCHGWAS_NCBI_LIVE") != "1",
-    reason="Live NCBI test; set TORCHGWAS_NCBI_LIVE=1 to run.",
+    os.getenv("TORCHGENOMICS_NCBI_LIVE") != "1",
+    reason="Live NCBI test; set TORCHGENOMICS_NCBI_LIVE=1 to run.",
 )
 def test_live_maize_chr1_region():
     """One real NCBI round-trip — run manually before release."""

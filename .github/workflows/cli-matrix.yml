@@ -15,7 +15,7 @@ on:
   push:
     branches: [master, main]
     paths:
-      - "torchgwas/cli.py"
+      - "torchgenomics/cli.py"
       - "tests/test_cli_matrix.py"
       - "tests/cli_matrix_spec.py"
       - "tests/conftest.py"
@@ -44,4 +44,4 @@ jobs:
         run: |
           pytest tests/test_cli_matrix.py -m cli_matrix -v --tb=short --timeout=300
         env:
-          TORCHGWAS_DISABLE_NATIVE: "1"
+          TORCHGENOMICS_DISABLE_NATIVE: "1"

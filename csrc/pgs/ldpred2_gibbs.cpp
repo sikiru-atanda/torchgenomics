@@ -1,7 +1,7 @@
 // LDpred2 block Gibbs sampler — C++ port of
-// torchgwas.pgs.ldpred2._ldpred2_gibbs_block.
+// torchgenomics.pgs.ldpred2._ldpred2_gibbs_block.
 //
-// The pure-Python implementation in torchgwas/pgs/ldpred2.py is the canonical
+// The pure-Python implementation in torchgenomics/pgs/ldpred2.py is the canonical
 // reference. This module mirrors it line-for-line in C++ for performance.
 //
 // Spike-and-slab prior on standardized SNP effects:

@@ -5,12 +5,12 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.postgwas._ld_ref_loader import (
+from torchgenomics.postgwas._ld_ref_loader import (
     load_ld_reference,
     save_ld_reference,
     LDReferenceUnsupportedFormatError,
 )
-from torchgwas.postgwas._ld_ref_metadata import (
+from torchgenomics.postgwas._ld_ref_metadata import (
     LDReferenceMetadata,
     check_metadata_compatibility,
     MetadataMismatchError,
@@ -139,7 +139,7 @@ def test_load_format_inferred_from_extension(tmp_path):
     assert torch.allclose(R_pt, R_npz)
 
 
-from torchgwas.postgwas._ld_ref_loader import compute_in_sample_ld
+from torchgenomics.postgwas._ld_ref_loader import compute_in_sample_ld
 
 
 def test_in_sample_ld_matches_corrcoef():
@@ -180,7 +180,7 @@ def test_in_sample_ld_symmetric():
     assert torch.allclose(R, R.T, atol=1e-12)
 
 
-from torchgwas.postgwas._ld_ref_loader import (
+from torchgenomics.postgwas._ld_ref_loader import (
     decompose_into_blocks,
     BlockSpec,
 )

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from torchgwas.models.lmm_multi import MultiTraitLMM as LegacyMultiTraitLMM
-from torchgwas.models.multi_trait_lmm import MultiTraitLMM
+from torchgenomics.models.lmm_multi import MultiTraitLMM as LegacyMultiTraitLMM
+from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
 
 
 def test_legacy_multi_trait_lmm_import_is_shim():

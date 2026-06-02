@@ -3,7 +3,7 @@
 
 For each committed reference fixture, re-run the matching Pillar B harness
 end-to-end (install → fetch → run) and diff the *fresh* upstream tool
-output against the *committed* fixture (NOT against TorchGWAS).
+output against the *committed* fixture (NOT against TorchGenomics).
 
 Tools audited: gemma, gapit, gwaspoly.
 

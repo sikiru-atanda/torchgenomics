@@ -1,5 +1,5 @@
 // Native accelerator for the hyprcoloc 2^K subset-evidence enumeration
-// in ``torchgwas.postgwas._hyprcoloc.hyprcoloc``.
+// in ``torchgenomics.postgwas._hyprcoloc.hyprcoloc``.
 //
 // Background. The Python reference enumerates every non-singleton
 // subset S of the K trait indices and computes

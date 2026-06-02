@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.bayesian_vs import BayesianVS
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.bayesian_vs import BayesianVS
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 # ---------------------------------------------------------------
 # Fixtures
@@ -531,7 +531,7 @@ def test_bayes_scan_warns_on_large_p():
     """
     import warnings
 
-    from torchgwas.linalg.kinship import grm_vanraden
+    from torchgenomics.linalg.kinship import grm_vanraden
 
     torch.manual_seed(0)
     n = 30
@@ -593,7 +593,7 @@ def test_bayes_scan_no_warn_at_threshold():
     """
     import warnings
 
-    from torchgwas.linalg.kinship import grm_vanraden
+    from torchgenomics.linalg.kinship import grm_vanraden
 
     torch.manual_seed(1)
     n = 20

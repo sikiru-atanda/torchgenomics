@@ -1,9 +1,9 @@
 """Tests for the native HWE-with-double-reduction accelerator.
 
 The native module replaces the per-SNP scipy.stats.chi2.sf + .item() loop
-in ``torchgwas.preprocess.qc._compute_hwe_double_reduction``. The pure-Python
+in ``torchgenomics.preprocess.qc._compute_hwe_double_reduction``. The pure-Python
 loop remains in-tree as the algorithmic spec; the dispatcher routes to C++
-when the build is present and ``TORCHGWAS_DISABLE_NATIVE`` is unset.
+when the build is present and ``TORCHGENOMICS_DISABLE_NATIVE`` is unset.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_HWE, _hwe_native
-from torchgwas.preprocess.qc import _compute_hwe_double_reduction
+from torchgenomics._native import HAS_NATIVE_HWE, _hwe_native
+from torchgenomics.preprocess.qc import _compute_hwe_double_reduction
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_HWE, reason="native HWE extension not built"
@@ -48,13 +48,13 @@ def _make_tetraploid(n=400, m=60, seed=0, dr_alpha=0.0):
 
 def _run_with(disable_native, G, af, ploidy):
     if disable_native:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     else:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     try:
         return _compute_hwe_double_reduction(G, af, ploidy=ploidy)
     finally:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
 
 
 # ---------------------------------------------------------------------------

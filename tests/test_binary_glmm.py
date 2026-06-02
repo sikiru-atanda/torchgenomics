@@ -11,8 +11,8 @@ import math
 import pytest
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.binary_glmm import BinaryGLMM
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.binary_glmm import BinaryGLMM
 
 
 def _simulate_binary_glmm_data(
@@ -219,7 +219,7 @@ class TestBinaryGLMMEdge:
             pos=list(range(m)), a1=["A"] * m, a2=["G"] * m,
         )
 
-        from torchgwas.models.binary_glm import BinaryGLM
+        from torchgenomics.models.binary_glm import BinaryGLM
         glm = BinaryGLM(use_spa=False)
         glmm = BinaryGLMM(use_spa=False)
 

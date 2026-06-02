@@ -2,7 +2,7 @@
 
 Phase 29 — no external reference tool exists for block-level proximal
 decontamination LMM. This harness validates
-``torchgwas.models.lro_lmm.LROLMM`` by:
+``torchgenomics.models.lro_lmm.LROLMM`` by:
 
   1. Simulating genotypes in K disjoint LD blocks, with one causal SNP
      planted inside one of the blocks (the "causal block"),
@@ -36,10 +36,10 @@ HERE = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from torchgwas.linalg.kinship import grm_vanraden  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.lro_lmm import LROLMM  # noqa: E402
-from torchgwas.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
+from torchgenomics.linalg.kinship import grm_vanraden  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.lro_lmm import LROLMM  # noqa: E402
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
 
 
 SEED = 42

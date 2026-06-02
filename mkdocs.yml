@@ -1,8 +1,8 @@
-site_name: TorchGWAS
+site_name: TorchGenomics
 site_description: GPU-accelerated Genome-Wide Association Studies with PyTorch
-site_url: https://sikiru-atanda.github.io/torchgwas/
-repo_url: https://github.com/sikiru-atanda/torchgwas
-repo_name: sikiru-atanda/torchgwas
+site_url: https://sikiru-atanda.github.io/torchgenomics/
+repo_url: https://github.com/sikiru-atanda/torchgenomics
+repo_name: sikiru-atanda/torchgenomics
 edit_uri: edit/master/docs/
 
 theme:

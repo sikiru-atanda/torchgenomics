@@ -20,7 +20,7 @@ sampling noise: z_t,j = sqrt(N_t) * β_t,j + ε_t,j where ε ~ N(0, 1).
 This is the standard simulation in Bulik-Sullivan §Methods. The resulting
 sumstats files mimic real GWAS chi² distributions; LDSC's own h2 + rg
 estimators recover the simulated truth, so they're a fair reference point
-for TorchGWAS' implementations.
+for TorchGenomics' implementations.
 
 Outputs (per --output-dir):
     sim_trait1.sumstats.gz   LDSC-format sumstats for trait 1
@@ -100,7 +100,7 @@ def simulate(
     # Use M = m as the total SNP count for the simulation (single-chr scope).
     # LDSC will see M from its own .M_5_50 files; we report `m_total` as the
     # value we used for the truth simulation. The harness compares LDSC's
-    # estimate (which uses m_chr) to TorchGWAS' estimate (which we feed
+    # estimate (which uses m_chr) to TorchGenomics' estimate (which we feed
     # m_chr as well) — both inherit the same M.
     M = m_chr
 

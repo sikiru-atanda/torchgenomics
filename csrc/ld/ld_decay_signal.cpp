@@ -1,4 +1,4 @@
-// Native accelerator for ``torchgwas.ld._changepoint.ld_decay_signal``.
+// Native accelerator for ``torchgenomics.ld._changepoint.ld_decay_signal``.
 //
 // The pure-Python loop walks every variant v and builds boolean masks over
 // the full (P,) pair tensor to find pairs touching v, then runs torch.topk

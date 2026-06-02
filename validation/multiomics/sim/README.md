@@ -1,6 +1,6 @@
 # Simulated multi-omics ground-truth fixture (Pillar B / Tier 2 B1)
 
-Deterministic G -> expression -> trait simulator used by the TorchGWAS
+Deterministic G -> expression -> trait simulator used by the TorchGenomics
 Genome Biology paper Figure 4 panel A. The fixture provides a numeric
 ground truth that downstream TWAS / SMR / coloc / mediation methods are
 asked to recover. No reference tool is needed: `truth.json` is the
@@ -136,12 +136,12 @@ so the figure-rendering code can grep them programmatically.
 
 Tier 4 panel-rendering code reads `truth.json` and calls:
 
-- TWAS: `torchgwas.postgwas._twas.twas_sumstat` (S-PrediXcan; Barbeira 2018)
-- SMR: `torchgwas.postgwas._smr.smr_test` + `smr_heidi` (Zhu 2016)
-- coloc: `torchgwas.postgwas._hyprcoloc.coloc_pairwise`
+- TWAS: `torchgenomics.postgwas._twas.twas_sumstat` (S-PrediXcan; Barbeira 2018)
+- SMR: `torchgenomics.postgwas._smr.smr_test` + `smr_heidi` (Zhu 2016)
+- coloc: `torchgenomics.postgwas._hyprcoloc.coloc_pairwise`
   (Giambartolomei 2014 two-trait coloc; PP.H0..H4 decomposition)
-- Mediation: `torchgwas.multiomics._mediate.mediate_lmm` (Sobel 1982);
-  batched variant `torchgwas.multiomics._scan_batched.batched_scan_pairs`
+- Mediation: `torchgenomics.multiomics._mediate.mediate_lmm` (Sobel 1982);
+  batched variant `torchgenomics.multiomics._scan_batched.batched_scan_pairs`
 
 ## Primary sources
 

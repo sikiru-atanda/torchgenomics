@@ -17,11 +17,11 @@ Conventions matching how the upstream conversion script in
   - PLINK BED 2-bit codes (SNP-major), per sample:
         00 → hom A1 A1   (we map dosage 2 here — i.e. A1 is the COUNTED allele
                           in the .bim, and we want the homozygous A1 genotype to
-                          decode back to dosage 2 under TorchGWAS' decoder)
+                          decode back to dosage 2 under TorchGenomics' decoder)
         11 → hom A2 A2   (dosage 0)
         10 → het         (dosage 1)
         01 → missing     (NaN)
-    NB: TorchGWAS' `PlinkBedReader._GENO_DECODE = [0, NaN, 1, 2]` decodes:
+    NB: TorchGenomics' `PlinkBedReader._GENO_DECODE = [0, NaN, 1, 2]` decodes:
         00 → 0, 01 → NaN, 10 → 1, 11 → 2.
     So to round-trip dosage d ∈ {0,1,2} back to the SAME numeric value d,
     we encode 0 → 00, 1 → 10, 2 → 11. That makes A1 the *minor* / "B" allele
@@ -44,7 +44,7 @@ import pandas as pd
 def encode_bed(dosage: np.ndarray) -> bytes:
     """Encode (n_samples, n_variants) dosage array to PLINK BED SNP-major bytes.
 
-    Mapping (TorchGWAS-compatible round-trip):
+    Mapping (TorchGenomics-compatible round-trip):
       dosage 0   -> 2-bit code 0b00
       dosage 1   -> 2-bit code 0b10
       dosage 2   -> 2-bit code 0b11

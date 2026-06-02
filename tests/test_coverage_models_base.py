@@ -1,18 +1,18 @@
-"""Tier-1 coverage tests for ``torchgwas.models.base`` and
-``torchgwas.config``.
+"""Tier-1 coverage tests for ``torchgenomics.models.base`` and
+``torchgenomics.config``.
 
 Bar (Pillar A spec, foundational types):
 - Constructor + attribute round-trip.
 - Documented invariants verified.
 - For BaseModel: protocol shape — runtime_checkable Protocol; instances
   with ``fit_null`` and ``score_chunk`` satisfy ``isinstance``.
-- For NullFit / VariantMeta / TorchGWASConfig: dataclass smoke + defaults.
+- For NullFit / VariantMeta / TorchGenomicsConfig: dataclass smoke + defaults.
 
 Covers 4 symbols:
-- ``torchgwas.models.base.BaseModel``
-- ``torchgwas.models.base.NullFit``
-- ``torchgwas.models.base.VariantMeta``
-- ``torchgwas.config.TorchGWASConfig``
+- ``torchgenomics.models.base.BaseModel``
+- ``torchgenomics.models.base.NullFit``
+- ``torchgenomics.models.base.VariantMeta``
+- ``torchgenomics.config.TorchGenomicsConfig``
 """
 
 from __future__ import annotations
@@ -23,13 +23,13 @@ import pytest
 import torch
 from torch import Tensor
 
-from torchgwas.config import (
+from torchgenomics.config import (
     AMPConfig,
     NumericalConfig,
     PloidyConfig,
-    TorchGWASConfig,
+    TorchGenomicsConfig,
 )
-from torchgwas.models.base import BaseModel, NullFit, VariantMeta
+from torchgenomics.models.base import BaseModel, NullFit, VariantMeta
 
 
 pytestmark = pytest.mark.timeout(30)
@@ -230,62 +230,62 @@ class TestVariantMeta:
 
 
 # ---------------------------------------------------------------------------
-# config.TorchGWASConfig
+# config.TorchGenomicsConfig
 # ---------------------------------------------------------------------------
 
 
-class TestTorchGWASConfig:
-    """``TorchGWASConfig`` aggregates runtime configuration: device, AMP,
+class TestTorchGenomicsConfig:
+    """``TorchGenomicsConfig`` aggregates runtime configuration: device, AMP,
     numerical, ploidy, and streaming knobs."""
 
     def test_default_construct(self):
         """Defaults: deterministic=False, chunk_size=1024, n_threads=1."""
-        cfg = TorchGWASConfig()
+        cfg = TorchGenomicsConfig()
         assert cfg.deterministic is False
         assert cfg.chunk_size == 1024
         assert cfg.n_threads == 1
 
     def test_amp_field_is_AMPConfig(self):
         """``cfg.amp`` is an AMPConfig instance with documented defaults."""
-        cfg = TorchGWASConfig()
+        cfg = TorchGenomicsConfig()
         assert isinstance(cfg.amp, AMPConfig)
         assert cfg.amp.enabled is False  # disabled by default
 
     def test_numerical_field_is_NumericalConfig(self):
         """``cfg.numerical`` is a NumericalConfig instance."""
-        cfg = TorchGWASConfig()
+        cfg = TorchGenomicsConfig()
         assert isinstance(cfg.numerical, NumericalConfig)
 
     def test_ploidy_config_field_is_PloidyConfig(self):
         """``cfg.ploidy_config`` is a PloidyConfig instance with default
         ploidy=2."""
-        cfg = TorchGWASConfig()
+        cfg = TorchGenomicsConfig()
         assert isinstance(cfg.ploidy_config, PloidyConfig)
         assert cfg.ploidy_config.ploidy == 2
 
     def test_device_resolved_to_torch_device(self):
         """``cfg.device`` is a torch.device (CPU or CUDA depending on env)."""
-        cfg = TorchGWASConfig()
+        cfg = TorchGenomicsConfig()
         assert isinstance(cfg.device, torch.device)
 
     def test_ploidy_property_returns_int(self):
         """The ``ploidy`` property returns the resolved integer ploidy."""
-        cfg = TorchGWASConfig()
+        cfg = TorchGenomicsConfig()
         assert cfg.ploidy == 2  # default diploid
 
     def test_subconfigs_are_per_instance(self):
         """``amp`` / ``numerical`` / ``ploidy_config`` use
-        ``default_factory`` so two TorchGWASConfig instances don't share
+        ``default_factory`` so two TorchGenomicsConfig instances don't share
         sub-config objects."""
-        cfg1 = TorchGWASConfig()
-        cfg2 = TorchGWASConfig()
+        cfg1 = TorchGenomicsConfig()
+        cfg2 = TorchGenomicsConfig()
         assert cfg1.amp is not cfg2.amp
         assert cfg1.numerical is not cfg2.numerical
         assert cfg1.ploidy_config is not cfg2.ploidy_config
 
     def test_field_override(self):
         """Constructor accepts overrides for top-level scalar fields."""
-        cfg = TorchGWASConfig(
+        cfg = TorchGenomicsConfig(
             deterministic=True,
             chunk_size=2048,
             n_threads=4,
@@ -295,7 +295,7 @@ class TestTorchGWASConfig:
         assert cfg.n_threads == 4
 
     def test_repr_does_not_crash(self):
-        """``repr(TorchGWASConfig())`` returns a string."""
-        s = repr(TorchGWASConfig())
+        """``repr(TorchGenomicsConfig())`` returns a string."""
+        s = repr(TorchGenomicsConfig())
         assert isinstance(s, str)
-        assert "TorchGWASConfig" in s
+        assert "TorchGenomicsConfig" in s

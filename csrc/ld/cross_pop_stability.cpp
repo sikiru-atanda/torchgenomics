@@ -1,5 +1,5 @@
 // Native accelerator for the per-cluster, per-population r² stability
-// loop inside ``torchgwas.ld._blocks_novel.detect_blocks_cross_pop``.
+// loop inside ``torchgenomics.ld._blocks_novel.detect_blocks_cross_pop``.
 //
 // The Python reference does, for each cluster of variant indices and each
 // population's r² matrix:

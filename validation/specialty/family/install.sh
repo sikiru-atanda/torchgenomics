@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Family-aware GWAS reference-tool install — within-family / direct-indirect.
 #
-# Plan B Tier 3 Agent C3 harness for torchgwas.models.within_family_lmm.
+# Plan B Tier 3 Agent C3 harness for torchgenomics.models.within_family_lmm.
 # WithinFamilyLMM (Phase 23; Young, Benonisdottir, Przeworski & Kong 2022,
 # Nat Genet 54:263-273, "Mendelian imputation of parental genotypes
 # improves estimates of direct genetic effects", doi:10.1038/s41588-022-01016-z).

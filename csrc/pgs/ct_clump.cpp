@@ -1,6 +1,6 @@
 // Greedy LD clumping for the C+T (Clumping + Thresholding) PGS method.
 //
-// Mirrors torchgwas.pgs.ct._clump_with_ld_reference. Two entry points are
+// Mirrors torchgenomics.pgs.ct._clump_with_ld_reference. Two entry points are
 // exposed:
 //
 //   clump_full(p, R, chr_codes, pos, p_thr, r2_thr, window_bp)

@@ -1,4 +1,4 @@
-"""Compare BLUPF90+ gibbsf90+ vs TorchGWAS."""
+"""Compare BLUPF90+ gibbsf90+ vs TorchGenomics."""
 from __future__ import annotations
 import argparse, hashlib, json, math, sys
 from dataclasses import asdict, dataclass, field
@@ -7,8 +7,8 @@ import numpy as np, pandas as pd, torch
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
-from torchgwas.models.threshold_linear import ThresholdLinearModel
-from torchgwas.models.base import VariantMeta
+from torchgenomics.models.threshold_linear import ThresholdLinearModel
+from torchgenomics.models.base import VariantMeta
 TOL_ABS_VARCOMP = 1.0e+1  # F3 post-V1 finding: 5000-sample chain has not converged for n=300 c=3 threshold; observed max |dR|=7.25 |dG|=8.54.
 TOL_REL_BETA_SEX = 1.0e+0  # F3 post-V1 finding: TG NR uses 0/1 sex, sim uses centred; observed max rel=0.95.
 TOL_REL_BETA_SNP = 1.5e-1  # SNP beta vs simulator truth (5 causal SNPs); observed mean abs=3.8e-2.
@@ -211,7 +211,7 @@ def compare(data_dir, out_dir):
         max_d_R = float(np.max(np.abs(R_blupf - tg["R"])))
         max_d_G = float(np.max(np.abs(G_blupf - tg["G_cov"])))
     rep = ComparisonReport(
-        name="BLUPF90+ gibbsf90+ vs torchgwas.models.threshold_linear.ThresholdLinearModel",
+        name="BLUPF90+ gibbsf90+ vs torchgenomics.models.threshold_linear.ThresholdLinearModel",
         n_compared=3,
     )
     if blupf_status == "OK":

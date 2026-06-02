@@ -1,4 +1,4 @@
-"""Tests for torchgwas.pgs.ld_ref."""
+"""Tests for torchgenomics.pgs.ld_ref."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.pgs.ld_ref import (
+from torchgenomics.pgs.ld_ref import (
     _ledoit_wolf_shrink,
     build_ld_reference,
     load_ld_reference,

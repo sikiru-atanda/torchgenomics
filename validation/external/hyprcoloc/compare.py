@@ -1,4 +1,4 @@
-"""Compare hyprcoloc R reference vs TorchGWAS on simulated 3-trait sumstats.
+"""Compare hyprcoloc R reference vs TorchGenomics on simulated 3-trait sumstats.
 
 Comparison surface (Tier-1 hyprcoloc parity, Foley 2021):
   1. Best-cluster membership   - is the cluster R identifies the same set of
@@ -63,8 +63,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import SumStats  # noqa: E402
-from torchgwas.postgwas._hyprcoloc import hyprcoloc as tg_hyprcoloc  # noqa: E402
+from torchgenomics.postgwas import SumStats  # noqa: E402
+from torchgenomics.postgwas._hyprcoloc import hyprcoloc as tg_hyprcoloc  # noqa: E402
 
 
 
@@ -189,7 +189,7 @@ def _load_inputs(data_dir: Path, out_dir: Path) -> dict[str, Any]:
 
 
 def compare_hyprcoloc(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """Multi-trait hyprcoloc parity (R vs TorchGWAS) on shared-causal sim."""
+    """Multi-trait hyprcoloc parity (R vs TorchGenomics) on shared-causal sim."""
     inp = _load_inputs(data_dir, out_dir)
     r_results = inp["r_results"]
 
@@ -202,7 +202,7 @@ def compare_hyprcoloc(data_dir: Path, out_dir: Path) -> ComparisonReport:
     r_candidate_snp = str(r_row["candidate_snp"])
     r_candidate_pp = float(r_row["posterior_explained_by_snp"])
 
-    # TorchGWAS run on the same sumstats.
+    # TorchGenomics run on the same sumstats.
     # Prior reparameterization: hyprcoloc::prior.c = 0.02 -> TG prior_2 = 0.98.
     tg = tg_hyprcoloc(
         inp["sumstats_list"],
@@ -226,7 +226,7 @@ def compare_hyprcoloc(data_dir: Path, out_dir: Path) -> ComparisonReport:
     d_candidate = abs(tg_candidate_pp - r_candidate_pp)
 
     rep = ComparisonReport(
-        name="hyprcoloc (R hyprcoloc vs TorchGWAS hyprcoloc)",
+        name="hyprcoloc (R hyprcoloc vs TorchGenomics hyprcoloc)",
         n_compared=inp["m"],
     )
     rep.checks.append(_check_exact(

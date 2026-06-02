@@ -1,24 +1,24 @@
 """Tier-2 behavioral coverage tests for small-batch public symbols across
-``torchgwas.ld``, ``torchgwas.multiomics``, and ``torchgwas.pgs``.
+``torchgenomics.ld``, ``torchgenomics.multiomics``, and ``torchgenomics.pgs``.
 
 Bar (Pillar A spec section 4.3 Tier 2):
 - Dataclasses: construct + round-trip + repr smoke.
 - ``HAS_NATIVE_*`` constants: type=bool + cross-check against the
-  corresponding ``torchgwas._native`` extension import.
+  corresponding ``torchgenomics._native`` extension import.
 
 Covers 9 public symbols:
 
-- ``torchgwas.ld._plink_compat.PLINKBlock`` (dataclass)
-- ``torchgwas.ld._blocks.PairwiseLD`` (dataclass)
-- ``torchgwas.multiomics._types.GeneSetMediationResult`` (dataclass)
-- ``torchgwas.pgs.validation.PGSValidation`` (dataclass)
-- ``torchgwas.pgs.scoring.ScoringResult`` (dataclass)
-- ``torchgwas.pgs.ct.HAS_NATIVE_CT`` (bool constant)
-- ``torchgwas.pgs.diagnostics.HAS_NATIVE_ESS`` (bool constant)
-- ``torchgwas.pgs.ldpred2.HAS_NATIVE_LDPRED2`` (bool constant)
-- ``torchgwas.pgs.prscs.HAS_NATIVE_PRSCS`` (bool constant)
+- ``torchgenomics.ld._plink_compat.PLINKBlock`` (dataclass)
+- ``torchgenomics.ld._blocks.PairwiseLD`` (dataclass)
+- ``torchgenomics.multiomics._types.GeneSetMediationResult`` (dataclass)
+- ``torchgenomics.pgs.validation.PGSValidation`` (dataclass)
+- ``torchgenomics.pgs.scoring.ScoringResult`` (dataclass)
+- ``torchgenomics.pgs.ct.HAS_NATIVE_CT`` (bool constant)
+- ``torchgenomics.pgs.diagnostics.HAS_NATIVE_ESS`` (bool constant)
+- ``torchgenomics.pgs.ldpred2.HAS_NATIVE_LDPRED2`` (bool constant)
+- ``torchgenomics.pgs.prscs.HAS_NATIVE_PRSCS`` (bool constant)
 
-Removed (post-campaign cleanup): ``torchgwas.pgs.validation.pi`` was a
+Removed (post-campaign cleanup): ``torchgenomics.pgs.validation.pi`` was a
 stray ``from math import ... pi ...`` re-export at module top-level with
 no external callers. Removed from the import line in ``pgs/validation.py``
 and the one call site rewritten to use ``math.pi`` inline; the smoke
@@ -30,21 +30,21 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.ld import PairwiseLD, PLINKBlock
-from torchgwas.multiomics import GeneSetMediationResult
-from torchgwas.pgs.ct import HAS_NATIVE_CT
-from torchgwas.pgs.diagnostics import HAS_NATIVE_ESS
-from torchgwas.pgs.ldpred2 import HAS_NATIVE_LDPRED2
-from torchgwas.pgs.prscs import HAS_NATIVE_PRSCS
-from torchgwas.pgs.scoring import ScoringResult
-from torchgwas.pgs.validation import PGSValidation
+from torchgenomics.ld import PairwiseLD, PLINKBlock
+from torchgenomics.multiomics import GeneSetMediationResult
+from torchgenomics.pgs.ct import HAS_NATIVE_CT
+from torchgenomics.pgs.diagnostics import HAS_NATIVE_ESS
+from torchgenomics.pgs.ldpred2 import HAS_NATIVE_LDPRED2
+from torchgenomics.pgs.prscs import HAS_NATIVE_PRSCS
+from torchgenomics.pgs.scoring import ScoringResult
+from torchgenomics.pgs.validation import PGSValidation
 
 
 pytestmark = pytest.mark.timeout(60)
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.ld._plink_compat.PLINKBlock
+# torchgenomics.ld._plink_compat.PLINKBlock
 # ---------------------------------------------------------------------------
 
 
@@ -100,7 +100,7 @@ class TestPlinkBlock:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.ld._blocks.PairwiseLD
+# torchgenomics.ld._blocks.PairwiseLD
 # ---------------------------------------------------------------------------
 
 
@@ -173,7 +173,7 @@ class TestPairwiseLD:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.multiomics._types.GeneSetMediationResult
+# torchgenomics.multiomics._types.GeneSetMediationResult
 # ---------------------------------------------------------------------------
 
 
@@ -248,7 +248,7 @@ class TestGeneSetMediationResult:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.validation.PGSValidation
+# torchgenomics.pgs.validation.PGSValidation
 # ---------------------------------------------------------------------------
 
 
@@ -344,7 +344,7 @@ class TestPgsValidation:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.scoring.ScoringResult
+# torchgenomics.pgs.scoring.ScoringResult
 # ---------------------------------------------------------------------------
 
 
@@ -411,13 +411,13 @@ class TestScoringResult:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.ct.HAS_NATIVE_CT
+# torchgenomics.pgs.ct.HAS_NATIVE_CT
 # ---------------------------------------------------------------------------
 
 
 class TestHasNativeCt:
     """``HAS_NATIVE_CT`` reflects whether the C++ ``_ct_native`` extension
-    was built and is importable from ``torchgwas._native``."""
+    was built and is importable from ``torchgenomics._native``."""
 
     def test_is_bool(self):
         """Constant is a Python bool (not bool-y)."""
@@ -427,7 +427,7 @@ class TestHasNativeCt:
         """Cross-check against the underlying native import: True iff the
         ``_ct_native`` module imports cleanly and is non-None."""
         try:
-            from torchgwas._native import _ct_native
+            from torchgenomics._native import _ct_native
             native_present = _ct_native is not None
         except ImportError:
             native_present = False
@@ -435,7 +435,7 @@ class TestHasNativeCt:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.diagnostics.HAS_NATIVE_ESS
+# torchgenomics.pgs.diagnostics.HAS_NATIVE_ESS
 # ---------------------------------------------------------------------------
 
 
@@ -448,7 +448,7 @@ class TestHasNativeEss:
 
     def test_consistent_with_native_module(self):
         try:
-            from torchgwas._native import _ess_native
+            from torchgenomics._native import _ess_native
             native_present = _ess_native is not None
         except ImportError:
             native_present = False
@@ -456,7 +456,7 @@ class TestHasNativeEss:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.ldpred2.HAS_NATIVE_LDPRED2
+# torchgenomics.pgs.ldpred2.HAS_NATIVE_LDPRED2
 # ---------------------------------------------------------------------------
 
 
@@ -469,7 +469,7 @@ class TestHasNativeLdpred2:
 
     def test_consistent_with_native_module(self):
         try:
-            from torchgwas._native import _ldpred2_native
+            from torchgenomics._native import _ldpred2_native
             native_present = _ldpred2_native is not None
         except ImportError:
             native_present = False
@@ -477,7 +477,7 @@ class TestHasNativeLdpred2:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.prscs.HAS_NATIVE_PRSCS
+# torchgenomics.pgs.prscs.HAS_NATIVE_PRSCS
 # ---------------------------------------------------------------------------
 
 
@@ -490,7 +490,7 @@ class TestHasNativePrscs:
 
     def test_consistent_with_native_module(self):
         try:
-            from torchgwas._native import _prscs_native
+            from torchgenomics._native import _prscs_native
             native_present = _prscs_native is not None
         except ImportError:
             native_present = False
@@ -498,7 +498,7 @@ class TestHasNativePrscs:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.pgs.validation.pi  --  REMOVED post-campaign
+# torchgenomics.pgs.validation.pi  --  REMOVED post-campaign
 # ---------------------------------------------------------------------------
 # The stray ``from math import ... pi ...`` re-export was cleaned up; the
 # import line in ``pgs/validation.py`` is now ``from math import exp, log,

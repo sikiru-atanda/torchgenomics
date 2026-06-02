@@ -1,5 +1,5 @@
 """Tests for the native C++ graph-utils accelerator
-(``torchgwas._native._graph_native``).
+(``torchgenomics._native._graph_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_GRAPH, _graph_native
-from torchgwas.ld._graph_utils import _native_enabled, connected_components
+from torchgenomics._native import HAS_NATIVE_GRAPH, _graph_native
+from torchgenomics.ld._graph_utils import _native_enabled, connected_components
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_GRAPH,
@@ -33,7 +33,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _native_enabled() is True
 
@@ -108,12 +108,12 @@ def test_native_cc_invalid_shape_raises():
 
 
 def _run_python(A, threshold, monkeypatch):
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return [list(c) for c in connected_components(A, threshold=threshold)]
 
 
 def _run_native(A, threshold, monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     return [list(c) for c in connected_components(A, threshold=threshold)]
 
 

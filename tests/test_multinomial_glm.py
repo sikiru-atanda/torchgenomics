@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multinomial_glm import MultinomialGLM
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multinomial_glm import MultinomialGLM
 
 
 def _simulate_multinomial_data(

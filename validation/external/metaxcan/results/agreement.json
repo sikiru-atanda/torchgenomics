@@ -1,5 +1,5 @@
 {
-  "name": "S-PrediXcan sumstats (MetaXcan v0.8.1 vs torchgwas.postgwas.twas_sumstat)",
+  "name": "S-PrediXcan sumstats (MetaXcan v0.8.1 vs torchgenomics.postgwas.twas_sumstat)",
   "n_compared": 5,
   "passed": true,
   "checks": [
@@ -44,7 +44,7 @@
       0.2613719341580375,
       -0.0303388739826457
     ],
-    "TorchGWAS z (per gene)": [
+    "TorchGenomics z (per gene)": [
       11.63302218262585,
       0.5766233726880561,
       0.37855516896040203,
@@ -58,7 +58,7 @@
       0.0042229422624704,
       -0.0006613774152001
     ],
-    "TorchGWAS effect_size": [
+    "TorchGenomics effect_size": [
       0.2277767982818573,
       0.012744490013509293,
       0.00454509623726192,
@@ -72,7 +72,7 @@
       0.10028578786868236,
       0.010640613159602486
     ],
-    "TorchGWAS -log10p": [
+    "TorchGenomics -log10p": [
       30.552833694023132,
       0.24857160855266097,
       0.15179966015504215,

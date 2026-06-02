@@ -44,7 +44,7 @@ for f in "${MDP_NUMERIC}" "${MDP_TRAITS}" "${MDP_SNPMAP}"; do
     if [[ ! -f "${f}" ]]; then
         echo "[plink2 fetch] ABORT: missing source fixture: ${f}"
         echo "[plink2 fetch] The MDP fixture lives under benchmark/data/ in the"
-        echo "[plink2 fetch] canonical TorchGWAS checkout. Restore it before retrying."
+        echo "[plink2 fetch] canonical TorchGenomics checkout. Restore it before retrying."
         exit 1
     fi
 done

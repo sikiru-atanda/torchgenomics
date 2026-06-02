@@ -1,7 +1,7 @@
 # GPU CI on PRs (NA2)
 
 This document describes the self-hosted GPU CI used to validate `--device cuda`
-code paths in TorchGWAS. It covers the security model, the runner architecture,
+code paths in TorchGenomics. It covers the security model, the runner architecture,
 the runbook for adding/labeling/debugging PRs, capacity planning, and failure
 modes.
 
@@ -12,8 +12,8 @@ For runner setup, see [`scripts/setup_gpu_runner.sh`](../../scripts/setup_gpu_ru
 
 ## 1. Why GPU CI
 
-TorchGWAS is GPU-accelerated end-to-end: every tensor op routes through
-`torchgwas._dispatch.select_path` and runs on whichever device the user
+TorchGenomics is GPU-accelerated end-to-end: every tensor op routes through
+`torchgenomics._dispatch.select_path` and runs on whichever device the user
 requested. The default CI matrix (`.github/workflows/ci.yml`) only exercises
 the CPU path because GitHub-hosted runners do not have CUDA hardware. This
 leaves a class of bugs that are completely silent on CPU and only manifest
@@ -147,7 +147,7 @@ registration token (managed by GitHub's runner-group token rotation).
 
 Inside the runner, the job uses a clean `_work/` directory, a clean
 Python venv (created by `actions/setup-python`), and re-installs
-TorchGWAS from the PR head every time. There is no caching across PRs.
+TorchGenomics from the PR head every time. There is no caching across PRs.
 
 ---
 
@@ -193,7 +193,7 @@ To reproduce a CI failure on the maintainer's workstation:
 
 ```
 # Force the same dispatch path the CI uses (no native, GPU-only).
-export TORCHGWAS_DISABLE_NATIVE=1
+export TORCHGENOMICS_DISABLE_NATIVE=1
 export CUDA_VISIBLE_DEVICES=0
 
 pytest -m gpu \
@@ -219,7 +219,7 @@ re-running.
 |---|---|---|
 | Checkout + Python setup | ~30 s | 0 |
 | Install torch (cu121) | ~90 s | 0 |
-| Install torchgwas + deps | ~60 s | 0 |
+| Install torchgenomics + deps | ~60 s | 0 |
 | `pytest` (current 68-test suite) | ~3–5 min | ~3–5 |
 | Artifact upload + cleanup | ~15 s | 0 |
 | **Total** | **~6–8 min** | **~3–5** |

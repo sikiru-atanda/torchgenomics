@@ -71,7 +71,7 @@ skip_no_coxme = pytest.mark.skipif(not COXME_OK, reason="coxme R package not ava
 # ---------------------------------------------------------------------------
 
 def _make_vmeta(m):
-    from torchgwas.models.base import VariantMeta
+    from torchgenomics.models.base import VariantMeta
     return VariantMeta(
         snp=[f"snp{i}" for i in range(m)],
         chr=["1"] * m,
@@ -397,9 +397,9 @@ def _run_coxph(data: dict, tmpdir: str) -> dict:
     return results
 
 
-def _run_torchgwas_survival(data: dict, use_spa: bool = False):
+def _run_torchgenomics_survival(data: dict, use_spa: bool = False):
     """Run our SurvivalGLMM on the same data."""
-    from torchgwas.models.survival_glmm import SurvivalGLMM
+    from torchgenomics.models.survival_glmm import SurvivalGLMM
 
     model = SurvivalGLMM(use_spa=use_spa, pql_max_iter=50)
     Y = torch.stack([data["time"], data["event"]], dim=1)
@@ -427,11 +427,11 @@ class TestSurvivalVsCoxme:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             coxme_results = _run_coxme(data, tmpdir)
-        tg_result = _run_torchgwas_survival(data, use_spa=False)
+        tg_result = _run_torchgenomics_survival(data, use_spa=False)
         return data, coxme_results, tg_result
 
     def test_pvalue_ranking_correlated(self, shared_data):
-        """Spearman correlation of -log10(p) between TorchGWAS and coxme > 0.50."""
+        """Spearman correlation of -log10(p) between TorchGenomics and coxme > 0.50."""
         data, coxme_res, tg_res = shared_data
         p_tg = tg_res.p.numpy()
         p_coxme = np.array(coxme_res["p"])
@@ -445,12 +445,12 @@ class TestSurvivalVsCoxme:
 
         rho, _ = spearmanr(log_tg, log_coxme)
         assert rho > 0.50, (
-            f"Spearman rho between TorchGWAS and coxme -log10(p) = {rho:.3f}, "
+            f"Spearman rho between TorchGenomics and coxme -log10(p) = {rho:.3f}, "
             f"expected > 0.50"
         )
 
     def test_effect_direction_agreement(self, shared_data):
-        """Sign of beta should agree for causal SNPs between TorchGWAS and coxme."""
+        """Sign of beta should agree for causal SNPs between TorchGenomics and coxme."""
         data, coxme_res, tg_res = shared_data
         causal_idx = data["causal_idx"]
 
@@ -490,7 +490,7 @@ class TestSurvivalVsCoxme:
         overlap = len(top5_tg & top5_coxme)
         # At least 2 of top-5 should overlap
         assert overlap >= 2, (
-            f"Top-5 overlap between TorchGWAS and coxme: {overlap}/5. "
+            f"Top-5 overlap between TorchGenomics and coxme: {overlap}/5. "
             f"TG top5: {sorted(top5_tg)}, coxme top5: {sorted(top5_coxme)}"
         )
 
@@ -513,13 +513,13 @@ class TestSurvivalVsCoxme:
 
         # FPR should be < 20% for both
         n_null = len(null_idx)
-        assert tg_fp / n_null < 0.20, f"TorchGWAS FP: {tg_fp}/{n_null}"
+        assert tg_fp / n_null < 0.20, f"TorchGenomics FP: {tg_fp}/{n_null}"
         assert coxme_fp / n_null < 0.20, f"coxme FP: {coxme_fp}/{n_null}"
 
     def test_variance_component_nonnegative(self, shared_data):
         """Our model should estimate non-negative genetic variance."""
         data, coxme_res, tg_res = shared_data
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
 
         model = SurvivalGLMM(use_spa=False, pql_max_iter=50)
         Y = torch.stack([data["time"], data["event"]], dim=1)
@@ -548,7 +548,7 @@ class TestSurvivalVsCoxph:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             coxph_results = _run_coxph(data, tmpdir)
-        tg_result = _run_torchgwas_survival(data, use_spa=False)
+        tg_result = _run_torchgenomics_survival(data, use_spa=False)
         return data, coxph_results, tg_result
 
     def test_pvalue_ranking_vs_coxph(self, shared_data_no_kinship):
@@ -565,7 +565,7 @@ class TestSurvivalVsCoxph:
 
         rho, _ = spearmanr(log_tg, log_coxph)
         assert rho > 0.40, (
-            f"Spearman rho between TorchGWAS and coxph = {rho:.3f}, expected > 0.40"
+            f"Spearman rho between TorchGenomics and coxph = {rho:.3f}, expected > 0.40"
         )
 
     def test_effect_direction_vs_coxph(self, shared_data_no_kinship):
@@ -624,18 +624,18 @@ class TestSurvivalStrongSignal:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             coxme_results = _run_coxme(data, tmpdir)
-        tg_result = _run_torchgwas_survival(data, use_spa=False)
+        tg_result = _run_torchgenomics_survival(data, use_spa=False)
         return data, coxme_results, tg_result
 
     def test_both_detect_causal(self, strong_signal_data):
-        """Both coxme and TorchGWAS should detect the strong causal SNP at p < 0.05."""
+        """Both coxme and TorchGenomics should detect the strong causal SNP at p < 0.05."""
         data, coxme_res, tg_res = strong_signal_data
         causal_idx = data["causal_idx"][0]
 
         p_tg = tg_res.p[causal_idx].item()
         p_coxme = coxme_res["p"][causal_idx]
 
-        assert p_tg < 0.05, f"TorchGWAS p = {p_tg:.4e} for causal SNP"
+        assert p_tg < 0.05, f"TorchGenomics p = {p_tg:.4e} for causal SNP"
         if not np.isnan(p_coxme):
             assert p_coxme < 0.05, f"coxme p = {p_coxme:.4e} for causal SNP"
 
@@ -673,7 +673,7 @@ class TestSurvivalHeavyCensoring:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             coxme_results = _run_coxme(data, tmpdir)
-        tg_result = _run_torchgwas_survival(data, use_spa=True)
+        tg_result = _run_torchgenomics_survival(data, use_spa=True)
         return data, coxme_results, tg_result
 
     def test_ranking_correlated_heavy_censoring(self, heavy_censor_data):
@@ -718,7 +718,7 @@ class TestSurvivalPvalueAgreement:
             )
             with tempfile.TemporaryDirectory() as tmpdir:
                 coxme_res = _run_coxme(data, tmpdir)
-            tg_res = _run_torchgwas_survival(data, use_spa=False)
+            tg_res = _run_torchgenomics_survival(data, use_spa=False)
 
             p_tg = tg_res.p.numpy()
             p_cx = np.array(coxme_res["p"])

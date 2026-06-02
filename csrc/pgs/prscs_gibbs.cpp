@@ -1,6 +1,6 @@
-// PRS-CS block Gibbs sampler — C++ port of torchgwas.pgs.prscs._prscs_gibbs_block.
+// PRS-CS block Gibbs sampler — C++ port of torchgenomics.pgs.prscs._prscs_gibbs_block.
 //
-// The pure-Python implementation in torchgwas/pgs/prscs.py is the canonical
+// The pure-Python implementation in torchgenomics/pgs/prscs.py is the canonical
 // reference. This module mirrors it line-for-line in C++ for performance, with
 // the same prior, the same update order, and the same posterior accumulators.
 //

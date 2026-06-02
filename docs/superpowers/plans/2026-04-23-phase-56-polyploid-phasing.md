@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship a thin Python wrapper around the Julia package `PolyOrigin.jl` for phasing connected tetraploid / hexaploid F1 polyploid populations, chaining off Phase 55's `.probs.pt` output, plus a `torchgwas phase-poly` CLI subcommand, without touching any downstream consumer.
+**Goal:** Ship a thin Python wrapper around the Julia package `PolyOrigin.jl` for phasing connected tetraploid / hexaploid F1 polyploid populations, chaining off Phase 55's `.probs.pt` output, plus a `torchgenomics phase-poly` CLI subcommand, without touching any downstream consumer.
 
-**Architecture:** Two new modules: `torchgwas/preprocess/phase_polyorigin.py` (public surface — `run_polyorigin`, `PhasingResult`, pure converters) and `torchgwas/preprocess/_polyorigin_runtime.py` (discover-first Julia bootstrap via `juliacall`). Julia + PolyOrigin.jl are provisioned on demand on first `run_polyorigin` call: search PATH + known install paths first, fall back to juliacall's managed install only if the user consents. Julia runs in-process via `juliacall`, not a subprocess. Output is tensor-native (not VCF) — feeds `HaplotypeGWAS` directly. Tier 1 tests monkeypatch the runtime module and never touch Julia. Tier 2 tests `pytest.mark.skipif` on missing Julia / PolyOrigin.jl.
+**Architecture:** Two new modules: `torchgenomics/preprocess/phase_polyorigin.py` (public surface — `run_polyorigin`, `PhasingResult`, pure converters) and `torchgenomics/preprocess/_polyorigin_runtime.py` (discover-first Julia bootstrap via `juliacall`). Julia + PolyOrigin.jl are provisioned on demand on first `run_polyorigin` call: search PATH + known install paths first, fall back to juliacall's managed install only if the user consents. Julia runs in-process via `juliacall`, not a subprocess. Output is tensor-native (not VCF) — feeds `HaplotypeGWAS` directly. Tier 1 tests monkeypatch the runtime module and never touch Julia. Tier 2 tests `pytest.mark.skipif` on missing Julia / PolyOrigin.jl.
 
 **Tech Stack:** Python 3.10+, PyTorch, pandas, tempfile. External: Julia ≥ 1.10 + `PolyOrigin.jl` v1.0.3 (Tier 2 only, auto-provisioned via `juliacall`).
 
@@ -15,9 +15,9 @@
 ## File Structure
 
 **New files:**
-- `torchgwas/preprocess/phase_polyorigin.py` — wrapper + pure converters (~500 LOC).
-- `torchgwas/preprocess/_polyorigin_runtime.py` — discover-first Julia bootstrap (~150 LOC).
-- `torchgwas/preprocess/juliapkg.json` — shipped dep manifest.
+- `torchgenomics/preprocess/phase_polyorigin.py` — wrapper + pure converters (~500 LOC).
+- `torchgenomics/preprocess/_polyorigin_runtime.py` — discover-first Julia bootstrap (~150 LOC).
+- `torchgenomics/preprocess/juliapkg.json` — shipped dep manifest.
 - `tests/test_phase_polyorigin.py` — Tier 1, always-on; runtime stubbed.
 - `tests/test_phase_polyorigin_e2e.py` — Tier 2, skipif-gated; runs real PolyOrigin.
 - `tests/fixtures/phase_polyorigin/` — canned PolyOrigin-output CSVs, toy pedigree + map.
@@ -25,15 +25,15 @@
 - `docs/getting-started/polyploid_phasing.md` — user recipe.
 
 **Modified files:**
-- `torchgwas/preprocess/__init__.py` — re-export `run_polyorigin`, `PhasingResult`.
-- `torchgwas/cli.py` — new `phase-poly` subcommand + dispatch entry.
-- `pyproject.toml` — (a) `[project.optional-dependencies]` gains `polyploid-phase = ["juliacall>=0.9"]`; (b) `[tool.setuptools.package-data]` gains `"torchgwas.preprocess" = ["juliapkg.json"]`.
+- `torchgenomics/preprocess/__init__.py` — re-export `run_polyorigin`, `PhasingResult`.
+- `torchgenomics/cli.py` — new `phase-poly` subcommand + dispatch entry.
+- `pyproject.toml` — (a) `[project.optional-dependencies]` gains `polyploid-phase = ["juliacall>=0.9"]`; (b) `[tool.setuptools.package-data]` gains `"torchgenomics.preprocess" = ["juliapkg.json"]`.
 - `docs/ROADMAP.md` — remove Phase 56 entry on ship.
 - `docs/cli.md` — append `phase-poly --help` capture.
 - `CLAUDE.md` — bump subcommand count +1; add `phase-poly` example.
 
 **Unchanged:**
-- `torchgwas/preprocess/dosage_call.py`, `torchgwas/preprocess/dosage_uncertainty.py`, `torchgwas/preprocess/phase.py`, `torchgwas/models/haplotype_gwas.py` — already correct upstream/downstream code.
+- `torchgenomics/preprocess/dosage_call.py`, `torchgenomics/preprocess/dosage_uncertainty.py`, `torchgenomics/preprocess/phase.py`, `torchgenomics/models/haplotype_gwas.py` — already correct upstream/downstream code.
 
 ---
 
@@ -41,9 +41,9 @@
 
 **Files:**
 - Modify: `pyproject.toml`
-- Create: `torchgwas/preprocess/juliapkg.json`
-- Create: `torchgwas/preprocess/phase_polyorigin.py` (module skeleton)
-- Create: `torchgwas/preprocess/_polyorigin_runtime.py` (module skeleton)
+- Create: `torchgenomics/preprocess/juliapkg.json`
+- Create: `torchgenomics/preprocess/phase_polyorigin.py` (module skeleton)
+- Create: `torchgenomics/preprocess/_polyorigin_runtime.py` (module skeleton)
 - Create: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Add `polyploid-phase` extra + juliapkg.json package-data to pyproject.toml**
@@ -69,11 +69,11 @@ And extend `[tool.setuptools.package-data]` (around line 77):
 
 ```toml
 [tool.setuptools.package-data]
-"torchgwas._native" = ["*.pyi"]
-"torchgwas.preprocess" = ["juliapkg.json"]
+"torchgenomics._native" = ["*.pyi"]
+"torchgenomics.preprocess" = ["juliapkg.json"]
 ```
 
-- [ ] **Step 2: Create `torchgwas/preprocess/juliapkg.json` with pinned PolyOrigin.jl**
+- [ ] **Step 2: Create `torchgenomics/preprocess/juliapkg.json` with pinned PolyOrigin.jl**
 
 ```json
 {
@@ -90,7 +90,7 @@ And extend `[tool.setuptools.package-data]` (around line 77):
 
 Note: the UUID must be copied verbatim from `https://github.com/chaozhi/PolyOrigin.jl/blob/v1.0.3/Project.toml` during implementation. Replace the placeholder string before committing.
 
-- [ ] **Step 3: Create `torchgwas/preprocess/phase_polyorigin.py` skeleton**
+- [ ] **Step 3: Create `torchgenomics/preprocess/phase_polyorigin.py` skeleton**
 
 ```python
 """Polyploid phasing via PolyOrigin.jl (Phase 56).
@@ -122,13 +122,13 @@ _VALID_PLOIDIES: frozenset[int] = frozenset({2, 4, 6})
 _HASH_CHUNK_BYTES = 1 << 20
 ```
 
-- [ ] **Step 4: Create `torchgwas/preprocess/_polyorigin_runtime.py` skeleton**
+- [ ] **Step 4: Create `torchgenomics/preprocess/_polyorigin_runtime.py` skeleton**
 
 ```python
 """Discover-first Julia bootstrap for PolyOrigin.jl (Phase 56 internal).
 
 Not public API. ``run_polyorigin`` uses ``get_runtime`` to obtain a
-``juliacall`` handle. Search order: explicit kwarg → TORCHGWAS_JULIA env
+``juliacall`` handle. Search order: explicit kwarg → TORCHGENOMICS_JULIA env
 var → known install paths → juliacall's own managed install (only if the
 caller consents). See the Phase 56 design spec Section 2.3 for rationale.
 """
@@ -156,7 +156,7 @@ _version: str | None = None
 """Phase 56: polyploid phasing via PolyOrigin (Tier 1, always-on)."""
 from __future__ import annotations
 
-import torchgwas.preprocess.phase_polyorigin as mod
+import torchgenomics.preprocess.phase_polyorigin as mod
 
 
 def test_module_imports_without_juliacall():
@@ -179,9 +179,9 @@ Expected: 1 passed. `juliacall` installed (~15 MB) but Julia is NOT downloaded (
 
 ```bash
 git add pyproject.toml \
-        torchgwas/preprocess/juliapkg.json \
-        torchgwas/preprocess/phase_polyorigin.py \
-        torchgwas/preprocess/_polyorigin_runtime.py \
+        torchgenomics/preprocess/juliapkg.json \
+        torchgenomics/preprocess/phase_polyorigin.py \
+        torchgenomics/preprocess/_polyorigin_runtime.py \
         tests/test_phase_polyorigin.py
 git commit -m "Phase 56: scaffold phase_polyorigin module + juliapkg manifest + polyploid-phase extra"
 ```
@@ -191,7 +191,7 @@ git commit -m "Phase 56: scaffold phase_polyorigin module + juliapkg manifest + 
 ## Task 2 — `PhasingResult` dataclass
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -201,7 +201,7 @@ Append to `tests/test_phase_polyorigin.py`:
 ```python
 import torch
 import pandas as pd
-from torchgwas.preprocess.phase_polyorigin import PhasingResult
+from torchgenomics.preprocess.phase_polyorigin import PhasingResult
 
 
 def test_phasing_result_dataclass_fields():
@@ -241,7 +241,7 @@ Expected: FAIL with `ImportError: cannot import name 'PhasingResult'`.
 
 - [ ] **Step 3: Implement `PhasingResult`**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py` after the constants block:
+Append to `torchgenomics/preprocess/phase_polyorigin.py` after the constants block:
 
 ```python
 @dataclass
@@ -277,7 +277,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: add PhasingResult dataclass"
 ```
 
@@ -286,7 +286,7 @@ git commit -m "Phase 56: add PhasingResult dataclass"
 ## Task 3 — Pedigree converter `_build_polyorigin_pedfile`
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 Pure helper. Converts a simple 3-col user TSV (`offspring, parent1, parent2`, optional `ploidy`) into PolyOrigin's native pedfile CSV with columns `individual, population, motherid, fatherid, ploidy`. Founders get `motherid=fatherid=0, population=0`. Offspring get integer `population` IDs grouped by unique `(parent1, parent2)` pair.
@@ -300,7 +300,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from torchgwas.preprocess.phase_polyorigin import _build_polyorigin_pedfile
+from torchgenomics.preprocess.phase_polyorigin import _build_polyorigin_pedfile
 
 
 def _write_ped(tmp: Path, rows: list[str]) -> Path:
@@ -410,7 +410,7 @@ Expected: FAIL with `ImportError: cannot import name '_build_polyorigin_pedfile'
 
 - [ ] **Step 3: Implement `_build_polyorigin_pedfile`**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py`:
 
 ```python
 def _build_polyorigin_pedfile(
@@ -505,7 +505,7 @@ Expected: 6 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: pure pedigree converter (_build_polyorigin_pedfile)"
 ```
 
@@ -514,7 +514,7 @@ git commit -m "Phase 56: pure pedigree converter (_build_polyorigin_pedfile)"
 ## Task 4 — Map TSV loader with cM synthesis
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -522,7 +522,7 @@ git commit -m "Phase 56: pure pedigree converter (_build_polyorigin_pedfile)"
 Append to `tests/test_phase_polyorigin.py`:
 
 ```python
-from torchgwas.preprocess.phase_polyorigin import _load_map_tsv
+from torchgenomics.preprocess.phase_polyorigin import _load_map_tsv
 
 
 def _write_map(tmp_path: Path, rows: list[str], header="marker\tchrom\tpos_bp") -> Path:
@@ -573,7 +573,7 @@ Expected: FAIL, `_load_map_tsv` not importable.
 
 - [ ] **Step 3: Implement `_load_map_tsv`**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py`:
 
 ```python
 def _load_map_tsv(path: str, recomrate: float) -> pd.DataFrame:
@@ -627,7 +627,7 @@ Expected: 4 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: _load_map_tsv with cM synthesis + monotonic-bp check"
 ```
 
@@ -636,7 +636,7 @@ git commit -m "Phase 56: _load_map_tsv with cM synthesis + monotonic-bp check"
 ## Task 5 — Genofile converter `_build_polyorigin_genofile`
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -644,7 +644,7 @@ git commit -m "Phase 56: _load_map_tsv with cM synthesis + monotonic-bp check"
 Append to `tests/test_phase_polyorigin.py`:
 
 ```python
-from torchgwas.preprocess.phase_polyorigin import _build_polyorigin_genofile
+from torchgenomics.preprocess.phase_polyorigin import _build_polyorigin_genofile
 
 
 def _minimal_map_df():
@@ -735,7 +735,7 @@ Expected: FAIL, importerror.
 
 - [ ] **Step 3: Implement `_build_polyorigin_genofile`**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py`:
 
 ```python
 def _build_polyorigin_genofile(
@@ -819,7 +819,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: pure genofile converter with phasedgeno escape hatch"
 ```
 
@@ -828,7 +828,7 @@ git commit -m "Phase 56: pure genofile converter with phasedgeno escape hatch"
 ## Task 6 — Input validation layer
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 Central `_validate_inputs` that enforces ploidy, probs shape, sample-ID coverage, and probs-row renormalization, to be called from `run_polyorigin` before any Julia work.
@@ -838,7 +838,7 @@ Central `_validate_inputs` that enforces ploidy, probs shape, sample-ID coverage
 Append to `tests/test_phase_polyorigin.py`:
 
 ```python
-from torchgwas.preprocess.phase_polyorigin import _validate_inputs
+from torchgenomics.preprocess.phase_polyorigin import _validate_inputs
 
 
 def test_validate_rejects_bad_ploidy():
@@ -888,7 +888,7 @@ Expected: FAIL on import.
 
 - [ ] **Step 3: Implement `_validate_inputs`**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py`:
 
 ```python
 def _validate_inputs(
@@ -946,7 +946,7 @@ Expected: 5 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: _validate_inputs guard + row-sum renormalization"
 ```
 
@@ -955,10 +955,10 @@ git commit -m "Phase 56: _validate_inputs guard + row-sum renormalization"
 ## Task 7 — Runtime discovery logic in `_polyorigin_runtime`
 
 **Files:**
-- Modify: `torchgwas/preprocess/_polyorigin_runtime.py`
+- Modify: `torchgenomics/preprocess/_polyorigin_runtime.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
-Discovery-only path: find an existing Julia binary (PATH / TORCHGWAS_JULIA / known locations), probe `--version`, reject < 1.10. juliacall install path deferred to Task 8.
+Discovery-only path: find an existing Julia binary (PATH / TORCHGENOMICS_JULIA / known locations), probe `--version`, reject < 1.10. juliacall install path deferred to Task 8.
 
 - [ ] **Step 1: Write failing tests — use stub julia binaries**
 
@@ -969,7 +969,7 @@ import platform
 import stat
 import textwrap
 
-from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
+from torchgenomics.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
 
 
 def _make_fake_julia(tmp_path: Path, version: str) -> Path:
@@ -992,13 +992,13 @@ def test_find_existing_julia_via_explicit_path(tmp_path):
 
 def test_find_existing_julia_via_env_var(tmp_path, monkeypatch):
     fj = _make_fake_julia(tmp_path, "1.10.2")
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(fj))
     found = _find_existing_julia(override=None)
     assert found == str(fj)
 
 
 def test_find_existing_julia_nothing_returns_none(tmp_path, monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_JULIA", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_JULIA", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))  # no julia here
     found = _find_existing_julia(override=None)
     assert found is None
@@ -1034,7 +1034,7 @@ Expected: FAIL, not importable.
 
 - [ ] **Step 3: Implement discovery logic in `_polyorigin_runtime.py`**
 
-Append to `torchgwas/preprocess/_polyorigin_runtime.py`:
+Append to `torchgenomics/preprocess/_polyorigin_runtime.py`:
 
 ```python
 import glob
@@ -1062,7 +1062,7 @@ def _common_julia_paths() -> list[str]:
 def _find_existing_julia(override: str | None) -> str | None:
     """Return an absolute path to a Julia binary, or None if not found.
 
-    Order: explicit override → TORCHGWAS_JULIA env var → shutil.which
+    Order: explicit override → TORCHGENOMICS_JULIA env var → shutil.which
     ("julia") → common install paths. An override that points to a
     nonexistent/non-executable file raises ValueError.
     """
@@ -1078,11 +1078,11 @@ def _find_existing_julia(override: str | None) -> str | None:
             )
         return p
 
-    env = os.environ.get("TORCHGWAS_JULIA")
+    env = os.environ.get("TORCHGENOMICS_JULIA")
     if env:
         if not os.path.isfile(env):
             raise ValueError(
-                f"TORCHGWAS_JULIA={env!r}: does not exist or is not a file."
+                f"TORCHGENOMICS_JULIA={env!r}: does not exist or is not a file."
             )
         return os.path.abspath(env)
 
@@ -1127,7 +1127,7 @@ Expected: 6 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/_polyorigin_runtime.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/_polyorigin_runtime.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: runtime discover-first Julia search + version probe"
 ```
 
@@ -1136,7 +1136,7 @@ git commit -m "Phase 56: runtime discover-first Julia search + version probe"
 ## Task 8 — Runtime `get_runtime` — juliacall bootstrap + consent gate
 
 **Files:**
-- Modify: `torchgwas/preprocess/_polyorigin_runtime.py`
+- Modify: `torchgenomics/preprocess/_polyorigin_runtime.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -1144,12 +1144,12 @@ git commit -m "Phase 56: runtime discover-first Julia search + version probe"
 Append to `tests/test_phase_polyorigin.py`:
 
 ```python
-from torchgwas.preprocess import _polyorigin_runtime as rt
+from torchgenomics.preprocess import _polyorigin_runtime as rt
 
 
 def test_get_runtime_raises_when_not_found_and_auto_install_false(tmp_path, monkeypatch):
     # Ensure nothing is discoverable
-    monkeypatch.delenv("TORCHGWAS_JULIA", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_JULIA", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setattr(rt, "_common_julia_paths", lambda: [])
     # Non-tty
@@ -1163,7 +1163,7 @@ def test_get_runtime_raises_when_not_found_and_auto_install_false(tmp_path, monk
 
 def test_get_runtime_raises_when_found_julia_too_old(tmp_path, monkeypatch):
     fj = _make_fake_julia(tmp_path, "1.8.5")
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(fj))
     rt._jl = None
     with pytest.raises(RuntimeError, match=r"1\.8\.5|>= 1\.10"):
         rt.get_runtime(julia_path=None, auto_install_julia=False)
@@ -1176,7 +1176,7 @@ def test_get_runtime_raises_without_juliacall_installed(tmp_path, monkeypatch):
     to isolate the error path.
     """
     fj = _make_fake_julia(tmp_path, "1.10.2")
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(fj))
     rt._jl = None
 
     real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
@@ -1217,7 +1217,7 @@ Expected: FAIL, `get_runtime` not defined.
 
 - [ ] **Step 3: Implement `get_runtime` + `_consent_to_install`**
 
-Append to `torchgwas/preprocess/_polyorigin_runtime.py`:
+Append to `torchgenomics/preprocess/_polyorigin_runtime.py`:
 
 ```python
 def _consent_to_install(auto_install: bool) -> bool:
@@ -1258,7 +1258,7 @@ def get_runtime(
                 chosen = found
                 logger.info("Using existing Julia at %s (v%s)", chosen, ver)
             else:
-                if julia_path is not None or os.environ.get("TORCHGWAS_JULIA"):
+                if julia_path is not None or os.environ.get("TORCHGENOMICS_JULIA"):
                     # User explicitly pinned an old Julia — hard fail
                     raise RuntimeError(
                         f"Julia at {found!r} is v{ver}; PolyOrigin requires >= 1.10. "
@@ -1273,7 +1273,7 @@ def get_runtime(
                     "Julia not detected and auto_install_julia=False. "
                     "Either: (a) install Julia yourself from "
                     "https://julialang.org/downloads/ (ensure `julia` is on "
-                    "PATH or set TORCHGWAS_JULIA), or (b) retry with "
+                    "PATH or set TORCHGENOMICS_JULIA), or (b) retry with "
                     "auto_install_julia=True (library) / --auto-install (CLI) "
                     "to let juliacall provision Julia 1.10 automatically "
                     "(~300 MB download)."
@@ -1293,7 +1293,7 @@ def get_runtime(
         except ImportError as e:
             raise RuntimeError(
                 "juliacall not installed. Install the polyploid-phase extra: "
-                "pip install torchgwas[polyploid-phase]"
+                "pip install torchgenomics[polyploid-phase]"
             ) from e
 
         # Step 6: Pkg.instantiate reads juliapkg.json next to this module.
@@ -1325,7 +1325,7 @@ Expected: 4 passed. (The "cached" test passes trivially; the "not found" / "too 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/_polyorigin_runtime.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/_polyorigin_runtime.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: get_runtime — consent gate, version guard, juliacall bootstrap"
 ```
 
@@ -1334,7 +1334,7 @@ git commit -m "Phase 56: get_runtime — consent gate, version guard, juliacall 
 ## Task 9 — Output CSV parsers + canned fixtures
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 - Create: `tests/fixtures/phase_polyorigin/out_genoprob.csv`
 - Create: `tests/fixtures/phase_polyorigin/out_postdoseprob.csv`
@@ -1395,7 +1395,7 @@ Append to `tests/test_phase_polyorigin.py`:
 ```python
 FIXTURES = Path(__file__).parent / "fixtures" / "phase_polyorigin"
 
-from torchgwas.preprocess.phase_polyorigin import (
+from torchgenomics.preprocess.phase_polyorigin import (
     _parse_genoprob, _parse_parentphased, _parse_postdose, _parse_maprefined,
     _parse_polyancestry,
 )
@@ -1466,7 +1466,7 @@ Expected: FAIL, parsers not defined.
 
 - [ ] **Step 4: Implement the parsers (keyed by name, no positional assumptions)**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py`:
 
 ```python
 def _parse_genoprob(
@@ -1640,7 +1640,7 @@ Expected: 5 passed.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py \
+git add torchgenomics/preprocess/phase_polyorigin.py \
         tests/test_phase_polyorigin.py \
         tests/fixtures/phase_polyorigin/
 git commit -m "Phase 56: output parsers + canned best-guess PolyOrigin CSV fixtures"
@@ -1651,7 +1651,7 @@ git commit -m "Phase 56: output parsers + canned best-guess PolyOrigin CSV fixtu
 ## Task 10 — `run_polyorigin` orchestration + atomicity
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write failing orchestration tests with monkeypatched runtime**
@@ -1661,7 +1661,7 @@ Append to `tests/test_phase_polyorigin.py`:
 ```python
 import shutil as _shutil
 
-from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
 
 def _stub_runtime(workdir_spy: dict):
@@ -1690,7 +1690,7 @@ def _stub_runtime(workdir_spy: dict):
 
 
 def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
     # Stub the runtime — no Julia touched
     spy: dict = {}
@@ -1741,7 +1741,7 @@ def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
 def test_run_polyorigin_partial_failure_no_persistent_output(tmp_path, monkeypatch):
     """If the runtime 'succeeds' but emits fewer CSVs than expected, we
     must raise AND leave no <output>.* artifacts."""
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
     def _bad_runtime():
         class FakePO:
@@ -1786,7 +1786,7 @@ def test_run_polyorigin_partial_failure_no_persistent_output(tmp_path, monkeypat
 
 def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
     """juliacall.JuliaError raised by polyOrigin() → RuntimeError with __cause__."""
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
     class FakeJuliaError(Exception):
         pass
@@ -1801,7 +1801,7 @@ def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
     monkeypatch.setattr(rt, "get_runtime", lambda **_: (FakeMain, FakePO, "1.0.3-fake"))
     # Also patch juliacall.JuliaError to our fake class so our except clause matches
     monkeypatch.setattr(
-        "torchgwas.preprocess.phase_polyorigin._JULIA_ERROR",
+        "torchgenomics.preprocess.phase_polyorigin._JULIA_ERROR",
         FakeJuliaError,
     )
 
@@ -1838,7 +1838,7 @@ Expected: FAIL, not implemented.
 
 - [ ] **Step 3: Implement `run_polyorigin` + helpers**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py`:
 
 ```python
 import tempfile
@@ -1912,7 +1912,7 @@ def run_polyorigin(
         parent_phased_df = pd.read_csv(parent_phased_csv).set_index("individual")
 
     # Import the runtime late to avoid heavy import at module load
-    from torchgwas.preprocess import _polyorigin_runtime as _rt
+    from torchgenomics.preprocess import _polyorigin_runtime as _rt
 
     # Build tempdir and converted files
     with tempfile.TemporaryDirectory(prefix="polyorigin_") as _tmp:
@@ -2055,7 +2055,7 @@ Expected: `test_run_polyorigin_happy_path` will FAIL on `<output>.haplotypes.pt`
 - [ ] **Step 6: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: run_polyorigin orchestration + atomicity (persistence stubbed)"
 ```
 
@@ -2064,7 +2064,7 @@ git commit -m "Phase 56: run_polyorigin orchestration + atomicity (persistence s
 ## Task 11 — Persistence (`_persist_result`)
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 
 - [ ] **Step 1: Implement `_persist_result` — replace the Task 10 stub**
 
@@ -2151,7 +2151,7 @@ Append to `tests/test_phase_polyorigin.py`:
 
 ```python
 def test_persist_rolls_back_on_partial_write(tmp_path, monkeypatch):
-    from torchgwas.preprocess.phase_polyorigin import _persist_result
+    from torchgenomics.preprocess.phase_polyorigin import _persist_result
 
     prefix = tmp_path / "out" / "phased"
     prefix.parent.mkdir(parents=True, exist_ok=True)
@@ -2209,7 +2209,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: atomic _persist_result with rollback on partial write"
 ```
 
@@ -2218,8 +2218,8 @@ git commit -m "Phase 56: atomic _persist_result with rollback on partial write"
 ## Task 12 — CLI `phase-poly` subcommand
 
 **Files:**
-- Modify: `torchgwas/cli.py`
-- Modify: `torchgwas/preprocess/__init__.py`
+- Modify: `torchgenomics/cli.py`
+- Modify: `torchgenomics/preprocess/__init__.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write failing CLI test**
@@ -2232,7 +2232,7 @@ import subprocess as _sp
 
 def test_cli_phase_poly_help():
     res = _sp.run(
-        [sys.executable, "-m", "torchgwas", "phase-poly", "--help"],
+        [sys.executable, "-m", "torchgenomics", "phase-poly", "--help"],
         capture_output=True, text=True,
     )
     assert res.returncode == 0
@@ -2251,7 +2251,7 @@ pytest tests/test_phase_polyorigin.py::test_cli_phase_poly_help -v
 
 Expected: FAIL — subcommand unknown.
 
-- [ ] **Step 3: Add the subparser in `torchgwas/cli.py`**
+- [ ] **Step 3: Add the subparser in `torchgenomics/cli.py`**
 
 Insert near the other phase-related subparsers (e.g. after `dosage-call`):
 
@@ -2291,13 +2291,13 @@ Insert near the other phase-related subparsers (e.g. after `dosage-call`):
     p.set_defaults(func=_cmd_phase_poly)
 ```
 
-- [ ] **Step 4: Add the dispatch function `_cmd_phase_poly` in `torchgwas/cli.py`**
+- [ ] **Step 4: Add the dispatch function `_cmd_phase_poly` in `torchgenomics/cli.py`**
 
 Near the other `_cmd_*` functions:
 
 ```python
 def _cmd_phase_poly(args):
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     # Map CLI's None sentinel for --auto-install to False (non-interactive default)
     auto = args.auto_install if args.auto_install is not None else False
@@ -2315,7 +2315,7 @@ def _cmd_phase_poly(args):
     if sample_ids is None or variant_ids is None:
         raise SystemExit(
             "--probs must be a dict with 'sample_ids' and 'variant_ids' keys "
-            "(as produced by 'torchgwas dosage-call'), or you must pass them "
+            "(as produced by 'torchgenomics dosage-call'), or you must pass them "
             "explicitly via the Python API."
         )
 
@@ -2338,12 +2338,12 @@ def _cmd_phase_poly(args):
     )
 ```
 
-- [ ] **Step 5: Re-export from `torchgwas/preprocess/__init__.py`**
+- [ ] **Step 5: Re-export from `torchgenomics/preprocess/__init__.py`**
 
-Add to `torchgwas/preprocess/__init__.py` (or the existing re-export block if one exists):
+Add to `torchgenomics/preprocess/__init__.py` (or the existing re-export block if one exists):
 
 ```python
-from torchgwas.preprocess.phase_polyorigin import PhasingResult, run_polyorigin
+from torchgenomics.preprocess.phase_polyorigin import PhasingResult, run_polyorigin
 
 __all__ = [*globals().get("__all__", []), "PhasingResult", "run_polyorigin"]
 ```
@@ -2359,7 +2359,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add torchgwas/cli.py torchgwas/preprocess/__init__.py tests/test_phase_polyorigin.py
+git add torchgenomics/cli.py torchgenomics/preprocess/__init__.py tests/test_phase_polyorigin.py
 git commit -m "Phase 56: phase-poly CLI subcommand + preprocess re-exports"
 ```
 
@@ -2376,7 +2376,7 @@ Earlier tasks produced ~19 tests. Top up to cover the remaining spec-required sc
 
 ```python
 def test_meta_json_hash_matches_inputs(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
@@ -2406,7 +2406,7 @@ def test_meta_json_hash_matches_inputs(tmp_path, monkeypatch):
 
 
 def test_mixed_ploidy_per_row_honored(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -2435,7 +2435,7 @@ def test_mixed_ploidy_per_row_honored(tmp_path, monkeypatch):
 
 
 def test_env_override_wins_over_path(tmp_path, monkeypatch):
-    from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia
+    from torchgenomics.preprocess._polyorigin_runtime import _find_existing_julia
 
     a = _make_fake_julia(tmp_path / "a", "1.10.0")  # never mind — make_fake is flat; use tmp_path
     # Put a stub on PATH and a different one in the env var
@@ -2444,12 +2444,12 @@ def test_env_override_wins_over_path(tmp_path, monkeypatch):
     path_julia = _make_fake_julia(tmp_path / "path_bin", "1.10.0")
     env_julia = _make_fake_julia(tmp_path / "env_bin", "1.10.2")
     monkeypatch.setenv("PATH", str(tmp_path / "path_bin"))
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(env_julia))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(env_julia))
     found = _find_existing_julia(override=None)
     assert found == str(env_julia)
 ```
 
-Note: `_make_fake_julia` writes a single file named `julia`/`julia.bat` — ensure the per-subdir calls work on both POSIX and Windows. If the fake creates a file at `tmp_path/env_bin/julia`, `TORCHGWAS_JULIA=<that path>` and the discovery logic will pick it up by path. Adjust `_make_fake_julia` to accept an explicit parent dir if needed.
+Note: `_make_fake_julia` writes a single file named `julia`/`julia.bat` — ensure the per-subdir calls work on both POSIX and Windows. If the fake creates a file at `tmp_path/env_bin/julia`, `TORCHGENOMICS_JULIA=<that path>` and the discovery logic will pick it up by path. Adjust `_make_fake_julia` to accept an explicit parent dir if needed.
 
 - [ ] **Step 2: Run all Tier 1 tests**
 
@@ -2481,7 +2481,7 @@ Gated on real Julia + PolyOrigin.jl.
 """Phase 56 Tier 2 tests — require real Julia + PolyOrigin.jl.
 
 Gated: (i) juliacall importable, (ii) Julia >= 1.10 discoverable,
-(iii) PolyOrigin available (or TORCHGWAS_ALLOW_AUTO_INSTALL=1).
+(iii) PolyOrigin available (or TORCHGENOMICS_ALLOW_AUTO_INSTALL=1).
 """
 from __future__ import annotations
 
@@ -2499,11 +2499,11 @@ def _tier2_skipif_reason() -> str | None:
     try:
         import juliacall  # noqa: F401
     except ImportError:
-        return "juliacall not installed (pip install torchgwas[polyploid-phase])"
-    from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
+        return "juliacall not installed (pip install torchgenomics[polyploid-phase])"
+    from torchgenomics.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
     jl = _find_existing_julia(override=None)
-    if jl is None and not os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"):
-        return "No Julia found and TORCHGWAS_ALLOW_AUTO_INSTALL unset"
+    if jl is None and not os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"):
+        return "No Julia found and TORCHGENOMICS_ALLOW_AUTO_INSTALL unset"
     if jl is not None:
         ok, ver = _probe_version(jl)
         if not ok:
@@ -2558,8 +2558,8 @@ def test_parity_tetraploid_f1(tmp_path):
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
-    auto = bool(os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"))
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
+    auto = bool(os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"))
     result_ours = run_polyorigin(
         probs=probs,
         pedigree_tsv=str(ped),
@@ -2587,7 +2587,7 @@ def test_parity_tetraploid_f1(tmp_path):
     )
 
     # Parse the reference output with the same parsers (ID-keyed)
-    from torchgwas.preprocess.phase_polyorigin import (
+    from torchgenomics.preprocess.phase_polyorigin import (
         _parse_genoprob, _parse_parentphased,
     )
     ref_origin, _ = _parse_genoprob(
@@ -2659,7 +2659,7 @@ def _simulate_f1_reads(depth: int, seed: int):
     Not attempting full realism — just enough to get a calibration number.
     """
     # Placeholder for implementer to fill in using updog's own simulator
-    # (via torchgwas.preprocess.dosage_call) once Phase 55 and a local
+    # (via torchgenomics.preprocess.dosage_call) once Phase 55 and a local
     # updog install are available.
     raise NotImplementedError(
         "Implementer: plug in updog's rgeno + rflexdog-simulated AD, then "
@@ -2851,7 +2851,7 @@ Create `docs/getting-started/polyploid_phasing.md`:
 # Polyploid Phasing (Phase 56)
 
 End-to-end recipe for phasing a connected tetraploid F1 population with
-`torchgwas phase-poly`, chaining off `dosage-call`.
+`torchgenomics phase-poly`, chaining off `dosage-call`.
 
 ## Prerequisites
 
@@ -2861,24 +2861,24 @@ End-to-end recipe for phasing a connected tetraploid F1 population with
 
 Install the polyploid-phase extra:
 
-    pip install torchgwas[polyploid-phase]
+    pip install torchgenomics[polyploid-phase]
 
 On first `phase-poly` run you will be prompted to install Julia 1.10
 (~300 MB) if it is not already on your machine. Add `--auto-install` to
 accept the prompt non-interactively, or pre-install Julia from
 https://julialang.org/downloads/ and ensure `julia` is on `PATH`
-(alternatively set `TORCHGWAS_JULIA=/abs/path/to/julia`).
+(alternatively set `TORCHGENOMICS_JULIA=/abs/path/to/julia`).
 
 ## Pipeline
 
     # 1. Posterior dosage calling from VCF read counts (Phase 55)
-    torchgwas dosage-call \
+    torchgenomics dosage-call \
       --vcf       calls.vcf.gz \
       --output    out/dcall \
       --ploidy    4
 
     # 2. Polyploid phasing of the F1 progeny
-    torchgwas phase-poly \
+    torchgenomics phase-poly \
       --probs     out/dcall.probs.pt \
       --pedigree  pedigree.tsv \
       --map       markers.tsv \
@@ -2888,8 +2888,8 @@ https://julialang.org/downloads/ and ensure `julia` is on `PATH`
     # 3. Haplotype GWAS (Phase 46)
     python <<'PY'
     import torch
-    from torchgwas.models import HaplotypeGWAS
-    from torchgwas.preprocess.dosage_uncertainty import expected_dosage
+    from torchgenomics.models import HaplotypeGWAS
+    from torchgenomics.preprocess.dosage_uncertainty import expected_dosage
 
     haps = torch.load('out/phased.haplotypes.pt')          # (n_off, 4, m)
     postdose = torch.load('out/phased.postdose_probs.pt')  # (n_off, m, 5)
@@ -2910,7 +2910,7 @@ configuration frequencies — useful for screening markers.
 | Symptom | Remedy |
 | --- | --- |
 | `PolyOrigin failed: ...` | Inspect the Julia log in the work directory. Re-run with `--keep-workdir` to preserve inputs for manual re-invocation. |
-| `Julia at ... is v1.8.x; requires >= 1.10` | Install a newer Julia via `juliaup` (`juliaup install 1.10 && juliaup default 1.10`) or unset `TORCHGWAS_JULIA`. |
+| `Julia at ... is v1.8.x; requires >= 1.10` | Install a newer Julia via `juliaup` (`juliaup install 1.10 && juliaup default 1.10`) or unset `TORCHGENOMICS_JULIA`. |
 | First run hangs for 1–2 minutes | Normal — Julia JIT + PolyOrigin.jl precompile. Subsequent calls in the same process are fast. |
 ```
 
@@ -2925,8 +2925,8 @@ description: Thin wrapper around PolyOrigin.jl for connected tetraploid / hexapl
 type: project
 ---
 
-Phase 56 ships `torchgwas.preprocess.phase_polyorigin.run_polyorigin`
-plus the `torchgwas phase-poly` CLI. Phases connected F1 polyploid
+Phase 56 ships `torchgenomics.preprocess.phase_polyorigin.run_polyorigin`
+plus the `torchgenomics phase-poly` CLI. Phases connected F1 polyploid
 populations (ploidy ∈ {2, 4, 6}) by calling PolyOrigin.jl v1.0.3 through
 `juliacall` in-process. Julia is auto-provisioned only if absent and the
 user consents. Output is tensor-native (`haplotypes: (n_off, ploidy,
@@ -2941,8 +2941,8 @@ fed directly to `HaplotypeGWAS.scan()`.
 
 **Chain**: `dosage-call → phase-poly → HaplotypeGWAS` — no VCF round-trip.
 
-**Install extra**: `pip install torchgwas[polyploid-phase]` adds
-`juliacall`. Julia itself is discovered first (`TORCHGWAS_JULIA`, PATH,
+**Install extra**: `pip install torchgenomics[polyploid-phase]` adds
+`juliacall`. Julia itself is discovered first (`TORCHGENOMICS_JULIA`, PATH,
 common install paths) and only downloaded by juliacall (~300 MB) if
 missing AND the user consents (CLI: interactive prompt or
 `--auto-install`; library: `auto_install_julia=True`).
@@ -3002,10 +3002,10 @@ Delete lines 138–150 (the `Phase 56 — Polyploid phasing` block), preserving 
 Append:
 
 ```
-### `torchgwas phase-poly`
+### `torchgenomics phase-poly`
 
 ```
-$ torchgwas phase-poly --help
+$ torchgenomics phase-poly --help
 <paste the actual --help output captured from the CLI>
 ```
 ```
@@ -3018,7 +3018,7 @@ Example to insert:
 
 ```bash
 # --- Polyploid F1 phasing (Phase 56) ---
-torchgwas phase-poly --probs out/dcall.probs.pt --pedigree ped.tsv \
+torchgenomics phase-poly --probs out/dcall.probs.pt --pedigree ped.tsv \
     --map markers.tsv --output out/phased --ploidy 4
 ```
 

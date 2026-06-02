@@ -1,4 +1,4 @@
-"""Tests for torchgwas.pgs.diagnostics — rhat, ess, check_convergence."""
+"""Tests for torchgenomics.pgs.diagnostics — rhat, ess, check_convergence."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import math
 import pytest
 import torch
 
-from torchgwas.pgs.base import PGSResult
-from torchgwas.pgs.diagnostics import check_convergence, ess, rhat
+from torchgenomics.pgs.base import PGSResult
+from torchgenomics.pgs.diagnostics import check_convergence, ess, rhat
 
 
 def test_rhat_approx_one_for_identical_chains():

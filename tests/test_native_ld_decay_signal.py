@@ -1,5 +1,5 @@
 """Tests for the native C++ ld_decay_signal accelerator
-(``torchgwas._native._ld_decay_signal_native``).
+(``torchgenomics._native._ld_decay_signal_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,11 +13,11 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import (
+from torchgenomics._native import (
     HAS_NATIVE_LD_DECAY_SIGNAL,
     _ld_decay_signal_native,
 )
-from torchgwas.ld._changepoint import (
+from torchgenomics.ld._changepoint import (
     _ld_decay_signal_native_enabled,
     ld_decay_signal,
 )
@@ -39,7 +39,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _ld_decay_signal_native_enabled() is True
 
@@ -96,7 +96,7 @@ def test_native_invalid_shape_raises():
 
 
 def _python_reference(ii, jj, r2, m, k):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         out = ld_decay_signal(
             torch.from_numpy(r2),
@@ -106,7 +106,7 @@ def _python_reference(ii, jj, r2, m, k):
             k_neighbors=k,
         )
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
     return out.cpu().numpy()
 
 

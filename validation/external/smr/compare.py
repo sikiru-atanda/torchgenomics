@@ -1,11 +1,11 @@
-"""Compare SMR / HEIDI (Yang lab SMR v1.3.1) vs TorchGWAS smr_test / heidi_test.
+"""Compare SMR / HEIDI (Yang lab SMR v1.3.1) vs TorchGenomics smr_test / heidi_test.
 
 Both tools see the same simulated single-locus fixture (planted top SNP +
 helper SNPs with the same b_GWAS/b_eQTL ratio).  The fixture uses a mild,
 compound-symmetric LD structure (rho_haplotype = 0.6) so the SMR HEIDI
 inclusion filter (0.05 <= r^2 <= 0.9) passes for several helpers, while the
 off-diagonal LD weighting stays small enough that the LD-weighted HEIDI
-variance is dominated by the diagonal (delta-method) term that torchgwas
+variance is dominated by the diagonal (delta-method) term that torchgenomics
 computes.  See README "Why mild LD" for the rationale.
 
 Per-probe agreement is measured on five metrics (observed-then-floored):
@@ -38,8 +38,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import SumStats, smr_test, heidi_test  # noqa: E402
-from torchgwas.io.plink import PlinkBedReader  # noqa: E402
+from torchgenomics.postgwas import SumStats, smr_test, heidi_test  # noqa: E402
+from torchgenomics.io.plink import PlinkBedReader  # noqa: E402
 
 
 # ---- tolerance gates (observed-then-floored on first successful run) -------
@@ -225,7 +225,7 @@ def _build_eqtl_sumstats(esd_df: pd.DataFrame, eqtl_n: int) -> SumStats:
 
 def compare_smr(data_dir: Path, out_dir: Path,
                 use_ld_matrix: bool = False) -> ComparisonReport:
-    """SMR (Yang lab v1.3.1) vs TorchGWAS smr_test + heidi_test agreement.
+    """SMR (Yang lab v1.3.1) vs TorchGenomics smr_test + heidi_test agreement.
 
     ``use_ld_matrix=True`` loads the reference-panel LD r matrix from
     ``data/ref.bed`` and passes it to ``heidi_test`` so the F3 #3 LD-weighted
@@ -293,7 +293,7 @@ def compare_smr(data_dir: Path, out_dir: Path,
 
     # ---- agreement metrics ----
     rep = ComparisonReport(
-        name="SMR + HEIDI (Yang lab v1.3.1 vs torchgwas.postgwas.smr_test/heidi_test)",
+        name="SMR + HEIDI (Yang lab v1.3.1 vs torchgenomics.postgwas.smr_test/heidi_test)",
         n_compared=1,
     )
 

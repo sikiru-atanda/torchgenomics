@@ -1,4 +1,4 @@
-"""Tests for torchgwas.preprocess.expression: rank-INT, quantile-norm,
+"""Tests for torchgenomics.preprocess.expression: rank-INT, quantile-norm,
 PEER residualization helpers.
 
 The three helpers are opt-in preprocessing steps for observed-expression
@@ -15,7 +15,7 @@ import subprocess
 import pytest
 import torch
 
-from torchgwas.preprocess import (
+from torchgenomics.preprocess import (
     inverse_normal_transform,
     peer_residualize,
     quantile_normalize,

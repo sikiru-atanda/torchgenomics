@@ -1,4 +1,4 @@
-"""Tests for ``torchgwas._dispatch.select_path``.
+"""Tests for ``torchgenomics._dispatch.select_path``.
 
 These exercise the device / size / capability decision matrix that every
 hot-loop dispatcher consults. CUDA branches are skipped on machines
@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas._dispatch import (
+from torchgenomics._dispatch import (
     DEFAULT_GPU_THRESHOLD,
     DEFAULT_NATIVE_THRESHOLD,
     gpu_disabled,
@@ -24,8 +24,8 @@ from torchgwas._dispatch import (
 
 
 def _clear_env(monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
-    monkeypatch.delenv("TORCHGWAS_DISABLE_GPU", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_GPU", raising=False)
 
 
 def test_cpu_native_when_built_and_large(monkeypatch):
@@ -42,7 +42,7 @@ def test_cpu_python_when_no_native_build(monkeypatch):
 
 def test_cpu_python_when_native_disabled_via_env(monkeypatch):
     _clear_env(monkeypatch)
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     t = torch.zeros(DEFAULT_NATIVE_THRESHOLD * 10)
     assert select_path(t, has_native=True) == "python"
     assert native_disabled() is True
@@ -97,7 +97,7 @@ def test_cuda_below_gpu_threshold_falls_through(monkeypatch):
 @cuda_required
 def test_cuda_disabled_via_env(monkeypatch):
     _clear_env(monkeypatch)
-    monkeypatch.setenv("TORCHGWAS_DISABLE_GPU", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_GPU", "1")
     t = torch.zeros(DEFAULT_GPU_THRESHOLD * 10, device="cuda")
     assert select_path(t, has_native=True, has_gpu_kernel=True) == "python"
     assert gpu_disabled() is True

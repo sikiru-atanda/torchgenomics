@@ -2,7 +2,7 @@
 """compare.py -- diff lme4 reference vs TG RandomRegressionLMM outputs.
 
 Reads validation/specialty/rr/outputs/{reference_null.tsv,
-reference_causal.tsv,torchgwas_null.tsv,torchgwas_causal.tsv}
+reference_causal.tsv,torchgenomics_null.tsv,torchgenomics_causal.tsv}
 and emits validation/specialty/rr/results/{summary.tsv,agreement.json,
 manifest.sha256}.
 
@@ -107,8 +107,8 @@ def _load_tsv(path: Path) -> dict[str, str]:
 def compare(out_dir: Path) -> ComparisonReport:
     ref_null   = _load_tsv(out_dir / "reference_null.tsv")
     ref_causal = _load_tsv(out_dir / "reference_causal.tsv")
-    tg_null    = _load_tsv(out_dir / "torchgwas_null.tsv")
-    tg_causal  = _load_tsv(out_dir / "torchgwas_causal.tsv")
+    tg_null    = _load_tsv(out_dir / "torchgenomics_null.tsv")
+    tg_causal  = _load_tsv(out_dir / "torchgenomics_causal.tsv")
 
     rep = ComparisonReport(
         name="RandomRegressionLMM vs lme4 (longitudinal)",
@@ -249,8 +249,8 @@ def _write_results(rep: ComparisonReport, results_dir: Path,
         ("data/truth.json",     data_dir / "truth.json"),
         ("outputs/reference_null.tsv",   out_dir / "reference_null.tsv"),
         ("outputs/reference_causal.tsv", out_dir / "reference_causal.tsv"),
-        ("outputs/torchgwas_null.tsv",   out_dir / "torchgwas_null.tsv"),
-        ("outputs/torchgwas_causal.tsv", out_dir / "torchgwas_causal.tsv"),
+        ("outputs/torchgenomics_null.tsv",   out_dir / "torchgenomics_null.tsv"),
+        ("outputs/torchgenomics_causal.tsv", out_dir / "torchgenomics_causal.tsv"),
     ]:
         if p.exists():
             manifest.append(f"{_hash_file(p)}  {label}")

@@ -1,6 +1,6 @@
 # Pillar B — External Reference Tool Harnesses
 
-This directory holds the harness for each external reference tool against which TorchGWAS is validated. Each tool gets its own subdirectory:
+This directory holds the harness for each external reference tool against which TorchGenomics is validated. Each tool gets its own subdirectory:
 
 ```
 validation/external/
@@ -28,7 +28,7 @@ Every `validation/external/<tool>/` directory follows this skeleton:
 | `install.sh` | Idempotent install from upstream (apt / conda / pip / source). Pinned version. Records install log + binary checksum. |
 | `fetch_data.sh` | Downloads + checksum-verifies the public dataset(s) into `data/`. |
 | `run_<tool>.sh` | Runs the tool on the public dataset to produce a reference output file. |
-| `compare.py` | Parses tool output, parses TorchGWAS output, computes element-wise diffs, asserts tolerances. |
+| `compare.py` | Parses tool output, parses TorchGenomics output, computes element-wise diffs, asserts tolerances. |
 | `README.md` | Exact reproduction recipe + peak-memory estimate (revised after first successful run). |
 | `data/` | `.gitignored`. Downloaded by `fetch_data.sh` from a fixed URL with checksum verification. |
 
@@ -65,7 +65,7 @@ pytest tests/test_external_plink2.py -v -m external
 | GAPIT | **done (B7)** — install/fetch/run/compare; tries non-interactive GAPIT3 install, falls back to canonical pre-Pillar-A reference outputs at `benchmark/gapit_results/` | yes (`tests/test_external_gapit.py`, marker=`external`) | GLM/MLM/FarmCPU/BLINK all pass. GLM −log10(p) corr = 1.000000 (element-wise \|Δ\| < 1e-13 to GAPIT). **Zero regression** from Pillar A's 9 fixes confirmed. |
 | GWASpoly | **done (B7)** — install/fetch/run/compare; installs GWASpoly 2.14 + rrBLUP into bin/Rlib/; uses canonical pre-Pillar-A reference by default (12-15 min re-run available via `GWASPOLY_FORCE_RERUN=1`) | yes (`tests/test_external_gwaspoly.py`, marker=`external`) | All 5 gene-action models pass §16's r ≥ 0.999 floor: additive 0.99989, 1-dom 0.99999, 2-dom 0.99991, 3-dom 0.99998. Diplo-additive in expected encoding-mismatch bracket [0.3, 0.7] = 0.488. **Zero regression**. |
 | PLINK 2.0 | **done (B1)** — install/fetch/run/compare scripts + 3-comparison harness on MDP | yes (`tests/test_external_plink2.py`, marker=`external`) | β corr = 1.000, GRM off-diag corr = 0.99995, r² corr = 1.000; all pass observed-then-floored tolerances. Documented PLINK-vs-TG SE parameterization mismatch (n−c−1 vs n−c) and the cov-vs-VanRaden normalizer scalar. No F3 fixes required. |
-| LDSC | **done (B2)** — install/fetch/run/compare scripts + h²(×2) + rg comparison on simulated chr22 sumstats | yes (`tests/test_external_ldsc.py`, marker=`external`) | h² agreement ~1e-5, rg agreement ~1e-5, intercept agreement ~3e-5 (all within spec §16). Phase 37 follow-up **resolved**: IRWLS port in `torchgwas/postgwas/_ldsc.py` ingests the `--w-ld` regression-weight LD scores via the new `w_ld=` keyword and runs LDSC's 2-iteration IRWLS loop, closing the previous intercept divergence (\|Δ\| 0.10–0.28) to bit-equality. `TOL_INTERCEPT_ABSDIFF` tightened from 3.5e-1 to 5e-3 (spec anchor). |
+| LDSC | **done (B2)** — install/fetch/run/compare scripts + h²(×2) + rg comparison on simulated chr22 sumstats | yes (`tests/test_external_ldsc.py`, marker=`external`) | h² agreement ~1e-5, rg agreement ~1e-5, intercept agreement ~3e-5 (all within spec §16). Phase 37 follow-up **resolved**: IRWLS port in `torchgenomics/postgwas/_ldsc.py` ingests the `--w-ld` regression-weight LD scores via the new `w_ld=` keyword and runs LDSC's 2-iteration IRWLS loop, closing the previous intercept divergence (\|Δ\| 0.10–0.28) to bit-equality. `TOL_INTERCEPT_ABSDIFF` tightened from 3.5e-1 to 5e-3 (spec anchor). |
 | TwoSampleMR | done (B3) | yes | — (see B3 commit) |
 | regenie | done (B4) | yes | — (see B4 commit) |
 | SAIGE | pending | pending | — |

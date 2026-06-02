@@ -1,7 +1,7 @@
 # Random Regression LMM harness (Tier 3 C2)
 
 Reference-tool comparison between **lme4** (R; Bates et al. 2015) and
-**TorchGWAS** `torchgwas.models.rr_lmm.RandomRegressionLMM` (Phase 38).
+**TorchGenomics** `torchgenomics.models.rr_lmm.RandomRegressionLMM` (Phase 38).
 Part of the Genome Biology Methods paper Tier 3 specialty harness suite.
 
 ## Reference tool choice
@@ -45,7 +45,7 @@ Both engines fit:
 where P_k are the normalized Legendre polynomials of order 0..2 in
 t_std = 2 (t - t_min) / (t_max - t_min) - 1, using the same Bonnet
 three-term recurrence + sqrt((2k+1)/2) normalization that
-`torchgwas.linalg.basis.legendre_basis` implements (the R simulator
+`torchgenomics.linalg.basis.legendre_basis` implements (the R simulator
 in `run_reference.R` replicates the formula bit-for-bit, verified by
 a side-by-side check on the 5 fixture time points).
 
@@ -60,9 +60,9 @@ coefficient SNP effect. Per-time-point reconstruction beta(t) = sum_k
 Phi(t)[k] * beta[k] therefore agrees term-for-term across the two
 engines (under the same Phi evaluation).
 
-## TorchGWAS comparison target
+## TorchGenomics comparison target
 
-`torchgwas.models.rr_lmm.RandomRegressionLMM`:
+`torchgenomics.models.rr_lmm.RandomRegressionLMM`:
 
 - `RandomRegressionLMM(basis="legendre", order=2, k_coef_structure="unstructured")`
 - `fit_null(Y_long, X0, K=I_n, sample_ids=..., time_values=..., t_min=..., t_max=...)`
@@ -73,7 +73,7 @@ engines (under the same Phi evaluation).
   varying contrasts, and per-time-point beta(t) reconstruction via
   the `eval_times` argument (Phase 38, Step 5).
 
-Companion `torchgwas.models.rr_spatial.SpatioTemporalRR` is not
+Companion `torchgenomics.models.rr_spatial.SpatioTemporalRR` is not
 exercised in this fixture (the brief only requires the longitudinal
 random-regression model); a separate spatial fixture would test the
 spatio-temporal extension.
@@ -140,7 +140,7 @@ cea59b9b74ddec9b955e4e0eb5d27026ad4391c50d55e218a641acfb7459db20  truth.json
 
 ## Observed agreement (first successful run, 2026-05-15)
 
-Linux x86_64 host, Python 3.13, R 4.5.1, lme4 1.1.37, TorchGWAS 0.3.8.
+Linux x86_64 host, Python 3.13, R 4.5.1, lme4 1.1.37, TorchGenomics 0.3.8.
 Single causal SNP rs0017, n=300, T=5, b=3 Legendre coefficients.
 
 | Metric | lme4 | TG | Observed agreement | Floored tolerance | Status |
@@ -229,7 +229,7 @@ zero-crossing, where 3-sig-fig is mathematically ill-defined.
 bash validation/specialty/rr/install.sh        # verify lme4 + lmerTest loadable
 bash validation/specialty/rr/fetch_data.sh     # regenerate fixture (deterministic)
 Rscript validation/specialty/rr/run_reference.R validation/specialty/rr/data validation/specialty/rr/outputs
-python3 validation/specialty/rr/run_torchgwas.py
+python3 validation/specialty/rr/run_torchgenomics.py
 python3 validation/specialty/rr/compare.py     # write results/
 # or end-to-end:
 bash validation/specialty/rr/run.sh
@@ -246,9 +246,9 @@ Outputs:
   ratios, REML logLik.
 - `outputs/reference_causal.tsv` -- lme4 fixed-effect estimates +
   per-time-point beta(t) reconstruction.
-- `outputs/torchgwas_null.tsv` -- TG K_coef, Ve, variance ratios,
+- `outputs/torchgenomics_null.tsv` -- TG K_coef, Ve, variance ratios,
   REML logLik.
-- `outputs/torchgwas_causal.tsv` -- TG full b-vector SNP effect +
+- `outputs/torchgenomics_causal.tsv` -- TG full b-vector SNP effect +
   joint/intercept/slope/time-varying tests + per-time-point beta(t).
 - `results/summary.tsv` -- per-metric lme4 / TG / delta table.
 - `results/agreement.json` -- pass/fail report + tolerance gates +
@@ -263,7 +263,7 @@ Outputs:
 | `fetch_data.sh` | Invoke simulate_rr_fixture.py to stage data/ |
 | `simulate_rr_fixture.py` | Generate long_pheno.tsv + geno.tsv + truth.json |
 | `run_reference.R` | lme4 null + causal-SNP fit; write reference_*.tsv |
-| `run_torchgwas.py` | TG RandomRegressionLMM fit; write torchgwas_*.tsv |
+| `run_torchgenomics.py` | TG RandomRegressionLMM fit; write torchgenomics_*.tsv |
 | `run.sh` | Orchestrate install / fetch / run / compare end-to-end |
 | `compare.py` | Diff lme4 vs TG outputs; emit results/ |
 | `results/agreement.json` | Per-check pass/fail + observed numerics |

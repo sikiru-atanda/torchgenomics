@@ -13,7 +13,7 @@ fixture (281 samples × 2897 SNPs after MAF/geno QC):
 
 1. **Per-SNP β / SE / -log10p (LMM-Inf, internal LOCO)** —
    ``bolt_stats.tsv`` (`P_BOLT_LMM_INF`) vs
-   ``torchgwas.models.SingleTraitLMM`` + ``torchgwas.linalg.grm_loco``,
+   ``torchgenomics.models.SingleTraitLMM`` + ``torchgenomics.linalg.grm_loco``,
    covariates = intercept + PC1 + PC2.
 
 We only compare against ``--lmmInfOnly`` (the textbook infinitesimal
@@ -29,7 +29,7 @@ not an equivalence check.
 bash validation/external/bolt_lmm/install.sh        # download v2.5 + smoke-test
 bash validation/external/bolt_lmm/fetch_data.sh     # stage MDP + simulate phenotypes
 bash validation/external/bolt_lmm/run_bolt.sh       # --lmmInfOnly run
-TORCHGWAS_DISABLE_NATIVE=1 \
+TORCHGENOMICS_DISABLE_NATIVE=1 \
     python3 validation/external/bolt_lmm/compare.py # comparison report
 pytest -m external tests/test_external_bolt_lmm.py -v
 ```

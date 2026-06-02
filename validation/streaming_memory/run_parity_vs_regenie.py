@@ -1,7 +1,7 @@
 """Track B: head-to-head β-parity vs regenie on the synthetic BED fixture.
 
 Uses the largest synthetic from the p-sweep (default: sweep_p100000) and runs:
-  1. TorchGWAS lmm-scan via CLI (streaming path)
+  1. TorchGenomics lmm-scan via CLI (streaming path)
   2. regenie Step 1 + Step 2
 
 Compares per-variant β, SE, chi-sq, p across the join on SNP ID. Records
@@ -30,13 +30,13 @@ ROOT = HERE.parent.parent
 REGENIE_BIN = ROOT / "validation/external/regenie/bin/regenie"
 
 
-def run_torchgwas_lmm_scan(prefix: Path, out_dir: Path) -> Path:
-    """Run torchgwas lmm-scan via the CLI on the BED fixture.
+def run_torchgenomics_lmm_scan(prefix: Path, out_dir: Path) -> Path:
+    """Run torchgenomics lmm-scan via the CLI on the BED fixture.
 
     Phenotype + covariates come from <prefix>.pheno. We split the combined
     .pheno into separate pheno + covar files (the format the CLI accepts).
     """
-    out_path = out_dir / "torchgwas"
+    out_path = out_dir / "torchgenomics"
     pheno_df = pd.read_csv(prefix.with_suffix(".pheno"), sep="\t")
     pheno_only = pheno_df[["FID", "IID", "Y"]]
     # CRITICAL: drop FID from covariates. The CLI auto-dummies non-numeric
@@ -48,7 +48,7 @@ def run_torchgwas_lmm_scan(prefix: Path, out_dir: Path) -> Path:
     pheno_only.to_csv(pheno_path, sep="\t", index=False)
     covar_only.to_csv(covar_path, sep="\t", index=False)
     cmd = [
-        sys.executable, "-m", "torchgwas", "lmm-scan",
+        sys.executable, "-m", "torchgenomics", "lmm-scan",
         "--genotype", f"{prefix}.bed",
         "--phenotype", str(pheno_path),
         "--covariate", str(covar_path),
@@ -57,23 +57,23 @@ def run_torchgwas_lmm_scan(prefix: Path, out_dir: Path) -> Path:
         "--correction", "none",
         "--output", str(out_path),
     ]
-    print(f"[torchgwas] running: {' '.join(cmd)}")
+    print(f"[torchgenomics] running: {' '.join(cmd)}")
     t0 = time.time()
     r = subprocess.run(cmd, capture_output=True, text=True)
     dt = time.time() - t0
     if r.returncode != 0:
         print("STDOUT:\n", r.stdout)
         print("STDERR:\n", r.stderr)
-        sys.exit(f"torchgwas lmm-scan failed (rc={r.returncode})")
-    print(f"[torchgwas] done in {dt:.2f}s")
+        sys.exit(f"torchgenomics lmm-scan failed (rc={r.returncode})")
+    print(f"[torchgenomics] done in {dt:.2f}s")
     # CLI writes <out>.assoc.tsv (lmm-scan convention)
     for ext in (".assoc.tsv", ".tsv", ".csv"):
         cand = Path(f"{out_path}{ext}")
         if cand.exists():
             return cand
-    cands = sorted(out_dir.glob("torchgwas*"))
+    cands = sorted(out_dir.glob("torchgenomics*"))
     print("CLI stdout:", r.stdout)
-    sys.exit(f"torchgwas output not found; candidates: {cands}")
+    sys.exit(f"torchgenomics output not found; candidates: {cands}")
 
 
 def run_regenie(prefix: Path, out_dir: Path) -> Path:
@@ -149,10 +149,10 @@ def compare(tg_tsv: Path, regenie_tsv: Path, report_path: Path) -> int:
     re = pd.read_csv(regenie_tsv, sep=" ")  # regenie uses space-separated
     # Normalize columns:
     # regenie cols: CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ INFO N TEST BETA SE CHISQ LOG10P EXTRA
-    # torchgwas tsv cols vary by version; expect SNP, CHR, BP, BETA, SE, P, ...
+    # torchgenomics tsv cols vary by version; expect SNP, CHR, BP, BETA, SE, P, ...
     re = re.rename(columns={"ID": "SNP", "BETA": "BETA_re", "SE": "SE_re",
                             "CHISQ": "CHISQ_re", "LOG10P": "LOG10P_re"})
-    # Detect torchgwas column names
+    # Detect torchgenomics column names
     tg_snp_col = "SNP" if "SNP" in tg.columns else (
         "snp" if "snp" in tg.columns else tg.columns[0]
     )
@@ -267,7 +267,7 @@ def main() -> int:
         if not args.prefix.with_suffix(ext).exists():
             sys.exit(f"FATAL: missing {args.prefix.with_suffix(ext)} — run p_sweep first")
 
-    tg_tsv = run_torchgwas_lmm_scan(args.prefix, args.out_dir)
+    tg_tsv = run_torchgenomics_lmm_scan(args.prefix, args.out_dir)
     re_tsv = run_regenie(args.prefix, args.out_dir)
     return compare(tg_tsv, re_tsv, args.report)
 

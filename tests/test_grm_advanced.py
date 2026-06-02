@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.linalg.kinship_advanced import (
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.linalg.kinship_advanced import (
     grm_endelman_digenic,
     grm_pseudo_diploid,
     grm_slater,

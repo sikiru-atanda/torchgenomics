@@ -4,7 +4,7 @@ Strategy
 --------
 SMR (Zhu et al. 2016, Nat Genet 48:481) combines a GWAS summary, an eQTL
 summary, and a PLINK reference panel for LD-weighted HEIDI heterogeneity
-testing. The TorchGWAS implementation in torchgwas/postgwas/_smr.py
+testing. The TorchGenomics implementation in torchgenomics/postgwas/_smr.py
 computes HEIDI with a delta-method variance that assumes SNP independence,
 while the upstream SMR tool reads the BED reference and weights covariances
 by the LD matrix. To make the two algorithms numerically commensurable we
@@ -78,7 +78,7 @@ def _draw_genotypes(rng: np.random.Generator, n: int, p_ref: np.ndarray,
     0.05 -- 0.30 range, which keeps the SMR HEIDI inclusion filter happy
     (0.05 <= r^2 <= 0.9 by default).  The off-diagonals are small enough
     that the LD-weighted HEIDI covariance is dominated by the diagonal
-    (delta-method) term computed by torchgwas.postgwas.heidi_test.  See
+    (delta-method) term computed by torchgenomics.postgwas.heidi_test.  See
     README "Why mild LD" for the rationale and the observed-then-floored
     HEIDI tolerances.
     """

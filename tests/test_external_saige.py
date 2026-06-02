@@ -1,4 +1,4 @@
-"""External-tool harness: SAIGE vs TorchGWAS reference comparison.
+"""External-tool harness: SAIGE vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require:
   - the SAIGE container image already pulled (or Bioconductor R install),
@@ -95,7 +95,7 @@ def _require_install() -> None:
 def compare_mod():
     # Match the docs/validation.md golden CI gate by exercising the
     # pure-Python reference path (native disabled).
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 

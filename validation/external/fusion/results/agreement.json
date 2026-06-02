@@ -1,5 +1,5 @@
 {
-  "name": "FUSION measured-expression vs torchgwas.postgwas.twas_observed_expression",
+  "name": "FUSION measured-expression vs torchgenomics.postgwas.twas_observed_expression",
   "n_compared": 15,
   "passed": true,
   "checks": [

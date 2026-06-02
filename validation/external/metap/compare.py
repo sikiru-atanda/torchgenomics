@@ -1,4 +1,4 @@
-"""Compare TorchGWAS p-value combination kernels against the R-side
+"""Compare TorchGenomics p-value combination kernels against the R-side
 references in outputs/reference.tsv (produced by run_reference.R).
 
 Per-method tolerance gates (observed-then-floored on the first
@@ -33,7 +33,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import (  # noqa: E402
+from torchgenomics.postgwas import (  # noqa: E402
     empirical_brown_combined,
     fisher_combined,
     harmonic_mean_p,
@@ -97,7 +97,7 @@ def compare(data_dir: Path, out_dir: Path) -> Report:
     ref_df = pd.read_csv(ref_path, sep="\t")
 
     rep = Report(
-        name="p-value combination (metap CRAN + EmpiricalBrownsMethod BioC vs torchgwas.postgwas)",
+        name="p-value combination (metap CRAN + EmpiricalBrownsMethod BioC vs torchgenomics.postgwas)",
         n_compared=int(len(ref_df)),
     )
 

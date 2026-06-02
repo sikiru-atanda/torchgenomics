@@ -6,8 +6,8 @@ import gzip
 
 import torch
 
-from torchgwas.io.convert import _write_vcf
-from torchgwas.models.base import VariantMeta
+from torchgenomics.io.convert import _write_vcf
+from torchgenomics.models.base import VariantMeta
 
 
 class _TinyReader:

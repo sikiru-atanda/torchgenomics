@@ -3,7 +3,7 @@
 Per NA1 design spec section 5.2 — synthetic fixture is acceptable for the
 Tier 2 head-to-head against susieR::susie_rss(). The MDP-derived path is
 documented as the canonical fixture for production but requires the full
-torchgwas lmm-scan → window-extract pipeline; this synthetic fixture
+torchgenomics lmm-scan → window-extract pipeline; this synthetic fixture
 exercises the same per-locus contract with planted causals at known
 positions, which is exactly what susieR's own test suite uses.
 

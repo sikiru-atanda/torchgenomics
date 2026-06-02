@@ -1,5 +1,5 @@
 {
-  "name": "hyprcoloc (R hyprcoloc vs TorchGWAS hyprcoloc)",
+  "name": "hyprcoloc (R hyprcoloc vs TorchGenomics hyprcoloc)",
   "n_compared": 100,
   "passed": true,
   "checks": [

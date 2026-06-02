@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.preprocess import dosage_call as dc_module
+from torchgenomics.preprocess import dosage_call as dc_module
 
 
 def _updog_available() -> bool:
@@ -111,9 +111,9 @@ def test_parity_on_identical_ref_size_tsvs(tmp_path):
     )
     ours = result.probs
 
-    # 2) Find the kept tempdir (latest torchgwas_dosage_* under system tmp)
+    # 2) Find the kept tempdir (latest torchgenomics_dosage_* under system tmp)
     candidates = sorted(glob.glob(
-        f"{_tempfile.gettempdir()}/torchgwas_dosage_*"))
+        f"{_tempfile.gettempdir()}/torchgenomics_dosage_*"))
     assert candidates, "keep_tmpdir=True did not leave a tempdir on disk"
     ours_tmpdir = candidates[-1]
 
@@ -198,10 +198,10 @@ def test_gulm_end_to_end_on_simulated_dosages(tmp_path):
     (not a tight calibration — see test_gu_lmm.py for the full battery).
     """
     from scipy.stats import kstest
-    from torchgwas.linalg.grm import compute_grm
+    from torchgenomics.linalg.grm import compute_grm
 
-    from torchgwas.models.gu_lmm import GULM
-    from torchgwas.preprocess.dosage_uncertainty import (
+    from torchgenomics.models.gu_lmm import GULM
+    from torchgenomics.preprocess.dosage_uncertainty import (
         dosage_variance,
         expected_dosage,
     )

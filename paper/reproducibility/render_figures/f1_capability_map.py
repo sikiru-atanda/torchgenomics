@@ -1,10 +1,10 @@
-"""F1 - TorchGWAS capability map.
+"""F1 - TorchGenomics capability map.
 
-Hand-curated inventory of all TorchGWAS capabilities grouped by cluster,
+Hand-curated inventory of all TorchGenomics capabilities grouped by cluster,
 rendered as a labelled treemap. The inventory is derived from:
 
   - the "Core Modules" section of ``CLAUDE.md`` (canonical module surface);
-  - ``torchgwas/cli.py`` ``subparsers``/dispatch dict (CLI surface);
+  - ``torchgenomics/cli.py`` ``subparsers``/dispatch dict (CLI surface);
   - each sub-packages ``__init__.py`` public exports (programmatic API).
 
 Each leaf annotation cites the module / CLI subcommand that supplies it
@@ -332,7 +332,7 @@ def render_f1(output_dir: pathlib.Path) -> tuple[pathlib.Path, dict]:
     # Title.
     fig.text(
         0.5, 0.965,
-        "F1 - TorchGWAS capability map",
+        "F1 - TorchGenomics capability map",
         ha="center", va="center", fontsize=13, weight="bold",
     )
     fig.text(
@@ -345,7 +345,7 @@ def render_f1(output_dir: pathlib.Path) -> tuple[pathlib.Path, dict]:
     # Footer.
     fig.text(
         0.5, 0.02,
-        "Source: torchgwas/cli.py dispatch dict + sub-package __init__.py exports + CLAUDE.md Core Modules. "
+        "Source: torchgenomics/cli.py dispatch dict + sub-package __init__.py exports + CLAUDE.md Core Modules. "
         "Genome Biology Methods Figure 1.",
         ha="center", va="center", fontsize=7, color="#666666",
     )

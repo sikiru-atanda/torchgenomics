@@ -5,9 +5,9 @@ import pytest
 import torch
 
 from tests.test_rr_lmm_scan import _vmeta
-from torchgwas.linalg.basis import legendre_basis, standardize_time
-from torchgwas.models.rr_lmm import RRScanResult
-from torchgwas.models.rr_spatial import SpatioTemporalRR, fit_spatial_pspline
+from torchgenomics.linalg.basis import legendre_basis, standardize_time
+from torchgenomics.models.rr_lmm import RRScanResult
+from torchgenomics.models.rr_spatial import SpatioTemporalRR, fit_spatial_pspline
 
 
 def _simulate_field_trial(
@@ -157,7 +157,7 @@ class TestSpatioTemporalRRFit:
             n=80, T=6, n_rows=10, n_cols=10, spatial_amp=5.0, h2=0.5, seed=82
         )
         # Uncorrected RR-LMM
-        from torchgwas.models.rr_lmm import RandomRegressionLMM
+        from torchgenomics.models.rr_lmm import RandomRegressionLMM
 
         m_plain = RandomRegressionLMM(basis="legendre", order=2)
         nf_plain = m_plain.fit_null(

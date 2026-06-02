@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.io import (
+from torchgenomics.io import (
     PredixcanModel,
     list_genes_in_db,
     read_predixcan_db,
@@ -174,7 +174,7 @@ def test_integration_with_twas_sumstat(tmp_path):
     ])
     model = read_predixcan_db(db)
 
-    from torchgwas.postgwas import SumStats, twas_sumstat
+    from torchgenomics.postgwas import SumStats, twas_sumstat
     snps = ["rs1", "rs2", "rs10", "rs99"]
     m = len(snps)
     gwas = SumStats(

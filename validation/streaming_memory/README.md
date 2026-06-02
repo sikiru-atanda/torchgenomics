@@ -46,7 +46,7 @@ validation (Tracks A + B)". Headline results:
 - `outputs/p_sweep.tsv` — per-p row of (peak RSS, peak USS, scan-attrib MB, elapsed s)
 - `outputs/p_sweep.txt` — markdown summary + scaling slope diagnostic
 - `outputs/run_p{P}.json` — per-fixture JSON record
-- `outputs/parity/torchgwas.assoc.tsv` — TG lmm-scan output
+- `outputs/parity/torchgenomics.assoc.tsv` — TG lmm-scan output
 - `outputs/parity/regenie/step2_Y.regenie` — regenie step 2 output
 - `outputs/parity_report.txt` — Track B numeric report
 
@@ -64,4 +64,4 @@ extrapolation):
 - Materialized: 40 TB (per the headline claim)
 
 The sparse-GRM path is the practical UKB-scale answer and has its own
-benchmark surface (`torchgwas.linalg.sparse_grm`) not exercised here.
+benchmark surface (`torchgenomics.linalg.sparse_grm`) not exercised here.

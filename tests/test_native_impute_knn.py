@@ -1,5 +1,5 @@
 """Tests for the native C++ impute_knn accelerator
-(``torchgwas._native._impute_knn_native``).
+(``torchgenomics._native._impute_knn_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,11 +13,11 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import (
+from torchgenomics._native import (
     HAS_NATIVE_IMPUTE_KNN,
     _impute_knn_native,
 )
-from torchgwas.preprocess.impute import (
+from torchgenomics.preprocess.impute import (
     _impute_knn_native_enabled,
     impute_knn,
 )
@@ -39,7 +39,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _impute_knn_native_enabled() is True
 
@@ -152,15 +152,15 @@ def _make_K(G_complete: torch.Tensor) -> torch.Tensor:
 
 
 def _python_reference(G, K, k):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return impute_knn(G, K, k=k)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 def _native_dispatch(G, K, k):
-    os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+    os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     return impute_knn(G, K, k=k)
 
 

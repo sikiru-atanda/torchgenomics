@@ -1,4 +1,4 @@
-// Native accelerator for ``torchgwas.preprocess.impute.impute_mode``.
+// Native accelerator for ``torchgenomics.preprocess.impute.impute_mode``.
 //
 // The Python reference does:
 //

@@ -2,7 +2,7 @@
 #
 # Companion to scripts/generate_golden_data.py. Runs the R-based reference
 # tools (GAPIT3, GWASpoly) against the same MDP / potato data used by the
-# TorchGWAS test suite and writes outputs into the locations the golden tests
+# TorchGenomics test suite and writes outputs into the locations the golden tests
 # look for:
 #
 #   * gapit_demo/output/mdp_farmcpu.GWAS.Results.csv

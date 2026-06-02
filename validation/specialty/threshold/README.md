@@ -1,6 +1,6 @@
 # Threshold-linear (multi-trait categorical) reference harness
 
-**Goal.** Head-to-head comparison of `torchgwas.models.threshold_linear.ThresholdLinearModel`
+**Goal.** Head-to-head comparison of `torchgenomics.models.threshold_linear.ThresholdLinearModel`
 (Bermann et al. 2026; T-EM / T-NR / SQUAREM / ssGWAS) against the canonical BLUPF90+ Gibbs
 sampler for multi-trait threshold-linear models.
 
@@ -33,7 +33,7 @@ its functionality merged into the unified gibbsf90+ driver under OPTION cat
 directives (Aguilar et al. 2018; Lourenco et al. 2022).  The BLUPF90+ family remains
 the only freely available multi-trait threshold-linear Gibbs sampler with documented
 agreement against the Bermann et al. (2026) model; running it on the same fixture
-that drives the TorchGWAS NR solver gives a real head-to-head check.
+that drives the TorchGenomics NR solver gives a real head-to-head check.
 
 ## Reproduction recipe
 
@@ -41,7 +41,7 @@ that drives the TorchGWAS NR solver gives a real head-to-head check.
 bash validation/specialty/threshold/install.sh      # one-time BLUPF90 fetch + smoke
 bash validation/specialty/threshold/fetch_data.sh   # simulate 3-trait fixture (~1 s)
 bash validation/specialty/threshold/run.sh          # gibbsf90+ + postgibbsf90 (~3 min)
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/specialty/threshold/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/specialty/threshold/compare.py
 ```
 
 Each shell script sources validation/external/_lib/preflight.sh and asserts disk +
@@ -56,7 +56,7 @@ RAM headroom before doing any work (per the Pillar B / Tier 3 contract).
 | beta_sex max relative (3 traits, vs simulator truth) | 0.95 | 1.0e+0 | PASS |
 | beta_SNP mean abs (5 causal vs simulator truth) | 3.81e-2 | 1.5e-1 | PASS |
 
-Numbers from results/agreement.json (TorchGWAS 0.3.8, gibbsf90+ v3.23,
+Numbers from results/agreement.json (TorchGenomics 0.3.8, gibbsf90+ v3.23,
 postgibbsf90 v3.15, seed=42).
 
 ## F3 findings (post-V1, documented in docs/validation_findings.md)
@@ -68,11 +68,11 @@ The variance-component posterior modes diverge from the simulator truth by
 magnitude as the modes (e.g. R(2,2) mode 8.25, SD 10.2), and Geweke
 diagnostics on positions 1-12 are typically |z| > 1 -- the chain has not
 mixed.  This is a property of the **reference tool** under the configured chain
-settings, not of TorchGWAS:
+settings, not of TorchGenomics:
 
-- TorchGWAS NR solver converges in 12 iterations on the same data with R, G
+- TorchGenomics NR solver converges in 12 iterations on the same data with R, G
   clamped to the simulator truth.
-- TorchGWAS recovers the 5 causal SNP betas to mean abs deviation 3.81e-2 from
+- TorchGenomics recovers the 5 causal SNP betas to mean abs deviation 3.81e-2 from
   the simulator truth (small additive effects sd 0.08).
 - The briefs nominal target |delta posterior var-comp| <= 1e-2 is unreachable
   with the BLUPF90 chain length we can afford in CI (~3 min wall time).

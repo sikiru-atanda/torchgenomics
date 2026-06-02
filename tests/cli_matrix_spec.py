@@ -7,7 +7,7 @@ committed under ``tests/fixtures/``.
 
 The contract:
 
-* Every public ``torchgwas`` CLI subcommand has at least one entry in
+* Every public ``torchgenomics`` CLI subcommand has at least one entry in
   ``CELL_SPEC``. Subcommands that genuinely cannot run on the small
   fixture set (require Julia, Docker, NCBI network, BEAGLE binary, …) are
   still listed with ``skip_reason`` so the matrix's coverage check stays
@@ -49,7 +49,7 @@ Schema for a CELL entry (CellSpec)
         # Required ─ build the CLI argv for one (subcommand, format) cell.
         # Receives a `Ctx` dataclass with paths to fixtures + tmp_path for
         # scratch files. Returns a list of strings: subcommand args after
-        # `python -m torchgwas.cli <subcommand>`.
+        # `python -m torchgenomics.cli <subcommand>`.
         "build_args": Callable[[Ctx, str], list[str]],
 
         # Required ─ list of expected output files (paths relative to ctx.tmp).
@@ -165,7 +165,7 @@ def _genotype_args(fmt: str, ctx: Ctx) -> list[str]:
 
     The CSV ``NumericDosageReader`` autodiscovers the sibling ``.map`` file
     when one exists at ``<csv_basename>.map`` (see
-    ``torchgwas.io.map_file.discover_map_file``); we don't pass ``--map``
+    ``torchgenomics.io.map_file.discover_map_file``); we don't pass ``--map``
     explicitly since most subcommands' parsers don't expose it.
     """
     geno = FORMAT_GENOTYPE.get(fmt)

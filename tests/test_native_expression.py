@@ -1,16 +1,16 @@
 """Regression tests for the native C++ TWAS expression-normalisation kernels.
 
 The native kernels
-(``torchgwas._native._expression_native.rank_int_u_columns`` and
+(``torchgenomics._native._expression_native.rank_int_u_columns`` and
 ``quantile_normalize_columns``) replace the column-wise stateful
 Python tie-resolution loops in
-``torchgwas.preprocess.expression.inverse_normal_transform`` and
+``torchgenomics.preprocess.expression.inverse_normal_transform`` and
 ``quantile_normalize``. These tests assert:
 
 1.  **Parity** — native and Python paths produce numerically identical
     outputs at the FP64 floor for both transforms.
 2.  **Ties** — average-tie semantics are preserved.
-3.  **Env-var fallthrough** — ``TORCHGWAS_DISABLE_NATIVE=1`` forces
+3.  **Env-var fallthrough** — ``TORCHGENOMICS_DISABLE_NATIVE=1`` forces
     the Python reference path.
 4.  **Below-threshold input** — for tiny matrices the dispatcher
     routes to Python.
@@ -25,8 +25,8 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas._native import HAS_NATIVE_EXPRESSION
-from torchgwas.preprocess.expression import (
+from torchgenomics._native import HAS_NATIVE_EXPRESSION
+from torchgenomics.preprocess.expression import (
     inverse_normal_transform,
     quantile_normalize,
 )
@@ -48,18 +48,18 @@ def _planted_with_ties(n: int, m: int, seed: int) -> torch.Tensor:
 
 
 def _run_with(env_value, fn, *args, **kwargs):
-    prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+    prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
     if env_value is None:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     else:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = env_value
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = env_value
     try:
         return fn(*args, **kwargs)
     finally:
         if prev is None:
-            os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+            os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
         else:
-            os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+            os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
 
 @unittest.skipUnless(

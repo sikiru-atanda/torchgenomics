@@ -14,8 +14,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.multiomics import mediate_lmm, scan_mediation
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.multiomics import mediate_lmm, scan_mediation
 
 OUT_DIR = Path(__file__).resolve().parent / "results"
 OUT_DIR.mkdir(parents=True, exist_ok=True)

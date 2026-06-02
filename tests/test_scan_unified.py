@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE, TorchGWASConfig
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.preprocess.qc import QCFilterConfig
-from torchgwas.scan.strategies import FixedNullStrategy, PerSNPRefitStrategy
-from torchgwas.scan.unified import UnifiedScanner, merge_scan_results
+from torchgenomics.config import STAT_DTYPE, TorchGenomicsConfig
+from torchgenomics.models.base import NullFit, ScanResult, VariantMeta
+from torchgenomics.preprocess.qc import QCFilterConfig
+from torchgenomics.scan.strategies import FixedNullStrategy, PerSNPRefitStrategy
+from torchgenomics.scan.unified import UnifiedScanner, merge_scan_results
 
 # --- Fakes for testing ---
 
@@ -126,7 +126,7 @@ class TestUnifiedScanner:
         G, vmeta = sample_data
         reader = FakeReader(G, vmeta)
         model = FakeModel()
-        config = TorchGWASConfig(chunk_size=30)
+        config = TorchGenomicsConfig(chunk_size=30)
         scanner = UnifiedScanner(reader, model, config)
         nf = model.fit_null(G, torch.ones(50, 1))
         result = scanner.scan(nf, test="wald")
@@ -141,13 +141,13 @@ class TestUnifiedScanner:
         model = FakeModel()
 
         # Full scan (one chunk)
-        config_full = TorchGWASConfig(chunk_size=100)
+        config_full = TorchGenomicsConfig(chunk_size=100)
         scanner_full = UnifiedScanner(reader, model, config_full)
         nf = model.fit_null(G, torch.ones(50, 1))
         result_full = scanner_full.scan(nf)
 
         # Chunked scan
-        config_chunked = TorchGWASConfig(chunk_size=30)
+        config_chunked = TorchGenomicsConfig(chunk_size=30)
         reader2 = FakeReader(G, vmeta)
         scanner_chunked = UnifiedScanner(reader2, model, config_chunked)
         result_chunked = scanner_chunked.scan(nf)
@@ -163,7 +163,7 @@ class TestUnifiedScanner:
         G[:, :10] = 0.0
         reader = FakeReader(G, vmeta)
         model = FakeModel()
-        config = TorchGWASConfig(chunk_size=50)
+        config = TorchGenomicsConfig(chunk_size=50)
         scanner = UnifiedScanner(reader, model, config)
         nf = model.fit_null(G, torch.ones(50, 1))
         qc = QCFilterConfig(maf_min=0.01, miss_max=1.0)
@@ -181,7 +181,7 @@ class TestUnifiedScanner:
         G[:, :5] = float("nan")
         reader = FakeReader(G, vmeta)
         model = FakeModel()
-        config = TorchGWASConfig(chunk_size=50)
+        config = TorchGenomicsConfig(chunk_size=50)
         scanner = UnifiedScanner(reader, model, config)
         nf = model.fit_null(G, torch.ones(50, 1))
         qc = QCFilterConfig(maf_min=0.0, miss_max=0.5)
@@ -192,7 +192,7 @@ class TestUnifiedScanner:
 class TestModelAdapter:
     def test_adapter_wraps_any_basemodel(self):
         """ModelAdapter accepts any BaseModel-compatible object."""
-        from torchgwas.scan.adapters import ModelAdapter
+        from torchgenomics.scan.adapters import ModelAdapter
         model = FakeModel()
         adapter = ModelAdapter(model)
         assert adapter.model is model

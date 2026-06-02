@@ -5,7 +5,7 @@ import math
 import pytest
 import torch
 
-from torchgwas.postgwas._hess import (
+from torchgenomics.postgwas._hess import (
     HESSResult,
     hess_local_h2,
     hess_local_rg,

@@ -1,4 +1,4 @@
-"""Compare SAIGE vs TorchGWAS BinaryGLMM on the MDP fixture.
+"""Compare SAIGE vs TorchGenomics BinaryGLMM on the MDP fixture.
 
 SAIGE pipeline:
   - Step 1 (fitNULLGLMM): PCG-based fit of the null GLMM with full GRM,
@@ -7,7 +7,7 @@ SAIGE pipeline:
     saddlepoint-corrected for χ² > spaCutoff (default 2). Output is a
     whitespace table with BETA / SE / Tstat / var / p.value / Is.SPA.
 
-TorchGWAS counterpart: `BinaryGLMM` (Phase 33). The model fits the null
+TorchGenomics counterpart: `BinaryGLMM` (Phase 33). The model fits the null
 via PQL (Breslow-Clayton penalized quasi-likelihood) using the same full
 GRM, then runs a logistic score test per SNP with optional SPA tail
 correction. The PCG-based PQL inside SAIGE differs from TG's eigh-based
@@ -97,11 +97,11 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE  # noqa: E402
-from torchgwas.io.plink import PlinkBedReader  # noqa: E402
-from torchgwas.linalg.kinship import grm_vanraden  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.binary_glmm import BinaryGLMM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE  # noqa: E402
+from torchgenomics.io.plink import PlinkBedReader  # noqa: E402
+from torchgenomics.linalg.kinship import grm_vanraden  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.binary_glmm import BinaryGLMM  # noqa: E402
 
 
 @dataclass
@@ -280,7 +280,7 @@ def compare_step2(data_dir: Path, out_dir: Path) -> ComparisonReport:
         allele TG counts.
       - No manual flip needed. Pre-fix, TG counted BIM A2 and this
         harness applied a `2.0 - G` workaround; the workaround was
-        removed once `torchgwas/io/plink.py:_GENO_DECODE` was corrected.
+        removed once `torchgenomics/io/plink.py:_GENO_DECODE` was corrected.
     """
     rg = _read_saige_step2(out_dir / "step2.txt")
     # Drop any rows SAIGE marked failed-to-converge (BETA = NA).
@@ -289,7 +289,7 @@ def compare_step2(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
     G_a2, sample_ids, vmeta = _load_mdp(data_dir)
     # Post-fix (2026-05-13): PlinkBedReader counts BIM A1 = SAIGE Allele2 = A
-    # natively (torchgwas/io/plink.py:_GENO_DECODE was fixed to PLINK 1.9
+    # natively (torchgenomics/io/plink.py:_GENO_DECODE was fixed to PLINK 1.9
     # canonical convention). Pre-fix this line was `2.0 - G_a2` to flip from
     # the old A2-counting convention. The variable name `G_a2` is now a
     # historical misnomer; it actually contains count(A1).

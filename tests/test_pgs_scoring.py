@@ -1,12 +1,12 @@
-"""Tests for torchgwas.pgs.scoring — score_individuals."""
+"""Tests for torchgenomics.pgs.scoring — score_individuals."""
 
 from __future__ import annotations
 
 import pytest
 import torch
 
-from torchgwas.pgs.base import PGSResult
-from torchgwas.pgs.scoring import score_individuals
+from torchgenomics.pgs.base import PGSResult
+from torchgenomics.pgs.scoring import score_individuals
 
 
 def _make_result(snp, a1, a2, w):

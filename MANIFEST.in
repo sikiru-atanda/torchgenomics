@@ -5,7 +5,7 @@ include pyproject.toml
 include setup.py
 
 recursive-include csrc *.cpp *.hpp *.h
-recursive-include torchgwas *.py *.pyi
+recursive-include torchgenomics *.py *.pyi
 
 # Explicit prunes for everything that could plausibly leak via setuptools
 # auto-discovery. Anything not on an `include` / `recursive-include` line

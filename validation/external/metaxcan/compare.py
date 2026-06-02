@@ -1,4 +1,4 @@
-"""Compare MetaXcan / S-PrediXcan vs TorchGWAS twas_sumstat on the simulated fixture.
+"""Compare MetaXcan / S-PrediXcan vs TorchGenomics twas_sumstat on the simulated fixture.
 
 Both tools see the same simulated PrediXcan model (.db + covariance) and the
 same GWAS sumstats. Per-gene agreement is measured on:
@@ -25,7 +25,7 @@ Note on the S-PrediXcan formula (Barbeira 2018, Eq. 4):
 where w_i is the gene's eQTL weight at SNP i, sigma_i = sqrt(Var(SNP_i)),
 and sigma_g = sqrt(w^T Sigma w). When the model's covariance matrix is
 expressed in correlation form (diag(Sigma) = 1), sigma_i = 1 and the formula
-reduces to TorchGWAS' twas_sumstat exactly:
+reduces to TorchGenomics' twas_sumstat exactly:
     z_g = sum_i w_i * z_i / sqrt(w^T Sigma w).
 The simulated fixture uses diag(Sigma) = 1, so the comparison is a direct
 test of the closed-form formula.
@@ -48,7 +48,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import SumStats, twas_sumstat  # noqa: E402
+from torchgenomics.postgwas import SumStats, twas_sumstat  # noqa: E402
 
 
 # ---- tolerance gates (observed-then-floored on first successful run) -------
@@ -142,7 +142,7 @@ def _load_truth(data_dir: Path) -> dict:
 
 
 def _build_tg_inputs(data_dir: Path, truth: dict) -> tuple:
-    """Build the TorchGWAS twas_sumstat inputs from the simulated fixture.
+    """Build the TorchGenomics twas_sumstat inputs from the simulated fixture.
 
     Returns: (gwas SumStats, weights dict, snp_lists dict, ld_matrix dict)
     """
@@ -195,7 +195,7 @@ def _build_tg_inputs(data_dir: Path, truth: dict) -> tuple:
 
 
 def compare_sumstat_path(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """S-PrediXcan (MetaXcan) vs TorchGWAS twas_sumstat per-gene agreement."""
+    """S-PrediXcan (MetaXcan) vs TorchGenomics twas_sumstat per-gene agreement."""
     truth = _load_truth(data_dir)
 
     mx = _load_metaxcan_output(out_dir / "sprediXcan_results.csv")
@@ -265,7 +265,7 @@ def compare_sumstat_path(data_dir: Path, out_dir: Path) -> ComparisonReport:
     nlog10p_corr = _safe_corr(nlog10_mx, nlog10_tg)
 
     rep = ComparisonReport(
-        name="S-PrediXcan sumstats (MetaXcan v0.8.1 vs torchgwas.postgwas.twas_sumstat)",
+        name="S-PrediXcan sumstats (MetaXcan v0.8.1 vs torchgenomics.postgwas.twas_sumstat)",
         n_compared=len(common),
     )
     rep.checks.append(_check_max("|Delta z| max", max_dz, TOL_MAX_DZ))
@@ -273,11 +273,11 @@ def compare_sumstat_path(data_dir: Path, out_dir: Path) -> ComparisonReport:
     rep.checks.append(_check_max("|Delta -log10 p| max", max_dnlog10p, TOL_MAX_DNEGLOG10P))
     rep.checks.append(_check_min("Pearson r (z)", z_corr, TOL_Z_CORR))
     rep.extras["MetaXcan z (per gene)"] = mx_z.tolist()
-    rep.extras["TorchGWAS z (per gene)"] = tg_z.tolist()
+    rep.extras["TorchGenomics z (per gene)"] = tg_z.tolist()
     rep.extras["MetaXcan effect_size"] = mx_eff.tolist()
-    rep.extras["TorchGWAS effect_size"] = tg_eff.tolist()
+    rep.extras["TorchGenomics effect_size"] = tg_eff.tolist()
     rep.extras["MetaXcan -log10p"] = nlog10_mx.tolist()
-    rep.extras["TorchGWAS -log10p"] = nlog10_tg.tolist()
+    rep.extras["TorchGenomics -log10p"] = nlog10_tg.tolist()
     rep.extras["effect_size Pearson r"] = eff_corr
     rep.extras["-log10p Pearson r"] = nlog10p_corr
     rep.extras["gene order (compared)"] = common
@@ -300,17 +300,17 @@ def _write_results(rep: ComparisonReport, results_dir: Path, data_dir: Path,
 
     common = rep.extras.get("gene order (compared)", [])
     mx_z = rep.extras.get("MetaXcan z (per gene)", [])
-    tg_z = rep.extras.get("TorchGWAS z (per gene)", [])
+    tg_z = rep.extras.get("TorchGenomics z (per gene)", [])
     mx_eff = rep.extras.get("MetaXcan effect_size", [])
-    tg_eff = rep.extras.get("TorchGWAS effect_size", [])
+    tg_eff = rep.extras.get("TorchGenomics effect_size", [])
     mx_nl = rep.extras.get("MetaXcan -log10p", [])
-    tg_nl = rep.extras.get("TorchGWAS -log10p", [])
+    tg_nl = rep.extras.get("TorchGenomics -log10p", [])
 
     rows = []
     rows.append("\t".join([
-        "gene", "metaxcan_z", "torchgwas_z", "delta_z",
-        "metaxcan_effect_size", "torchgwas_effect_size", "delta_effect_size",
-        "metaxcan_neglog10p", "torchgwas_neglog10p", "delta_neglog10p",
+        "gene", "metaxcan_z", "torchgenomics_z", "delta_z",
+        "metaxcan_effect_size", "torchgenomics_effect_size", "delta_effect_size",
+        "metaxcan_neglog10p", "torchgenomics_neglog10p", "delta_neglog10p",
     ]))
     for i, g in enumerate(common):
         rows.append("\t".join([

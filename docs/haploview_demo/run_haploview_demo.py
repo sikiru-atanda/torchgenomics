@@ -1,6 +1,6 @@
 """Haploview-style LD triangle on the MDP maize fixture.
 
-Uses ``torchgwas.viz.haploview_plot`` directly to render a Haploview-
+Uses ``torchgenomics.viz.haploview_plot`` directly to render a Haploview-
 mirror triangular heatmap of pairwise r² (Barrett et al. 2005 layout)
 with Gabriel-2002 haplotype blocks overlaid as black triangles.
 
@@ -11,12 +11,12 @@ Workflow
    ``tb1`` (teosinte branched 1) locus on chromosome 1 — a classic
    maize LD-block exemplar.
 3. Compute the pairwise r² and |D'| matrices via
-   ``torchgwas.ld.compute_r2_matrix`` and ``compute_dprime_matrix``.
+   ``torchgenomics.ld.compute_r2_matrix`` and ``compute_dprime_matrix``.
 4. Run two block-detection methods for comparison:
    - Gabriel et al. (2002) — confidence-interval-based.
    - r² method — agglomerative on r² threshold.
 5. Render the Haploview triangle with block overlays via
-   ``torchgwas.viz.haploview_plot``.
+   ``torchgenomics.viz.haploview_plot``.
 
 Outputs (next to this script in ``docs/haploview_demo/``):
 
@@ -37,12 +37,12 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torchgwas.ld import (
+from torchgenomics.ld import (
     compute_dprime_matrix,
     compute_r2_matrix,
     detect_blocks,
 )
-from torchgwas.viz import haploview_plot
+from torchgenomics.viz import haploview_plot
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BENCH = REPO_ROOT / "benchmark" / "data"
@@ -76,7 +76,7 @@ def main() -> None:
 
     # Mean-impute the small fraction of NaNs that the MDP fixture carries
     # (Haploview itself would call them missing; for the r²/D' demo we use
-    # the same allele-frequency-mean imputation TorchGWAS's scanners use).
+    # the same allele-frequency-mean imputation TorchGenomics's scanners use).
     for j in range(G_full.shape[1]):
         col = G_full[:, j]
         nan_mask = torch.isnan(col)

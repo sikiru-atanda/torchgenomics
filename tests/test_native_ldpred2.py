@@ -1,4 +1,4 @@
-"""Tests for the native C++ LDpred2 accelerator (torchgwas._native._ldpred2_native).
+"""Tests for the native C++ LDpred2 accelerator (torchgenomics._native._ldpred2_native).
 
 These tests are skipped when the compiled extension is unavailable so that CI
 on machines without a C++ toolchain still runs.
@@ -14,15 +14,15 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_LDPRED2, _ldpred2_native
-from torchgwas.pgs.ld_ref import build_ld_reference
-from torchgwas.pgs.ldpred2 import (
+from torchgenomics._native import HAS_NATIVE_LDPRED2, _ldpred2_native
+from torchgenomics.pgs.ld_ref import build_ld_reference
+from torchgenomics.pgs.ldpred2 import (
     LDpred2Auto,
     LDpred2Grid,
     _ldpred2_gibbs_block_dispatch,
     _native_enabled,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 pytestmark = [
     pytest.mark.skipif(
@@ -87,7 +87,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _native_enabled() is True
 
@@ -166,12 +166,12 @@ def test_native_ldpred2_block_intra_seed_determinism():
 def test_ldpred2grid_native_vs_python_correlation(monkeypatch):
     ss, ld, _ = _make_ss_and_ld(m=20, n=1500, seed=11)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     res_native = LDpred2Grid(seed=0).fit(
         ss, ld, grid_p=[0.01, 0.1], grid_h2=[0.2], n_iter=200, n_burnin=100,
     )
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     res_python = LDpred2Grid(seed=0).fit(
         ss, ld, grid_p=[0.01, 0.1], grid_h2=[0.2], n_iter=200, n_burnin=100,
     )
@@ -187,12 +187,12 @@ def test_ldpred2grid_native_vs_python_correlation(monkeypatch):
 def test_ldpred2auto_native_vs_python_correlation(monkeypatch):
     ss, ld, _ = _make_ss_and_ld(m=20, n=1500, seed=13)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     res_native = LDpred2Auto(seed=0).fit(
         ss, ld, n_iter=300, n_burnin=150, n_chains=2,
     )
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     res_python = LDpred2Auto(seed=0).fit(
         ss, ld, n_iter=300, n_burnin=150, n_chains=2,
     )
@@ -206,7 +206,7 @@ def test_ldpred2auto_native_vs_python_correlation(monkeypatch):
 
 
 def test_ldpred2grid_native_recovers_signs(monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     ss, ld, beta_true = _make_ss_and_ld(m=20, n=2000, seed=3)
     res = LDpred2Grid(seed=0).fit(
         ss, ld, grid_p=[0.05, 0.1], grid_h2=[0.3], n_iter=200, n_burnin=100,
@@ -221,7 +221,7 @@ def test_ldpred2grid_native_recovers_signs(monkeypatch):
 
 
 def test_ldpred2_dispatch_routes_to_native(monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     rng = torch.Generator().manual_seed(0)
     m = 10
     bs = torch.randn(m, dtype=torch.float64, generator=rng) * 0.05
@@ -237,7 +237,7 @@ def test_ldpred2_dispatch_routes_to_native(monkeypatch):
 
 
 def test_ldpred2_dispatch_falls_back_for_float32(monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     rng = torch.Generator().manual_seed(0)
     m = 8
     bs = torch.randn(m, dtype=torch.float32, generator=rng) * 0.05

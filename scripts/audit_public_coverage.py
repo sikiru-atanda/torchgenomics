@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Audit public-symbol test coverage in torchgwas/.
+"""Audit public-symbol test coverage in torchgenomics/.
 
-Walks every module under torchgwas/, enumerates public symbols (via __all__
+Walks every module under torchgenomics/, enumerates public symbols (via __all__
 when present, else top-level non-underscore names), and for each symbol
 checks whether at least one file under tests/ directly imports or invokes it.
 
@@ -25,31 +25,31 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PKG_ROOT = REPO / "torchgwas"
+PKG_ROOT = REPO / "torchgenomics"
 TESTS_ROOT = REPO / "tests"
 
-# Make `torchgwas` importable when the package is not pip-installed
+# Make `torchgenomics` importable when the package is not pip-installed
 # (script may be invoked from any cwd; Python only auto-adds the script's
 # own directory to sys.path, which is `scripts/`, not the repo root).
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 TIER_MAP = {
-    "torchgwas.models": 1,
-    "torchgwas.linalg": 1,
-    "torchgwas.stats": 1,
-    "torchgwas.optim": 1,
-    "torchgwas.scan": 1,
-    "torchgwas.io": 2,
-    "torchgwas.preprocess": 2,
-    "torchgwas.ld": 2,
-    "torchgwas.pgs": 2,
-    "torchgwas.postgwas": 2,
-    "torchgwas.multiomics": 2,
-    "torchgwas.viz": 3,
-    "torchgwas.annotate": 3,
-    "torchgwas.results": 3,
-    "torchgwas.cli": 3,
+    "torchgenomics.models": 1,
+    "torchgenomics.linalg": 1,
+    "torchgenomics.stats": 1,
+    "torchgenomics.optim": 1,
+    "torchgenomics.scan": 1,
+    "torchgenomics.io": 2,
+    "torchgenomics.preprocess": 2,
+    "torchgenomics.ld": 2,
+    "torchgenomics.pgs": 2,
+    "torchgenomics.postgwas": 2,
+    "torchgenomics.multiomics": 2,
+    "torchgenomics.viz": 3,
+    "torchgenomics.annotate": 3,
+    "torchgenomics.results": 3,
+    "torchgenomics.cli": 3,
 }
 
 
@@ -76,7 +76,7 @@ def public_symbols(mod):
             continue
         # Only count things actually defined in the package.
         defining_module = getattr(obj, "__module__", None)
-        if defining_module is not None and not defining_module.startswith("torchgwas"):
+        if defining_module is not None and not defining_module.startswith("torchgenomics"):
             continue
         out.append((name, obj))
     return out
@@ -142,8 +142,8 @@ class _TestFileIndex:
             if base_names & module_local_names:
                 return True
 
-        # Case 2 (dotted): `import torchgwas.linalg` (no alias) + a dotted
-        # `torchgwas.linalg.<symbol>` access — recorded as a chain.
+        # Case 2 (dotted): `import torchgenomics.linalg` (no alias) + a dotted
+        # `torchgenomics.linalg.<symbol>` access — recorded as a chain.
         target = tuple(module.split(".") + [symbol])
         if target in self.dotted_attrs:
             return True
@@ -184,8 +184,8 @@ def _build_test_index(tree: ast.AST) -> _TestFileIndex:
             if isinstance(value, ast.Name):
                 idx.attr_accesses.setdefault(node.attr, set()).add(value.id)
             # Also record full dotted chains rooted in a Name, so that
-            # `import torchgwas.linalg` + `torchgwas.linalg.eig(...)` works
-            # even though the local binding is only `torchgwas`.
+            # `import torchgenomics.linalg` + `torchgenomics.linalg.eig(...)` works
+            # even though the local binding is only `torchgenomics`.
             parts: list[str] = [node.attr]
             cur: ast.AST = value
             while isinstance(cur, ast.Attribute):
@@ -231,7 +231,7 @@ def find_test_files_for_symbol(module: str, symbol: str) -> list[str]:
          `<module>.<symbol>` (or `<alias>.<symbol>`) attribute access.
       3. `from <module_parent> import ... <module_short_name> ...` AND
          `<module_short_name>.<symbol>` (or aliased) attribute access
-         (e.g. `from torchgwas import linalg` + `linalg.eigendecompose(...)`).
+         (e.g. `from torchgenomics import linalg` + `linalg.eigendecompose(...)`).
 
     Uses AST analysis (built once per file and cached) instead of substring
     or word-boundary regex matching, to avoid false positives on common
@@ -245,7 +245,7 @@ def find_test_files_for_symbol(module: str, symbol: str) -> list[str]:
 
 
 def walk_package(root: Path):
-    """Yield (module_name, module_obj) for every submodule under torchgwas/."""
+    """Yield (module_name, module_obj) for every submodule under torchgenomics/."""
     for path in sorted(root.rglob("*.py")):
         if path.name.startswith("_") and path.name != "__init__.py":
             continue
@@ -254,7 +254,7 @@ def walk_package(root: Path):
         if parts[-1] == "__init__":
             parts = parts[:-1]
         modname = ".".join(parts)
-        if not modname.startswith("torchgwas"):
+        if not modname.startswith("torchgenomics"):
             continue
         try:
             mod = importlib.import_module(modname)
