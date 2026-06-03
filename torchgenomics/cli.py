@@ -29,8 +29,14 @@ if _TYPE_CHECKING:
 logger = logging.getLogger("torchgenomics")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Main CLI dispatcher."""
+def _build_parser() -> argparse.ArgumentParser:
+    """Construct the full TorchGenomics CLI argparse parser.
+
+    This is the single source of truth for the CLI argparse schema. It is
+    side-effect-free (does not call ``parse_args``) so other tooling — most
+    notably ``torchgenomics._manifest`` — can walk the subparser tree to
+    emit a machine-readable schema without invoking the CLI.
+    """
     parser = argparse.ArgumentParser(
         prog="torchgenomics",
         description="TorchGenomics: GPU-accelerated Genome-Wide Association Studies",
@@ -96,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
     # --- Full pipeline ---
     _add_pipeline_parser(subparsers)
 
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Main CLI dispatcher."""
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
     # Set up logging
