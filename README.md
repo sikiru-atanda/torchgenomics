@@ -126,6 +126,27 @@ TORCHGWAS_DISABLE_NATIVE=1 ...        # accepted (warns); use TORCHGENOMICS_DISA
 To migrate: change `torchgwas` to `torchgenomics` everywhere (imports, CLI
 invocations, env vars). The Python API surface is identical.
 
+## R users
+
+An R-side wrapper is available as
+[`rTorchGenomics`](rTorchGenomics/README.md). Same engine via
+[reticulate](https://rstudio.github.io/reticulate/), R-idiomatic
+interface (S4 result objects, tibble top-hits tables, ggplot2 plots).
+
+```r
+install.packages(
+  "rTorchGenomics",
+  repos = c("https://sikiru-atanda.r-universe.dev", getOption("repos"))
+)
+library(rTorchGenomics)
+tg_install()                                       # one-time Python setup
+r <- tg_lmm_scan("data.bed", "pheno.tsv")
+print(r); tg_manhattan(r)
+```
+
+See [`rTorchGenomics/README.md`](rTorchGenomics/README.md) for the full
+R interface (45 wrappers total — 11 polished + 32 auto-generated + 2 plots).
+
 ## Quickstart
 
 ### Novice — one line
