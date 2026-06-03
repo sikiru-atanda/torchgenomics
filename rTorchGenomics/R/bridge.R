@@ -22,7 +22,16 @@ bridge_call <- function(fn_name, args = list()) {
   tryCatch(
     {
       py_result <- do.call(py_fn, args)
-      reticulate::py_to_r(py_result$to_dict())
+      has_to_dict <- if (inherits(py_result, "python.builtin.object")) {
+        reticulate::py_has_attr(py_result, "to_dict")
+      } else {
+        is.list(py_result) && is.function(py_result$to_dict)
+      }
+      if (has_to_dict) {
+        reticulate::py_to_r(py_result$to_dict())
+      } else {
+        reticulate::py_to_r(py_result)
+      }
     },
     python.builtin.ValueError = function(e) {
       stop(structure(

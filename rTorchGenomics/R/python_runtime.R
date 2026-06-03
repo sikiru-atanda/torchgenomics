@@ -12,6 +12,7 @@
 #' @return A reticulate module reference.
 #' @keywords internal
 tg_py <- function() {
+  # .pkg_env is defined in zzz.R (Task 2 scaffold)
   if (!is.null(.pkg_env$py_module)) {
     return(.pkg_env$py_module)
   }
@@ -40,8 +41,15 @@ tg_py <- function() {
       )
     )
   )
+  if (!reticulate::py_has_attr(mod, "api")) {
+    stop(structure(
+      class = c("tg_no_python", "error", "condition"),
+      list(message = paste0(
+        "torchgenomics in venv '", venv, "' is older than v0.4.0 ",
+        "(no 'api' module). Run tg_install(force = TRUE)."
+      ))
+    ))
+  }
   .pkg_env$py_module <- mod
   mod
 }
-
-`%||%` <- function(x, y) if (is.null(x)) y else x

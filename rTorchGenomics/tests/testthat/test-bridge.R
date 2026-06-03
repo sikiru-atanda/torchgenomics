@@ -54,6 +54,15 @@ test_that("bridge_call maps Python RuntimeError to tg_runtime_error", {
   )
 })
 
+test_that("bridge_call signals tg_runtime_error when api has no such function", {
+  mockery::stub(bridge_call, "tg_py", function() list(api = list()))
+  expect_error(
+    bridge_call("nonexistent_fn", list()),
+    class = "tg_runtime_error",
+    regexp = "no function 'nonexistent_fn'"
+  )
+})
+
 test_that("bridge_call signals tg_no_python when reticulate import fails", {
   mockery::stub(bridge_call, "tg_py",
                 function() stop(structure(

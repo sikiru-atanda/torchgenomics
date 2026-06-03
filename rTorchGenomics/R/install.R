@@ -20,21 +20,29 @@ tg_install <- function(method = c("virtualenv", "conda"),
   venv <- .managed_venv_name()
   target <- paste0("torchgenomics[mcp]==", utils::packageVersion("rTorchGenomics"))
 
-  if (force && reticulate::virtualenv_exists(venv)) {
-    message("Removing existing venv: ", venv)
-    reticulate::virtualenv_remove(venv, confirm = FALSE)
+  if (force) {
+    if (method == "virtualenv" && reticulate::virtualenv_exists(venv)) {
+      message("Removing existing venv: ", venv)
+      reticulate::virtualenv_remove(venv, confirm = FALSE)
+    }
+    if (method == "conda" && reticulate::condaenv_exists(venv)) {
+      message("Removing existing conda env: ", venv)
+      reticulate::conda_remove(envname = venv)
+    }
   }
 
   if (method == "virtualenv") {
     if (!reticulate::virtualenv_exists(venv)) {
       message("Creating venv: ", venv)
-      python_path <- tryCatch(
-        reticulate::virtualenv_python(),
-        error = function(e) {
-          message("Installing Python ", python_version, " via reticulate...")
-          reticulate::install_python(version = python_version)
-        }
-      )
+      python_path <- if (nzchar(Sys.which("python3"))) {
+        Sys.which("python3")
+      } else if (nzchar(Sys.which("python"))) {
+        Sys.which("python")
+      } else {
+        message("No system Python found; installing Python ", python_version,
+                " via reticulate...")
+        reticulate::install_python(version = python_version)
+      }
       reticulate::virtualenv_create(envname = venv, python = python_path)
     }
     message("Installing ", target, " into ", venv, "...")

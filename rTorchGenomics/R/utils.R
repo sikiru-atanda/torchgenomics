@@ -8,3 +8,7 @@
   if (is.null(x)) return(NULL)
   as.character(x)
 }
+
+# Null-coalescing operator (internal helper; no roxygen tag — avoids an
+# Rd file whose \name contains '%' which R CMD check flags).
+`%||%` <- function(x, y) if (is.null(x)) y else x
