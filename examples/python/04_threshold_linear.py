@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.models import ThresholdLinearModel, VariantMeta
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.models import ThresholdLinearModel, VariantMeta
 
 OUT_DIR = Path(__file__).resolve().parent / "results"
 OUT_DIR.mkdir(parents=True, exist_ok=True)

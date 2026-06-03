@@ -8,7 +8,7 @@
 #     OpenGWAS / external access, breaking reproducibility.
 #   - Per Foley et al. 2021 the simplest informative fixture is 3 correlated
 #     traits with one planted shared causal SNP. Cluster {T1,T2,T3} should
-#     emerge with PP >= 0.95 in both R and TorchGWAS.
+#     emerge with PP >= 0.95 in both R and TorchGenomics.
 #
 # Idempotent: skips if data/sumstats.tsv + data/sim_truth.json exist.
 

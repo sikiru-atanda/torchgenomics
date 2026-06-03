@@ -35,7 +35,7 @@ from scipy.stats import kstest, spearmanr
 
 
 def _make_vmeta(m):
-    from torchgwas.models.base import VariantMeta
+    from torchgenomics.models.base import VariantMeta
     return VariantMeta(
         snp=[f"s{i}" for i in range(m)],
         chr=["1"] * m, pos=list(range(m)),
@@ -149,8 +149,8 @@ class TestMEGLMMvsBinaryGLMM:
 
     def test_per_env_pvalues_correlate_with_binary_glmm(self):
         """Per-env marginal p-values should rank-correlate with BinaryGLMM."""
-        from torchgwas.models.binary_glmm import BinaryGLMM
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_independent_envs(n=300, E=3, m=30, seed=42)
         vmeta = _make_vmeta(30)
@@ -181,8 +181,8 @@ class TestMEGLMMvsBinaryGLMM:
 
     def test_score_numerator_matches_binary_glmm(self):
         """Score U = g'(Y-μ) should have consistent sign with BinaryGLMM."""
-        from torchgwas.models.binary_glmm import BinaryGLMM
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_independent_envs(n=300, E=2, m=20, seed=43)
         vmeta = _make_vmeta(20)
@@ -224,7 +224,7 @@ class TestMEGLMMvsStatsmodelsGLM:
         The GLMM mu includes BLUP corrections, so exact agreement is not
         expected, but the rank order of SNP significance should be similar.
         """
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_low_h2(n=400, E=2, m=30, seed=55, h2=0.05)
         vmeta = _make_vmeta(30)
@@ -271,7 +271,7 @@ class TestMEGLMMvsStatsmodelsGLM:
 
     def test_null_calibration_low_h2(self):
         """Under low h² and null (no true signal), p-values should be ~uniform."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_low_h2(n=400, E=2, m=200, seed=56, h2=0.05)
         vmeta = _make_vmeta(200)
@@ -310,7 +310,7 @@ class TestJointTestConsistency:
 
     def test_joint_equals_sum_marginals(self):
         """stat_joint should equal sum of stat_marginal across environments."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_independent_envs(n=300, E=3, m=20, seed=44)
         vmeta = _make_vmeta(20)
@@ -330,7 +330,7 @@ class TestJointTestConsistency:
 
     def test_joint_df_correct(self):
         """Joint test should have E degrees of freedom."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         Y, G, X0, K = _simulate_independent_envs(n=300, E=3, m=200, seed=45)
         vmeta = _make_vmeta(200)
@@ -360,7 +360,7 @@ class TestMEGLMMSPAvsReference:
 
     def test_spa_leq_chi2_imbalanced(self):
         """Under imbalanced prevalence, SPA p ≤ chi2 p (or very close)."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(60)
         np.random.seed(60)
@@ -426,8 +426,8 @@ class TestMEGLMMOrdinalvsOrdinalGLMM:
 
     def test_ordinal_per_env_correlate(self):
         """Ordinal per-env marginals should rank-correlate with OrdinalGLMM."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
-        from torchgwas.models.ordinal_glmm import OrdinalGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.ordinal_glmm import OrdinalGLMM
 
         torch.manual_seed(70)
         np.random.seed(70)
@@ -498,7 +498,7 @@ class TestMEGLMMOrdinalvsStatsmodels:
 
     def test_ordinal_no_relatedness_calibrated(self):
         """Under K≈I and null, ordinal per-env p-values should be ~uniform."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(75)
         np.random.seed(75)
@@ -551,8 +551,8 @@ class TestMEGLMMPowerConsistency:
 
     def test_both_detect_planted_signal(self):
         """A strong SNP effect should be detected by both ME-GLMM and BinaryGLMM."""
-        from torchgwas.models.binary_glmm import BinaryGLMM
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(80)
         np.random.seed(80)
@@ -621,7 +621,7 @@ class TestHomogeneityVsBinaryGLMM:
 
     def test_homogeneous_effect_small_stat(self):
         """When effect is the same in all envs, homogeneity stat should be small."""
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         torch.manual_seed(90)
         np.random.seed(90)

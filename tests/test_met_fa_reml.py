@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multi_env_lmm import MultiEnvLMM, _parse_vg_structure
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multi_env_lmm import MultiEnvLMM, _parse_vg_structure
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -110,7 +110,7 @@ class TestVgStructureParser:
 
     def test_fa_arbitrary_k_paramcount(self):
         """Verify free params formula: E*k − k(k−1)/2 + E."""
-        from torchgwas.optim.fa_lbfgs_reml import _build_loading_map
+        from torchgenomics.optim.fa_lbfgs_reml import _build_loading_map
 
         for E in [3, 5, 8, 10]:
             for k in range(1, E):
@@ -217,7 +217,7 @@ class TestFAInterpretive:
 
     def test_update_null_fa_preserves_metadata(self, met_data_3env):
         """update_null on FA model should preserve fa_Lambda, fa_rank, env_names."""
-        from torchgwas.config import NumericalConfig
+        from torchgenomics.config import NumericalConfig
         Y, X0, K, _ = met_data_3env
         config = NumericalConfig()
         config.reml_max_iter = 3

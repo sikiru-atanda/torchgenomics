@@ -3,7 +3,7 @@
 #
 # Pipeline:
 #   1. Reference: per-SNP coxme on the fixture (Wald beta/SE/p; ~0.5 s).
-#   2. Comparator: TorchGWAS SurvivalGLMM PQL+score test, with and
+#   2. Comparator: TorchGenomics SurvivalGLMM PQL+score test, with and
 #      without SPACox SPA tail correction.
 #   3. compare.py merges, computes agreement metrics, writes
 #      results/{summary.tsv, agreement.json}.

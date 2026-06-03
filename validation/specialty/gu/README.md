@@ -1,6 +1,6 @@
 # GU — Genotype-Uncertainty LMM internal-consistency harness (Phase 28)
 
-`torchgwas.models.gu_lmm.GULM` implements a dosage-variance-corrected
+`torchgenomics.models.gu_lmm.GULM` implements a dosage-variance-corrected
 score test for genotype data with per-cell imputation uncertainty. No
 widely-used reference implementation exists outside the original paper's
 own code base, so per spec § 10.6 this harness validates the
@@ -41,7 +41,7 @@ it with kinship noise.
 ```bash
 bash validation/specialty/gu/run.sh
 # Or directly:
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/specialty/gu/generate_and_compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/specialty/gu/generate_and_compare.py
 ```
 
 Outputs (committed):

@@ -1,4 +1,4 @@
-# TorchGWAS Validation Campaign — Design Spec
+# TorchGenomics Validation Campaign — Design Spec
 
 - **Status:** approved (brainstorming complete; awaiting user spec review)
 - **Author:** Claude Code (autonomous, with two-track agent review)
@@ -9,13 +9,13 @@
 
 ## 1. Goal
 
-Drive every public function in `torchgwas/` through tier-appropriate validation — math correctness, behavior, or smoke — and benchmark every claim of reference equivalence against a fresh install of the actual reference tool on a public dataset. Findings get fixed (V1 core) or ledgered (post-V1) per a strict severity tier.
+Drive every public function in `torchgenomics/` through tier-appropriate validation — math correctness, behavior, or smoke — and benchmark every claim of reference equivalence against a fresh install of the actual reference tool on a public dataset. Findings get fixed (V1 core) or ledgered (post-V1) per a strict severity tier.
 
 ## 2. Pillars (sequenced)
 
 | Order | Pillar | Scope | Bar |
 |---|---|---|---|
-| 1 | **A — Coverage audit + fill** | Every public symbol in `torchgwas/` | Tiered: math / behavior / smoke (§4) |
+| 1 | **A — Coverage audit + fill** | Every public symbol in `torchgenomics/` | Tiered: math / behavior / smoke (§4) |
 | 2 | **B — Reference-tool comparisons** | All nine reference tools (§5) on public data — three already-wired (GEMMA, GAPIT, GWASpoly) re-housed in the new harness layout, plus six newly added (PLINK 2.0, LDSC, regenie, SAIGE, TwoSampleMR, BOLT-LMM) | 4th-decimal where contracted; documented otherwise |
 | 3 | **C — End-to-end CLI smoke matrix** | Every CLI subcommand × every supported genotype format × CPU (and GPU where available) | Exit 0 + output sanity invariants |
 | 4 | **D — Reproducibility audit** | Re-run committed golden fixtures against fresh upstream installs | Drift between fixture and fresh tool ≤ tolerance |
@@ -41,9 +41,9 @@ Drive every public function in `torchgwas/` through tier-appropriate validation 
 ### 4.2 Coverage auditor
 
 `scripts/audit_public_coverage.py`:
-- Walks every module under `torchgwas/`.
+- Walks every module under `torchgenomics/`.
 - Determines public symbols via `__all__` if present, else top-level non-underscore-prefixed `def`/`class`.
-- For each symbol, greps `tests/` for `from torchgwas...import <symbol>` or `torchgwas...<symbol>(` patterns.
+- For each symbol, greps `tests/` for `from torchgenomics...import <symbol>` or `torchgenomics...<symbol>(` patterns.
 - Emits `docs/validation_findings/coverage_audit.json` keyed by `module.symbol`, with fields `{tier, kind, has_direct_test, test_files, lineno}`.
 - The "has_direct_test" flag is conservative: indirect / transitive use does not count.
 - Audit is run once at pillar A start; output committed; revisited at end of pillar A to verify zero remaining `has_direct_test=false` rows for in-tier symbols.
@@ -77,7 +77,7 @@ Drive every public function in `torchgwas/` through tier-appropriate validation 
 
 Six tools, all wired up. Heavy installs (SAIGE, BOLT-LMM, regenie) get a memory pre-flight check before each run.
 
-| Tool | Version target | TorchGWAS counterparts | Public dataset(s) |
+| Tool | Version target | TorchGenomics counterparts | Public dataset(s) |
 |---|---|---|---|
 | **GEMMA** | 0.98.5 (already pinned) | `SingleTraitLMM`, `MultiTraitLMM`, `linalg.kinship` | MDP maize (committed) + 1000G chr22 |
 | **GAPIT3** | 3.4 (already pinned) | `FarmCPU`, `BLINK`, `GLM` | MDP maize + 1000G chr22 |
@@ -284,7 +284,7 @@ Memory budget verified at spec time: 62 GB RAM (54 free), 1.6 TB free on /home, 
 
 ## 14. Non-goals
 
-- No refactor of TorchGWAS production code beyond what F3 requires.
+- No refactor of TorchGenomics production code beyond what F3 requires.
 - No new feature scope. (No "while I'm here, let me add BSLMM.")
 - No public API changes.
 - No CI runtime increase from default `pytest tests/` — the `external` and `golden` markers stay opt-in.

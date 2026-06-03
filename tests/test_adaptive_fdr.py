@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.stats.adaptive_fdr import (
+from torchgenomics.stats.adaptive_fdr import (
     AdaPTResult,
     IHWResult,
     _bin_covariates,
     adapt,
     ihw,
 )
-from torchgwas.stats.multipletesting import benjamini_hochberg
+from torchgenomics.stats.multipletesting import benjamini_hochberg
 
 # ===================================================================
 # Helper: simulate p-values with informative covariate

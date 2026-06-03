@@ -1,4 +1,4 @@
-"""Tests for the native C++ PRS-CS accelerator (torchgwas._native._prscs_native).
+"""Tests for the native C++ PRS-CS accelerator (torchgenomics._native._prscs_native).
 
 These tests are skipped when the compiled extension is unavailable so that CI
 on machines without a C++ toolchain still runs.
@@ -14,10 +14,10 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_PRSCS, _prscs_native
-from torchgwas.pgs.ld_ref import build_ld_reference
-from torchgwas.pgs.prscs import PRSCS, _native_enabled, _prscs_gibbs_block_dispatch
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics._native import HAS_NATIVE_PRSCS, _prscs_native
+from torchgenomics.pgs.ld_ref import build_ld_reference
+from torchgenomics.pgs.prscs import PRSCS, _native_enabled, _prscs_gibbs_block_dispatch
+from torchgenomics.postgwas._sumstats import SumStats
 
 pytestmark = [
     pytest.mark.skipif(
@@ -85,7 +85,7 @@ def test_native_module_loads():
 
 def test_native_dispatch_active_by_default():
     # Should be True when nothing is overridden in the environment.
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _native_enabled() is True
 
@@ -207,10 +207,10 @@ def test_prscs_fit_native_vs_python_correlation(monkeypatch):
     """
     ss, ld, _ = _make_ss_and_ld(m=20, n=1500, seed=11)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     res_native = PRSCS(seed=0).fit(ss, ld, phi=1e-2, n_iter=300, n_burnin=150)
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     res_python = PRSCS(seed=0).fit(ss, ld, phi=1e-2, n_iter=300, n_burnin=150)
 
     w_n = res_native.weight.numpy()
@@ -222,7 +222,7 @@ def test_prscs_fit_native_vs_python_correlation(monkeypatch):
 
 
 def test_prscs_fit_native_recovers_signs(monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     ss, ld, beta_true = _make_ss_and_ld(m=20, n=2000, seed=3)
     res = PRSCS(seed=0).fit(ss, ld, phi=1e-2, n_iter=200, n_burnin=100)
     # Check the two SNPs that have known non-zero true betas
@@ -232,7 +232,7 @@ def test_prscs_fit_native_recovers_signs(monkeypatch):
 
 def test_prscs_dispatch_routes_to_native(monkeypatch):
     """The dispatcher must take the native branch on CPU/float64."""
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     rng = torch.Generator().manual_seed(0)
     m = 10
     bs = torch.randn(m, dtype=torch.float64, generator=rng) * 0.05
@@ -257,11 +257,11 @@ def test_prscs_hybrid_path_large_m(monkeypatch):
     match is impossible because the two paths use different RNGs for the
     per-SNP GIG and Gamma draws.
     """
-    from torchgwas.pgs.prscs import (
+    from torchgenomics.pgs.prscs import (
         _PRSCS_HYBRID_M_THRESHOLD,
         _prscs_gibbs_block,
     )
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
 
     m = _PRSCS_HYBRID_M_THRESHOLD + 50  # force hybrid branch
     g = torch.Generator().manual_seed(7)
@@ -286,7 +286,7 @@ def test_prscs_hybrid_path_large_m(monkeypatch):
 
 def test_prscs_dispatch_falls_back_for_float32(monkeypatch):
     """float32 inputs must take the Python path even when native is built."""
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     rng = torch.Generator().manual_seed(0)
     m = 8
     bs = torch.randn(m, dtype=torch.float32, generator=rng) * 0.05

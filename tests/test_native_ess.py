@@ -1,5 +1,5 @@
 """Tests for the native C++ Geyer-ESS accelerator
-(``torchgwas._native._ess_native``).
+(``torchgenomics._native._ess_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_ESS, _ess_native
-from torchgwas.pgs.diagnostics import _native_enabled, ess
+from torchgenomics._native import HAS_NATIVE_ESS, _ess_native
+from torchgenomics.pgs.diagnostics import _native_enabled, ess
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_ESS,
@@ -33,7 +33,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _native_enabled() is True
 
@@ -111,10 +111,10 @@ def _make_chains(M: int, N: int, m: int, rho: float, seed: int = 0) -> torch.Ten
 def test_dispatch_native_matches_python(monkeypatch):
     chains = _make_chains(M=3, N=200, m=5, rho=0.6, seed=1)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     out_native = ess(chains)
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     out_python = ess(chains)
 
     torch.testing.assert_close(out_native, out_python)
@@ -124,10 +124,10 @@ def test_dispatch_native_matches_python_2d(monkeypatch):
     """Single-parameter (2-D) input must match too."""
     chains = _make_chains(M=2, N=150, m=1, rho=0.4, seed=2).squeeze(-1)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     out_native = ess(chains)
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     out_python = ess(chains)
 
     torch.testing.assert_close(out_native, out_python)
@@ -137,10 +137,10 @@ def test_dispatch_native_matches_python_uncorrelated(monkeypatch):
     rng = np.random.default_rng(3)
     chains = torch.from_numpy(rng.standard_normal((4, 300, 6)))
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     out_native = ess(chains)
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     out_python = ess(chains)
 
     torch.testing.assert_close(out_native, out_python)

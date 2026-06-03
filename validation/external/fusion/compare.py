@@ -1,10 +1,10 @@
-"""Compare FUSION measured-expression reference vs torchgwas.postgwas.
+"""Compare FUSION measured-expression reference vs torchgenomics.postgwas.
 twas_observed_expression on the same fixture.
 
 The reference (validation/external/fusion/run_reference.R) implements
 the OLS Wald for the gene-expression coefficient in
-``y ~ intercept + covariates + expression_g``. TorchGWAS reaches the
-same Wald via ``torchgwas.models.glm.GLM`` driven by
+``y ~ intercept + covariates + expression_g``. TorchGenomics reaches the
+same Wald via ``torchgenomics.models.glm.GLM`` driven by
 ``twas_observed_expression``. Both paths use F(1, n-p) p-values from
 the residual variance estimator, so we expect agreement at FP precision.
 
@@ -38,7 +38,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import twas_observed_expression  # noqa: E402
+from torchgenomics.postgwas import twas_observed_expression  # noqa: E402
 
 
 TOL_REL_BETA = 1e-8
@@ -160,7 +160,7 @@ def compare_fusion(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
     common = sorted(set(tg_by_gene) & set(fusion_by_gene))
     rep = ComparisonReport(
-        name="FUSION measured-expression vs torchgwas.postgwas.twas_observed_expression",
+        name="FUSION measured-expression vs torchgenomics.postgwas.twas_observed_expression",
         n_compared=len(common),
     )
 

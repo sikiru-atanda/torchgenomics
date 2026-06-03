@@ -21,7 +21,7 @@
 #
 # Nuisance learner: quadratic-feature ridge.  This is intentionally a
 # specific, transparent, paper-faithful choice -- not a black-box ML model
-# -- so that re-runs are deterministic and any divergence with TorchGWAS
+# -- so that re-runs are deterministic and any divergence with TorchGenomics
 # OCFLMM is attributable to algorithmic differences, not learner stochasticity.
 
 suppressPackageStartupMessages({

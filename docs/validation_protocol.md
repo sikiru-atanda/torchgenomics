@@ -1,6 +1,6 @@
-# TorchGWAS Validation Protocol
+# TorchGenomics Validation Protocol
 
-Reference: TorchGWAS AI Agent Handoff Charter, Section 16.
+Reference: TorchGenomics AI Agent Handoff Charter, Section 16.
 
 This document is the long-term validation target. It includes datasets,
 formats, scale targets, and reference comparisons that are not all active in

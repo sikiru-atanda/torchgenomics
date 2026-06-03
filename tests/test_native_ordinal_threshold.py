@@ -1,7 +1,7 @@
 """Regression tests for the native C++ OrdinalGLMM threshold-NR kernel.
 
 The native kernel
-(``torchgwas._native._ordinal_threshold_native.ordinal_threshold_score_hessian``)
+(``torchgenomics._native._ordinal_threshold_native.ordinal_threshold_score_hessian``)
 replaces the nested ``for jj / for kk`` Python score + Hessian
 assembly inside the OrdinalGLMM PQL null fit. These tests assert:
 
@@ -10,7 +10,7 @@ assembly inside the OrdinalGLMM PQL null fit. These tests assert:
     floor.
 2.  **End-to-end fit_null parity** — the full PQL null fit converges
     to the same fixed point under both code paths.
-3.  **Env-var fallthrough** — TORCHGWAS_DISABLE_NATIVE=1 forces
+3.  **Env-var fallthrough** — TORCHGENOMICS_DISABLE_NATIVE=1 forces
     the Python reference path.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas._native import (
+from torchgenomics._native import (
     HAS_NATIVE_ORDINAL_THRESHOLD,
     _ordinal_threshold_native,
 )
@@ -138,7 +138,7 @@ class TestOrdinalGLMMEndToEndParity(unittest.TestCase):
     def test_fit_null_converges_under_both_paths(self):
         # Use the model directly to exercise the full PQL loop with
         # the native threshold kernel wired in.
-        from torchgwas.models.ordinal_glmm import OrdinalGLMM
+        from torchgenomics.models.ordinal_glmm import OrdinalGLMM
         rng = np.random.default_rng(46)
         n = 300
         J = 3
@@ -151,19 +151,19 @@ class TestOrdinalGLMMEndToEndParity(unittest.TestCase):
         Y = torch.from_numpy(Y_int).to(torch.int64)
 
         def fit_once(env_value):
-            prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+            prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
             if env_value is None:
-                os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+                os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
             else:
-                os.environ["TORCHGWAS_DISABLE_NATIVE"] = env_value
+                os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = env_value
             try:
                 m = OrdinalGLMM(n_categories=J)
                 return m.fit_null(Y=Y, X0=X0, K=K)
             finally:
                 if prev is None:
-                    os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+                    os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
                 else:
-                    os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+                    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
         nf_py = fit_once("1")
         nf_cpp = fit_once(None)

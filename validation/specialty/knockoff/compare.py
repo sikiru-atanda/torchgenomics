@@ -1,11 +1,11 @@
-"""Compare R knockoff vs TorchGWAS KnockoffLMM empirical FDR + power.
+"""Compare R knockoff vs TorchGenomics KnockoffLMM empirical FDR + power.
 
 Both tools were run on the SAME simulated fixtures at the same target FDR.
 They differ in their underlying machinery:
 
   - R knockoff::knockoff.filter: per-SNP, fixed-design Gaussian knockoffs (n>p),
     lasso-coef-diff statistic, knockoff+ filter on individual SNPs.
-  - torchgwas.models.KnockoffLMM: per-LD-block group knockoffs, LMM Wald-stat,
+  - torchgenomics.models.KnockoffLMM: per-LD-block group knockoffs, LMM Wald-stat,
     knockoff+ filter on block-level W_b statistic.
 
 The comparison is **empirical-FDR + empirical-power agreement** at the SAME
@@ -37,9 +37,9 @@ import pandas as pd
 #
 # OBSERVED (Plan B Tier 3 C5 first-run, 2026-05-15):
 #   R knockoff::knockoff.filter  mean_fdr = 0.1548 +/- 0.0170
-#   torchgwas.KnockoffLMM        mean_fdr = 0.0000 +/- 0.0000
+#   torchgenomics.KnockoffLMM        mean_fdr = 0.0000 +/- 0.0000
 #   R knockoff::knockoff.filter  mean_pow = 0.9525 +/- 0.0199
-#   torchgwas.KnockoffLMM        mean_pow = 0.8438 +/- 0.0238
+#   torchgenomics.KnockoffLMM        mean_pow = 0.8438 +/- 0.0238
 #
 #   Observed |Delta mean FDR|   = 0.1548  (R operates near target; TG conservative)
 #   Observed |Delta mean power| = 0.1087  (R has higher per-SNP power)
@@ -126,7 +126,7 @@ def compare(tg_summary, ref_summary, tg_per_rep, ref_per_rep, truth, target_fdr)
     ref_overshoot = max(0.0, ref_summary["mean_fdr"] - target_fdr)
 
     rep = ComparisonReport(
-        name="R knockoff::knockoff.filter  vs  torchgwas.KnockoffLMM",
+        name="R knockoff::knockoff.filter  vs  torchgenomics.KnockoffLMM",
         n_replicates=n,
     )
     rep.checks.append(_check_max("|Delta mean FDR|", d_fdr, TOL_DELTA_FDR,

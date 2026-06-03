@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.config import (
+from torchgenomics.config import (
     GRM_ACCUM_DTYPE,
     IO_DTYPE,
     STAT_DTYPE,
     AMPConfig,
     NumericalConfig,
-    TorchGWASConfig,
+    TorchGenomicsConfig,
 )
 
 
@@ -27,11 +27,11 @@ class TestDtypePolicy:
         assert torch.float64 == GRM_ACCUM_DTYPE
 
 
-class TestTorchGWASConfig:
+class TestTorchGenomicsConfig:
     """Verify config dataclass instantiation."""
 
     def test_default_config(self):
-        cfg = TorchGWASConfig(device=torch.device("cpu"))
+        cfg = TorchGenomicsConfig(device=torch.device("cpu"))
         assert cfg.ploidy == 2
         assert cfg.chunk_size == 1024
         assert cfg.deterministic is False

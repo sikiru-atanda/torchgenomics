@@ -1,4 +1,4 @@
-"""Compare TorchGWAS SurvivalGLMM vs R coxme on the Tier 3 C1 fixture.
+"""Compare TorchGenomics SurvivalGLMM vs R coxme on the Tier 3 C1 fixture.
 
 Pipeline
 --------
@@ -19,7 +19,7 @@ Tolerance philosophy: observed-then-floored (Pillar B convention).
 
 Documented divergences vs coxme:
 - coxme runs a Wald test on the fixed-effect SNP beta after fitting the
-  full Cox PH frailty model with the SNP in.  TorchGWAS SurvivalGLMM
+  full Cox PH frailty model with the SNP in.  TorchGenomics SurvivalGLMM
   runs a score test on the null GLMM with the SNP held out.  The two
   tests are asymptotically equivalent under H0 but differ in small-n at
   causal loci because Wald uses curvature at the MLE while score uses
@@ -45,9 +45,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.survival_glmm import SurvivalGLMM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.survival_glmm import SurvivalGLMM  # noqa: E402
 
 
 @dataclass

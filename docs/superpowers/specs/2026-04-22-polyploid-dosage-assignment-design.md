@@ -8,22 +8,22 @@
 
 ## 1. Motivation and scope boundary
 
-TorchGWAS already contains the *downstream* half of a polyploid dosage pipeline:
+TorchGenomics already contains the *downstream* half of a polyploid dosage pipeline:
 
-- `torchgwas.preprocess.dosage_uncertainty` — consumes posterior `P(dosage = d)` of shape `(n, m, k+1)` and produces `expected_dosage`, `dosage_variance`, `dosage_rsq`.
-- `torchgwas.models.GULM` — consumes `dosage_var` for a dosage-variance-corrected score test (Phase 28, "GU-LMM").
-- `torchgwas.preprocess.phase.load_haplotypes` — ploidy-generic, reads a phased polyploid VCF.
-- `torchgwas.models.haplotype_gwas` — Phase 46/47 haplotype scans, ploidy-generic on the input side.
+- `torchgenomics.preprocess.dosage_uncertainty` — consumes posterior `P(dosage = d)` of shape `(n, m, k+1)` and produces `expected_dosage`, `dosage_variance`, `dosage_rsq`.
+- `torchgenomics.models.GULM` — consumes `dosage_var` for a dosage-variance-corrected score test (Phase 28, "GU-LMM").
+- `torchgenomics.preprocess.phase.load_haplotypes` — ploidy-generic, reads a phased polyploid VCF.
+- `torchgenomics.models.haplotype_gwas` — Phase 46/47 haplotype scans, ploidy-generic on the input side.
 
-What is *missing* is the **producer** side. `torchgwas/preprocess/phase.py::phase_beagle` falsely advertised a `ploidy` knob against BEAGLE 5.x (which is diploid-only). That was corrected in the same commit that introduces this design document. There is no tool inside TorchGWAS that converts raw polyploid sequencing read counts to posterior dosages.
+What is *missing* is the **producer** side. `torchgenomics/preprocess/phase.py::phase_beagle` falsely advertised a `ploidy` knob against BEAGLE 5.x (which is diploid-only). That was corrected in the same commit that introduces this design document. There is no tool inside TorchGenomics that converts raw polyploid sequencing read counts to posterior dosages.
 
-Phase 55 delivers **exactly one** piece of that producer side: a thin external-wrapper module, `torchgwas.preprocess.dosage_call`, that shells out to the R package `updog` to call posterior dosages from per-sample allele-depth read counts. Downstream modules consume the output without modification.
+Phase 55 delivers **exactly one** piece of that producer side: a thin external-wrapper module, `torchgenomics.preprocess.dosage_call`, that shells out to the R package `updog` to call posterior dosages from per-sample allele-depth read counts. Downstream modules consume the output without modification.
 
 ### In scope
 
 - One wrapper function `run_updog(...)` around `updog::multidog()`.
 - One dataclass `DosageCallResult` describing the call output.
-- One CLI subcommand `torchgwas dosage-call`.
+- One CLI subcommand `torchgenomics dosage-call`.
 - Tests: ~15 always-on Python tests (subprocess stubbed) plus ~5 release-time end-to-end tests that run real `updog`.
 - Documentation: CLI help surface, one getting-started recipe, one memory file.
 
@@ -33,8 +33,8 @@ Phase 55 delivers **exactly one** piece of that producer side: a thin external-w
 - **`polyRAD` / `fitPoly` wrappers** — same wrapper pattern applies; queued as Phase 55 follow-ups.
 - **GPU acceleration** — `updog` runs on R/C; we only parse its output.
 - **Changes to `dosage_uncertainty.py`, `GULM`, `poly-scan`** — already correct downstream consumers.
-- **Integration with the `torchgwas pipeline` subcommand** — cleanup concern, not Phase 55.
-- **A pure-Python reimplementation of `updog`** — the repo's "Python-as-spec, native-as-shortcut" convention applies to *accelerated inference* primitives, not to *producer* steps. We follow the existing precedent in `torchgwas.preprocess.impute_external` (BEAGLE / IMPUTE5 / Minimac4 are wrapped, not reimplemented).
+- **Integration with the `torchgenomics pipeline` subcommand** — cleanup concern, not Phase 55.
+- **A pure-Python reimplementation of `updog`** — the repo's "Python-as-spec, native-as-shortcut" convention applies to *accelerated inference* primitives, not to *producer* steps. We follow the existing precedent in `torchgenomics.preprocess.impute_external` (BEAGLE / IMPUTE5 / Minimac4 are wrapped, not reimplemented).
 
 ### Integration point
 
@@ -52,11 +52,11 @@ No code changes to the downstream path.
 
 ## 2. Components and interfaces
 
-Three components, all living in a single new file `torchgwas/preprocess/dosage_call.py`.
+Three components, all living in a single new file `torchgenomics/preprocess/dosage_call.py`.
 
 ### 2.1 `DosageCallResult` dataclass
 
-Mirrors `ImputationResult` in `torchgwas/preprocess/impute_external.py` for conceptual symmetry.
+Mirrors `ImputationResult` in `torchgenomics/preprocess/impute_external.py` for conceptual symmetry.
 
 ```python
 @dataclass
@@ -113,7 +113,7 @@ A ~40-line `_UPDOG_DRIVER_R` string constant at module level in `dosage_call.py`
 ### 2.4 Directory
 
 ```
-torchgwas/preprocess/
+torchgenomics/preprocess/
 ├── dosage_call.py          # NEW — run_updog, DosageCallResult, _UPDOG_DRIVER_R
 └── dosage_uncertainty.py   # unchanged
 ```
@@ -217,7 +217,7 @@ After stacking `probs`:
 
 | Dependency | Status | Reason |
 | --- | --- | --- |
-| `cyvcf2` | already optional (used by `torchgwas.io.vcf.VCFReader`, `load_haplotypes`) | VCF + AD extraction |
+| `cyvcf2` | already optional (used by `torchgenomics.io.vcf.VCFReader`, `load_haplotypes`) | VCF + AD extraction |
 | R ≥ 4.0 + `updog` ≥ 2.0.2 | NEW, opt-in, user-installed | the wrapped tool |
 | `pandas` | hard dep | read `k+1` output TSVs |
 
@@ -276,7 +276,7 @@ Phase 55 is complete when **all** of the following hold:
 1. All Tier 1 tests pass on every CI matrix job (Linux + Windows × 3.10/3.11/3.12).
 2. All Tier 2 tests pass locally on a machine with `R >= 4.0` and `updog >= 2.0.2` (the floor where `format_multidog()`'s SNP-dimension reorder bug was fixed upstream).
 3. The Phase 55 entry in `docs/ROADMAP.md` is **removed** (it's shipped, no longer pending). The separate Phase 56 entry for polyploid phasing stays untouched.
-4. `torchgwas dosage-call --help` is captured in `docs/cli.md`.
+4. `torchgenomics dosage-call --help` is captured in `docs/cli.md`.
 5. `docs/getting-started/` has one recipe walking VCF → `dosage-call` → `gu-scan` on a toy dataset.
 6. A memory file `project_dosage_call.md` is added under `C:\Users\Sikiru\.claude\projects\C--Users-Sikiru-Documents-GWAS-Expert\memory\` with scope, test count, and any gotchas discovered during implementation (mirrors the other per-phase memories).
 7. No new C++ kernels were added → no `bench/native_speedups.md` entry required.
@@ -285,10 +285,10 @@ Phase 55 is complete when **all** of the following hold:
 
 ## 6. CLI
 
-New subcommand `torchgwas dosage-call`, wired into `torchgwas/cli.py`. No decomposition of `cli.py` in this phase — that's a standing `docs/ROADMAP.md` cleanup.
+New subcommand `torchgenomics dosage-call`, wired into `torchgenomics/cli.py`. No decomposition of `cli.py` in this phase — that's a standing `docs/ROADMAP.md` cleanup.
 
 ```bash
-torchgwas dosage-call \
+torchgenomics dosage-call \
   --vcf calls.vcf.gz \
   --output out/dosage \
   --ploidy 4 \
@@ -315,27 +315,27 @@ Writes:
 
 ```bash
 # 1. Dosage-call → GU-LMM (GP-aware score test, primary use case)
-torchgwas dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4
+torchgenomics dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4
 python -c "
 import torch
-from torchgwas.preprocess.dosage_uncertainty import expected_dosage, dosage_variance
+from torchgenomics.preprocess.dosage_uncertainty import expected_dosage, dosage_variance
 probs = torch.load('out/dcall.probs.pt')
 torch.save(expected_dosage(probs, 4), 'out/dosage.pt')
 torch.save(dosage_variance(probs, 4), 'out/dosage_var.pt')
 "
-torchgwas gu-scan --genotype out/dosage.pt --phenotype pheno.txt \
+torchgenomics gu-scan --genotype out/dosage.pt --phenotype pheno.txt \
     --dosage-var out/dosage_var.pt
 
 # 2. Dosage-call → standard polyploid scan (ignoring uncertainty)
-torchgwas dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4
+torchgenomics dosage-call --vcf calls.vcf.gz --output out/dcall --ploidy 4
 # (same python one-liner as above to produce out/dosage.pt)
-torchgwas poly-scan --genotype out/dosage.pt --phenotype pheno.txt --ploidy 4
+torchgenomics poly-scan --genotype out/dosage.pt --phenotype pheno.txt --ploidy 4
 ```
 
 ### Deferred cleanup (not Phase 55)
 
 - Teach `gu-scan` to accept `--probs <probs.pt>` directly so the python one-liner goes away. Small argparse + dispatch change; queue as a follow-up.
-- Wiring `dosage-call` into the `torchgwas pipeline` subcommand — depends on `pipeline` learning about ploidy-aware dosage QC, not a narrow Phase 55 concern.
+- Wiring `dosage-call` into the `torchgenomics pipeline` subcommand — depends on `pipeline` learning about ploidy-aware dosage QC, not a narrow Phase 55 concern.
 
 ---
 
@@ -368,7 +368,7 @@ None that affect this phase. The following are flagged for the follow-up phase b
 ## Appendix: file-level impact summary
 
 **New files**:
-- `torchgwas/preprocess/dosage_call.py` — ~400 LOC including the R driver string constant.
+- `torchgenomics/preprocess/dosage_call.py` — ~400 LOC including the R driver string constant.
 - `tests/test_dosage_call.py` — Tier 1, ~15 tests.
 - `tests/test_dosage_call_updog_e2e.py` — Tier 2, ~5 tests.
 - `tests/fixtures/dosage_call/` — toy VCF, canned TSVs.
@@ -377,11 +377,11 @@ None that affect this phase. The following are flagged for the follow-up phase b
 - `~/.claude/projects/.../memory/project_dosage_call.md` — phase memory.
 
 **Modified files**:
-- `torchgwas/cli.py` — one new subcommand (`dosage-call`) + argparse entry.
-- `torchgwas/preprocess/__init__.py` — re-export `run_updog`, `DosageCallResult`.
+- `torchgenomics/cli.py` — one new subcommand (`dosage-call`) + argparse entry.
+- `torchgenomics/preprocess/__init__.py` — re-export `run_updog`, `DosageCallResult`.
 - `docs/ROADMAP.md` — update the Phase 55 entry to mark the dosage half as shipped and the phasing half as still-open.
-- `docs/cli.md` — `torchgwas dosage-call --help` capture.
+- `docs/cli.md` — `torchgenomics dosage-call --help` capture.
 - `CLAUDE.md` — optional: add `dosage-call` to the CLI commands list; bump subcommand count from 35 to 36.
 
 **Unchanged**:
-- `torchgwas/preprocess/dosage_uncertainty.py`, `torchgwas/models/gu_lmm.py`, `torchgwas/preprocess/phase.py`, `torchgwas/models/haplotype_gwas.py` — already correct as downstream / peer-producer code.
+- `torchgenomics/preprocess/dosage_uncertainty.py`, `torchgenomics/models/gu_lmm.py`, `torchgenomics/preprocess/phase.py`, `torchgenomics/models/haplotype_gwas.py` — already correct as downstream / peer-producer code.

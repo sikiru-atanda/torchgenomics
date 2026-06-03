@@ -3,7 +3,7 @@
 Demonstrates the canonical S-PrediXcan workflow: GWAS summary statistics
 + pre-trained cis-eQTL weights (PrediXcan / FUSION / MetaXcan-format
 SQLite ``.db``) → per-gene TWAS z-score. The new
-``torchgwas.io.read_predixcan_db`` reader returns a ``PredixcanModel``
+``torchgenomics.io.read_predixcan_db`` reader returns a ``PredixcanModel``
 dataclass that plugs directly into ``twas_sumstat``.
 
 Phases covered:
@@ -23,8 +23,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from torchgwas.io import read_predixcan_db, list_genes_in_db
-from torchgwas.postgwas import (
+from torchgenomics.io import read_predixcan_db, list_genes_in_db
+from torchgenomics.postgwas import (
     SumStats,
     twas_multi_tissue_aggregate,
     twas_multi_tissue_stack,

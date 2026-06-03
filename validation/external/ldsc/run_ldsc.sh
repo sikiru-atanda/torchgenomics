@@ -80,13 +80,13 @@ _run_ldsc() {
 # LDSC's default `--h2` uses a two-step estimator (cutoff at 30):
 #   step 1: WLS on all SNPs → estimate intercept
 #   step 2: WLS on chi² < 30 SNPs with intercept FIXED → estimate slope
-# TorchGWAS' `ldsc_h2` is structured differently:
+# TorchGenomics' `ldsc_h2` is structured differently:
 #   step 1: WLS on all SNPs (warm-up; result discarded)
 #   step 2: WLS on chi² < 30 SNPs, both slope & intercept refit
 # These two-step parameterizations diverge when many SNPs have chi² > 30
 # (which is our case: simulated mean chi² ≈ 45). To get an apples-to-apples
 # reference, we run LDSC with `--two-step 99999` (no SNPs filtered out),
-# i.e. single-pass WLS — which is what TorchGWAS' single-pass coef computes.
+# i.e. single-pass WLS — which is what TorchGenomics' single-pass coef computes.
 # This is documented in compare.py.
 
 LDSC_COMMON=(

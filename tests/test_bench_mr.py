@@ -1,4 +1,4 @@
-"""Benchmark: torchgwas MR methods vs statsmodels / scipy reference.
+"""Benchmark: torchgenomics MR methods vs statsmodels / scipy reference.
 
 These tests validate that our IVW, MR-Egger, weighted median, and
 MR-PRESSO produce results numerically consistent with established
@@ -13,8 +13,8 @@ import statsmodels.api as sm
 import torch
 from scipy import stats as sp_stats
 
-from torchgwas.postgwas._mr import mr_egger, mr_ivw, mr_presso, mr_weighted_median
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._mr import mr_egger, mr_ivw, mr_presso, mr_weighted_median
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -310,7 +310,7 @@ def test_bench_egger_pvalue_slope_matches_scipy():
     result = mr_egger(exposure, outcome)
 
     # MR-Egger uses Student's t with K-2 d.f. (Bowden 2015 / TwoSampleMR)
-    # rather than the standard normal — see torchgwas.postgwas._mr.mr_egger.
+    # rather than the standard normal — see torchgenomics.postgwas._mr.mr_egger.
     # Validate the p-value against scipy.stats.t.
     K = result.n_instruments
     df = K - 2

@@ -11,7 +11,7 @@ import math
 import pytest
 import torch
 
-from torchgwas.postgwas._winners_curse import (
+from torchgenomics.postgwas._winners_curse import (
     WinnersCurseResult,
     bootstrap_correction,
     conditional_likelihood,

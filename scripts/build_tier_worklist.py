@@ -45,13 +45,13 @@ def main():
     p.add_argument("--audit", default="docs/validation_findings/coverage_audit.json")
     p.add_argument("--tier", type=int, required=True)
     p.add_argument("--package", required=True,
-                   help="Top-level package name (e.g., 'linalg' for torchgwas.linalg)")
+                   help="Top-level package name (e.g., 'linalg' for torchgenomics.linalg)")
     p.add_argument("--output", default=None)
     args = p.parse_args()
 
     audit_path = REPO / args.audit
     data = json.loads(audit_path.read_text())
-    pkg_prefix = f"torchgwas.{args.package}"
+    pkg_prefix = f"torchgenomics.{args.package}"
 
     # Two-pass: first compute canonical key + OR'd has_direct_test across
     # ALL audit rows (any path), then filter to (tier, package, untested).

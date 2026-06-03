@@ -35,10 +35,10 @@
 ## Outstanding (for next session)
 
 1. **3 F3 patches available** (all post-V1, deferred per F3 policy but each documented with a proposed fix):
-   - A3 coloc_pairwise formula (`torchgwas/postgwas/_hyprcoloc.py` lines 360-365) — ~10 lines. Smallest; numerically verified by A3 agent.
-   - A4 hyprcoloc prior (`torchgwas/postgwas/_hyprcoloc.py` lines 204-218) — ~40 lines.
-   - A2 SMR HEIDI variance (`torchgwas/postgwas/_smr.py heidi_test`) — medium-sized; port Zhu 2016 supplementary formula.
-   - **C6 OCF nuisance-learner non-linearity** (`torchgwas/models/ocf_lmm.py`) — F3 #4 from 2026-05-18; coverage 0.41 vs ref 0.91; documented fix: add `nuisance_learner` parameter accepting non-linear learners (mirror DoubleML's `ml_g` / `ml_m`).
+   - A3 coloc_pairwise formula (`torchgenomics/postgwas/_hyprcoloc.py` lines 360-365) — ~10 lines. Smallest; numerically verified by A3 agent.
+   - A4 hyprcoloc prior (`torchgenomics/postgwas/_hyprcoloc.py` lines 204-218) — ~40 lines.
+   - A2 SMR HEIDI variance (`torchgenomics/postgwas/_smr.py heidi_test`) — medium-sized; port Zhu 2016 supplementary formula.
+   - **C6 OCF nuisance-learner non-linearity** (`torchgenomics/models/ocf_lmm.py`) — F3 #4 from 2026-05-18; coverage 0.41 vs ref 0.91; documented fix: add `nuisance_learner` parameter accepting non-linear learners (mirror DoubleML's `ml_g` / `ml_m`).
 
 2. **Plan C remaining** — `docs/superpowers/plans/2026-05-15-paper-tier4-reproducibility-and-draft.md`:
    - D1: ✓ Done (commit `1f8d089`) — reproducibility repo skeleton + 8-stage orchestrator.

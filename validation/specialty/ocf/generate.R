@@ -27,7 +27,7 @@
 #       ...
 #
 # Why .rds + parquet alternatives: we keep the reference (R) and the
-# torchgwas (Python) sides on a common .rds that Python loads via
+# torchgenomics (Python) sides on a common .rds that Python loads via
 # pyreadr in compare.py, OR Python parses an .npz mirror written alongside.
 # To keep the dep surface minimal we also write rep_NNN.npz from R using
 # data.table::fwrite per matrix (compare.py reads the .npz).

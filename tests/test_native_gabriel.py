@@ -1,5 +1,5 @@
 """Tests for the native C++ Gabriel block-detection accelerator
-(``torchgwas._native._gabriel_native``).
+(``torchgenomics._native._gabriel_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_GABRIEL, _gabriel_native
-from torchgwas.ld import compute_pairwise_ld
-from torchgwas.ld._blocks import (
+from torchgenomics._native import HAS_NATIVE_GABRIEL, _gabriel_native
+from torchgenomics.ld import compute_pairwise_ld
+from torchgenomics.ld._blocks import (
     _gabriel_native_enabled,
     detect_blocks_gabriel,
 )
@@ -37,7 +37,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _gabriel_native_enabled() is True
 
@@ -185,10 +185,10 @@ def test_dispatch_native_matches_python_synthetic_blocks(monkeypatch):
     chrs = ["1"] * m
     pld = compute_pairwise_ld(G, pos, chrs, max_kb=1000.0, maf_min=0.0)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks_gabriel(pld, pos, chrs)
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks_gabriel(pld, pos, chrs)
 
     assert _equivalent_blocks(blocks_native, blocks_python)
@@ -205,10 +205,10 @@ def test_dispatch_native_matches_python_random(monkeypatch):
     chrs = ["1"] * m
     pld = compute_pairwise_ld(G, pos, chrs, max_kb=1000.0, maf_min=0.0)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks_gabriel(pld, pos, chrs)
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks_gabriel(pld, pos, chrs)
 
     assert _equivalent_blocks(blocks_native, blocks_python)
@@ -232,10 +232,10 @@ def test_dispatch_native_matches_python_relaxed_thresholds(monkeypatch):
 
     kwargs = dict(strong_pct=0.80, rec_max_pct=0.10, ci_low=0.5, ci_high=0.9)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks_gabriel(pld, pos, chrs, **kwargs)
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks_gabriel(pld, pos, chrs, **kwargs)
 
     assert _equivalent_blocks(blocks_native, blocks_python)

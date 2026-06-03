@@ -1,18 +1,18 @@
-"""Tests for torchgwas.pgs.base — LDReference, PGSResult, BasePGSMethod."""
+"""Tests for torchgenomics.pgs.base — LDReference, PGSResult, BasePGSMethod."""
 
 from __future__ import annotations
 
 import pytest
 import torch
 
-from torchgwas.pgs.base import (
+from torchgenomics.pgs.base import (
     BasePGSMethod,
     LDReference,
     PGSResult,
     _alleles_match,
     _is_palindromic,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _make_ld_full(m: int = 6, seed: int = 0) -> LDReference:

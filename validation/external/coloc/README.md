@@ -1,6 +1,6 @@
 # coloc reference harness (Pillar B / Genome Biology paper section 10)
 
-R coloc (Wallace lab; Giambartolomei et al. 2014) is the canonical two-trait Bayesian colocalization implementation. This harness installs coloc from CRAN, simulates three two-trait scenarios (shared-signal, distinct-signal, null), runs coloc.abf in R, and asserts that TorchGWAS coloc_pairwise agrees within calibrated tolerances.
+R coloc (Wallace lab; Giambartolomei et al. 2014) is the canonical two-trait Bayesian colocalization implementation. This harness installs coloc from CRAN, simulates three two-trait scenarios (shared-signal, distinct-signal, null), runs coloc.abf in R, and asserts that TorchGenomics coloc_pairwise agrees within calibrated tolerances.
 
 ## Pinned reference
 
@@ -28,22 +28,22 @@ Real eQTL + GWAS sumstats live behind dbGaP / access-controlled portals (GTEx v8
 bash validation/external/coloc/install.sh      # one-time CRAN install (3-5 min wall time)
 bash validation/external/coloc/fetch_data.sh   # simulate 3 scenarios (<1 s)
 bash validation/external/coloc/run.sh          # run coloc.abf (~5 s)
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/coloc/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/coloc/compare.py
 ```
 
 Each shell script sources `validation/external/_lib/preflight.sh` and asserts disk + RAM headroom before doing any work, per the Pillar B contract.
 
 ## Reference outputs (in `outputs/`)
 
-| File | Source method | TorchGWAS counterpart |
+| File | Source method | TorchGenomics counterpart |
 |---|---|---|
-| `coloc_results.json` (keys shared / distinct / null) | `coloc::coloc.abf(p1=1e-4, p2=1e-4, p12=1e-5)` | `torchgwas.postgwas.coloc_pairwise` |
+| `coloc_results.json` (keys shared / distinct / null) | `coloc::coloc.abf(p1=1e-4, p2=1e-4, p12=1e-5)` | `torchgenomics.postgwas.coloc_pairwise` |
 
 Each scenario emits PP.H0..H4, the candidate SNP id (argmax of `SNP.PP.H4`), and the priors used.
 
 ## Calibrated tolerances
 
-From the run captured in `results/agreement.json` (TorchGWAS 0.1.1, coloc 5.2.3, seed=42):
+From the run captured in `results/agreement.json` (TorchGenomics 0.1.1, coloc 5.2.3, seed=42):
 
 | Scenario | Metric | Observed | Floor (asserted) | Status |
 |---|---|---|---|---|
@@ -69,7 +69,7 @@ The harness reproduces R `coloc::coloc.abf` exactly with the paper formula:
 | log P(H3) | log p1 + log p2 + log[(SUMj ABF1_j)(SUMj ABF2_j) - SUMj ABF1_j*ABF2_j] |
 | log P(H4) | log p12 + log SUMj (ABF1_j * ABF2_j) |
 
-`torchgwas.postgwas._hyprcoloc.coloc_pairwise` currently uses (see lines 360-365):
+`torchgenomics.postgwas._hyprcoloc.coloc_pairwise` currently uses (see lines 360-365):
 
 | Hypothesis | TG formula |
 |---|---|
@@ -97,7 +97,7 @@ validation/external/coloc/
   fetch_data.sh     # inline R simulator (3 scenarios, seed=42, M=50, causal at idx 25)
   run.sh            # bash wrapper around run.R (sources preflight)
   run.R             # invokes coloc.abf on each scenario; emits outputs/coloc_results.json
-  compare.py        # runs torchgwas.postgwas.coloc_pairwise; asserts max abs delta PP <= TOL_PP
+  compare.py        # runs torchgenomics.postgwas.coloc_pairwise; asserts max abs delta PP <= TOL_PP
   README.md         # this file
   .gitignore        # excludes data/, outputs/, __pycache__/, .install_marker
   .install_marker   # version stamp written by install.sh (gitignored)

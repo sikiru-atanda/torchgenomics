@@ -1,6 +1,6 @@
 {
   "kernel": "ordinal_threshold_score_hessian",
-  "ext": "torchgwas._native._ordinal_threshold_native",
+  "ext": "torchgenomics._native._ordinal_threshold_native",
   "date": "2026-05-29",
   "host": "linux-x86_64",
   "notes": "Per-NR-iteration score vector + Hessian assembly for the OrdinalGLMM cumulative-link threshold update. Inner work is O(n * n_thresh^2). OpenMP across samples with per-thread accumulators reduced at end. Random gamma_nr inputs from a logistic-link template; Y uniform over {0..J-1}.",

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.io.regions import Region
-from torchgwas.ld import (
+from torchgenomics.io.regions import Region
+from torchgenomics.ld import (
     BlockComparisonResult,
     LDBlock,
     compare_all_methods,

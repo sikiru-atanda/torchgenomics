@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from torchgwas.cli import main
+from torchgenomics.cli import main
 
 
 class TestCLIParsing:
@@ -110,7 +110,7 @@ class TestCLIParsing:
         """GxE env files are aligned by sample ID rather than raw row order."""
         import torch
 
-        from torchgwas.cli import _load_env_vector
+        from torchgenomics.cli import _load_env_vector
 
         env = tmp_path / "env.tsv"
         env.write_text("SAMPLE\tENV\ns2\t2.0\ns1\t1.0\n")
@@ -157,19 +157,19 @@ class TestDeviceFallback:
     """Test that device resolution works correctly."""
 
     def test_resolve_device_cpu_explicit(self):
-        from torchgwas.config import resolve_device
+        from torchgenomics.config import resolve_device
         dev = resolve_device("cpu")
         assert dev.type == "cpu"
 
     def test_resolve_device_auto(self):
         """Auto device should return cpu or cuda without error."""
-        from torchgwas.config import resolve_device
+        from torchgenomics.config import resolve_device
         dev = resolve_device(None)
         assert dev.type in ("cpu", "cuda")
 
     def test_resolve_device_invalid_raises(self):
         """Invalid device string raises RuntimeError."""
-        from torchgwas.config import resolve_device
+        from torchgenomics.config import resolve_device
         with pytest.raises(RuntimeError):
             resolve_device("nonexistent_device_xyz")
 
@@ -179,8 +179,8 @@ class TestDeviceFallback:
 # ---------------------------------------------------------------------------
 
 def test_bayes_scan_rss_help(capsys):
-    """`torchgwas bayes-scan-rss --help` prints usage with expected flags."""
-    from torchgwas.cli import main
+    """`torchgenomics bayes-scan-rss --help` prints usage with expected flags."""
+    from torchgenomics.cli import main
     with pytest.raises(SystemExit) as exc_info:
         main(["bayes-scan-rss", "--help"])
     assert exc_info.value.code == 0
@@ -202,9 +202,9 @@ def test_bayes_scan_rss_smoke_runs_end_to_end(tmp_path):
     """
     import pandas as pd
     import torch
-    from torchgwas.postgwas._ld_ref_loader import save_ld_reference
-    from torchgwas.postgwas._ld_ref_metadata import LDReferenceMetadata
-    from torchgwas.cli import main
+    from torchgenomics.postgwas._ld_ref_loader import save_ld_reference
+    from torchgenomics.postgwas._ld_ref_metadata import LDReferenceMetadata
+    from torchgenomics.cli import main
 
     p = 5
     sumstats_path = tmp_path / "sumstats.tsv"

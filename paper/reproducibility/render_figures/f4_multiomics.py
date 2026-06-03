@@ -1,7 +1,7 @@
 """F4 - Multi-omics integration (TWAS / SMR / coloc / mediation).
 
 Three panels covering the section 5 multi-omics-integration results of
-the TorchGWAS Genome Biology Methods paper:
+the TorchGenomics Genome Biology Methods paper:
 
   Panel A - simulated ground-truth (B1 fixture). Truth-side summary of
             the staged ``validation/multiomics/sim`` fixture: TWAS-Z

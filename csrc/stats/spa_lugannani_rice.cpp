@@ -1,7 +1,7 @@
 // Saddlepoint-approximation (SPA) Lugannani-Rice tail p-value for one SNP.
 //
 // C++ port of the per-extreme-SNP body of
-// torchgwas.stats.spa.saddlepoint_pvalue. Given the null fitted probabilities
+// torchgenomics.stats.spa.saddlepoint_pvalue. Given the null fitted probabilities
 // `mu` (length n), the genotype dosages `g` (length n) for one SNP, and the
 // observed score statistic U = g'(Y - mu), this routine
 //

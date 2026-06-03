@@ -5,7 +5,7 @@ name: Reproducibility audit (Pillar D)
 # tool and asserts the committed fixture is bit-for-bit reproducible.
 #
 # A drift between committed fixture and fresh-tool output is logged as a
-# `fixture-drift` finding (distinct from `torchgwas-divergence`).
+# `fixture-drift` finding (distinct from `torchgenomics-divergence`).
 #
 # Skipped from the default test suite via the `reproducibility` pytest
 # marker. This workflow opts in via `-m reproducibility`.
@@ -59,7 +59,7 @@ jobs:
         run: |
           pytest tests/test_reproducibility.py -m reproducibility -v --tb=short --timeout=3600
         env:
-          TORCHGWAS_DISABLE_NATIVE: "1"
+          TORCHGENOMICS_DISABLE_NATIVE: "1"
 
       - name: Upload drift reports
         if: always()

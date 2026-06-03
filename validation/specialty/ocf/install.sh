@@ -67,9 +67,9 @@ Rscript --vanilla -e '
   }
 '
 
-# --- Verify Python torchgwas import ----------------------------------------
-echo "[ocf install] verifying Python torchgwas import"
-python3 -c "import sys; sys.path.insert(0, '${HERE}/../../..'); from torchgwas.models.ocf_lmm import OCFLMM; print('OCFLMM import: OK')"
+# --- Verify Python torchgenomics import ----------------------------------------
+echo "[ocf install] verifying Python torchgenomics import"
+python3 -c "import sys; sys.path.insert(0, '${HERE}/../../..'); from torchgenomics.models.ocf_lmm import OCFLMM; print('OCFLMM import: OK')"
 
 # --- Persist marker --------------------------------------------------------
 {

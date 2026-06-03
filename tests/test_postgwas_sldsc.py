@@ -16,8 +16,8 @@ import math
 
 import torch
 
-from torchgwas.postgwas._ldsc import ldsc_h2
-from torchgwas.postgwas._sldsc import SLDSCResult, sldsc_h2_partitioned
+from torchgenomics.postgwas._ldsc import ldsc_h2
+from torchgenomics.postgwas._sldsc import SLDSCResult, sldsc_h2_partitioned
 
 
 def _sim_gwas_with_annotation(

@@ -4,7 +4,7 @@
 
 **Goal:** Ship a per-chromosome-copy allele decoder that converts Phase 56's PolyOrigin joint-origin-state output into the `(n_off, ploidy, m)` integer tensor that `HaplotypeGWAS.scan()` already consumes — so downstream users can drop `result.haplotypes_per_copy` straight into Phase 46/47.
 
-**Architecture:** Three new pure helpers in `torchgwas/preprocess/phase_polyorigin.py` (`_enumerate_state_table`, `_decode_haplotypes_per_copy`, `_validate_state_table`), two new `PhasingResult` fields (`state_table`, `haplotypes_per_copy`) materialized eagerly inside `run_polyorigin` and persisted as `.pt` artifacts. State table is built deterministically in Python from bivalent-gamete combinatorics and validated via a round-trip expected-dosage match against PolyOrigin's emitted `postdose_probs`.
+**Architecture:** Three new pure helpers in `torchgenomics/preprocess/phase_polyorigin.py` (`_enumerate_state_table`, `_decode_haplotypes_per_copy`, `_validate_state_table`), two new `PhasingResult` fields (`state_table`, `haplotypes_per_copy`) materialized eagerly inside `run_polyorigin` and persisted as `.pt` artifacts. State table is built deterministically in Python from bivalent-gamete combinatorics and validated via a round-trip expected-dosage match against PolyOrigin's emitted `postdose_probs`.
 
 **Tech Stack:** Python 3.10+, PyTorch. No new external dependencies.
 
@@ -15,16 +15,16 @@
 ## File Structure
 
 **Modified files:**
-- `torchgwas/preprocess/phase_polyorigin.py` — add 3 helpers, extend `PhasingResult` (2 new fields), extend `run_polyorigin` orchestration, extend `_persist_result` (2 new atomic writes). ~150 LOC of new logic.
+- `torchgenomics/preprocess/phase_polyorigin.py` — add 3 helpers, extend `PhasingResult` (2 new fields), extend `run_polyorigin` orchestration, extend `_persist_result` (2 new atomic writes). ~150 LOC of new logic.
 - `tests/test_phase_polyorigin.py` — append ~10 Tier 1 tests (6 pure-helper + 4 orchestration).
 - `tests/test_phase_polyorigin_e2e.py` — append 1 Tier 2 end-to-end test.
 
 **Unchanged files:**
-- `torchgwas/preprocess/_polyorigin_runtime.py`
-- `torchgwas/preprocess/juliapkg.json`
+- `torchgenomics/preprocess/_polyorigin_runtime.py`
+- `torchgenomics/preprocess/juliapkg.json`
 - `pyproject.toml`
-- `torchgwas/cli.py`, `torchgwas/__main__.py`
-- `torchgwas/models/haplotype_gwas.py`
+- `torchgenomics/cli.py`, `torchgenomics/__main__.py`
+- `torchgenomics/models/haplotype_gwas.py`
 - `docs/getting-started/polyploid_phasing.md` (recipe stays the "inspect tensors" pattern until user decides to expand)
 
 **New files:** none.
@@ -34,7 +34,7 @@
 ## Task 1 — Extend `PhasingResult` with `state_table` and `haplotypes_per_copy`
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py` (the `PhasingResult` dataclass, around line 32)
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py` (the `PhasingResult` dataclass, around line 32)
 - Modify: `tests/test_phase_polyorigin.py` (existing `test_phasing_result_dataclass_fields` test)
 
 - [ ] **Step 1: Update the existing `test_phasing_result_dataclass_fields` test to include the new fields**
@@ -81,7 +81,7 @@ Expected: FAIL — `PhasingResult.__init__() got an unexpected keyword argument 
 
 - [ ] **Step 3: Add the two new fields to `PhasingResult`**
 
-Open `torchgwas/preprocess/phase_polyorigin.py`. Find the `@dataclass class PhasingResult:` block. Append these two fields AFTER the existing `workdir: str | None` field (making them the last two fields):
+Open `torchgenomics/preprocess/phase_polyorigin.py`. Find the `@dataclass class PhasingResult:` block. Append these two fields AFTER the existing `workdir: str | None` field (making them the last two fields):
 
 ```python
     state_table: Tensor              # (n_states, ploidy) int8 — joint-origin state → per-copy parental source; v = parent_id*ploidy + copy_in_parent
@@ -99,7 +99,7 @@ Expected: all pre-existing tests still pass; `test_phasing_result_dataclass_fiel
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Tier A #1: extend PhasingResult with state_table + haplotypes_per_copy"
 ```
 
@@ -108,12 +108,12 @@ git commit -m "Tier A #1: extend PhasingResult with state_table + haplotypes_per
 ## Task 2 — Implement `_enumerate_state_table(ploidy)`
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write 3 failing tests**
 
-Append to `tests/test_phase_polyorigin.py`. Add `_enumerate_state_table` to the existing `from torchgwas.preprocess.phase_polyorigin import (...)` block.
+Append to `tests/test_phase_polyorigin.py`. Add `_enumerate_state_table` to the existing `from torchgenomics.preprocess.phase_polyorigin import (...)` block.
 
 ```python
 import math
@@ -168,7 +168,7 @@ Expected: 3 errors — `ImportError: cannot import name '_enumerate_state_table'
 
 - [ ] **Step 3: Implement `_enumerate_state_table`**
 
-Open `torchgwas/preprocess/phase_polyorigin.py`. Add `from itertools import combinations` to the stdlib imports if not already present. Append this function (placement: after the existing pure helpers like `_load_map_tsv`, before `_validate_inputs`):
+Open `torchgenomics/preprocess/phase_polyorigin.py`. Add `from itertools import combinations` to the stdlib imports if not already present. Append this function (placement: after the existing pure helpers like `_load_map_tsv`, before `_validate_inputs`):
 
 ```python
 def _enumerate_state_table(ploidy: int) -> Tensor:
@@ -222,7 +222,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Tier A #1: _enumerate_state_table pure helper"
 ```
 
@@ -231,7 +231,7 @@ git commit -m "Tier A #1: _enumerate_state_table pure helper"
 ## Task 3 — Implement `_decode_haplotypes_per_copy`
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write failing test**
@@ -282,7 +282,7 @@ Expected: FAIL — `ImportError: cannot import name '_decode_haplotypes_per_copy
 
 - [ ] **Step 3: Implement `_decode_haplotypes_per_copy`**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py` after `_enumerate_state_table`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py` after `_enumerate_state_table`:
 
 ```python
 def _decode_haplotypes_per_copy(
@@ -351,7 +351,7 @@ Expected: PASS.
 - [ ] **Step 5: Ruff check**
 
 ```bash
-ruff check torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+ruff check torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 ```
 
 Expected: `All checks passed!`.
@@ -359,7 +359,7 @@ Expected: `All checks passed!`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Tier A #1: _decode_haplotypes_per_copy vectorized decoder"
 ```
 
@@ -368,7 +368,7 @@ git commit -m "Tier A #1: _decode_haplotypes_per_copy vectorized decoder"
 ## Task 4 — Implement `_validate_state_table`
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py`
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py`
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write 2 failing tests**
@@ -445,7 +445,7 @@ pytest tests/test_phase_polyorigin.py -v -k "validate_passes or validate_fails"
 
 - [ ] **Step 3: Implement `_validate_state_table`**
 
-Append to `torchgwas/preprocess/phase_polyorigin.py` after `_decode_haplotypes_per_copy`:
+Append to `torchgenomics/preprocess/phase_polyorigin.py` after `_decode_haplotypes_per_copy`:
 
 ```python
 def _validate_state_table(
@@ -539,7 +539,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Ruff check**
 
 ```bash
-ruff check torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+ruff check torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 ```
 
 Expected: `All checks passed!`.
@@ -547,7 +547,7 @@ Expected: `All checks passed!`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Tier A #1: _validate_state_table round-trip dosage check"
 ```
 
@@ -556,7 +556,7 @@ git commit -m "Tier A #1: _validate_state_table round-trip dosage check"
 ## Task 5 — Wire state-table + decode + validate into `run_polyorigin`
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py` (inside `run_polyorigin`)
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py` (inside `run_polyorigin`)
 - Modify: `tests/test_phase_polyorigin.py`
 
 Order-of-operations: after the output-parse block (where `origin_probs`, `parent_phased`, `postdose_probs`, `haplotypes`, `per_individual_ploidy` are computed) and BEFORE `_persist_result` is called / the `PhasingResult` is constructed. Also add the two new fields to the `PhasingResult(...)` constructor call.
@@ -567,7 +567,7 @@ Append to `tests/test_phase_polyorigin.py`. These tests reuse the existing `_stu
 
 ```python
 def test_run_polyorigin_haplotypes_per_copy_field_populated(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -595,7 +595,7 @@ def test_run_polyorigin_haplotypes_per_copy_field_populated(tmp_path, monkeypatc
 
 
 def test_run_polyorigin_state_table_field_populated(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -627,7 +627,7 @@ def test_run_polyorigin_state_table_field_populated(tmp_path, monkeypatch):
 
 
 def test_run_polyorigin_mixed_ploidy_rejected(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -674,7 +674,7 @@ Expected: all 3 fail with `AttributeError: 'PhasingResult' object has no attribu
 
 - [ ] **Step 3: Extend `run_polyorigin`**
 
-Open `torchgwas/preprocess/phase_polyorigin.py`. Find `run_polyorigin(...)`. Locate the block AFTER output parsing (where `haplotypes`, `origin_probs`, `parent_phased`, `postdose_probs`, `per_individual_ploidy`, and `valent_diag` have all been computed) and BEFORE the `PhasingResult(...)` constructor call.
+Open `torchgenomics/preprocess/phase_polyorigin.py`. Find `run_polyorigin(...)`. Locate the block AFTER output parsing (where `haplotypes`, `origin_probs`, `parent_phased`, `postdose_probs`, `per_individual_ploidy`, and `valent_diag` have all been computed) and BEFORE the `PhasingResult(...)` constructor call.
 
 Insert this block:
 
@@ -725,7 +725,7 @@ Expected: all previously-passing tests still pass. Total count should be 43 (pre
 - [ ] **Step 6: Ruff check**
 
 ```bash
-ruff check torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+ruff check torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 ```
 
 Expected: `All checks passed!`.
@@ -733,7 +733,7 @@ Expected: `All checks passed!`.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Tier A #1: wire state_table + decoder into run_polyorigin"
 ```
 
@@ -742,7 +742,7 @@ git commit -m "Tier A #1: wire state_table + decoder into run_polyorigin"
 ## Task 6 — Persist the two new artifacts
 
 **Files:**
-- Modify: `torchgwas/preprocess/phase_polyorigin.py` (inside `_persist_result`)
+- Modify: `torchgenomics/preprocess/phase_polyorigin.py` (inside `_persist_result`)
 - Modify: `tests/test_phase_polyorigin.py`
 
 - [ ] **Step 1: Write failing test**
@@ -751,7 +751,7 @@ Append to `tests/test_phase_polyorigin.py`:
 
 ```python
 def test_persist_per_copy_artifacts(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -794,7 +794,7 @@ Expected: FAIL — `AssertionError: assert st_path.is_file()` (artifacts not per
 
 - [ ] **Step 3: Extend `_persist_result`**
 
-Open `torchgwas/preprocess/phase_polyorigin.py`. Find `_persist_result`. The existing body has a sequence of `_persist("...", lambda p: ...)` calls. Add two more, placed right after the `postdose_probs.pt` write (to keep per-result tensors grouped):
+Open `torchgenomics/preprocess/phase_polyorigin.py`. Find `_persist_result`. The existing body has a sequence of `_persist("...", lambda p: ...)` calls. Add two more, placed right after the `postdose_probs.pt` write (to keep per-result tensors grouped):
 
 ```python
         _persist("state_table.pt",         lambda p: torch.save(result.state_table, p))
@@ -820,7 +820,7 @@ Expected: 53 passed (52 + 1 new).
 - [ ] **Step 6: Ruff check**
 
 ```bash
-ruff check torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+ruff check torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 ```
 
 Expected: `All checks passed!`.
@@ -828,7 +828,7 @@ Expected: `All checks passed!`.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add torchgwas/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
+git add torchgenomics/preprocess/phase_polyorigin.py tests/test_phase_polyorigin.py
 git commit -m "Tier A #1: persist state_table + haplotypes_per_copy artifacts"
 ```
 
@@ -856,9 +856,9 @@ def test_haplotypegwas_scan_consumes_per_copy(tmp_path):
     Phase 46's scanner.
     """
     import numpy as np
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
-    from torchgwas.preprocess.dosage_uncertainty import expected_dosage
-    from torchgwas.models import HaplotypeGWAS
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess.dosage_uncertainty import expected_dosage
+    from torchgenomics.models import HaplotypeGWAS
 
     rng = np.random.default_rng(42)
     n_off, m, ploidy = 6, 10, 4
@@ -879,7 +879,7 @@ def test_haplotypegwas_scan_consumes_per_copy(tmp_path):
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    auto = bool(os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"))
+    auto = bool(os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"))
     result = run_polyorigin(
         probs=probs,
         pedigree_tsv=str(ped),

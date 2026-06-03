@@ -42,7 +42,7 @@ import torch
 
 
 def _make_vmeta(m):
-    from torchgwas.models.base import VariantMeta
+    from torchgenomics.models.base import VariantMeta
     return VariantMeta(
         snp=[f"s{i}" for i in range(m)],
         chr=["1"] * m, pos=list(range(m)),
@@ -234,7 +234,7 @@ class TestKnownTruthBinaryJoint:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_binary(n=600, E=3, m_null=15, seed=2026)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -272,7 +272,7 @@ class TestKnownTruthBinaryPerEnv:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_binary(n=600, E=3, m_null=15, seed=2026)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -314,7 +314,7 @@ class TestKnownTruthBinaryHomogeneity:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_binary(n=600, E=3, m_null=15, seed=2026)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -358,7 +358,7 @@ class TestKnownTruthBinaryReactionNorm:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_binary(n=600, E=3, m_null=15, seed=2026)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -420,7 +420,7 @@ class TestKnownTruthBinaryEffectDirection:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_binary(n=600, E=3, m_null=15, seed=2026)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -464,7 +464,7 @@ class TestKnownTruthOrdinalJoint:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_ordinal(n=600, E=2, J=3, m_null=12, seed=2027)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -499,7 +499,7 @@ class TestKnownTruthOrdinalPerEnv:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_ordinal(n=600, E=2, J=3, m_null=12, seed=2027)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -536,7 +536,7 @@ class TestKnownTruthOrdinalHomogeneity:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_ordinal(n=600, E=2, J=3, m_null=12, seed=2027)
         self.vmeta = _make_vmeta(self.G.shape[1])
@@ -571,7 +571,7 @@ class TestKnownTruthBinarySummary:
 
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
         self.Y, self.G, self.X0, self.K, self.true_beta, self.labels = \
             _simulate_known_binary(n=600, E=3, m_null=15, seed=2026)
         self.vmeta = _make_vmeta(self.G.shape[1])

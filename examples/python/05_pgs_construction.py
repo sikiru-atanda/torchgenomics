@@ -16,14 +16,14 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.pgs import (
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.pgs import (
     ClumpingThresholding,
     LDpred2Inf,
     build_ld_reference,
     score_individuals,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 OUT_DIR = Path(__file__).resolve().parent / "results"
 OUT_DIR.mkdir(parents=True, exist_ok=True)

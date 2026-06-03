@@ -1,5 +1,5 @@
 // Native accelerator for the SuSiE-RSS IBSS inner sweep in
-// ``torchgwas.models.bayesian_vs_rss.BayesianVSRss.fit_rss``.
+// ``torchgenomics.models.bayesian_vs_rss.BayesianVSRss.fit_rss``.
 //
 // The Python reference does, per outer iteration:
 //

@@ -19,7 +19,7 @@ GWASpoly (Rosyara et al. 2016) is the canonical R-based reference for polyploid 
 bash validation/external/gwaspoly/install.sh        # idempotent; tries to install GWASpoly into bin/Rlib/
 bash validation/external/gwaspoly/fetch_data.sh     # copies aligned + raw potato fixtures into data/
 bash validation/external/gwaspoly/run_gwaspoly.sh   # populates outputs/ with reference CSVs
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/gwaspoly/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/gwaspoly/compare.py
 
 # Or via pytest (requires -m external; skipped by default):
 pytest -m external tests/test_external_gwaspoly.py -v
@@ -35,7 +35,7 @@ The fresh re-run is end-to-end equivalent — GWASpoly is deterministic given a 
 
 ## Reference outputs (in `outputs/`)
 
-| File | Source | TorchGWAS counterpart |
+| File | Source | TorchGenomics counterpart |
 |---|---|---|
 | `gwaspoly_additive.csv` | GWASpoly `model="additive"` | TG `recode_gene_action(..., "additive")` |
 | `gwaspoly_1_dom_alt.csv` | GWASpoly `1-dom` (alt-allele simplex dominant) | TG `1-dom` |
@@ -59,18 +59,18 @@ All 10 checks (5 corr + 5 marker-count) pass at §16's floors → **zero regress
 
 ## Why the diplo-additive tolerance is a bracket, not a floor
 
-GWASpoly and TorchGWAS use different diplo-additive encodings:
+GWASpoly and TorchGenomics use different diplo-additive encodings:
 - GWASpoly: `{0,1,2,3,4} → {0,1,1,1,2}` (the dichotomous "diploidization" of Endelman 2011)
-- TorchGWAS: `{0,1,2,3,4} → {0,1,2,1,0}` (`min(d, ploidy-d)` — folded encoding)
+- TorchGenomics: `{0,1,2,3,4} → {0,1,2,1,0}` (`min(d, ploidy-d)` — folded encoding)
 
 These are mathematically distinct and the per-SNP correlation is expected to be moderate, not high. The existing golden test (`tests/test_golden_gwaspoly.py::test_diplo_additive_differs`) pins the bracket at `0.3 < r < 0.7`; this harness preserves that contract. A future RFE could expose both encodings under disambiguated names, but that's out of scope for B7.
 
 ## Pillar A regression check
 
 The 9 Pillar A fixes are listed in `validation/external/gemma/README.md`. None of them touch:
-- `torchgwas.preprocess.polyploid.recode_gene_action`
-- `torchgwas.linalg.kinship_polyploid.grm_polyploid_gene_action`
-- `torchgwas.models.SingleTraitLMM` (canonical math path)
+- `torchgenomics.preprocess.polyploid.recode_gene_action`
+- `torchgenomics.linalg.kinship_polyploid.grm_polyploid_gene_action`
+- `torchgenomics.models.SingleTraitLMM` (canonical math path)
 
 The harness confirms this empirically — TG's per-SNP p-values agree with GWASpoly's reference to 4–5 decimal places of −log10(p) across 30 000+ marker comparisons (5 models × ~6 000–10 000 markers).
 
@@ -92,7 +92,7 @@ validation/external/gwaspoly/
 ├── fetch_data.sh          # copies aligned data + GWASpoly inputs into data/
 ├── run_gwaspoly.sh        # populates outputs/ from canonical reference (or fresh run)
 ├── run_gwaspoly.R         # invoked by run_gwaspoly.sh under GWASPOLY_FORCE_RERUN=1
-├── compare.py             # asserts §16 tolerances vs TorchGWAS
+├── compare.py             # asserts §16 tolerances vs TorchGenomics
 ├── README.md              # this file
 ├── bin/                   # Rlib/ + gwaspoly_version.txt (ignored)
 ├── data/                  # potato fixture (ignored)

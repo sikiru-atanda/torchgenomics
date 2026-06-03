@@ -10,7 +10,7 @@ Tests:
 - Wall-time at 5x problem size
 
 Output overwrites the canonical fixture files in DATA_DIR so the
-existing run_susieR.sh / run_torchgwas.sh / compare.py harness picks
+existing run_susieR.sh / run_torchgenomics.sh / compare.py harness picks
 them up unchanged.
 """
 from __future__ import annotations

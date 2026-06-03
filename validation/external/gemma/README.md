@@ -12,7 +12,7 @@ GEMMA is the canonical reference for diploid linear mixed-model GWAS — single-
 | Platform | Linux x86_64 (static AMD64 build; runs on any glibc ≥ 2.6.32) |
 
 GEMMA does not need to be installed by this harness — the binary is already
-part of the canonical TorchGWAS checkout. `install.sh` symlinks it into
+part of the canonical TorchGenomics checkout. `install.sh` symlinks it into
 `bin/` and verifies the SHA-256.
 
 ## Reproduction recipe
@@ -22,7 +22,7 @@ part of the canonical TorchGWAS checkout. `install.sh` symlinks it into
 bash validation/external/gemma/install.sh        # idempotent; symlinks bin/gemma → gemma_demo/gemma-0.98.5
 bash validation/external/gemma/fetch_data.sh     # copies BIMBAM fixtures + MDP map into data/
 bash validation/external/gemma/run_gemma.sh      # 3 reference outputs into outputs/
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/gemma/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/gemma/compare.py
 
 # Or via pytest (requires -m external; skipped by default):
 pytest -m external tests/test_external_gemma.py -v
@@ -32,11 +32,11 @@ Each shell script sources `validation/external/_lib/preflight.sh` and asserts di
 
 ## Reference outputs (in `outputs/`)
 
-| File | Source command | TorchGWAS counterpart |
+| File | Source command | TorchGenomics counterpart |
 |---|---|---|
-| `mdp_kinship.cXX.txt` | `gemma -gk 1` (centered kinship) | `torchgwas.linalg.kinship` |
-| `mdp_lmm_all.assoc.txt` + `.log.txt` | `gemma -lmm 4 -k <K>` (Wald + LRT + score) | `torchgwas.models.SingleTraitLMM` |
-| `mdp_mvlmm_wald.assoc.txt` + `.log.txt` | `gemma -lmm 1 -n 1 2 -k <K>` (mvLMM joint Wald) | `torchgwas.models.MultiTraitLMM` |
+| `mdp_kinship.cXX.txt` | `gemma -gk 1` (centered kinship) | `torchgenomics.linalg.kinship` |
+| `mdp_lmm_all.assoc.txt` + `.log.txt` | `gemma -lmm 4 -k <K>` (Wald + LRT + score) | `torchgenomics.models.SingleTraitLMM` |
+| `mdp_mvlmm_wald.assoc.txt` + `.log.txt` | `gemma -lmm 1 -n 1 2 -k <K>` (mvLMM joint Wald) | `torchgenomics.models.MultiTraitLMM` |
 
 ## §16 tolerance gates (DO NOT loosen)
 
@@ -102,7 +102,7 @@ validation/external/gemma/
 ├── install.sh             # symlinks bin/gemma → gemma_demo/gemma-0.98.5
 ├── fetch_data.sh          # copies BIMBAM fixtures + MDP map into data/
 ├── run_gemma.sh           # produces 3 reference outputs in outputs/
-├── compare.py             # asserts §16 tolerances vs TorchGWAS
+├── compare.py             # asserts §16 tolerances vs TorchGenomics
 ├── README.md              # this file
 ├── bin/                   # gemma binary symlink (ignored)
 ├── data/                  # MDP fixtures (ignored)

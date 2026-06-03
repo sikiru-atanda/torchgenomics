@@ -472,7 +472,7 @@
               "passed": false
             },
             {
-              "name": "torchgwas empirical coverage in [0.92, 0.98]",
+              "name": "torchgenomics empirical coverage in [0.92, 0.98]",
               "observed": 0.41,
               "threshold": [
                 0.92,
@@ -1080,7 +1080,7 @@
               "passed": false
             },
             {
-              "name": "torchgwas empirical coverage in [0.92, 0.98]",
+              "name": "torchgenomics empirical coverage in [0.92, 0.98]",
               "observed": 0.41,
               "threshold": [
                 0.92,

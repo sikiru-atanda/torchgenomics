@@ -14,18 +14,18 @@ Five simulation scenarios:
 
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.glm import GLM
-from torchgwas.models.haplotype_gwas import (
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.glm import GLM
+from torchgenomics.models.haplotype_gwas import (
     HaplotypeGWAS,
     _enumerate_haplotypes_phased,
 )
-from torchgwas.models.haplotype_novel import (
+from torchgenomics.models.haplotype_novel import (
     haplotype_similarity_kernel,
     hierarchical_haplotype_test,
     hskat_test,
 )
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 DTYPE = torch.float64
 
@@ -113,8 +113,8 @@ def _run_haplotype_scan(Y, G, haps, method="block", test="f_test"):
     pos = list(range(0, m * 1000, 1000))
     chrs = ["1"] * m
 
-    from torchgwas.io.regions import Region
-    from torchgwas.ld._blocks import LDBlock
+    from torchgenomics.io.regions import Region
+    from torchgenomics.ld._blocks import LDBlock
     blocks = [LDBlock(
         region=Region(chr="1", start=0, end=m * 1000, region_id="blk1"),
         n_variants=m, variant_indices=list(range(m)),
@@ -477,8 +477,8 @@ class TestScenario6_LMMComparison:
         scanner = HaplotypeGWAS(method="block", test="f_test", null_fit=nf)
         pos = list(range(0, m * 1000, 1000))
         chrs = ["1"] * m
-        from torchgwas.io.regions import Region
-        from torchgwas.ld._blocks import LDBlock
+        from torchgenomics.io.regions import Region
+        from torchgenomics.ld._blocks import LDBlock
         blocks = [LDBlock(
             region=Region(chr="1", start=0, end=m * 1000, region_id="blk1"),
             n_variants=m, variant_indices=list(range(m)),

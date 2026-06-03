@@ -1,6 +1,6 @@
 // Connected-components BFS on a dense, thresholded adjacency matrix.
 //
-// C++ port of torchgwas.ld._graph_utils.connected_components. The pure-
+// C++ port of torchgenomics.ld._graph_utils.connected_components. The pure-
 // Python implementation is the canonical reference; this module mirrors
 // it (BFS order, sorted output) but eliminates the per-edge tensor
 // indexing that dominates the Python loop on m in the thousands.

@@ -16,7 +16,7 @@ zarr = pytest.importorskip("zarr")
 
 @pytest.fixture
 def reader():
-    from torchgwas.io.zarr import ZarrReader
+    from torchgenomics.io.zarr import ZarrReader
     return ZarrReader(str(ZARR_PATH))
 
 

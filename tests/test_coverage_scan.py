@@ -1,5 +1,5 @@
-"""Tier-1 coverage tests for ``torchgwas.scan.prefetch`` and
-``torchgwas.scan.strategies``.
+"""Tier-1 coverage tests for ``torchgenomics.scan.prefetch`` and
+``torchgenomics.scan.strategies``.
 
 Bar (Pillar A spec, foundational types):
 - Constructor + behavioral round-trip.
@@ -10,10 +10,10 @@ Bar (Pillar A spec, foundational types):
   (constructible, distinguishable as types).
 
 Covers 4 symbols:
-- ``torchgwas.scan.prefetch.PrefetchIterator``
-- ``torchgwas.scan.prefetch.move_nullfit_to_device``
-- ``torchgwas.scan.strategies.FixedNullStrategy``
-- ``torchgwas.scan.strategies.PerSNPRefitStrategy``
+- ``torchgenomics.scan.prefetch.PrefetchIterator``
+- ``torchgenomics.scan.prefetch.move_nullfit_to_device``
+- ``torchgenomics.scan.strategies.FixedNullStrategy``
+- ``torchgenomics.scan.strategies.PerSNPRefitStrategy``
 """
 
 from __future__ import annotations
@@ -21,9 +21,9 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.base import NullFit, VariantMeta
-from torchgwas.scan.prefetch import PrefetchIterator, move_nullfit_to_device
-from torchgwas.scan.strategies import FixedNullStrategy, PerSNPRefitStrategy
+from torchgenomics.models.base import NullFit, VariantMeta
+from torchgenomics.scan.prefetch import PrefetchIterator, move_nullfit_to_device
+from torchgenomics.scan.strategies import FixedNullStrategy, PerSNPRefitStrategy
 
 
 pytestmark = pytest.mark.timeout(30)

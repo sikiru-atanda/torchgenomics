@@ -1,6 +1,6 @@
 """Regression tests for the native C++ SuSiE-RSS IBSS sweep.
 
-The native kernel (``torchgwas._native._ibss_native.ibss_inner_sweep``)
+The native kernel (``torchgenomics._native._ibss_native.ibss_inner_sweep``)
 replaces the per-layer Python loop in
 ``BayesianVSRss.fit_rss``. These tests assert:
 
@@ -8,7 +8,7 @@ replaces the per-layer Python loop in
     PIPs, β_mean, β_sd, V, alpha, mu, sigma_sq, ELBO history, and
     convergence (n_iter, converged) at the FP64 observed-then-floored
     tolerance.
-2.  **Env-var fallthrough** — ``TORCHGWAS_DISABLE_NATIVE=1`` forces the
+2.  **Env-var fallthrough** — ``TORCHGENOMICS_DISABLE_NATIVE=1`` forces the
     Python reference path even when the build is present.
 3.  **Below-threshold input** — for ``p < 128`` the native dispatcher
     returns ``"python"`` and the reference body runs unchanged.
@@ -26,8 +26,8 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas._native import HAS_NATIVE_IBSS
-from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+from torchgenomics._native import HAS_NATIVE_IBSS
+from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
 
 
 def _planted_locus(
@@ -70,20 +70,20 @@ def _planted_locus(
 
 
 def _run_with(env_value: str | None, z, R, n, **kwargs):
-    """Run ``BayesianVSRss.fit_rss`` with TORCHGWAS_DISABLE_NATIVE set."""
-    prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+    """Run ``BayesianVSRss.fit_rss`` with TORCHGENOMICS_DISABLE_NATIVE set."""
+    prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
     if env_value is None:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     else:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = env_value
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = env_value
     try:
         model = BayesianVSRss(**kwargs)
         return model.fit_rss(z, R, n)
     finally:
         if prev is None:
-            os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+            os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
         else:
-            os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+            os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
 
 @unittest.skipUnless(
@@ -186,17 +186,17 @@ class TestIBSSNativeParity(unittest.TestCase):
         py_model = BayesianVSRss(**kwargs)
         cpp_model = BayesianVSRss(**kwargs)
 
-        prev = os.environ.get("TORCHGWAS_DISABLE_NATIVE")
+        prev = os.environ.get("TORCHGENOMICS_DISABLE_NATIVE")
         try:
-            os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+            os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
             py_res = py_model.fit_rss(z, R, 1000, prior_pi_per_snp=prior)
-            os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+            os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
             cpp_res = cpp_model.fit_rss(z, R, 1000, prior_pi_per_snp=prior)
         finally:
             if prev is None:
-                os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+                os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
             else:
-                os.environ["TORCHGWAS_DISABLE_NATIVE"] = prev
+                os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = prev
 
         # The C++ and Python paths use slightly different log_prior
         # normalisations (unnormalised in find_optimal_V vs normalised in
@@ -219,7 +219,7 @@ class TestIBSSNativeFallthrough(unittest.TestCase):
     """Native path must respect env-var, device, dtype, size guards."""
 
     def test_env_var_disables_native(self):
-        """TORCHGWAS_DISABLE_NATIVE=1 forces Python path; result matches default."""
+        """TORCHGENOMICS_DISABLE_NATIVE=1 forces Python path; result matches default."""
         z, R = _planted_locus(p=200, n=1000, n_causal=2, seed=46)
         kwargs = dict(
             max_num_causal=3, max_iter=15, tol=1e-6,

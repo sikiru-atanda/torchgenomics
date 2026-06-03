@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.linalg.eigh import compute_weights, eigendecompose, rotate
-from torchgwas.linalg.kinship import grm_vanraden, grm_vanraden_streaming
-from torchgwas.linalg.kinship_polyploid import grm_loco, grm_polyploid_gene_action
-from torchgwas.linalg.safe import safe_cholesky, safe_logdet
-from torchgwas.linalg.woodbury import woodbury_inverse
+from torchgenomics.linalg.eigh import compute_weights, eigendecompose, rotate
+from torchgenomics.linalg.kinship import grm_vanraden, grm_vanraden_streaming
+from torchgenomics.linalg.kinship_polyploid import grm_loco, grm_polyploid_gene_action
+from torchgenomics.linalg.safe import safe_cholesky, safe_logdet
+from torchgenomics.linalg.woodbury import woodbury_inverse
 
 
 @pytest.fixture
@@ -136,18 +136,18 @@ class TestASVTransform:
     """Tests for grm_asv_transform (Feldmann 2022)."""
 
     def test_average_diagonal_is_one(self, K):
-        from torchgwas.linalg.kinship_polyploid import grm_asv_transform
+        from torchgenomics.linalg.kinship_polyploid import grm_asv_transform
         K_asv = grm_asv_transform(K)
         avg_diag = K_asv.diagonal().mean().item()
         assert avg_diag == pytest.approx(1.0, abs=0.05)
 
     def test_preserves_symmetry(self, K):
-        from torchgwas.linalg.kinship_polyploid import grm_asv_transform
+        from torchgenomics.linalg.kinship_polyploid import grm_asv_transform
         K_asv = grm_asv_transform(K)
         torch.testing.assert_close(K_asv, K_asv.T)
 
     def test_single_sample(self):
-        from torchgwas.linalg.kinship_polyploid import grm_asv_transform
+        from torchgenomics.linalg.kinship_polyploid import grm_asv_transform
         K = torch.tensor([[2.0]], dtype=torch.float64)
         K_asv = grm_asv_transform(K)
         torch.testing.assert_close(K_asv, K)  # n=1, returned as-is
@@ -157,14 +157,14 @@ class TestEpistaticHadamard:
     """Tests for grm_epistatic_hadamard."""
 
     def test_additive_only(self, K):
-        from torchgwas.linalg.kinship_polyploid import grm_epistatic_hadamard
+        from torchgenomics.linalg.kinship_polyploid import grm_epistatic_hadamard
         result = grm_epistatic_hadamard(K)
         assert "K_aa" in result
         assert "K_dd" not in result
         torch.testing.assert_close(result["K_aa"], K * K)
 
     def test_with_dominance(self, K):
-        from torchgwas.linalg.kinship_polyploid import grm_epistatic_hadamard
+        from torchgenomics.linalg.kinship_polyploid import grm_epistatic_hadamard
         K_dom = torch.eye(K.shape[0], dtype=torch.float64) * 0.5
         result = grm_epistatic_hadamard(K, K_dom)
         assert "K_aa" in result
@@ -174,7 +174,7 @@ class TestEpistaticHadamard:
         torch.testing.assert_close(result["K_ad"], K * K_dom)
 
     def test_shape_mismatch_raises(self):
-        from torchgwas.linalg.kinship_polyploid import grm_epistatic_hadamard
+        from torchgenomics.linalg.kinship_polyploid import grm_epistatic_hadamard
         K1 = torch.eye(5, dtype=torch.float64)
         K2 = torch.eye(3, dtype=torch.float64)
         with pytest.raises(ValueError, match="does not match"):

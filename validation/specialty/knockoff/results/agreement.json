@@ -1,5 +1,5 @@
 {
-  "comparison": "R knockoff::knockoff.filter  vs  torchgwas.KnockoffLMM",
+  "comparison": "R knockoff::knockoff.filter  vs  torchgenomics.KnockoffLMM",
   "n_replicates": 100,
   "target_fdr": 0.2,
   "passed": true,
@@ -60,7 +60,7 @@
     "truth seed": 42
   },
   "tg_summary": {
-    "tool": "torchgwas.KnockoffLMM",
+    "tool": "torchgenomics.KnockoffLMM",
     "n_replicates": 100,
     "target_fdr": 0.2,
     "ld_method": "r2",

@@ -1,5 +1,5 @@
 """Regression tests for the ELBO Cholesky-cache optimisation in
-``torchgwas.models.bayesian_vs_rss``.
+``torchgenomics.models.bayesian_vs_rss``.
 
 ``BayesianVSRss._compute_elbo`` accepts an optional precomputed
 Cholesky factor of R; ``fit_rss`` factorises R once outside the IBSS
@@ -27,7 +27,7 @@ import unittest
 import numpy as np
 import torch
 
-from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
 
 
 def _planted_locus(p: int = 200, n: int = 1000, seed: int = 42):

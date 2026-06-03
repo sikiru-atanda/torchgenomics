@@ -176,7 +176,7 @@ contending with the 04:00 UTC slot. Both are easy revert (`* * *` →
 
 Per the user's standing rule (`feedback_benchmark_against_installed_tools`):
 benchmarks should compare against installed reference tools, not
-against TorchGWAS in another configuration. The GPU CI deliberately
+against TorchGenomics in another configuration. The GPU CI deliberately
 violates this rule for some tests, and it is important to be explicit
 about which.
 
@@ -186,7 +186,7 @@ about which.
 GWASpoly, regenie) are CPU-only — they do not have CUDA builds. Any
 GPU↔reference-tool comparison would therefore be:
 
-  TorchGWAS-on-CUDA  vs.  TorchGWAS-on-CPU  vs.  reference-tool-on-CPU
+  TorchGenomics-on-CUDA  vs.  TorchGenomics-on-CPU  vs.  reference-tool-on-CPU
 
 The middle hop (CPU↔reference) is what the `pytest -m golden` suite
 already does, and it lives in the main CI (`ci.yml`). The first hop
@@ -208,11 +208,11 @@ These are insurance against shape/device/dtype regressions. They do
 not validate scientific correctness — they validate that the CUDA
 plumbing is intact.
 
-### Tests that ARE TorchGWAS-vs-TorchGWAS parity
+### Tests that ARE TorchGenomics-vs-TorchGenomics parity
 
 `test_gpu.py::TestGPUEquivalence::test_grm_cpu_gpu_match`,
 `test_gpu_model_parity.py::test_single_trait_lmm_parity`, and the
-other ~15 parity tests assert CPU and GPU TorchGWAS produce
+other ~15 parity tests assert CPU and GPU TorchGenomics produce
 numerically-identical outputs (within FP tolerance). These are the
 tests that would have caught `1e27d81` (silent fallback to CPU).
 

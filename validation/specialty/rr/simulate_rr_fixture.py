@@ -46,7 +46,7 @@ T_MAX = 100.0
 
 def _legendre_normalized(t_std: np.ndarray, order: int) -> np.ndarray:
     """Bonnet three-term recurrence, normalized so integral over [-1, 1]
-    of P_k^2 = 1. Matches torchgwas.linalg.basis.legendre_basis exactly."""
+    of P_k^2 = 1. Matches torchgenomics.linalg.basis.legendre_basis exactly."""
     Tn = t_std.shape[0]
     b = order + 1
     P = np.zeros((Tn, b), dtype=np.float64)

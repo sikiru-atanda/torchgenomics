@@ -1,4 +1,4 @@
-"""Tier-1 coverage tests for 18 ``torchgwas.optim`` symbols.
+"""Tier-1 coverage tests for 18 ``torchgenomics.optim`` symbols.
 
 Bar (Pillar A spec, Tier 1 — V1-core, Phase 13 territory):
 
@@ -14,18 +14,18 @@ Bar (Pillar A spec, Tier 1 — V1-core, Phase 13 territory):
 
 Note on import order
 --------------------
-The first non-future import must be ``import torchgwas`` so the root
+The first non-future import must be ``import torchgenomics`` so the root
 package init runs first. There is a pre-existing circular import:
 ``optim.controller`` → ``linalg.eigh.compute_weights`` → ``models``
 → ``optim.controller``. It resolves under the normal pytest collection
 order because ``models.*`` is loaded first; importing
-``torchgwas.optim.*`` cold otherwise breaks collection.
+``torchgenomics.optim.*`` cold otherwise breaks collection.
 """
 
 from __future__ import annotations
 
-import torchgwas  # noqa: F401  - resolve circular models<->optim import
-import torchgwas.models  # noqa: F401  - load models *before* optim
+import torchgenomics  # noqa: F401  - resolve circular models<->optim import
+import torchgenomics.models  # noqa: F401  - load models *before* optim
 
 from dataclasses import is_dataclass
 
@@ -33,27 +33,27 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.optim.cox_pql import cox_pql_fit
-from torchgwas.optim.emma_reml import emma_reml_single, gapit_emma_remle
-from torchgwas.optim.fa_lbfgs_reml import fa_lbfgs_reml
-from torchgwas.optim.fisher_scoring import fisher_scoring_reml
-from torchgwas.optim.multi_env_pql import multi_env_pql_fit
-from torchgwas.optim.multi_kernel_met_reml import multi_kernel_met_reml
-from torchgwas.optim.mvlmm_reml import (
+from torchgenomics.optim.cox_pql import cox_pql_fit
+from torchgenomics.optim.emma_reml import emma_reml_single, gapit_emma_remle
+from torchgenomics.optim.fa_lbfgs_reml import fa_lbfgs_reml
+from torchgenomics.optim.fisher_scoring import fisher_scoring_reml
+from torchgenomics.optim.multi_env_pql import multi_env_pql_fit
+from torchgenomics.optim.multi_kernel_met_reml import multi_kernel_met_reml
+from torchgenomics.optim.mvlmm_reml import (
     compute_sigma_inv_diag,
     mvlmm_null_quantities,
 )
-from torchgwas.optim.pcg_solver import PCGResult
-from torchgwas.optim.pxem_nr_mvreml import pxem_nr_mvreml
-from torchgwas.optim.reml_math import REMLResult
-from torchgwas.optim.rr_reml import (
+from torchgenomics.optim.pcg_solver import PCGResult
+from torchgenomics.optim.pxem_nr_mvreml import pxem_nr_mvreml
+from torchgenomics.optim.reml_math import REMLResult
+from torchgenomics.optim.rr_reml import (
     rr_reml_diagonal,
     rr_reml_fa,
     rr_reml_unstructured,
 )
-from torchgwas.optim.separable_kron_reml import separable_kron_reml
-from torchgwas.optim.sparse_reml import sparse_reml_fit
-from torchgwas.optim.triad_reml import triad_reml
+from torchgenomics.optim.separable_kron_reml import separable_kron_reml
+from torchgenomics.optim.sparse_reml import sparse_reml_fit
+from torchgenomics.optim.triad_reml import triad_reml
 
 
 pytestmark = pytest.mark.timeout(180)
@@ -155,7 +155,7 @@ class TestComputeSigmaInvDiag:
     """KED diagonal precision via :func:`linalg.kronecker_eed.diagonal_precision`."""
 
     def _ked_inputs(self, d: int = 2, E: int = 2, n: int = 5):
-        from torchgwas.linalg.kronecker_eed import kronecker_eed
+        from torchgenomics.linalg.kronecker_eed import kronecker_eed
 
         # Build SPD random matrices of the requested sizes via outer-product
         g = torch.Generator().manual_seed(11)
@@ -178,7 +178,7 @@ class TestComputeSigmaInvDiag:
     def test_against_dense_reference(self):
         """Compare KED diagonal precision to dense (n, dE, dE) inverse for
         separable Kronecker covariance with Ve = I_dE."""
-        from torchgwas.linalg.kronecker_eed import diagonal_precision
+        from torchgenomics.linalg.kronecker_eed import diagonal_precision
 
         ked, evs, Vg_t, Vg_e = self._ked_inputs(d=2, E=2, n=4)
         W_diag, logdet = compute_sigma_inv_diag(evs, ked)
@@ -722,7 +722,7 @@ class TestSparseRemlFit:
             Y, X0, K_matvec, K_diag, n=n,
             n_probes=5, lanczos_iters=15, pcg_max_iter=200, seed=42,
         )
-        from torchgwas.models.base import NullFit
+        from torchgenomics.models.base import NullFit
         assert isinstance(result, NullFit)
         # Sanity: REML scalar estimates are finite Python floats, not tensors
         assert isinstance(result.sig2_g, float) and np.isfinite(result.sig2_g)
@@ -744,7 +744,7 @@ class TestSparseRemlFit:
             Y, X0, K_matvec, K_diag, n=n,
             n_probes=5, lanczos_iters=15, pcg_max_iter=200, seed=42,
         )
-        from torchgwas.models.base import NullFit
+        from torchgenomics.models.base import NullFit
         assert isinstance(result, NullFit)
 
     def test_returned_quantities_finite(self):

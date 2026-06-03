@@ -16,7 +16,7 @@ binary phenotype):
    `step1.varianceRatio.txt`) are well-formed and the variance ratio
    sits in a non-degenerate range.
 2. **Step 2 binary GLMM β / SE / -log10p** — SAIGE's per-SNP score test
-   with saddlepoint approximation vs `torchgwas.models.BinaryGLMM(use_spa=True)`
+   with saddlepoint approximation vs `torchgenomics.models.BinaryGLMM(use_spa=True)`
    with VanRaden GRM, intercept + age + sex + PC1 + PC2 covariates.
 3. **SPA tail correlation** — Restrict to SAIGE's `Is.SPA == true` rows
    and re-check the -log10p correlation with TG's saddlepoint output.
@@ -27,7 +27,7 @@ binary phenotype):
 bash validation/external/saige/install.sh        # docker pull wzhou88/saige:1.4.4
 bash validation/external/saige/fetch_data.sh     # stage MDP + simulate phenotype
 bash validation/external/saige/run_saige.sh      # Step 1 + Step 2 (binary)
-TORCHGWAS_DISABLE_NATIVE=1 \
+TORCHGENOMICS_DISABLE_NATIVE=1 \
     python3 validation/external/saige/compare.py # comparison report
 pytest -m external tests/test_external_saige.py -v
 ```

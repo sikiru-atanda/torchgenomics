@@ -1,4 +1,4 @@
-// Native accelerator for ``torchgwas.ld._graph_utils.greedy_mwis``.
+// Native accelerator for ``torchgenomics.ld._graph_utils.greedy_mwis``.
 //
 // The pure-Python loop sorts intervals by weight descending and then walks
 // the ranked list, checking each candidate against every previously

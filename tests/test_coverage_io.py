@@ -1,4 +1,4 @@
-"""Tier-2 behavioral coverage tests for ``torchgwas.io.*``.
+"""Tier-2 behavioral coverage tests for ``torchgenomics.io.*``.
 
 Bar (Pillar A spec section 4.3 Tier 2):
 - Per public symbol: golden_path, edge_case, error_path test methods.
@@ -8,15 +8,15 @@ Bar (Pillar A spec section 4.3 Tier 2):
   tool; it requires the documented contract to hold.
 
 Covers 9 io public symbols:
-- ``torchgwas.io.phenotype.PhenotypeData`` (dataclass)
-- ``torchgwas.io.validate.run_preflight`` (function)
-- ``torchgwas.io.bgen.BGENReader`` (class) — depends on ``bgen-reader``
-- ``torchgwas.io.convert.convert`` (function)
-- ``torchgwas.io.map_file.MapInfo`` (dataclass)
-- ``torchgwas.io.map_file.discover_map_file`` (function)
-- ``torchgwas.io.map_file.read_map_file`` (function)
-- ``torchgwas.io.plink2.Plink2PgenReader`` (class) — depends on ``pgenlib``
-- ``torchgwas.io.vcf.VCFReader`` (class) — depends on ``cyvcf2``
+- ``torchgenomics.io.phenotype.PhenotypeData`` (dataclass)
+- ``torchgenomics.io.validate.run_preflight`` (function)
+- ``torchgenomics.io.bgen.BGENReader`` (class) — depends on ``bgen-reader``
+- ``torchgenomics.io.convert.convert`` (function)
+- ``torchgenomics.io.map_file.MapInfo`` (dataclass)
+- ``torchgenomics.io.map_file.discover_map_file`` (function)
+- ``torchgenomics.io.map_file.read_map_file`` (function)
+- ``torchgenomics.io.plink2.Plink2PgenReader`` (class) — depends on ``pgenlib``
+- ``torchgenomics.io.vcf.VCFReader`` (class) — depends on ``cyvcf2``
 
 Format-specific readers (BGEN, PGEN, VCF) use ``pytest.importorskip`` for
 optional dependencies. When the dep is missing the suite still verifies
@@ -30,16 +30,16 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.io import (
+from torchgenomics.io import (
     PhenotypeData,
     run_preflight,
 )
-from torchgwas.io.bgen import BGENReader
-from torchgwas.io.convert import convert
-from torchgwas.io.map_file import MapInfo, discover_map_file, read_map_file
-from torchgwas.io.phenotype import AlignmentManifest, load_phenotype
-from torchgwas.io.plink2 import Plink2PgenReader
-from torchgwas.io.vcf import VCFReader
+from torchgenomics.io.bgen import BGENReader
+from torchgenomics.io.convert import convert
+from torchgenomics.io.map_file import MapInfo, discover_map_file, read_map_file
+from torchgenomics.io.phenotype import AlignmentManifest, load_phenotype
+from torchgenomics.io.plink2 import Plink2PgenReader
+from torchgenomics.io.vcf import VCFReader
 
 
 pytestmark = pytest.mark.timeout(60)
@@ -83,7 +83,7 @@ def _make_malformed_vcf(path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.phenotype.PhenotypeData
+# torchgenomics.io.phenotype.PhenotypeData
 # ---------------------------------------------------------------------------
 
 
@@ -154,7 +154,7 @@ class TestPhenotypeData:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.validate.run_preflight
+# torchgenomics.io.validate.run_preflight
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ class TestRunPreflight:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.bgen.BGENReader
+# torchgenomics.io.bgen.BGENReader
 # ---------------------------------------------------------------------------
 
 
@@ -267,7 +267,7 @@ class TestBgenReader:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.convert.convert
+# torchgenomics.io.convert.convert
 # ---------------------------------------------------------------------------
 
 
@@ -337,7 +337,7 @@ class TestConvert:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.map_file.MapInfo
+# torchgenomics.io.map_file.MapInfo
 # ---------------------------------------------------------------------------
 
 
@@ -367,7 +367,7 @@ class TestMapInfo:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.map_file.discover_map_file
+# torchgenomics.io.map_file.discover_map_file
 # ---------------------------------------------------------------------------
 
 
@@ -396,7 +396,7 @@ class TestDiscoverMapFile:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.map_file.read_map_file
+# torchgenomics.io.map_file.read_map_file
 # ---------------------------------------------------------------------------
 
 
@@ -438,7 +438,7 @@ class TestReadMapFile:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.plink2.Plink2PgenReader
+# torchgenomics.io.plink2.Plink2PgenReader
 # ---------------------------------------------------------------------------
 
 
@@ -488,7 +488,7 @@ class TestPlink2PgenReader:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.io.vcf.VCFReader
+# torchgenomics.io.vcf.VCFReader
 # ---------------------------------------------------------------------------
 
 

@@ -1,4 +1,4 @@
-"""Tests for the ``torchgwas.viz`` module.
+"""Tests for the ``torchgenomics.viz`` module.
 
 All tests run headless via the ``Agg`` backend so they can execute on CI
 without a display. We verify that each entry point
@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
-from torchgwas.viz import (  # noqa: E402
+from torchgenomics.viz import (  # noqa: E402
     circos_manhattan_plot,
     haploview_plot,
     manhattan_plot,
@@ -380,21 +380,21 @@ def test_haploview_plot_rejects_tiny_matrix():
 
 
 # ---------------------------------------------------------------------------
-# Back-compat shim: torchgwas.stats.plots must still import cleanly.
+# Back-compat shim: torchgenomics.stats.plots must still import cleanly.
 # ---------------------------------------------------------------------------
 
 
 def test_stats_plots_shim_reexports_viz_entry_points():
-    from torchgwas.stats.plots import (
+    from torchgenomics.stats.plots import (
         haploview_plot as h,
     )
-    from torchgwas.stats.plots import (
+    from torchgenomics.stats.plots import (
         manhattan_plot as m,
     )
-    from torchgwas.stats.plots import (
+    from torchgenomics.stats.plots import (
         miami_plot as mi,
     )
-    from torchgwas.stats.plots import (
+    from torchgenomics.stats.plots import (
         qq_plot as q,
     )
 

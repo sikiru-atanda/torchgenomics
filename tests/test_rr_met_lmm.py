@@ -3,9 +3,9 @@
 import pytest
 import torch
 
-from torchgwas.linalg.basis import legendre_basis, standardize_time
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.rr_met import (
+from torchgenomics.linalg.basis import legendre_basis, standardize_time
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.rr_met import (
     RandomRegressionMultiEnvLMM,
     RRMetScanResult,
     _build_rr_met_contrasts,
@@ -440,7 +440,7 @@ class TestInterpretiveHelpers:
 
 class TestUpdateNull:
     def test_update_null_separable_preserves_metadata(self):
-        from torchgwas.models.base import update_null
+        from torchgenomics.models.base import update_null
 
         d = _simulate_rr_met_dataset(n=40, T=6, E=2, b=2, seed=40)
         model = RandomRegressionMultiEnvLMM(basis="legendre", order=1)
@@ -462,7 +462,7 @@ class TestUpdateNull:
         assert nf2.log_likelihood >= ll_before - 1e-3
 
     def test_update_null_unstructured(self):
-        from torchgwas.models.base import update_null
+        from torchgenomics.models.base import update_null
 
         d = _simulate_rr_met_dataset(n=40, T=6, E=2, b=2, seed=41)
         model = RandomRegressionMultiEnvLMM(

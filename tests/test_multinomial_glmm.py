@@ -10,8 +10,8 @@ import math
 import pytest
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multinomial_glmm import MultinomialGLMM
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multinomial_glmm import MultinomialGLMM
 
 
 def _simulate_multinomial_glmm_data(

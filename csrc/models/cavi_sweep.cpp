@@ -1,5 +1,5 @@
 // Native accelerator for the CAVI inner sweep in
-// ``torchgwas.models.bayesian_vs.BayesianVS._cavi_loop``.
+// ``torchgenomics.models.bayesian_vs.BayesianVS._cavi_loop``.
 //
 // The Python reference does, per outer iteration:
 //

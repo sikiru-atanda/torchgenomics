@@ -23,8 +23,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.multiomics import coloc_prefilter_pairs, scan_mediation
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.multiomics import coloc_prefilter_pairs, scan_mediation
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Helpers

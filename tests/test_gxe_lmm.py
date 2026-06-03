@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import BaseModel, NullFit, VariantMeta
-from torchgwas.models.lmm_gxe import GxELMM, GxEScanResult, HetLMM
-from torchgwas.optim.gxe_lbfgs_reml import gxe_lbfgs_reml
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import BaseModel, NullFit, VariantMeta
+from torchgenomics.models.lmm_gxe import GxELMM, GxEScanResult, HetLMM
+from torchgenomics.optim.gxe_lbfgs_reml import gxe_lbfgs_reml
 
 # ---------------------------------------------------------------
 # Fixtures
@@ -391,7 +391,7 @@ class TestGxELBFGSREML:
 
     def test_convergence(self, multi_trait_gxe_data):
         """Optimizer should converge and return non-empty trace."""
-        from torchgwas.linalg.eigh import eigendecompose, rotate
+        from torchgenomics.linalg.eigh import eigendecompose, rotate
 
         data = multi_trait_gxe_data
         ed = eigendecompose(data["K"])
@@ -413,7 +413,7 @@ class TestGxELBFGSREML:
 
     def test_positive_definite(self, multi_trait_gxe_data):
         """All estimated covariances should be SPD."""
-        from torchgwas.linalg.eigh import eigendecompose, rotate
+        from torchgenomics.linalg.eigh import eigendecompose, rotate
 
         data = multi_trait_gxe_data
         ed = eigendecompose(data["K"])
@@ -434,7 +434,7 @@ class TestGxELBFGSREML:
 
     def test_returns_correct_shapes(self, multi_trait_gxe_data):
         """Return types and shapes should be correct."""
-        from torchgwas.linalg.eigh import eigendecompose, rotate
+        from torchgenomics.linalg.eigh import eigendecompose, rotate
 
         data = multi_trait_gxe_data
         ed = eigendecompose(data["K"])

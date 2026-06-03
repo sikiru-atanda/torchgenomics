@@ -10,9 +10,9 @@ Writes:
 
 The fixture deliberately uses already-normalised expression so the
 comparison runs on the same algorithmic surface as
-``torchgwas.postgwas.twas_observed_expression``. FUSION's
+``torchgenomics.postgwas.twas_observed_expression``. FUSION's
 measured-expression mode wraps this through the same OLS Wald the TG
-function reuses from ``torchgwas.models.glm.GLM``; agreement should be
+function reuses from ``torchgenomics.models.glm.GLM``; agreement should be
 at floating-point precision under matching covariates.
 """
 

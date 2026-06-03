@@ -7,13 +7,13 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.eigh import eigendecompose, rotate
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.lmm_multi_fit import fit_mvlmm_null_lbfgs
-from torchgwas.models.multi_trait_lmm import MultiTraitLMM
-from torchgwas.optim.lbfgs_reml import lbfgs_reml
-from torchgwas.optim.mvlmm_reml import (
+from torchgenomics.linalg.eigh import eigendecompose, rotate
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import NullFit, ScanResult, VariantMeta
+from torchgenomics.models.lmm_multi_fit import fit_mvlmm_null_lbfgs
+from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
+from torchgenomics.optim.lbfgs_reml import lbfgs_reml
+from torchgenomics.optim.mvlmm_reml import (
     compute_sigma_inv,
     mvlmm_reml_loglikelihood,
 )

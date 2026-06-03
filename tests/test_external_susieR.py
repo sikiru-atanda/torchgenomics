@@ -46,7 +46,7 @@ def test_susieR_parity_full_workflow():
 
     # Our run
     subprocess.run(
-        ["bash", str(VALIDATION_DIR / "run_torchgwas.sh")],
+        ["bash", str(VALIDATION_DIR / "run_torchgenomics.sh")],
         check=True,
     )
 
@@ -56,10 +56,10 @@ def test_susieR_parity_full_workflow():
         "python3",
         str(VALIDATION_DIR / "compare.py"),
         "--upstream", str(out_dir / "susieR.tsv"),
-        "--ours", str(out_dir / "torchgwas.tsv"),
+        "--ours", str(out_dir / "torchgenomics.tsv"),
         "--upstream-walltime", str(out_dir / "susieR_walltime_seconds.txt"),
-        "--ours-walltime", str(out_dir / "torchgwas_walltime_seconds.txt"),
+        "--ours-walltime", str(out_dir / "torchgenomics_walltime_seconds.txt"),
         "--upstream-elbo", str(out_dir / "susieR_elbo.txt"),
-        "--ours-elbo", str(out_dir / "torchgwas_elbo.txt"),
+        "--ours-elbo", str(out_dir / "torchgenomics_elbo.txt"),
     ])
     assert rc == 0, "Tier 2 parity failed; see output above and findings ledger"

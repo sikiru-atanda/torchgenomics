@@ -1,8 +1,8 @@
-# TorchGWAS
+# TorchGenomics
 
 **GPU-accelerated Genome-Wide Association Studies with PyTorch.**
 
-TorchGWAS is a modular Python library that brings GPU acceleration to GWAS pipelines.
+TorchGenomics is a modular Python library that brings GPU acceleration to GWAS pipelines.
 It replicates and extends established tools like GEMMA and GAPIT, achieving
 4th-decimal-place p-value agreement while adding novel statistical models, native
 C++ accelerators, and support for both diploid and polyploid organisms.
@@ -16,7 +16,7 @@ C++ accelerators, and support for both diploid and polyploid organisms.
 - **Platforms**: Linux + macOS + Windows (CPU all platforms; GPU Linux + macOS)
 - **License**: MIT
 
-## What you can do with TorchGWAS
+## What you can do with TorchGenomics
 
 **Variant-level GWAS**
 
@@ -48,7 +48,7 @@ C++ accelerators, and support for both diploid and polyploid organisms.
   - `twas_individual()` — PrediXcan-style on genotypes + weights → GReX → OLS
   - `twas_observed_expression()` — FUSION measured-expression mode on
     already-normalized RNA-seq counts, supports OLS + LMM (kinship-corrected)
-- **PrediXcan / FUSION `.db` reader** (`torchgwas.io.read_predixcan_db`) for
+- **PrediXcan / FUSION `.db` reader** (`torchgenomics.io.read_predixcan_db`) for
   GTEx / PsychENCODE / UTMOST model packs
 - **Multi-tissue stacking + S-MultiXcan-style aggregation** —
   `twas_multi_tissue_stack`, `twas_multi_tissue_aggregate`
@@ -75,7 +75,7 @@ C++ accelerators, and support for both diploid and polyploid organisms.
   with LD-weighted variance, TWAS, fine-mapping (SuSiE, SuSiE-RSS), gene-set
   enrichment (MAGMA-style + custom), HESS regional heritability
 - **Polygenic scores** — C+T, LDpred2 (Inf / Grid / Auto), PRS-CS
-- **NCBI gene annotation** (`torchgwas annotate` CLI)
+- **NCBI gene annotation** (`torchgenomics annotate` CLI)
 
 **Multi-omics integration**
 
@@ -85,8 +85,8 @@ C++ accelerators, and support for both diploid and polyploid organisms.
 ## Quickstart
 
 ```bash
-pip install torchgwas
-torchgwas lmm-scan --genotype data.bed --phenotype pheno.txt --correction bh
+pip install torchgenomics
+torchgenomics lmm-scan --genotype data.bed --phenotype pheno.txt --correction bh
 ```
 
 See [Getting Started](getting-started/installation.md) for the full path from
@@ -94,7 +94,7 @@ install to first scan.
 
 ## Validation
 
-TorchGWAS is validated against GEMMA 0.98.5, GAPIT3, and GWASpoly on the MDP
+TorchGenomics is validated against GEMMA 0.98.5, GAPIT3, and GWASpoly on the MDP
 maize and GWASpoly tetraploid potato fixtures. See the [Validation page](validation.md)
 for the Section-16 tolerances and the current golden-data CI gate.
 

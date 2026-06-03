@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from torchgwas.postgwas._power import PowerResult, gwas_power, power_curve, required_n
+from torchgenomics.postgwas._power import PowerResult, gwas_power, power_curve, required_n
 
 
 class TestGWASPower:

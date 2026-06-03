@@ -6,8 +6,8 @@
 # for each gene column g, regress phenotype y on the design matrix
 # [intercept | covariates | expression_g] and emit the Wald statistic
 # for the expression coefficient. This is the same OLS Wald that
-# torchgwas.postgwas.twas_observed_expression reuses from
-# torchgwas.models.glm.GLM — agreement should be at FP precision.
+# torchgenomics.postgwas.twas_observed_expression reuses from
+# torchgenomics.models.glm.GLM — agreement should be at FP precision.
 #
 # We do NOT shell out to FUSION.assoc_test.R for this fixture because
 # that path is built around imputed GReX from cis-eQTL weight files;

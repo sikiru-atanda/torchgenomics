@@ -1,4 +1,4 @@
-"""Compare susieR vs torchgwas bayes-scan-rss outputs against the 6-metric tolerance table.
+"""Compare susieR vs torchgenomics bayes-scan-rss outputs against the 6-metric tolerance table.
 
 Per NA1 design spec section 5.2. Emits a single findings ledger row to
 docs/validation_findings.md per F3 severity policy.

@@ -10,8 +10,8 @@ import math
 import pytest
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.ordinal_glmm import OrdinalGLMM
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.ordinal_glmm import OrdinalGLMM
 
 
 def _simulate_ordinal_glmm_data(

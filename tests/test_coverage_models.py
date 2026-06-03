@@ -1,4 +1,4 @@
-"""Tier-1 coverage tests for 15 final ``torchgwas.models`` symbols.
+"""Tier-1 coverage tests for 15 final ``torchgenomics.models`` symbols.
 
 Bar (Pillar A spec, Tier 1 — V1-core):
 
@@ -8,7 +8,7 @@ Bar (Pillar A spec, Tier 1 — V1-core):
 - LinkFunction (abstract base): subclassable; required-method shape.
 - IdentityLink (concrete): link / inverse / derivative correctness.
 - Major model classes (SingleTraitLMM, MultiTraitLMM, SparseLMM):
-  canonical-import smoke — exercises ``torchgwas.models.lmm_single``
+  canonical-import smoke — exercises ``torchgenomics.models.lmm_single``
   / ``lmm_multi`` / ``sparse_lmm`` import paths so the auditor credits
   them. Math correctness is exercised in tests/test_single_trait_lmm.py
   / tests/test_multi_trait_lmm.py.
@@ -32,20 +32,20 @@ import pytest
 import torch
 from torch import Tensor
 
-from torchgwas._dispatch import native_disabled
-from torchgwas.models.bayesian_vs import HAS_NATIVE_CAVI, BayesianVSResult
-from torchgwas.models.glm_link import (
+from torchgenomics._dispatch import native_disabled
+from torchgenomics.models.bayesian_vs import HAS_NATIVE_CAVI, BayesianVSResult
+from torchgenomics.models.glm_link import (
     IdentityLink,
     LinkFunction,
 )
-from torchgwas.models.haplotype_novel import HHCTNode
-from torchgwas.models.joint_qtl import JointQTLResult
-from torchgwas.models.lmm_multi_fit import (
+from torchgenomics.models.haplotype_novel import HHCTNode
+from torchgenomics.models.joint_qtl import JointQTLResult
+from torchgenomics.models.lmm_multi_fit import (
     fit_mvlmm_null_ai_reml,
     fit_mvlmm_null_lbfgs,
 )
-from torchgwas.models.ocf_lmm import FoldResult
-from torchgwas.models.threshold_linear import ThresholdConfig, ThresholdNullFit
+from torchgenomics.models.ocf_lmm import FoldResult
+from torchgenomics.models.threshold_linear import ThresholdConfig, ThresholdNullFit
 
 
 pytestmark = pytest.mark.timeout(60)
@@ -127,7 +127,7 @@ class TestThresholdNullFit:
     (theta, liabilities, per-trait thresholds, R, G_cov)."""
 
     def _build(self) -> ThresholdNullFit:
-        from torchgwas.models.base import NullFit
+        from torchgenomics.models.base import NullFit
         n, c = 5, 2
         return ThresholdNullFit(
             null_fit=NullFit(),
@@ -479,19 +479,19 @@ class TestMajorModelCanonicalImport:
     """
 
     def test_single_trait_lmm_canonical_import(self):
-        from torchgwas.models.lmm_single import SingleTraitLMM
+        from torchgenomics.models.lmm_single import SingleTraitLMM
         model = SingleTraitLMM()
         assert hasattr(model, "fit_null")
         assert hasattr(model, "score_chunk")
 
     def test_multi_trait_lmm_canonical_import(self):
-        from torchgwas.models.lmm_multi import MultiTraitLMM
+        from torchgenomics.models.lmm_multi import MultiTraitLMM
         model = MultiTraitLMM()
         assert hasattr(model, "fit_null")
         assert hasattr(model, "score_chunk")
 
     def test_sparse_lmm_canonical_import(self):
-        from torchgwas.models.sparse_lmm import SparseLMM
+        from torchgenomics.models.sparse_lmm import SparseLMM
         model = SparseLMM()
         assert hasattr(model, "fit_null")
         assert hasattr(model, "score_chunk")
@@ -522,7 +522,7 @@ class TestFitMvlmmNullLbfgs:
     def test_runs_to_completion(self):
         Y_rot, X0_rot, eigenvalues = _tiny_mvlmm_inputs()
         nf = fit_mvlmm_null_lbfgs(Y_rot, X0_rot, eigenvalues, max_iter=30)
-        from torchgwas.models.base import NullFit
+        from torchgenomics.models.base import NullFit
         assert isinstance(nf, NullFit)
         assert nf.Vg is not None and nf.Vg.shape == (2, 2)
         assert nf.Ve is not None and nf.Ve.shape == (2, 2)
@@ -557,7 +557,7 @@ class TestFitMvlmmNullAiReml:
         nf = fit_mvlmm_null_ai_reml(
             Y_rot, X0_rot, eigenvalues, max_iter=30, em_iters=5,
         )
-        from torchgwas.models.base import NullFit
+        from torchgenomics.models.base import NullFit
         assert isinstance(nf, NullFit)
         assert nf.Vg is not None and nf.Vg.shape == (2, 2)
         assert nf.Ve is not None and nf.Ve.shape == (2, 2)
@@ -610,7 +610,7 @@ class TestConvergedFlagPlumbing:
     def test_plumbed_flag_lbfgs_matches_optimizer(self):
         """``fit_mvlmm_null_lbfgs.converged`` matches
         ``trace[-1]["converged"]`` from ``lbfgs_reml`` directly."""
-        from torchgwas.optim.lbfgs_reml import lbfgs_reml
+        from torchgenomics.optim.lbfgs_reml import lbfgs_reml
 
         Y_rot, X0_rot, eigenvalues = _tiny_mvlmm_inputs()
         Vg, Ve, ll, trace = lbfgs_reml(
@@ -657,7 +657,7 @@ class TestConvergedFlagPlumbing:
         plumbed flag should report False — even though the legacy
         trace-tail heuristic might also report False, the test gates
         the behavioral contract on the plumbed value."""
-        from torchgwas.optim.lbfgs_reml import lbfgs_reml
+        from torchgenomics.optim.lbfgs_reml import lbfgs_reml
 
         Y_rot, X0_rot, eigenvalues = _tiny_mvlmm_inputs()
         # max_iter=1: only one outer step → no delta-check possible.
@@ -678,23 +678,23 @@ class TestConvergedFlagPlumbing:
 
 
 class TestNativeDisabled:
-    """Helper reading ``TORCHGWAS_DISABLE_NATIVE`` from the environment."""
+    """Helper reading ``TORCHGENOMICS_DISABLE_NATIVE`` from the environment."""
 
     def test_returns_bool(self):
         assert isinstance(native_disabled(), bool)
 
     def test_unset_returns_false(self, monkeypatch):
-        monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+        monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
         assert native_disabled() is False
 
     def test_set_returns_true(self, monkeypatch):
-        monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+        monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
         assert native_disabled() is True
 
     def test_empty_string_returns_false(self, monkeypatch):
         """An empty value disables the override (matches ``bool('')`` →
         False)."""
-        monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "")
+        monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "")
         assert native_disabled() is False
 
 
@@ -712,15 +712,15 @@ class TestHasNativeCavi:
 
     def test_value_consistent_with_native_module(self):
         """The flag matches whether ``_cavi_native`` is non-None in
-        ``torchgwas._native``."""
-        from torchgwas import _native
+        ``torchgenomics._native``."""
+        from torchgenomics import _native
         if HAS_NATIVE_CAVI:
             assert _native._cavi_native is not None
         else:
             assert _native._cavi_native is None
 
     def test_imported_from_native_namespace(self):
-        """The flag re-exported from ``torchgwas.models.bayesian_vs`` is
-        identical to the underlying ``torchgwas._native.HAS_NATIVE_CAVI``."""
-        from torchgwas._native import HAS_NATIVE_CAVI as native_flag
+        """The flag re-exported from ``torchgenomics.models.bayesian_vs`` is
+        identical to the underlying ``torchgenomics._native.HAS_NATIVE_CAVI``."""
+        from torchgenomics._native import HAS_NATIVE_CAVI as native_flag
         assert HAS_NATIVE_CAVI == native_flag

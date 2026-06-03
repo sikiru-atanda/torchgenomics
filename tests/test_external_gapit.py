@@ -1,4 +1,4 @@
-"""External-tool harness: GAPIT3 vs TorchGWAS reference comparison.
+"""External-tool harness: GAPIT3 vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require the GAPIT3 R package OR the
 canonical pre-Pillar-A reference outputs at benchmark/gapit_results/, plus
@@ -12,7 +12,7 @@ the harness reference outputs in validation/external/gapit/outputs/). To run::
 Each test invokes one comparison function from
 ``validation/external/gapit/compare.py``. Tolerances mirror the existing
 ``tests/test_golden_gapit.py`` golden contract — this harness re-runs GAPIT
-(or uses the committed pre-Pillar-A reference) + TorchGWAS end-to-end to
+(or uses the committed pre-Pillar-A reference) + TorchGenomics end-to-end to
 confirm zero regression from the 9 Pillar A V1-core / V1-platform fixes.
 """
 
@@ -54,7 +54,7 @@ def _require_artifacts(*paths: Path) -> None:
 
 @pytest.fixture(scope="module")
 def compare_mod():
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 

@@ -4,7 +4,7 @@
 #
 # Why this harness exists:
 #   The user's spec §12 + §5.4 names SoyMD (Soybean Multi-omics Database) as
-#   the only external reference for the entire `torchgwas.multiomics` module
+#   the only external reference for the entire `torchgenomics.multiomics` module
 #   (mediation + multi-kernel h² + eQTL prefilter). SoyMD itself is a *data
 #   source*, not a comparison TOOL — the platform doesn't ship a library that
 #   re-runs the same `mediate_lmm` analysis. So the actual comparison
@@ -12,7 +12,7 @@
 #   (Tingley et al. 2014 JSS, "mediation: R Package for Causal Mediation
 #   Analysis"). It returns ACME / ADE / total effect with their CIs from a
 #   pair of fitted models (mediator ~ X, outcome ~ M + X), which is exactly
-#   the comparator we need for `torchgwas.multiomics.mediate_lmm`.
+#   the comparator we need for `torchgenomics.multiomics.mediate_lmm`.
 #
 # Pillar B contract:
 #   - Memory pre-flight before any work.

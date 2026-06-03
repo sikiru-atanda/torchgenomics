@@ -1,6 +1,6 @@
 # PLINK 2.0 reference harness (Pillar B / B1)
 
-PLINK 2.0 is the closest ground truth available for diploid linear-regression GWAS, GRMs, and pairwise LD r². This harness installs a pinned PLINK 2 build, runs three reference computations against the MDP maize fixture (281 samples × 3093 SNPs), and asserts that TorchGWAS agrees within calibrated tolerances.
+PLINK 2.0 is the closest ground truth available for diploid linear-regression GWAS, GRMs, and pairwise LD r². This harness installs a pinned PLINK 2 build, runs three reference computations against the MDP maize fixture (281 samples × 3093 SNPs), and asserts that TorchGenomics agrees within calibrated tolerances.
 
 ## Pinned reference
 
@@ -18,7 +18,7 @@ PLINK 2.0 is the closest ground truth available for diploid linear-regression GW
 bash validation/external/plink2/install.sh        # idempotent; prints binary version on completion
 bash validation/external/plink2/fetch_data.sh     # converts MDP numeric → PLINK BED into data/
 bash validation/external/plink2/run_plink2.sh     # 3 reference outputs into outputs/
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/plink2/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/plink2/compare.py
 
 # Or via pytest (requires -m external; skipped by default):
 pytest -m external tests/test_external_plink2.py -v
@@ -28,11 +28,11 @@ Each shell script sources `validation/external/_lib/preflight.sh` and asserts di
 
 ## Reference outputs (in `outputs/`)
 
-| File | Source | TorchGWAS counterpart |
+| File | Source | TorchGenomics counterpart |
 |---|---|---|
-| `glm.EarHT.glm.linear` | `--glm hide-covar` on EarHT | `torchgwas.models.GLM` Wald scan |
-| `kinship.rel` + `kinship.rel.id` | `--make-rel triangle cov` (centered VanRaden-style) | `torchgwas.linalg.kinship.grm_vanraden` |
-| `r2.unphased.vcor2` + `.vars` | `--r2-unphased square` | `torchgwas.ld._pairwise.compute_r2_matrix` |
+| `glm.EarHT.glm.linear` | `--glm hide-covar` on EarHT | `torchgenomics.models.GLM` Wald scan |
+| `kinship.rel` + `kinship.rel.id` | `--make-rel triangle cov` (centered VanRaden-style) | `torchgenomics.linalg.kinship.grm_vanraden` |
+| `r2.unphased.vcor2` + `.vars` | `--r2-unphased square` | `torchgenomics.ld._pairwise.compute_r2_matrix` |
 
 ## Calibrated tolerances
 
@@ -52,7 +52,7 @@ The spec's §16 numbers are aspirational; the actual regression gates are observ
 
 ### Why the SE floor is 1e-2 instead of spec §16's 2e-2
 
-Both PLINK 2 (`--glm`) and TorchGWAS' `GLM` produce a Wald β with the exact same OLS estimator. The SE comes from the residual mean-square: PLINK uses `MSE = RSS_full / (n − c − 1)`, while TorchGWAS uses `sig2_e = RSS_null / (n − c)` (no per-SNP DF correction). On 281 samples that introduces a uniform scale factor of ~`(n − c) / (n − c − 1) ≈ 1.004`, so SE values differ by ~0.2% across the matrix, hence the observed median |Δ|≈3e-3 on SE values around 1.4. This is a documented parameterization difference, not a bug — see comments in `compare.py`.
+Both PLINK 2 (`--glm`) and TorchGenomics' `GLM` produce a Wald β with the exact same OLS estimator. The SE comes from the residual mean-square: PLINK uses `MSE = RSS_full / (n − c − 1)`, while TorchGenomics uses `sig2_e = RSS_null / (n − c)` (no per-SNP DF correction). On 281 samples that introduces a uniform scale factor of ~`(n − c) / (n − c − 1) ≈ 1.004`, so SE values differ by ~0.2% across the matrix, hence the observed median |Δ|≈3e-3 on SE values around 1.4. This is a documented parameterization difference, not a bug — see comments in `compare.py`.
 
 ### Why the GRM is `--make-rel cov` not `--make-rel`
 
@@ -62,11 +62,11 @@ A future extension can wire `--make-rel` (default GCTA mode) against `grm_yang_g
 
 ### Why we filter to MAF > 1e-6 for the GRM
 
-PLINK 2 refuses `--make-rel` on truly monomorphic variants (it cannot standardize a zero-variance column). On the MDP fixture, 158 SNPs are monomorphic, so the GRM uses 2935 of 3093 SNPs. The filtered set is dumped to `outputs/kinship_snps.snplist` and TorchGWAS scores against the same set.
+PLINK 2 refuses `--make-rel` on truly monomorphic variants (it cannot standardize a zero-variance column). On the MDP fixture, 158 SNPs are monomorphic, so the GRM uses 2935 of 3093 SNPs. The filtered set is dumped to `outputs/kinship_snps.snplist` and TorchGenomics scores against the same set.
 
 ## Allele-flip handling
 
-PLINK 2's `--glm` reports β per copy of the **minor** allele (it auto-picks A1). Our `convert_mdp_to_bed.py` writes the .bim with `A1 = "A"` and `A2 = "G"`, and TorchGWAS' `PlinkBedReader` decodes raw 2-bit code `0b00` to dosage 2 — i.e. TG dosage counts the .bim A1 ("A") per PLINK 1.9 canonical convention (post-2026-05-13 fix). For SNPs where PLINK chose `A1 = "G"` (the opposite of our BIM A1), the reported β has opposite sign to TorchGWAS', so `compare.py` flips PLINK's β before comparing. This affects ~half of MDP variants.
+PLINK 2's `--glm` reports β per copy of the **minor** allele (it auto-picks A1). Our `convert_mdp_to_bed.py` writes the .bim with `A1 = "A"` and `A2 = "G"`, and TorchGenomics' `PlinkBedReader` decodes raw 2-bit code `0b00` to dosage 2 — i.e. TG dosage counts the .bim A1 ("A") per PLINK 1.9 canonical convention (post-2026-05-13 fix). For SNPs where PLINK chose `A1 = "G"` (the opposite of our BIM A1), the reported β has opposite sign to TorchGenomics', so `compare.py` flips PLINK's β before comparing. This affects ~half of MDP variants.
 
 ## Peak memory
 
@@ -87,7 +87,7 @@ validation/external/plink2/
 ├── fetch_data.sh           # MDP numeric → PLINK BED (no internet download)
 ├── convert_mdp_to_bed.py   # helper invoked by fetch_data.sh
 ├── run_plink2.sh           # produces 3 reference outputs into outputs/
-├── compare.py              # asserts tolerances vs TorchGWAS
+├── compare.py              # asserts tolerances vs TorchGenomics
 ├── README.md               # this file
 ├── bin/                    # plink2 binary (ignored)
 ├── data/                   # converted MDP fileset (ignored)
@@ -104,4 +104,4 @@ pytest tests/test_external_plink2.py            # 3 skipped
 pytest -m external tests/test_external_plink2.py -v
 ```
 
-The pytest module dynamically imports `compare.py` from outside the package tree, so no modification of `torchgwas/` is required to wire this harness.
+The pytest module dynamically imports `compare.py` from outside the package tree, so no modification of `torchgenomics/` is required to wire this harness.

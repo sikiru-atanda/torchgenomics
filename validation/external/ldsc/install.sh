@@ -20,7 +20,7 @@
 #     S-LDSC papers continue to cite.
 #
 # Why we use a separate `ldsc_env` rather than the project venv:
-#   - LDSC 1.0.1 requires Python 2.7. TorchGWAS requires Python ≥ 3.10.
+#   - LDSC 1.0.1 requires Python 2.7. TorchGenomics requires Python ≥ 3.10.
 #   - Process-isolation (subprocess from `compare.py`) is the cleanest way to
 #     bridge the two.
 

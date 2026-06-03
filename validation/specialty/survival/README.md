@@ -1,7 +1,7 @@
 # Survival GWAS reference comparison harness (Tier 3 C1)
 
 Genome Biology Methods paper, Tier 3 specialty fixture C1.
-Compares `torchgwas.models.survival_glmm.SurvivalGLMM` (Phase 35;
+Compares `torchgenomics.models.survival_glmm.SurvivalGLMM` (Phase 35;
 Cox PH frailty + Breslow-Clayton PQL + SPACox SPA) against the
 canonical R coxme implementation (Therneau, Grambsch & Pankratz 2003).
 

@@ -1,5 +1,5 @@
 // Native accelerator for the MAGMA-style snp_to_gene per-gene window
-// scan in ``torchgwas.postgwas._enrichment.snp_to_gene``.
+// scan in ``torchgenomics.postgwas._enrichment.snp_to_gene``.
 //
 // Background. The Python reference does, for each gene g (typically
 // ~20K genes per scan):

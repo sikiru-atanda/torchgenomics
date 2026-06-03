@@ -1,5 +1,5 @@
 """Tests for the native C++ Wall-Pritchard blockiness permutation accelerator
-(``torchgwas._native._wall_pritchard_native``).
+(``torchgenomics._native._wall_pritchard_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,12 +13,12 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import (
+from torchgenomics._native import (
     HAS_NATIVE_WALL_PRITCHARD,
     _wall_pritchard_native,
 )
-from torchgwas.ld import detect_blocks
-from torchgwas.ld._blocks_diagnostics import _wall_pritchard_native_enabled
+from torchgenomics.ld import detect_blocks
+from torchgenomics.ld._blocks_diagnostics import _wall_pritchard_native_enabled
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_WALL_PRITCHARD,
@@ -37,7 +37,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _wall_pritchard_native_enabled() is True
 
@@ -140,15 +140,15 @@ def _make_genotypes(seed: int, m: int = 20, n: int = 80):
 
 
 def _python_reference(G, pos, chrs, ids, **kw):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return detect_blocks(G, pos, chrs, ids, method="wall_pritchard", **kw)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 def _native_dispatch(G, pos, chrs, ids, **kw):
-    os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+    os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     return detect_blocks(G, pos, chrs, ids, method="wall_pritchard", **kw)
 
 

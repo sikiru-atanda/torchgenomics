@@ -4,10 +4,10 @@
 import pytest
 import torch
 
-from torchgwas.linalg.basis import legendre_basis, standardize_time
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multi_trait_lmm import MultiTraitLMM
-from torchgwas.models.rr_lmm import RandomRegressionLMM, RRScanResult
+from torchgenomics.linalg.basis import legendre_basis, standardize_time
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
+from torchgenomics.models.rr_lmm import RandomRegressionLMM, RRScanResult
 
 
 def _simulate_with_planted_signal(
@@ -145,7 +145,7 @@ class TestEquivalenceWithMultiTraitLMM:
     def test_joint_test_matches_mvlmm(self):
         # The joint χ²(b) test in RR should equal the joint Wald test in
         # MultiTraitLMM applied to the hand-projected coefficients.
-        from torchgwas.models.rr_lmm import longitudinal_to_wide
+        from torchgenomics.models.rr_lmm import longitudinal_to_wide
 
         Y, X0, K, G, ids, t, t_min, t_max = _simulate_with_planted_signal(
             n=50, T=7, b=3, m=12, seed=4
@@ -236,7 +236,7 @@ class TestScanValidation:
         Y, X0, K, G, ids, t, t_min, t_max = _simulate_with_planted_signal(
             n=30, T=5, b=2, m=5, causal_indices=(), seed=30
         )
-        from torchgwas.models.rr_lmm import longitudinal_to_wide
+        from torchgenomics.models.rr_lmm import longitudinal_to_wide
         proj = longitudinal_to_wide(Y, ids, t, basis_kind="legendre", order=1)
         mvlmm = MultiTraitLMM()
         nf_mv = mvlmm.fit_null(proj.Y_wide, X0, K)

@@ -1,4 +1,4 @@
-"""Tier-2 behavioral coverage tests for ``torchgwas.postgwas`` colocalization,
+"""Tier-2 behavioral coverage tests for ``torchgenomics.postgwas`` colocalization,
 fine-mapping, and meta-analysis public symbols.
 
 Bar (Pillar A spec section 4.3 Tier 2):
@@ -12,24 +12,24 @@ Bar (Pillar A spec section 4.3 Tier 2):
 
 Covers 16 public symbols across 3 submodules:
 
-- ``torchgwas.postgwas._finemapping.AnnotatedSumStats`` (dataclass)
-- ``torchgwas.postgwas._finemapping.CredibleSet`` (dataclass)
-- ``torchgwas.postgwas._finemapping.LocusSummary`` (dataclass)
-- ``torchgwas.postgwas._finemapping.annotate_sumstats`` (function)
-- ``torchgwas.postgwas._finemapping.extract_credible_sets`` (function)
-- ``torchgwas.postgwas._finemapping.locus_summary`` (function)
-- ``torchgwas.postgwas._finemapping.to_coloc_sumstats`` (function)
-- ``torchgwas.postgwas._hyprcoloc.ColocPairwiseResult`` (dataclass)
-- ``torchgwas.postgwas._hyprcoloc.HyprcolocResult`` (dataclass)
-- ``torchgwas.postgwas._hyprcoloc.coloc_pairwise`` (function)
-- ``torchgwas.postgwas._hyprcoloc.hyprcoloc`` (function)
-- ``torchgwas.postgwas._meta.MetaResult`` (dataclass)
-- ``torchgwas.postgwas._meta.meta_fixed_effect`` (function)
-- ``torchgwas.postgwas._meta.meta_random_effect`` (function)
-- ``torchgwas.postgwas._meta.meta_sample_size`` (function)
-- ``torchgwas.postgwas._meta.meta_han_eskin`` (function)
+- ``torchgenomics.postgwas._finemapping.AnnotatedSumStats`` (dataclass)
+- ``torchgenomics.postgwas._finemapping.CredibleSet`` (dataclass)
+- ``torchgenomics.postgwas._finemapping.LocusSummary`` (dataclass)
+- ``torchgenomics.postgwas._finemapping.annotate_sumstats`` (function)
+- ``torchgenomics.postgwas._finemapping.extract_credible_sets`` (function)
+- ``torchgenomics.postgwas._finemapping.locus_summary`` (function)
+- ``torchgenomics.postgwas._finemapping.to_coloc_sumstats`` (function)
+- ``torchgenomics.postgwas._hyprcoloc.ColocPairwiseResult`` (dataclass)
+- ``torchgenomics.postgwas._hyprcoloc.HyprcolocResult`` (dataclass)
+- ``torchgenomics.postgwas._hyprcoloc.coloc_pairwise`` (function)
+- ``torchgenomics.postgwas._hyprcoloc.hyprcoloc`` (function)
+- ``torchgenomics.postgwas._meta.MetaResult`` (dataclass)
+- ``torchgenomics.postgwas._meta.meta_fixed_effect`` (function)
+- ``torchgenomics.postgwas._meta.meta_random_effect`` (function)
+- ``torchgenomics.postgwas._meta.meta_sample_size`` (function)
+- ``torchgenomics.postgwas._meta.meta_han_eskin`` (function)
 
-All re-exported via ``torchgwas.postgwas.__init__``.
+All re-exported via ``torchgenomics.postgwas.__init__``.
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ from dataclasses import fields
 import pytest
 import torch
 
-from torchgwas.models.bayesian_vs import BayesianVSResult
-from torchgwas.postgwas import (
+from torchgenomics.models.bayesian_vs import BayesianVSResult
+from torchgenomics.postgwas import (
     AnnotatedSumStats,
     ColocPairwiseResult,
     CredibleSet,

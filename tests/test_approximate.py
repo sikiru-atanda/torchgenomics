@@ -22,7 +22,7 @@ def _make_low_rank_psd(n: int, rank: int, seed: int = 42) -> torch.Tensor:
 
 def _exact_top_k(K: torch.Tensor, k: int):
     """Reference exact top-k eigendecomposition."""
-    from torchgwas.linalg.eigh import eigendecompose
+    from torchgenomics.linalg.eigh import eigendecompose
     ed = eigendecompose(K)
     return ed.eigenvalues[:k], ed.eigenvectors[:, :k]
 
@@ -34,7 +34,7 @@ def _exact_top_k(K: torch.Tensor, k: int):
 class TestRandomizedSVD:
     def test_eigenvalues_close_to_exact(self):
         """Top-k eigenvalues from randomized SVD match exact within 1%."""
-        from torchgwas.linalg.randomized import randomized_svd
+        from torchgenomics.linalg.randomized import randomized_svd
 
         n, rank, k = 200, 20, 15
         K = _make_low_rank_psd(n, rank)
@@ -51,7 +51,7 @@ class TestRandomizedSVD:
 
     def test_eigenvectors_subspace(self):
         """Eigenvectors span the same subspace as exact top-k."""
-        from torchgwas.linalg.randomized import randomized_svd
+        from torchgenomics.linalg.randomized import randomized_svd
 
         n, rank, k = 100, 10, 8
         K = _make_low_rank_psd(n, rank)
@@ -66,8 +66,8 @@ class TestRandomizedSVD:
 
     def test_returns_eigendecomp(self):
         """Output is EigenDecomp dataclass."""
-        from torchgwas.linalg.eigh import EigenDecomp
-        from torchgwas.linalg.randomized import randomized_svd
+        from torchgenomics.linalg.eigh import EigenDecomp
+        from torchgenomics.linalg.randomized import randomized_svd
 
         K = _make_low_rank_psd(50, 10)
         ed = randomized_svd(K, n_components=5, seed=42)
@@ -76,7 +76,7 @@ class TestRandomizedSVD:
 
     def test_descending_order(self):
         """Eigenvalues are in descending order."""
-        from torchgwas.linalg.randomized import randomized_svd
+        from torchgenomics.linalg.randomized import randomized_svd
 
         K = _make_low_rank_psd(80, 20)
         ed = randomized_svd(K, n_components=15, seed=42)
@@ -85,7 +85,7 @@ class TestRandomizedSVD:
 
     def test_seed_reproducibility(self):
         """Same seed produces identical results."""
-        from torchgwas.linalg.randomized import randomized_svd
+        from torchgenomics.linalg.randomized import randomized_svd
 
         K = _make_low_rank_psd(50, 10)
         ed1 = randomized_svd(K, n_components=5, seed=123)
@@ -100,7 +100,7 @@ class TestRandomizedSVD:
 class TestLOBPCG:
     def test_eigenvalues_close_to_exact(self):
         """LOBPCG eigenvalues match exact top-k."""
-        from torchgwas.linalg.randomized import lobpcg_decompose
+        from torchgenomics.linalg.randomized import lobpcg_decompose
 
         n, rank, k = 100, 20, 10
         K = _make_low_rank_psd(n, rank)
@@ -112,8 +112,8 @@ class TestLOBPCG:
         assert rel_err.max() < 0.05, f"Max relative error: {rel_err.max():.4f}"
 
     def test_returns_eigendecomp(self):
-        from torchgwas.linalg.eigh import EigenDecomp
-        from torchgwas.linalg.randomized import lobpcg_decompose
+        from torchgenomics.linalg.eigh import EigenDecomp
+        from torchgenomics.linalg.randomized import lobpcg_decompose
 
         K = _make_low_rank_psd(50, 10)
         ed = lobpcg_decompose(K, n_components=5, seed=42)
@@ -127,7 +127,7 @@ class TestLOBPCG:
 class TestNystrom:
     def _make_genotype_chunks(self, n=50, m=100, chunk_size=25, seed=42):
         """Create simple genotype chunks for testing."""
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         torch.manual_seed(seed)
         G = torch.clamp(torch.randn(n, m, dtype=torch.float64) + 1.0, 0.0, 2.0)
 
@@ -147,7 +147,7 @@ class TestNystrom:
 
     def test_nystrom_eigenvalues_positive(self):
         """Nystrom returns positive eigenvalues."""
-        from torchgwas.linalg.nystrom import nystrom_approximate
+        from torchgenomics.linalg.nystrom import nystrom_approximate
 
         chunks, _ = self._make_genotype_chunks()
         ed, normalizer = nystrom_approximate(
@@ -158,8 +158,8 @@ class TestNystrom:
 
     def test_nystrom_approximation_quality(self):
         """Nystrom GRM close to full VanRaden GRM in top eigenvalues."""
-        from torchgwas.linalg.kinship import grm_vanraden
-        from torchgwas.linalg.nystrom import nystrom_approximate
+        from torchgenomics.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.nystrom import nystrom_approximate
 
         chunks, G = self._make_genotype_chunks(n=50, m=200, chunk_size=50)
 
@@ -180,8 +180,8 @@ class TestNystrom:
         assert corr > 0.9, f"Eigenvalue correlation: {corr:.4f}"
 
     def test_nystrom_returns_eigendecomp(self):
-        from torchgwas.linalg.eigh import EigenDecomp
-        from torchgwas.linalg.nystrom import nystrom_approximate
+        from torchgenomics.linalg.eigh import EigenDecomp
+        from torchgenomics.linalg.nystrom import nystrom_approximate
 
         chunks, _ = self._make_genotype_chunks()
         ed, _ = nystrom_approximate(iter(chunks), n_samples=50, n_landmarks=10, seed=42)
@@ -195,7 +195,7 @@ class TestNystrom:
 
 class TestSparseGRM:
     def _make_chunks(self, n=30, m=60, chunk_size=20, seed=42):
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         torch.manual_seed(seed)
         G = torch.clamp(torch.randn(n, m, dtype=torch.float64) + 1.0, 0.0, 2.0)
 
@@ -214,8 +214,8 @@ class TestSparseGRM:
 
     def test_sparse_grm_preserves_above_threshold(self):
         """Entries above threshold are preserved."""
-        from torchgwas.linalg.kinship import grm_vanraden
-        from torchgwas.linalg.sparse_grm import sparse_grm_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.sparse_grm import sparse_grm_streaming
 
         chunks, G = self._make_chunks()
         K_sparse, normalizer, n_snps = sparse_grm_streaming(
@@ -236,7 +236,7 @@ class TestSparseGRM:
 
     def test_sparse_grm_diagonal_preserved(self):
         """Diagonal is always preserved regardless of threshold."""
-        from torchgwas.linalg.sparse_grm import sparse_grm_streaming
+        from torchgenomics.linalg.sparse_grm import sparse_grm_streaming
 
         chunks, _ = self._make_chunks()
         K_sparse, _, _ = sparse_grm_streaming(
@@ -248,7 +248,7 @@ class TestSparseGRM:
 
     def test_sparse_matvec_matches_dense(self):
         """Sparse matvec produces same result as dense multiplication."""
-        from torchgwas.linalg.sparse_grm import sparse_grm_streaming
+        from torchgenomics.linalg.sparse_grm import sparse_grm_streaming
 
         chunks, _ = self._make_chunks()
         K_sparse, _, _ = sparse_grm_streaming(
@@ -269,7 +269,7 @@ class TestSparseGRM:
 class TestStochasticTrace:
     def test_hutchinson_trace_accuracy(self):
         """Hutchinson estimate within 10% of true trace."""
-        from torchgwas.optim.stochastic_trace import hutchinson_trace
+        from torchgenomics.optim.stochastic_trace import hutchinson_trace
 
         n = 100
         torch.manual_seed(42)
@@ -284,7 +284,7 @@ class TestStochasticTrace:
 
     def test_stochastic_logdet_accuracy(self):
         """SLQ log-determinant within 15% of true logdet."""
-        from torchgwas.optim.stochastic_trace import stochastic_logdet
+        from torchgenomics.optim.stochastic_trace import stochastic_logdet
 
         n = 50
         torch.manual_seed(42)
@@ -301,7 +301,7 @@ class TestStochasticTrace:
 
     def test_hutchinson_identity_trace(self):
         """Trace of identity matrix should be n."""
-        from torchgwas.optim.stochastic_trace import hutchinson_trace
+        from torchgenomics.optim.stochastic_trace import hutchinson_trace
 
         n = 80
         est = hutchinson_trace(lambda x: x, n, n_probes=100, seed=42)
@@ -324,11 +324,11 @@ class TestApproxLMM:
         G = torch.clamp(torch.randn(n, m, dtype=torch.float64) + 1.0, 0.0, 2.0)
 
         # GRM
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.kinship import grm_vanraden
         K, _ = grm_vanraden(G)
 
         # Phenotype with genetic signal
-        from torchgwas.linalg.eigh import eigendecompose
+        from torchgenomics.linalg.eigh import eigendecompose
         ed = eigendecompose(K)
         U = ed.eigenvectors
         sig2_g, sig2_e = 0.5, 0.5
@@ -341,9 +341,9 @@ class TestApproxLMM:
 
     def test_randomized_svd_lmm_pvalues(self, lmm_data):
         """LMM with randomized SVD produces p-values correlated > 0.99 with exact."""
-        from torchgwas.config import NumericalConfig
-        from torchgwas.models.base import VariantMeta
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.config import NumericalConfig
+        from torchgenomics.models.base import VariantMeta
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         Y, X0, K, G = lmm_data
         n, m = G.shape
@@ -388,8 +388,8 @@ class TestApproxLMM:
 
     def test_approx_nullfit_labeled(self, lmm_data):
         """Approximate NullFit has approximate=True flag set."""
-        from torchgwas.config import NumericalConfig
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.config import NumericalConfig
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         Y, X0, K, _ = lmm_data
         config = NumericalConfig(reml_method="ai_reml")
@@ -407,8 +407,8 @@ class TestApproxLMM:
 
     def test_exact_nullfit_not_labeled(self, lmm_data):
         """Exact NullFit has approximate=False."""
-        from torchgwas.config import NumericalConfig
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.config import NumericalConfig
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         Y, X0, K, _ = lmm_data
         config = NumericalConfig(reml_method="ai_reml")

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.io.plink import PlinkBedReader
+from torchgenomics.io.plink import PlinkBedReader
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 TINY_PREFIX = FIXTURE_DIR / "tiny"
@@ -98,7 +98,7 @@ def test_bed_dosage_counts_a1_per_plink_convention(tmp_path):
 
 
 class TestPlinkBedReader:
-    """Tests for torchgwas.io.plink.PlinkBedReader."""
+    """Tests for torchgenomics.io.plink.PlinkBedReader."""
 
     def test_read_bed_returns_float_tensor(self, bed_reader):
         """Reader produces float64 dosage tensor from .bed file."""
@@ -187,7 +187,7 @@ class TestPlinkBedReader:
 
 
 class TestPlink2PgenReader:
-    """Tests for torchgwas.io.plink2.Plink2PgenReader."""
+    """Tests for torchgenomics.io.plink2.Plink2PgenReader."""
 
     def test_read_pgen_returns_float_tensor(self):
         """Reader produces float64 dosage tensor from .pgen file."""

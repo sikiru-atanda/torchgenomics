@@ -1,0 +1,38 @@
+Package: rTorchGenomics
+Title: GPU-Accelerated Statistical and Quantitative Genomics on PyTorch
+Version: 0.4.0
+Authors@R: c(
+    person("Sikiru", "Atanda", , "sikiru-atanda@github.com", role = c("aut", "cre"))
+  )
+Description: R interface to the TorchGenomics Python engine, covering
+    GWAS, post-GWAS, polygenic scoring, LD analysis, imputation,
+    multi-omics integration, and visualization. Provides 44 R functions
+    (12 hand-crafted with polished S4 result objects + 31
+    auto-generated stubs + 1 plot helper) wrapping the full
+    TorchGenomics CLI surface. Uses reticulate for in-process Python
+    integration. The Python package torchgenomics (>= 0.4.0) is
+    installed automatically via tg_install().
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.1)
+Imports:
+    reticulate (>= 1.34),
+    methods,
+    tibble (>= 3.0),
+    ggplot2 (>= 3.4),
+    jsonlite (>= 1.8),
+    readr (>= 2.1)
+Suggests:
+    testthat (>= 3.0.0),
+    mockery (>= 0.4.4),
+    knitr,
+    rmarkdown,
+    pkgdown
+SystemRequirements: Python (>= 3.10), torchgenomics (== 0.4.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+URL: https://github.com/sikiru-atanda/torchgenomics, https://sikiru-atanda.github.io/torchgenomics/
+BugReports: https://github.com/sikiru-atanda/torchgenomics/issues

@@ -1,5 +1,5 @@
 // Native accelerator for the Big-LD (Kim et al. 2018) candidate-interval
-// scan in ``torchgwas.ld._blocks_literature.detect_blocks_big_ld``.
+// scan in ``torchgenomics.ld._blocks_literature.detect_blocks_big_ld``.
 //
 // The pure-Python loop walks every (i, j) window and re-computes the
 // off-diagonal mean of R[i:j+1, i:j+1] via tensor masking + reduction +

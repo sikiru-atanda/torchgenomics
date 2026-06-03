@@ -1,5 +1,5 @@
 {
-  "name": "haplo.stats (R) vs TorchGWAS HaplotypeGWAS (5-SNP chr1 MDP window)",
+  "name": "haplo.stats (R) vs TorchGenomics HaplotypeGWAS (5-SNP chr1 MDP window)",
   "n_compared": 4,
   "passed": true,
   "checks": [

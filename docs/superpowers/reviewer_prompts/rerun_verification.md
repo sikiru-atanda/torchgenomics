@@ -1,10 +1,10 @@
 # Re-Run Reviewer Prompt — Pillar {{PILLAR}} Tier {{TIER}}
 
-You are an independent verifier for pillar {{PILLAR}} tier {{TIER}} of the TorchGWAS validation campaign. You have NOT seen the conversation that produced these tests.
+You are an independent verifier for pillar {{PILLAR}} tier {{TIER}} of the TorchGenomics validation campaign. You have NOT seen the conversation that produced these tests.
 
 ## Context
 
-TorchGWAS commit under verification: {{COMMIT_SHA}}. Branch: `validation/pillar-{{PILLAR}}-coverage`.
+TorchGenomics commit under verification: {{COMMIT_SHA}}. Branch: `validation/pillar-{{PILLAR}}-coverage`.
 
 The campaign claims this tier validates {{TIER_CLAIM}}. The spec is at `docs/superpowers/specs/2026-04-30-validation-campaign-design.md`. Don't take its word for the result — independently verify.
 

@@ -35,11 +35,11 @@ import tracemalloc
 import pytest
 import torch
 
-from torchgwas.io.regions import Region
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.set_based import SetBasedScanner
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.io.regions import Region
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.set_based import SetBasedScanner
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 
 # ---------------------------------------------------------------------------
@@ -310,9 +310,9 @@ class TestGlmmScanStreamingMemory:
     """
 
     def test_streaming_glmm_matches_full_chunk(self, binary_glmm_inputs):
-        from torchgwas.config import TorchGWASConfig
-        from torchgwas.models.binary_glmm import BinaryGLMM
-        from torchgwas.scan.unified import UnifiedScanner
+        from torchgenomics.config import TorchGenomicsConfig
+        from torchgenomics.models.binary_glmm import BinaryGLMM
+        from torchgenomics.scan.unified import UnifiedScanner
 
         G, Y, X0, K = binary_glmm_inputs
         m = G.shape[1]
@@ -332,7 +332,7 @@ class TestGlmmScanStreamingMemory:
 
         # Streaming path via UnifiedScanner
         reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
-        config = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+        config = TorchGenomicsConfig(device=torch.device("cpu"), chunk_size=64)
         scanner = UnifiedScanner(reader, model, config)
         streamed = scanner.scan(nf, test="score", qc_config=None)
 
@@ -349,9 +349,9 @@ class TestGlmmScanStreamingMemory:
         small. The 16 MiB ceiling holds with margin today and trips
         immediately on a regression that re-materializes G.
         """
-        from torchgwas.config import TorchGWASConfig
-        from torchgwas.models.binary_glmm import BinaryGLMM
-        from torchgwas.scan.unified import UnifiedScanner
+        from torchgenomics.config import TorchGenomicsConfig
+        from torchgenomics.models.binary_glmm import BinaryGLMM
+        from torchgenomics.scan.unified import UnifiedScanner
 
         G, Y, X0, K = binary_glmm_inputs
         m = G.shape[1]
@@ -363,7 +363,7 @@ class TestGlmmScanStreamingMemory:
             reader = _ChunkedTensorReader(
                 G, ["1"] * m, list(range(m)), chunk_size=64,
             )
-            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            cfg = TorchGenomicsConfig(device=torch.device("cpu"), chunk_size=64)
             scanner = UnifiedScanner(reader, model, cfg)
             return scanner.scan(nf, test="score", qc_config=None)
 
@@ -404,14 +404,14 @@ class TestMeGlmmScanStreamingMemory:
 
     MultiEnvGLMM.score_chunk returns ``EnvScanResult`` (richer than
     ``ScanResult``), so the streaming path uses
-    :func:`torchgwas.cli._merge_env_results` rather than
+    :func:`torchgenomics.cli._merge_env_results` rather than
     :class:`UnifiedScanner`. The PQL null fit only depends on
     ``Y / X0 / K``, so the genome scan loop is per-variant.
     """
 
     def test_streaming_me_glmm_matches_full_chunk(self, me_glmm_inputs):
-        from torchgwas.cli import _merge_env_results
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.cli import _merge_env_results
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         G, Y, X0, K = me_glmm_inputs
         m = G.shape[1]
@@ -442,8 +442,8 @@ class TestMeGlmmScanStreamingMemory:
 
     def test_streaming_me_glmm_under_explicit_budget(self, me_glmm_inputs):
         """Hard absolute budget: <16 MiB at 200x500/E=2."""
-        from torchgwas.cli import _merge_env_results
-        from torchgwas.models.multi_env_glmm import MultiEnvGLMM
+        from torchgenomics.cli import _merge_env_results
+        from torchgenomics.models.multi_env_glmm import MultiEnvGLMM
 
         G, Y, X0, K = me_glmm_inputs
         m = G.shape[1]
@@ -490,9 +490,9 @@ class TestSurvivalScanStreamingMemory:
     """Streaming Cox PH frailty scan via UnifiedScanner."""
 
     def test_streaming_survival_matches_full_chunk(self, survival_inputs):
-        from torchgwas.config import TorchGWASConfig
-        from torchgwas.models.survival_glmm import SurvivalGLMM
-        from torchgwas.scan.unified import UnifiedScanner
+        from torchgenomics.config import TorchGenomicsConfig
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.scan.unified import UnifiedScanner
 
         G, Y, X0, K = survival_inputs
         m = G.shape[1]
@@ -510,7 +510,7 @@ class TestSurvivalScanStreamingMemory:
         ref = model.score_chunk(G, nf, vmeta, test="score")
 
         reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
-        config = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+        config = TorchGenomicsConfig(device=torch.device("cpu"), chunk_size=64)
         scanner = UnifiedScanner(reader, model, config)
         streamed = scanner.scan(nf, test="score", qc_config=None)
 
@@ -519,9 +519,9 @@ class TestSurvivalScanStreamingMemory:
 
     def test_streaming_survival_under_explicit_budget(self, survival_inputs):
         """Hard absolute budget: <16 MiB at 200x500."""
-        from torchgwas.config import TorchGWASConfig
-        from torchgwas.models.survival_glmm import SurvivalGLMM
-        from torchgwas.scan.unified import UnifiedScanner
+        from torchgenomics.config import TorchGenomicsConfig
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.scan.unified import UnifiedScanner
 
         G, Y, X0, K = survival_inputs
         m = G.shape[1]
@@ -531,7 +531,7 @@ class TestSurvivalScanStreamingMemory:
 
         def _run_streaming():
             reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
-            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            cfg = TorchGenomicsConfig(device=torch.device("cpu"), chunk_size=64)
             scanner = UnifiedScanner(reader, model, cfg)
             return scanner.scan(nf, test="score", qc_config=None)
 
@@ -572,9 +572,9 @@ class TestThresholdScanStreamingMemory:
     """
 
     def test_streaming_threshold_matches_full_chunk(self, threshold_inputs):
-        from torchgwas.config import STAT_DTYPE, TorchGWASConfig
-        from torchgwas.models.threshold_linear import ThresholdLinearModel
-        from torchgwas.scan.unified import UnifiedScanner
+        from torchgenomics.config import STAT_DTYPE, TorchGenomicsConfig
+        from torchgenomics.models.threshold_linear import ThresholdLinearModel
+        from torchgenomics.scan.unified import UnifiedScanner
 
         G, Y, X0 = threshold_inputs
         m = G.shape[1]
@@ -599,7 +599,7 @@ class TestThresholdScanStreamingMemory:
         ref = model.score_chunk(G, nf, vmeta, test="score")
 
         reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
-        cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+        cfg = TorchGenomicsConfig(device=torch.device("cpu"), chunk_size=64)
         scanner = UnifiedScanner(reader, model, cfg)
         streamed = scanner.scan(nf, test="score", qc_config=None)
 
@@ -608,9 +608,9 @@ class TestThresholdScanStreamingMemory:
 
     def test_streaming_threshold_under_explicit_budget(self, threshold_inputs):
         """Hard absolute budget: <16 MiB at 200x500."""
-        from torchgwas.config import STAT_DTYPE, TorchGWASConfig
-        from torchgwas.models.threshold_linear import ThresholdLinearModel
-        from torchgwas.scan.unified import UnifiedScanner
+        from torchgenomics.config import STAT_DTYPE, TorchGenomicsConfig
+        from torchgenomics.models.threshold_linear import ThresholdLinearModel
+        from torchgenomics.scan.unified import UnifiedScanner
 
         G, Y, X0 = threshold_inputs
         m = G.shape[1]
@@ -627,7 +627,7 @@ class TestThresholdScanStreamingMemory:
 
         def _run_streaming():
             reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
-            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            cfg = TorchGenomicsConfig(device=torch.device("cpu"), chunk_size=64)
             scanner = UnifiedScanner(reader, model, cfg)
             return scanner.scan(nf, test="score", qc_config=None)
 
@@ -671,8 +671,8 @@ class TestGxeScanStreamingMemory:
     """
 
     def test_streaming_gxe_matches_full_chunk(self, gxe_inputs):
-        from torchgwas.cli import _merge_gxe_results
-        from torchgwas.models.lmm_gxe import HetLMM
+        from torchgenomics.cli import _merge_gxe_results
+        from torchgenomics.models.lmm_gxe import HetLMM
 
         G, Y, X0, K, env = gxe_inputs
         m = G.shape[1]
@@ -705,8 +705,8 @@ class TestGxeScanStreamingMemory:
 
     def test_streaming_gxe_under_explicit_budget(self, gxe_inputs):
         """Hard absolute budget: <16 MiB at 200x500."""
-        from torchgwas.cli import _merge_gxe_results
-        from torchgwas.models.lmm_gxe import HetLMM
+        from torchgenomics.cli import _merge_gxe_results
+        from torchgenomics.models.lmm_gxe import HetLMM
 
         G, Y, X0, K, env = gxe_inputs
         m = G.shape[1]
@@ -762,8 +762,8 @@ class TestGuScanStreamingMemory:
     """
 
     def test_streaming_gu_matches_full_chunk(self, gu_inputs):
-        from torchgwas.models.gu_lmm import GULM
-        from torchgwas.scan.unified import merge_scan_results
+        from torchgenomics.models.gu_lmm import GULM
+        from torchgenomics.scan.unified import merge_scan_results
 
         G, Y, X0, K, dvar = gu_inputs
         m = G.shape[1]
@@ -805,8 +805,8 @@ class TestGuScanStreamingMemory:
         only chunk-by-chunk. dvar is a documented user-input held
         once; the budget reflects that.
         """
-        from torchgwas.models.gu_lmm import GULM
-        from torchgwas.scan.unified import merge_scan_results
+        from torchgenomics.models.gu_lmm import GULM
+        from torchgenomics.scan.unified import merge_scan_results
 
         G, Y, X0, K, dvar = gu_inputs
         m = G.shape[1]
@@ -877,7 +877,7 @@ class TestRrScanStreamingMemory:
     """
 
     def test_streaming_grm_matches_materialized(self, rr_long_inputs):
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         G, _, _, _, _ = rr_long_inputs
         m = G.shape[1]
@@ -904,7 +904,7 @@ class TestRrScanStreamingMemory:
 
     def test_streaming_grm_under_explicit_budget(self, rr_long_inputs):
         """Hard absolute budget: <16 MiB at n=60/m=400."""
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         G, _, _, _, _ = rr_long_inputs
         m = G.shape[1]
@@ -937,7 +937,7 @@ class TestRrMetScanStreamingMemory:
     """
 
     def test_streaming_grm_matches_materialized(self, rr_long_inputs):
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         G, _, _, _, _ = rr_long_inputs
         m = G.shape[1]
@@ -959,7 +959,7 @@ class TestRrMetScanStreamingMemory:
 
     def test_streaming_grm_under_explicit_budget(self, rr_long_inputs):
         """Hard absolute budget: <16 MiB at n=60/m=400."""
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         G, _, _, _, _ = rr_long_inputs
         m = G.shape[1]
@@ -1025,8 +1025,8 @@ class TestPolyScanStreamingMemory:
     """
 
     def test_streaming_additive_grm_matches_materialized(self, poly_inputs):
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
-        from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship_polyploid import grm_polyploid_gene_action
 
         G, _, _, _, ploidy = poly_inputs
         m = G.shape[1]
@@ -1047,9 +1047,9 @@ class TestPolyScanStreamingMemory:
 
     def test_streaming_dominance_grm_matches_materialized(self, poly_inputs):
         """1-dom recoding must commute with chunking — recoding is per-element."""
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
-        from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
-        from torchgwas.preprocess.polyploid import recode_gene_action
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship_polyploid import grm_polyploid_gene_action
+        from torchgenomics.preprocess.polyploid import recode_gene_action
 
         G, _, _, _, ploidy = poly_inputs
         m = G.shape[1]
@@ -1075,11 +1075,11 @@ class TestPolyScanStreamingMemory:
 
     def test_streaming_poly_scan_under_explicit_budget(self, poly_inputs):
         """Hard absolute budget: <16 MiB at n=100/m=400, ploidy=4."""
-        from torchgwas.config import TorchGWASConfig
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
-        from torchgwas.preprocess.polyploid import recode_gene_action
-        from torchgwas.scan.unified import UnifiedScanner
+        from torchgenomics.config import TorchGenomicsConfig
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.preprocess.polyploid import recode_gene_action
+        from torchgenomics.scan.unified import UnifiedScanner
 
         G, Y, X0, K, ploidy = poly_inputs
         m = G.shape[1]
@@ -1121,7 +1121,7 @@ class TestPolyScanStreamingMemory:
                 G, ["1"] * m, list(range(m)), chunk_size=64,
             )
             scan_reader = _RecodingReader(base, "additive", ploidy)
-            cfg = TorchGWASConfig(device=torch.device("cpu"), chunk_size=64)
+            cfg = TorchGenomicsConfig(device=torch.device("cpu"), chunk_size=64)
             scanner = UnifiedScanner(scan_reader, model, cfg)
             return scanner.scan(nf, test="score", qc_config=None)
 
@@ -1152,7 +1152,7 @@ class TestMetScanStreamingMemory:
     """
 
     def test_streaming_grm_matches_materialized(self, met_inputs):
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         G, _, _ = met_inputs
         m = G.shape[1]
@@ -1174,7 +1174,7 @@ class TestMetScanStreamingMemory:
 
     def test_streaming_grm_under_explicit_budget(self, met_inputs):
         """Hard absolute budget: <16 MiB at n=100/m=400."""
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
 
         G, _, _ = met_inputs
         m = G.shape[1]
@@ -1216,7 +1216,7 @@ class TestImputeMeanStreamingMemory:
     """Streaming mean imputation: two-pass per-column statistics + fill."""
 
     def test_streaming_mean_matches_materialized(self, impute_inputs):
-        from torchgwas.preprocess.impute import (
+        from torchgenomics.preprocess.impute import (
             compute_column_means_streaming,
             impute_chunk_with_means,
             impute_mean,
@@ -1244,7 +1244,7 @@ class TestImputeMeanStreamingMemory:
 
     def test_streaming_mean_under_explicit_budget(self, impute_inputs):
         """Hard budget: <8 MiB for the per-column-stat + fill workspace."""
-        from torchgwas.preprocess.impute import (
+        from torchgenomics.preprocess.impute import (
             compute_column_means_streaming,
             impute_chunk_with_means,
         )
@@ -1279,7 +1279,7 @@ class TestImputeModeStreamingMemory:
     """Streaming mode imputation: per-column class histograms + fill."""
 
     def test_streaming_mode_matches_materialized(self, impute_inputs):
-        from torchgwas.preprocess.impute import (
+        from torchgenomics.preprocess.impute import (
             compute_column_modes_streaming,
             impute_chunk_with_modes,
             impute_mode,
@@ -1305,7 +1305,7 @@ class TestImputeModeStreamingMemory:
         assert torch.allclose(out, G_ref, atol=1e-12, rtol=1e-12)
 
     def test_streaming_mode_under_explicit_budget(self, impute_inputs):
-        from torchgwas.preprocess.impute import (
+        from torchgenomics.preprocess.impute import (
             compute_column_modes_streaming,
             impute_chunk_with_modes,
         )
@@ -1344,8 +1344,8 @@ class TestImputeKnnStreamingMemory:
     """
 
     def test_streaming_knn_matches_materialized(self, impute_inputs):
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
-        from torchgwas.preprocess.impute import (
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.preprocess.impute import (
             impute_chunk_with_knn,
             impute_knn,
             impute_mean,
@@ -1386,8 +1386,8 @@ class TestImputeKnnStreamingMemory:
 
     def test_streaming_knn_under_explicit_budget(self, impute_inputs):
         """Budget: <16 MiB at n=50, K = 50×50×8 = 20 KiB negligible."""
-        from torchgwas.linalg.kinship import grm_vanraden_streaming
-        from torchgwas.preprocess.impute import (
+        from torchgenomics.linalg.kinship import grm_vanraden_streaming
+        from torchgenomics.preprocess.impute import (
             impute_chunk_with_knn,
             impute_mean,
         )
@@ -1433,7 +1433,7 @@ class TestImputeLdStreamingMemory:
     """
 
     def test_streaming_ld_matches_materialized(self, impute_inputs):
-        from torchgwas.preprocess.impute import (
+        from torchgenomics.preprocess.impute import (
             impute_chunk_with_ld_window,
             impute_ld,
         )
@@ -1520,7 +1520,7 @@ def _stream_ld_blocks_via_cli_helper(
     """Replicate _cmd_ld_blocks's per-chromosome streaming accumulator
     in a unit-testable form. Returns the list of detected blocks.
     """
-    from torchgwas.ld import detect_blocks
+    from torchgenomics.ld import detect_blocks
 
     reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=chunk_size)
     blocks: list = []
@@ -1594,7 +1594,7 @@ class TestLdBlocksStreamingMemory:
         chromosome's slice — fixing this latent bug as a side effect.
         See the multi-chromosome test below for the corrected behavior.
         """
-        from torchgwas.ld import detect_blocks
+        from torchgenomics.ld import detect_blocks
 
         G, chrs, poss = _ld_fixture(n=120, m=200, n_chrom=1)
         ref = detect_blocks(
@@ -1673,8 +1673,8 @@ def _stream_knockoff_via_cli_helper(
     seed: int = 42,
 ):
     """Replicate _cmd_knockoff_scan's per-chromosome streaming flow."""
-    from torchgwas.models.base import VariantMeta
-    from torchgwas.models.knockoff_lmm import (
+    from torchgenomics.models.base import VariantMeta
+    from torchgenomics.models.knockoff_lmm import (
         KnockoffLMM,
         KnockoffResult,
         _knockoff_plus_filter,
@@ -1799,8 +1799,8 @@ def _stream_lro_via_cli_helper(
     ld_method: str = "r2",
 ):
     """Replicate _cmd_lro_scan's per-chromosome streaming flow."""
-    from torchgwas.models.base import VariantMeta
-    from torchgwas.models.lro_lmm import LROLMM, LROResult
+    from torchgenomics.models.base import VariantMeta
+    from torchgenomics.models.lro_lmm import LROLMM, LROResult
 
     reader = _ChunkedTensorReader(G, chrs, poss, chunk_size=chunk_size)
     model = LROLMM(ld_method=ld_method)
@@ -1902,7 +1902,7 @@ class TestKnockoffScanStreamingMemory:
             e = (c + 1) * per if c < n_chrom - 1 else m
             chrs.extend([str(c + 1)] * (e - s))
             poss.extend(list(range(0, (e - s) * 1000, 1000)))
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.kinship import grm_vanraden
         K, _ = grm_vanraden(G)
         Y = torch.randn(n, dtype=torch.float64)
         X0 = torch.ones(n, 1, dtype=torch.float64)
@@ -1955,7 +1955,7 @@ class TestLroScanStreamingMemory:
             e = (c + 1) * per if c < n_chrom - 1 else m
             chrs.extend([str(c + 1)] * (e - s))
             poss.extend(list(range(0, (e - s) * 1000, 1000)))
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.kinship import grm_vanraden
         K, meta = grm_vanraden(G)
         Y = torch.randn(n, dtype=torch.float64)
         X0 = torch.ones(n, 1, dtype=torch.float64)
@@ -2005,8 +2005,8 @@ def _stream_clump_via_cli_helper(
     chunk_size: int = 64,
 ):
     """Replicate _cmd_clump's per-chromosome streaming accumulator."""
-    from torchgwas.postgwas import ld_clump
-    from torchgwas.postgwas._clump import ClumpResult
+    from torchgenomics.postgwas import ld_clump
+    from torchgenomics.postgwas._clump import ClumpResult
 
     chrom_to_global_idx: dict[str, list[int]] = {}
     for i, c in enumerate(chrs):
@@ -2093,7 +2093,7 @@ class TestClumpStreamingMemory:
     """Per-chromosome streaming for the clump CLI command."""
 
     def test_streaming_matches_materialized_single_chrom(self):
-        from torchgwas.postgwas import ld_clump
+        from torchgenomics.postgwas import ld_clump
 
         torch.manual_seed(11)
         n, m = 100, 200
@@ -2150,7 +2150,7 @@ class TestLdScoresStreamingMemory:
     """``compute_ld_scores_streaming`` peak ∝ window_size, not ∝ m."""
 
     def test_streaming_matches_materialized(self):
-        from torchgwas.postgwas import (
+        from torchgenomics.postgwas import (
             compute_ld_scores,
             compute_ld_scores_streaming,
         )
@@ -2168,7 +2168,7 @@ class TestLdScoresStreamingMemory:
 
     def test_streaming_peak_scales_with_window_not_m(self):
         """Peak should depend on window_size, not on total m."""
-        from torchgwas.postgwas import compute_ld_scores_streaming
+        from torchgenomics.postgwas import compute_ld_scores_streaming
 
         # Small m, dense window
         G_a, chr_a, pos_a = _ld_fixture(n=100, m=500, n_chrom=1)
@@ -2223,7 +2223,7 @@ class TestFarmCpuScanStreamingMemory:
         return G, Y, X0, chrs, poss
 
     def test_streaming_matches_materialized(self):
-        from torchgwas.models.farmcpu import FarmCPU
+        from torchgenomics.models.farmcpu import FarmCPU
         G, Y, X0, chrs, poss = self._build_fixture(n=100, m=200)
         vm = VariantMeta(
             snp=[f"rs{i}" for i in range(G.shape[1])],
@@ -2241,7 +2241,7 @@ class TestFarmCpuScanStreamingMemory:
 
     def test_streaming_peak_under_explicit_budget(self):
         """Hard ceiling: <16 MiB at n=200 / m=500."""
-        from torchgwas.models.farmcpu import FarmCPU
+        from torchgenomics.models.farmcpu import FarmCPU
         G, Y, X0, chrs, poss = self._build_fixture()
 
         def _run():
@@ -2258,7 +2258,7 @@ class TestFarmCpuScanStreamingMemory:
         )
 
     def test_streaming_peak_scales_with_chunk_not_m(self):
-        from torchgwas.models.farmcpu import FarmCPU
+        from torchgenomics.models.farmcpu import FarmCPU
         G_a, Y_a, X0_a, ch_a, ps_a = self._build_fixture(n=80, m=200)
         G_b, Y_b, X0_b, ch_b, ps_b = self._build_fixture(n=80, m=800)
 
@@ -2297,7 +2297,7 @@ class TestBlinkScanStreamingMemory:
         return G, Y, X0, chrs, poss
 
     def test_streaming_matches_materialized(self):
-        from torchgwas.models.blink import BLINK
+        from torchgenomics.models.blink import BLINK
         G, Y, X0, chrs, poss = self._build_fixture(n=100, m=200)
         vm = VariantMeta(
             snp=[f"rs{i}" for i in range(G.shape[1])],
@@ -2313,7 +2313,7 @@ class TestBlinkScanStreamingMemory:
         assert torch.allclose(streamed.beta, ref.beta, atol=1e-10, rtol=1e-10)
 
     def test_streaming_peak_under_explicit_budget(self):
-        from torchgwas.models.blink import BLINK
+        from torchgenomics.models.blink import BLINK
         G, Y, X0, chrs, poss = self._build_fixture()
 
         def _run():
@@ -2329,7 +2329,7 @@ class TestBlinkScanStreamingMemory:
         )
 
     def test_streaming_peak_scales_with_chunk_not_m(self):
-        from torchgwas.models.blink import BLINK
+        from torchgenomics.models.blink import BLINK
         G_a, Y_a, X0_a, ch_a, ps_a = self._build_fixture(n=80, m=200)
         G_b, Y_b, X0_b, ch_b, ps_b = self._build_fixture(n=80, m=800)
 
@@ -2374,7 +2374,7 @@ class TestMediateScanStreamingMemory:
         return Y, G, M, K
 
     def test_streaming_matches_eager_batched(self):
-        from torchgwas.multiomics import scan_mediation
+        from torchgenomics.multiomics import scan_mediation
         Y, G, M, K = self._build_fixture()
 
         eager = scan_mediation(
@@ -2415,7 +2415,7 @@ class TestMediateScanStreamingMemory:
         tiny fixture this is negligible compared to the SE / MC draws,
         so the ceiling is set well above the observed peak with margin.
         """
-        from torchgwas.multiomics import scan_mediation
+        from torchgenomics.multiomics import scan_mediation
         Y, G, M, K = self._build_fixture()
 
         def _run():
@@ -2472,7 +2472,7 @@ class TestBayesScanRssMemory:
             R[i:i + block_size, i:i + block_size] = torch.eye(
                 block_size, dtype=torch.float64,
             )
-        from torchgwas.postgwas._ld_ref_loader import BlockSpec
+        from torchgenomics.postgwas._ld_ref_loader import BlockSpec
         blocks = [
             BlockSpec(start=i, stop=i + block_size)
             for i in range(0, p, block_size)
@@ -2487,7 +2487,7 @@ class TestBayesScanRssMemory:
         any regression that materializes a full ``p x p`` working buffer
         or stacks all per-block IBSS state simultaneously.
         """
-        from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+        from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
 
         z, R, n, blocks = self._build_blocked_fixture(p=2000, block_size=500)
 
@@ -2516,7 +2516,7 @@ class TestBayesScanRssMemory:
         ``p^2`` — at p=200K this is the difference between a 200 MB and
         a 320 GB working set.
         """
-        from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+        from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
 
         def _run(p):
             z, R, n, blocks = self._build_blocked_fixture(

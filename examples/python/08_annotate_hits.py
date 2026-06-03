@@ -14,8 +14,8 @@ from pathlib import Path
 
 import torch
 
-from torchgwas.annotate import annotate_hits
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.annotate import annotate_hits
+from torchgenomics.postgwas._sumstats import SumStats
 
 OUT_DIR = Path(__file__).resolve().parent / "results"
 OUT_DIR.mkdir(parents=True, exist_ok=True)

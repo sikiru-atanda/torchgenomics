@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Run both knockoff filters (TorchGWAS + R knockoff) on the same fixture
+# Run both knockoff filters (TorchGenomics + R knockoff) on the same fixture
 # and compute agreement.  Mirrors the pillar B/specialty contract:
 #   - Pre-flight gate before any heavy compute.
 #   - Idempotent: re-running overwrites previous outputs/.
 #
 # Output:
-#   outputs/torchgwas_per_replicate.tsv
-#   outputs/torchgwas_summary.json
+#   outputs/torchgenomics_per_replicate.tsv
+#   outputs/torchgenomics_summary.json
 #   outputs/reference_per_replicate.tsv
 #   outputs/reference_summary.json
 #   results/summary.tsv
@@ -43,9 +43,9 @@ preflight_check_with_data_size "knockoff-run" 1 4
 
 mkdir -p "${OUT_DIR}" "${RESULTS_DIR}"
 
-# --- 1. TorchGWAS scan -------------------------------------------------------
-echo "[knockoff run] step 1/3: TorchGWAS KnockoffLMM"
-python3 "${HERE}/run_torchgwas.py" \
+# --- 1. TorchGenomics scan -------------------------------------------------------
+echo "[knockoff run] step 1/3: TorchGenomics KnockoffLMM"
+python3 "${HERE}/run_torchgenomics.py" \
     --data-dir "${DATA_DIR}" \
     --output-dir "${OUT_DIR}" \
     --target-fdr 0.2 \
@@ -64,9 +64,9 @@ Rscript --vanilla "${HERE}/run_reference.R" \
 # --- 3. Compare --------------------------------------------------------------
 echo "[knockoff run] step 3/3: compare + agreement gate"
 python3 "${HERE}/compare.py" \
-    --tg-summary "${OUT_DIR}/torchgwas_summary.json" \
+    --tg-summary "${OUT_DIR}/torchgenomics_summary.json" \
     --ref-summary "${OUT_DIR}/reference_summary.json" \
-    --tg-per-rep "${OUT_DIR}/torchgwas_per_replicate.tsv" \
+    --tg-per-rep "${OUT_DIR}/torchgenomics_per_replicate.tsv" \
     --ref-per-rep "${OUT_DIR}/reference_per_replicate.tsv" \
     --truth "${DATA_DIR}/sim_truth.json" \
     --results-dir "${RESULTS_DIR}" \

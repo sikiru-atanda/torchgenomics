@@ -1,6 +1,6 @@
 # UKB-scale validation harness (Task NA3)
 
-Empirical biobank-scale validation of TorchGWAS' streaming + numerical
+Empirical biobank-scale validation of TorchGenomics' streaming + numerical
 claims, run end-to-end on a single UKB chromosome (chr22) by the user.
 
 This harness is the empirical answer to the open task surfaced in
@@ -65,7 +65,7 @@ campaign's memory + correctness story.
 
 bash validation/external/ukb/install.sh         # ~5-15 min (REGENIE + LDSC env)
 bash validation/external/ukb/fetch_data.sh      # ~5-30 min (LD-score archive download)
-bash validation/external/ukb/run_torchgwas.sh   # 30-90 min (LMM scan + h²)
+bash validation/external/ukb/run_torchgenomics.sh   # 30-90 min (LMM scan + h²)
 bash validation/external/ukb/run_reference.sh   # 60-180 min (REGENIE Step 1 + Step 2 + LDSC)
 
 python3 validation/external/ukb/compare.py \
@@ -92,11 +92,11 @@ correctly on its own (via `ln -sfn`), but it appends — rather than
 overwrites — staged-path entries to `.env_marker`, and `install.sh` is
 the canonical source for the user-supplied paths.
 
-A second wrinkle: `run_torchgwas.sh` computes the sample size N for the
+A second wrinkle: `run_torchgenomics.sh` computes the sample size N for the
 LDSC h² driver as `N = $(wc -l < ${STAGED_PHENO}) - 1`. This assumes the
 phenotype TSV has **exactly one** header line and **no comment lines or
 trailing blank lines**. If your TSV has comments (`#...`) or extra
-blanks, edit the `N_SAMPLES=` line in `run_torchgwas.sh` (or strip
+blanks, edit the `N_SAMPLES=` line in `run_torchgenomics.sh` (or strip
 them before staging).
 
 ## Expected runtimes (per Task NA3 spec — "few CPU-hours per run")
@@ -105,7 +105,7 @@ them before staging).
 |---|---|---|
 | `install.sh` | 5-15 min (REGENIE download + conda solve) | same |
 | `fetch_data.sh` | 5-30 min (LD-score archive ~600 MB) | same |
-| `run_torchgwas.sh` | 30-60 min | 1-3 hours |
+| `run_torchgenomics.sh` | 30-60 min | 1-3 hours |
 | `run_reference.sh` (REGENIE Step 1 + Step 2) | 30-60 min | 2-4 hours |
 | `run_reference.sh` (LDSC --h2) | < 5 min | < 5 min |
 | `compare.py` | < 1 min | < 1 min |
@@ -127,7 +127,7 @@ falls short. They never partial-execute.
 
 ### Known scale ceiling on the K matrix
 
-TorchGWAS' SingleTraitLMM holds the kinship matrix `K` (n × n,
+TorchGenomics' SingleTraitLMM holds the kinship matrix `K` (n × n,
 float64) in RAM throughout the scan. At full UKB scale (n=500K),
 `K` ≈ 1 TB — out of scope for any 32 GB host. The MVP harness
 expects the user to subsample to n ≤ 50K (≈ 20 GB K) or supply a
@@ -135,7 +135,7 @@ pre-computed K via the `--kinship` flag (out of scope for the
 scaffold; would need a separate UKB-K-builder script).
 
 This is documented as a known limitation; the streaming claim
-TorchGWAS makes is about per-chunk peak (n × chunk_size × 8 B), which
+TorchGenomics makes is about per-chunk peak (n × chunk_size × 8 B), which
 this harness does verify. The full n × n K is a model-architectural
 constant, not a streaming-axis cost.
 
@@ -147,7 +147,7 @@ This harness applies the `feedback_f3` policy:
 |---|---|---|
 | Pre-flight: disk or RAM insufficient | infra-blocker | `install.sh` / `fetch_data.sh` / `run_*.sh` exit 1 immediately, no partial execution |
 | REGENIE Step 1 OOM at user-specified n | infra-blocker | `run_reference.sh` exits 1; user subsamples and re-runs |
-| TG `lmm-scan` raises (e.g., K OOM) | post-V1 / open issue (architectural; documented above) | `run_torchgwas.sh` exits 1; ledger row records the limit |
+| TG `lmm-scan` raises (e.g., K OOM) | post-V1 / open issue (architectural; documented above) | `run_torchgenomics.sh` exits 1; ledger row records the limit |
 | β Pearson r < 0.999 | V1-core / fix-now if regression vs prior; post-V1 / documented otherwise | `compare.py` exits 1; investigate dosage convention, covariate alignment, GRM divergence |
 | \|Δ h²\| > 5e-3 | post-V1 / documented (LDSC IRWLS already validated at fixture scale) | `compare.py` exits 1; investigate LD-score panel mismatch or chi² inflation |
 | Peak RAM > 10% of full materialization | V1-core / regression (streaming claim is the point of the campaign) | `compare.py` exits 1; investigate which path materialized; halts NA3 |
@@ -174,7 +174,7 @@ the `validation/pillar-A-coverage` branch
 |---|---|---|
 | `install.sh` | `validation/external/regenie/install.sh` + `validation/external/ldsc/install.sh` | Combined; REGENIE pin tries v4.2 then v4.1 instead of v3.3 |
 | `fetch_data.sh` | `validation/external/regenie/fetch_data.sh` + `validation/external/ldsc/fetch_data.sh` | UKB symlinking instead of MDP staging; same LD-score archive |
-| `run_torchgwas.sh` | (new — not present in Pillar B; harnesses there only ran the reference tool) | Driven by the streaming-first contract from `feedback_streaming` |
+| `run_torchgenomics.sh` | (new — not present in Pillar B; harnesses there only ran the reference tool) | Driven by the streaming-first contract from `feedback_streaming` |
 | `run_reference.sh` | `validation/external/regenie/run_regenie.sh` + `validation/external/ldsc/run_ldsc.sh` | Combined; quant-only (no Firth path) per Phase 57 MVP |
 | `compare.py` | `validation/external/regenie/compare.py` + `validation/external/ldsc/compare.py` | Three-comparison structure (β corr, h² Δ, peak RAM); thin parser/check pattern |
 | `_lib/preflight.sh` | byte-identical from `validation/external/_lib/preflight.sh` | none — copied verbatim |
@@ -188,7 +188,7 @@ The detailed mirror analysis lives in
 validation/external/ukb/
 ├── install.sh              # REGENIE + LDSC install + pre-flight + UKB-path verify
 ├── fetch_data.sh           # symlink UKB + fetch 1000G LD scores + cache slot
-├── run_torchgwas.sh        # TG lmm-scan + TG h² (peak RSS via /usr/bin/time -v)
+├── run_torchgenomics.sh        # TG lmm-scan + TG h² (peak RSS via /usr/bin/time -v)
 ├── run_reference.sh        # REGENIE Step 1+2 + LDSC --h2 (peak RSS likewise)
 ├── compare.py              # parses both sides; emits findings-ledger row
 ├── README.md               # this file
@@ -197,7 +197,7 @@ validation/external/ukb/
 ├── bin/                    # local REGENIE binary if downloaded (gitignored)
 ├── data/                   # symlinks to user UKB + extracted LD scores (gitignored)
 ├── reference_outputs/      # REGENIE + LDSC outputs (gitignored)
-└── torchgwas_outputs/      # TG outputs (gitignored)
+└── torchgenomics_outputs/      # TG outputs (gitignored)
 ```
 
 ## Pre-flight numbers in detail

@@ -1,6 +1,6 @@
 // Native accelerator for the Wall & Pritchard blockiness permutation
 // p-value loop in
-// ``torchgwas.ld._blocks_diagnostics.compute_wall_pritchard_diagnostics``.
+// ``torchgenomics.ld._blocks_diagnostics.compute_wall_pritchard_diagnostics``.
 //
 // The Python reference loop is:
 //

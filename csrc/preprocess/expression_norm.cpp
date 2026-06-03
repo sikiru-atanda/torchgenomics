@@ -1,5 +1,5 @@
 // Native accelerator for the TWAS expression-preprocessing transforms
-// in ``torchgwas.preprocess.expression``:
+// in ``torchgenomics.preprocess.expression``:
 //
 //   - inverse_normal_transform: per-column Blom rank-INT with average
 //     tie-breaking (scipy.stats.rankdata "average" semantics).

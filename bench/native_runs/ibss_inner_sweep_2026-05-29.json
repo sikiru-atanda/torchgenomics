@@ -1,6 +1,6 @@
 {
   "kernel": "ibss_inner_sweep",
-  "ext": "torchgwas._native._ibss_native",
+  "ext": "torchgenomics._native._ibss_native",
   "date": "2026-05-29",
   "host": "linux-x86_64",
   "notes": "AR(1) rho=0.5 LD; n_causal=3-10 planted; estimate_prior_method='optim'; max_iter=100; tol=1e-6. Observed-then-floored measurement.",

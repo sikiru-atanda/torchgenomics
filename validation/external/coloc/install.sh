@@ -11,7 +11,7 @@
 # Why CRAN (not GitHub / bioconda):
 #   - `coloc` (Wallace lab) is on CRAN at stable releases. The harness pins
 #     to >=5.2 (the version that ships the corrected H4 normalization per
-#     Wallace 2020 erratum, matching the math TorchGWAS implements).
+#     Wallace 2020 erratum, matching the math TorchGenomics implements).
 #   - `jsonlite` is the bridge to the Python comparator.
 #
 # Two-trait reference: `coloc::coloc.abf(p1=1e-4, p2=1e-4, p12=1e-5)` with

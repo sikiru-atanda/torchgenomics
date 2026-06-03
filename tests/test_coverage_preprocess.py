@@ -1,4 +1,4 @@
-"""Tier-2 behavioral coverage tests for ``torchgwas.preprocess.*``.
+"""Tier-2 behavioral coverage tests for ``torchgenomics.preprocess.*``.
 
 Bar (Pillar A spec section 4.3 Tier 2):
 - Per public symbol: golden_path, edge_case, error_path test methods.
@@ -9,20 +9,20 @@ Bar (Pillar A spec section 4.3 Tier 2):
 
 Covers 14 preprocess public symbols across 6 submodules:
 
-- ``torchgwas.preprocess.polyrad_wrapper.DosageProbabilities`` (dataclass)
-- ``torchgwas.preprocess.polyrad_wrapper.run_polyrad`` (function)
-- ``torchgwas.preprocess.dosage_uncertainty.dosage_rsq`` (function)
-- ``torchgwas.preprocess.impute.HAS_NATIVE_IMPUTE_KNN`` (bool constant)
-- ``torchgwas.preprocess.impute.HAS_NATIVE_IMPUTE_LD`` (bool constant)
-- ``torchgwas.preprocess.impute.HAS_NATIVE_IMPUTE_MODE`` (bool constant)
-- ``torchgwas.preprocess._impute_gpu.impute_knn_gpu`` (function)
-- ``torchgwas.preprocess._impute_gpu.impute_ld_gpu`` (function)
-- ``torchgwas.preprocess._impute_gpu.impute_mode_gpu`` (function)
-- ``torchgwas.preprocess.impute_external.run_beagle`` (function)
-- ``torchgwas.preprocess.impute_external.run_impute5`` (function)
-- ``torchgwas.preprocess.impute_external.run_minimac4`` (function)
-- ``torchgwas.preprocess.phase.load_haplotypes`` (function)
-- ``torchgwas.preprocess.phase.phase_beagle`` (function)
+- ``torchgenomics.preprocess.polyrad_wrapper.DosageProbabilities`` (dataclass)
+- ``torchgenomics.preprocess.polyrad_wrapper.run_polyrad`` (function)
+- ``torchgenomics.preprocess.dosage_uncertainty.dosage_rsq`` (function)
+- ``torchgenomics.preprocess.impute.HAS_NATIVE_IMPUTE_KNN`` (bool constant)
+- ``torchgenomics.preprocess.impute.HAS_NATIVE_IMPUTE_LD`` (bool constant)
+- ``torchgenomics.preprocess.impute.HAS_NATIVE_IMPUTE_MODE`` (bool constant)
+- ``torchgenomics.preprocess._impute_gpu.impute_knn_gpu`` (function)
+- ``torchgenomics.preprocess._impute_gpu.impute_ld_gpu`` (function)
+- ``torchgenomics.preprocess._impute_gpu.impute_mode_gpu`` (function)
+- ``torchgenomics.preprocess.impute_external.run_beagle`` (function)
+- ``torchgenomics.preprocess.impute_external.run_impute5`` (function)
+- ``torchgenomics.preprocess.impute_external.run_minimac4`` (function)
+- ``torchgenomics.preprocess.phase.load_haplotypes`` (function)
+- ``torchgenomics.preprocess.phase.phase_beagle`` (function)
 
 External-tool wrappers (run_polyrad, run_beagle, run_impute5,
 run_minimac4, phase_beagle) and CUDA-only GPU imputation tests use
@@ -38,26 +38,26 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.preprocess.impute import (
+from torchgenomics.preprocess.impute import (
     impute_knn_gpu,
     impute_ld_gpu,
     impute_mode_gpu,
 )
-from torchgwas.preprocess.dosage_uncertainty import dosage_rsq
-from torchgwas.preprocess.impute import (
+from torchgenomics.preprocess.dosage_uncertainty import dosage_rsq
+from torchgenomics.preprocess.impute import (
     HAS_NATIVE_IMPUTE_KNN,
     HAS_NATIVE_IMPUTE_LD,
     HAS_NATIVE_IMPUTE_MODE,
     impute_mean,
 )
-from torchgwas.preprocess.impute_external import (
+from torchgenomics.preprocess.impute_external import (
     ImputationResult,
     run_beagle,
     run_impute5,
     run_minimac4,
 )
-from torchgwas.preprocess.phase import load_haplotypes, phase_beagle
-from torchgwas.preprocess.polyrad_wrapper import DosageProbabilities, run_polyrad
+from torchgenomics.preprocess.phase import load_haplotypes, phase_beagle
+from torchgenomics.preprocess.polyrad_wrapper import DosageProbabilities, run_polyrad
 
 
 pytestmark = pytest.mark.timeout(60)
@@ -101,7 +101,7 @@ def _make_phased_vcf(path: Path, ploidy: int = 2, phased: bool = True) -> None:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess.polyrad_wrapper.DosageProbabilities
+# torchgenomics.preprocess.polyrad_wrapper.DosageProbabilities
 # ---------------------------------------------------------------------------
 
 
@@ -156,7 +156,7 @@ class TestDosageProbabilities:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess.polyrad_wrapper.run_polyrad
+# torchgenomics.preprocess.polyrad_wrapper.run_polyrad
 # ---------------------------------------------------------------------------
 
 
@@ -193,7 +193,7 @@ class TestRunPolyrad:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess.dosage_uncertainty.dosage_rsq
+# torchgenomics.preprocess.dosage_uncertainty.dosage_rsq
 # ---------------------------------------------------------------------------
 
 
@@ -250,7 +250,7 @@ class TestDosageRsq:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess.impute.HAS_NATIVE_IMPUTE_*
+# torchgenomics.preprocess.impute.HAS_NATIVE_IMPUTE_*
 # ---------------------------------------------------------------------------
 
 
@@ -264,9 +264,9 @@ class TestHasNativeImputeKnn:
 
     def test_consistent_with_native_module(self):
         """Cross-check by attempting to import ``_impute_knn_native`` from
-        ``torchgwas._native``: True iff that import succeeds."""
+        ``torchgenomics._native``: True iff that import succeeds."""
         try:
-            from torchgwas._native import _impute_knn_native  # noqa: F401
+            from torchgenomics._native import _impute_knn_native  # noqa: F401
             native_present = _impute_knn_native is not None
         except ImportError:
             native_present = False
@@ -282,7 +282,7 @@ class TestHasNativeImputeLd:
 
     def test_consistent_with_native_module(self):
         try:
-            from torchgwas._native import _impute_ld_native  # noqa: F401
+            from torchgenomics._native import _impute_ld_native  # noqa: F401
             native_present = _impute_ld_native is not None
         except ImportError:
             native_present = False
@@ -298,7 +298,7 @@ class TestHasNativeImputeMode:
 
     def test_consistent_with_native_module(self):
         try:
-            from torchgwas._native import _impute_mode_native  # noqa: F401
+            from torchgenomics._native import _impute_mode_native  # noqa: F401
             native_present = _impute_mode_native is not None
         except ImportError:
             native_present = False
@@ -306,7 +306,7 @@ class TestHasNativeImputeMode:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess._impute_gpu.impute_knn_gpu / impute_ld_gpu / impute_mode_gpu
+# torchgenomics.preprocess._impute_gpu.impute_knn_gpu / impute_ld_gpu / impute_mode_gpu
 # ---------------------------------------------------------------------------
 
 
@@ -459,7 +459,7 @@ class TestImputeLdGpu:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess.impute_external.run_beagle / run_impute5 / run_minimac4
+# torchgenomics.preprocess.impute_external.run_beagle / run_impute5 / run_minimac4
 # ---------------------------------------------------------------------------
 
 
@@ -522,7 +522,7 @@ class TestRunMinimac4:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess.phase.load_haplotypes
+# torchgenomics.preprocess.phase.load_haplotypes
 # ---------------------------------------------------------------------------
 
 
@@ -571,7 +571,7 @@ class TestLoadHaplotypes:
 
 
 # ---------------------------------------------------------------------------
-# torchgwas.preprocess.phase.phase_beagle
+# torchgenomics.preprocess.phase.phase_beagle
 # ---------------------------------------------------------------------------
 
 

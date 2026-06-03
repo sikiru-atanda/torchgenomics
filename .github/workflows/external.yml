@@ -72,7 +72,7 @@ jobs:
         run: |
           pytest tests/ -m external -v --tb=short --timeout=1800
         env:
-          TORCHGWAS_DISABLE_NATIVE: "1"
+          TORCHGENOMICS_DISABLE_NATIVE: "1"
 
       - name: Upload findings artifacts
         if: always()

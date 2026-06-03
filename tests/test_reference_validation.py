@@ -1,4 +1,4 @@
-"""Reference validation: compare torchgwas GLM/GLMM against statsmodels.
+"""Reference validation: compare torchgenomics GLM/GLMM against statsmodels.
 
 This file performs honest, per-SNP comparisons against established public
 software (statsmodels 0.14+) for:
@@ -9,7 +9,7 @@ software (statsmodels 0.14+) for:
 4. MultinomialGLM vs statsmodels.MNLogit — per-SNP LRT p-values
 5. SPA calibration — empirical type-I error at alpha=0.05
 
-All comparisons use the SAME simulated data fed to both torchgwas and
+All comparisons use the SAME simulated data fed to both torchgenomics and
 statsmodels, with no cherry-picking of seeds or tolerances.
 """
 
@@ -24,10 +24,10 @@ import torch
 from statsmodels.discrete.discrete_model import MNLogit
 from statsmodels.miscmodels.ordinal_model import OrderedModel
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.binary_glm import BinaryGLM
-from torchgwas.models.multinomial_glm import MultinomialGLM
-from torchgwas.models.ordinal_glm import OrdinalGLM
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.binary_glm import BinaryGLM
+from torchgenomics.models.multinomial_glm import MultinomialGLM
+from torchgenomics.models.ordinal_glm import OrdinalGLM
 
 
 def _make_vmeta(m):
@@ -56,7 +56,7 @@ class TestBinaryGLMvsStatsmodels:
         sm_res = sm.GLM(Y_np, X0_np, family=sm.families.Binomial()).fit()
         sm_intercept = sm_res.params[0]
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         X0 = torch.tensor(X0_np, dtype=torch.float64)
         model = BinaryGLM(use_spa=False)
@@ -64,7 +64,7 @@ class TestBinaryGLMvsStatsmodels:
         tg_intercept = nf.b0[0].item()
 
         assert abs(tg_intercept - sm_intercept) < 1e-4, \
-            f"Intercept: torchgwas={tg_intercept:.6f} vs statsmodels={sm_intercept:.6f}"
+            f"Intercept: torchgenomics={tg_intercept:.6f} vs statsmodels={sm_intercept:.6f}"
 
     def test_null_deviance_matches(self):
         """Null deviance should match statsmodels."""
@@ -84,12 +84,12 @@ class TestBinaryGLMvsStatsmodels:
         tg_deviance = -2.0 * nf.log_likelihood
 
         assert abs(tg_deviance - sm_deviance) < 0.01, \
-            f"Deviance: torchgwas={tg_deviance:.4f} vs statsmodels={sm_deviance:.4f}"
+            f"Deviance: torchgenomics={tg_deviance:.4f} vs statsmodels={sm_deviance:.4f}"
 
     def test_per_snp_wald_beta_matches(self):
         """Per-SNP Wald beta from full logistic model should match statsmodels.
 
-        torchgwas BinaryGLM uses score test (not Wald), so we compare the
+        torchgenomics BinaryGLM uses score test (not Wald), so we compare the
         score-test-derived approximate beta (U/V) against statsmodels Wald beta.
         These won't be identical but should agree in sign and magnitude.
         We also directly verify by running statsmodels per-SNP Wald and comparing.
@@ -114,7 +114,7 @@ class TestBinaryGLMvsStatsmodels:
                 sm_betas[j] = np.nan
                 sm_pvals[j] = np.nan
 
-        # --- torchgwas score test ---
+        # --- torchgenomics score test ---
         Y = torch.tensor(Y_np, dtype=torch.float64)
         G = torch.tensor(G_np, dtype=torch.float64)
         X0 = torch.tensor(X0_np, dtype=torch.float64)
@@ -166,7 +166,7 @@ class TestBinaryGLMvsStatsmodels:
             except Exception:
                 sm_score_pvals[j] = np.nan
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         G = torch.tensor(G_np, dtype=torch.float64)
         X0 = torch.tensor(X0_np, dtype=torch.float64)
@@ -182,7 +182,7 @@ class TestBinaryGLMvsStatsmodels:
         # 0.14.x point releases; in some combos every SNP call raises and
         # sm_score_pvals ends up all-NaN. If that happens the comparison
         # is not meaningful — skip with a pointer rather than masking it
-        # as a TorchGWAS failure.
+        # as a TorchGenomics failure.
         valid = ~np.isnan(sm_score_pvals)
         if valid.sum() == 0:
             pytest.skip(
@@ -270,7 +270,7 @@ class TestOrdinalGLMvsStatsmodels:
         cum_freq = np.clip(cum_freq, 0.01, 0.99)
         theoretical = sp_logit(cum_freq)
 
-        # torchgwas (intercept-only null)
+        # torchgenomics (intercept-only null)
         Y = torch.tensor(Y_np, dtype=torch.float64)
         X0 = torch.ones(n, 1, dtype=torch.float64)
         model = OrdinalGLM(n_categories=J)
@@ -280,7 +280,7 @@ class TestOrdinalGLMvsStatsmodels:
         for j in range(J - 1):
             diff = abs(tg_thresholds[j] - theoretical[j])
             assert diff < 0.15, \
-                f"Threshold {j}: torchgwas={tg_thresholds[j]:.4f} vs theoretical={theoretical[j]:.4f} (diff={diff:.4f})"
+                f"Threshold {j}: torchgenomics={tg_thresholds[j]:.4f} vs theoretical={theoretical[j]:.4f} (diff={diff:.4f})"
 
     def test_per_snp_pvalues_correlate(self):
         """Per-SNP p-values should correlate highly with OrderedModel LRT."""
@@ -308,7 +308,7 @@ class TestOrdinalGLMvsStatsmodels:
             except Exception:
                 sm_pvals[j] = np.nan
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         G = torch.tensor(G_np, dtype=torch.float64)
         X0 = torch.tensor(X0_np, dtype=torch.float64)
@@ -348,7 +348,7 @@ class TestOrdinalGLMvsStatsmodels:
         from scipy.stats import chi2
         sm_p_causal = chi2.sf(max(lrt, 0), df=1)
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         G = torch.tensor(G_np, dtype=torch.float64)
         X0 = torch.ones(n, 1, dtype=torch.float64)
@@ -361,7 +361,7 @@ class TestOrdinalGLMvsStatsmodels:
 
         # Both should detect the signal
         assert sm_p_causal < 0.01, f"statsmodels failed to detect: p={sm_p_causal}"
-        assert tg_p_causal < 0.01, f"torchgwas failed to detect: p={tg_p_causal}"
+        assert tg_p_causal < 0.01, f"torchgenomics failed to detect: p={tg_p_causal}"
 
         # Score test is inherently less powerful than LRT, so p-values
         # can differ by several orders of magnitude.  Accept up to 10 orders
@@ -390,7 +390,7 @@ class TestMultinomialGLMvsStatsmodels:
         # Observed frequencies
         freq = np.array([np.mean(Y_np == j) for j in range(J)])
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         X0 = torch.tensor(X0_np, dtype=torch.float64)
         model = MultinomialGLM(n_classes=J)
@@ -401,7 +401,7 @@ class TestMultinomialGLMvsStatsmodels:
         for j in range(J):
             diff = abs(tg_probs[j] - freq[j])
             assert diff < 0.02, \
-                f"Class {j}: torchgwas prob={tg_probs[j]:.4f} vs freq={freq[j]:.4f}"
+                f"Class {j}: torchgenomics prob={tg_probs[j]:.4f} vs freq={freq[j]:.4f}"
 
     def test_per_snp_pvalues_correlate(self):
         """Per-SNP p-values should correlate with MNLogit LRT."""
@@ -428,7 +428,7 @@ class TestMultinomialGLMvsStatsmodels:
             except Exception:
                 sm_pvals[j] = np.nan
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         G = torch.tensor(G_np, dtype=torch.float64)
         X0 = torch.tensor(X0_np, dtype=torch.float64)
@@ -469,7 +469,7 @@ class TestMultinomialGLMvsStatsmodels:
         from scipy.stats import chi2
         sm_p = chi2.sf(max(lrt, 0), df=J-1)
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         G = torch.tensor(G_np, dtype=torch.float64)
         X0 = torch.ones(n, 1, dtype=torch.float64)
@@ -481,7 +481,7 @@ class TestMultinomialGLMvsStatsmodels:
         tg_p = result.p[0].item()
 
         assert sm_p < 0.01, f"statsmodels failed: p={sm_p}"
-        assert tg_p < 0.01, f"torchgwas failed: p={tg_p}"
+        assert tg_p < 0.01, f"torchgenomics failed: p={tg_p}"
 
 
 # =====================================================================
@@ -591,7 +591,7 @@ class TestCovariateAdjustment:
         # statsmodels
         sm_res = sm.GLM(Y_np, X0_np, family=sm.families.Binomial()).fit()
 
-        # torchgwas
+        # torchgenomics
         Y = torch.tensor(Y_np, dtype=torch.float64)
         X0 = torch.tensor(X0_np, dtype=torch.float64)
         model = BinaryGLM(use_spa=False)
@@ -601,13 +601,13 @@ class TestCovariateAdjustment:
         for k in range(2):
             diff = abs(nf.b0[k].item() - sm_res.params[k])
             assert diff < 0.01, \
-                f"Coeff {k}: torchgwas={nf.b0[k].item():.6f} vs sm={sm_res.params[k]:.6f}"
+                f"Coeff {k}: torchgenomics={nf.b0[k].item():.6f} vs sm={sm_res.params[k]:.6f}"
 
         # Deviance should match
         tg_dev = -2.0 * nf.log_likelihood
         sm_dev = sm_res.deviance
         assert abs(tg_dev - sm_dev) < 0.01, \
-            f"Deviance: torchgwas={tg_dev:.4f} vs statsmodels={sm_dev:.4f}"
+            f"Deviance: torchgenomics={tg_dev:.4f} vs statsmodels={sm_dev:.4f}"
 
 
 # =====================================================================
@@ -721,7 +721,7 @@ class TestPolyploidGLM:
 
     def test_binary_glmm_tetraploid(self):
         """BinaryGLMM with tetraploid genotypes and kinship."""
-        from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
 
         np.random.seed(105)
         n, m, ploidy = 200, 10, 4

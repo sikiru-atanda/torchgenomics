@@ -2,9 +2,9 @@
 
 The native module replaces the per-extreme-SNP saddlepoint Newton solve and
 Lugannani-Rice tail computation in
-``torchgwas.stats.spa.saddlepoint_pvalue``. The Python loop remains in-tree
+``torchgenomics.stats.spa.saddlepoint_pvalue``. The Python loop remains in-tree
 as the algorithmic spec; the dispatcher routes to C++ when the build is
-present, the tensors are CPU+float64, and ``TORCHGWAS_DISABLE_NATIVE`` is
+present, the tensors are CPU+float64, and ``TORCHGENOMICS_DISABLE_NATIVE`` is
 unset.
 """
 
@@ -17,8 +17,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_SPA, _spa_native
-from torchgwas.stats.spa import saddlepoint_pvalue
+from torchgenomics._native import HAS_NATIVE_SPA, _spa_native
+from torchgenomics.stats.spa import saddlepoint_pvalue
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_SPA, reason="native SPA extension not built"
@@ -68,13 +68,13 @@ def test_smoke_returns_unit_interval_or_nan():
 
 def _run_with(disable_native: bool, mu, G, U):
     if disable_native:
-        os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+        os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     else:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
     try:
         return saddlepoint_pvalue(U.clone(), mu.clone(), G.clone(), threshold=2.0)
     finally:
-        os.environ.pop("TORCHGWAS_DISABLE_NATIVE", None)
+        os.environ.pop("TORCHGENOMICS_DISABLE_NATIVE", None)
 
 
 def test_native_matches_python_imbalanced():
@@ -173,7 +173,7 @@ def test_2d_input_raises():
 
 
 def test_dispatcher_disabled_via_env_uses_python():
-    """With TORCHGWAS_DISABLE_NATIVE=1 the public function must reach the
+    """With TORCHGENOMICS_DISABLE_NATIVE=1 the public function must reach the
     Python loop and still produce sensible output."""
     mu, G, _, U = _make_imbalanced_problem(n=200, m=10, prevalence=0.05, seed=6)
     p = _run_with(True, mu, G, U)

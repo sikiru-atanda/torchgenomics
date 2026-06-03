@@ -19,7 +19,7 @@
 # Why R (not Python):
 #   - This script feeds run_twosamplemr.R, which lives in R already.
 #   - Single source of truth for the simulated data; both the R reference
-#     run and the Python TorchGWAS run read from data/sumstats.tsv.
+#     run and the Python TorchGenomics run read from data/sumstats.tsv.
 
 suppressPackageStartupMessages({
     library(jsonlite)

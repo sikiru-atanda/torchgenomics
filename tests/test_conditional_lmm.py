@@ -17,9 +17,9 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import ScanResult, VariantMeta
-from torchgwas.models.conditional_lmm import (
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import ScanResult, VariantMeta
+from torchgenomics.models.conditional_lmm import (
     ConditionalLMM,
     ConditionalScanResult,
     _conditional_wald_batch,
@@ -112,7 +112,7 @@ class TestConditionalWald:
         nf = model.fit_null(data["Y"], data["X0"], K=data["K"])
 
         # Get rotated data
-        from torchgwas.linalg.eigh import rotate
+        from torchgenomics.linalg.eigh import rotate
         G_rot = rotate(data["G"], nf.eigenvectors)
         Y_rot = nf.Y_rot.squeeze()
         X0_rot = nf.X0_rot
@@ -152,7 +152,7 @@ class TestConditionalWald:
         model = ConditionalLMM()
         nf = model.fit_null(data["Y"], data["X0"], K=data["K"])
 
-        from torchgwas.linalg.eigh import rotate
+        from torchgenomics.linalg.eigh import rotate
         G_rot = rotate(data["G"][:, :10], nf.eigenvectors)
 
         beta_c, se_c, stat_c, p_c = _conditional_wald_batch(
@@ -172,7 +172,7 @@ class TestConditionalWald:
         model = ConditionalLMM()
         nf = model.fit_null(data["Y"], data["X0"], K=data["K"])
 
-        from torchgwas.linalg.eigh import rotate
+        from torchgenomics.linalg.eigh import rotate
         G_rot = rotate(data["G"][:, :10], nf.eigenvectors)
 
         _, se_c, _, _ = _conditional_wald_batch(

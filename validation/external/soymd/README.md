@@ -4,7 +4,7 @@
 published platform that integrates soybean genomic, transcriptomic,
 proteomic, and metabolomic layers behind a web UI for breeders and
 researchers. Per the user's spec §12 + §5.4, **SoyMD is the only external
-reference for the entire `torchgwas.multiomics` module** (mediation +
+reference for the entire `torchgenomics.multiomics` module** (mediation +
 multi-kernel h² + eQTL prefilter). Other Pillar B tools (PLINK 2.0, LDSC,
 TwoSampleMR, regenie, SAIGE, BOLT-LMM) cover GWAS-side functions, not the
 multi-omics pipeline.
@@ -18,7 +18,7 @@ R package: **`mediation`** (Imai/Keele/Tingley 2010; Tingley et al. 2014
 JSS). It returns ACME (average causal mediation effect), ADE (average
 direct effect), total effect, and proportion-mediated estimates with CIs
 from a pair of fitted models — exactly the comparator we need for
-`torchgwas.multiomics.mediate_lmm`. SoyMD's role in this harness is:
+`torchgenomics.multiomics.mediate_lmm`. SoyMD's role in this harness is:
 
 1. The "data we COULD use" — the harness is structured so a future user
    can swap in real SoyMD per-cohort data (see "Scaling to real SoyMD
@@ -86,7 +86,7 @@ regime (Imai/Keele/Tingley 2010 §3.1): g_y is uncorrelated with M after
 conditioning on SNP, so OLS for `Y ~ M + SNP` is unbiased on b. The LMM
 correction in TG matters because g_y inflates the residual SE on Y; the
 kinship-aware reweighting tightens the per-coefficient SE without
-changing the point estimates. This is the regime where TorchGWAS'
+changing the point estimates. This is the regime where TorchGenomics'
 `mediate_lmm` and R's `mediation::mediate` agree on point estimates of
 a, b, c', ACME, and total — both are unbiased; only the SEs differ.
 
@@ -104,7 +104,7 @@ keeping kinship structure non-trivial.
 bash validation/external/soymd/install.sh        # one-time R install (~2 min wall time first run)
 bash validation/external/soymd/fetch_data.sh     # simulate triple + K (<1 s)
 bash validation/external/soymd/run.sh            # run mediation::mediate (~2 s wall, ~300 MB peak)
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/soymd/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/soymd/compare.py
 
 # Or via pytest (requires -m external; skipped by default):
 pytest -m external tests/test_external_soymd.py -v
@@ -116,7 +116,7 @@ contract.
 
 ## Reference outputs (in `outputs/`)
 
-| File | Source method | TorchGWAS counterpart |
+| File | Source method | TorchGenomics counterpart |
 |---|---|---|
 | `mediation_results.json` (key `acme`)               | `mediation::mediate(...)$d.avg`        | `MediationResult.indirect` |
 | `mediation_results.json` (key `ade`)                | `mediation::mediate(...)$z.avg`        | `MediationResult.c_prime` |
@@ -192,7 +192,7 @@ end-to-end on a small multi-mediator panel.
 | install (~80 MB R deps) | 8 GB | 6 GB | ~250 MB during package install |
 | fetch (simulate triple + K; ~few KB) | 4 GB | 6 GB | <50 MB |
 | run (mediation::mediate, n=200, sims=1000) | 4 GB | 7 GB | **283 MB** R interpreter + working set, 1.7 s wall time |
-| compare.py (Python 3 + torchgwas) | n/a | n/a | **728 MB** (torch + scipy + numpy at import), 1.1 s wall time |
+| compare.py (Python 3 + torchgenomics) | n/a | n/a | **728 MB** (torch + scipy + numpy at import), 1.1 s wall time |
 
 The 1.1 s wall time for `compare.py` is dominated by the torch import;
 the actual mediation comparisons + `scan_mediation` smoke run in <100 ms.
@@ -222,7 +222,7 @@ validation/external/soymd/
 ├── simulate_multiomics.R    # generates n=200 (SNP, M, Y, K) with planted ACME=0.20
 ├── run.sh                   # bash wrapper around run_mediation.R
 ├── run_mediation.R          # mediation::mediate, emits JSON
-├── compare.py               # parses JSON, runs torchgwas, asserts tolerances
+├── compare.py               # parses JSON, runs torchgenomics, asserts tolerances
 ├── README.md                # this file
 ├── .install_marker          # records package versions (gitignored)
 ├── data/                    # simulated triple + K + truth (gitignored)
@@ -240,7 +240,7 @@ pytest -m external tests/test_external_soymd.py -v
 ```
 
 The pytest module dynamically imports `compare.py` from outside the
-package tree, so no modification of `torchgwas/` is required to wire
+package tree, so no modification of `torchgenomics/` is required to wire
 this harness.
 
 ## Scaling to real SoyMD data
@@ -249,12 +249,12 @@ A future user can swap in real SoyMD-derived TSVs by:
 
 1. Browsing the SoyMD platform (https://soymd.bio2db.com/) and
    downloading per-cohort genotype + RNA-seq + phenotype tables.
-2. Aligning samples across the three layers (`torchgwas.io.alignment`
+2. Aligning samples across the three layers (`torchgenomics.io.alignment`
    handles three-way ID intersection).
 3. Replacing `data/triple.tsv` with the real SNP × mediator × outcome
    table (columns `id`, `snp`, `mediator`, `outcome`).
 4. Replacing `data/K.tsv` with a real GRM computed via
-   `torchgwas.linalg.grm_vanraden` on the SoyMD genotype matrix.
+   `torchgenomics.linalg.grm_vanraden` on the SoyMD genotype matrix.
 5. Re-running `bash validation/external/soymd/run.sh` and
    `python3 validation/external/soymd/compare.py`.
 

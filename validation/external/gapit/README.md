@@ -19,7 +19,7 @@ Installing GAPIT3 fresh requires Bioconductor (`multtest`) + several CRAN deps (
 bash validation/external/gapit/install.sh        # idempotent; tries to install GAPIT3 into bin/Rlib/
 bash validation/external/gapit/fetch_data.sh     # copies MDP fixture into data/
 bash validation/external/gapit/run_gapit.sh      # 4 reference outputs into outputs/
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/gapit/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/gapit/compare.py
 
 # Or via pytest (requires -m external; skipped by default):
 pytest -m external tests/test_external_gapit.py -v
@@ -29,12 +29,12 @@ Each shell script sources `validation/external/_lib/preflight.sh` and asserts di
 
 ## Reference outputs (in `outputs/`)
 
-| File | Source | TorchGWAS counterpart |
+| File | Source | TorchGenomics counterpart |
 |---|---|---|
-| `GLM_GWAS.csv` | `GAPIT(model="GLM")` | `torchgwas.models.GLM` Wald scan |
-| `MLM_GWAS.csv` | `GAPIT(model="MLM")` (VanRaden K + 3 PCs) | `torchgwas.models.SingleTraitLMM` Wald + Zhang K |
-| `FarmCPU_GWAS.csv` | `GAPIT(model="FarmCPU")` | `torchgwas.models.FarmCPU` |
-| `BLINK_GWAS.csv` | `GAPIT(model="BLINK")` | `torchgwas.models.BLINK` |
+| `GLM_GWAS.csv` | `GAPIT(model="GLM")` | `torchgenomics.models.GLM` Wald scan |
+| `MLM_GWAS.csv` | `GAPIT(model="MLM")` (VanRaden K + 3 PCs) | `torchgenomics.models.SingleTraitLMM` Wald + Zhang K |
+| `FarmCPU_GWAS.csv` | `GAPIT(model="FarmCPU")` | `torchgenomics.models.FarmCPU` |
+| `BLINK_GWAS.csv` | `GAPIT(model="BLINK")` | `torchgenomics.models.BLINK` |
 
 ## Tolerance gates
 
@@ -53,7 +53,7 @@ Direct element-wise check on GLM p-values (3093 SNPs):
 - mean |Δ| = 7.1e-15
 - max |Δ| = 9.8e-14
 
-This is machine epsilon — TorchGWAS' GLM Wald is the same OLS estimator as GAPIT's GLM, and they agree exactly (modulo float ordering). All 8 checks pass at §16's floors → **zero regression** from the 9 Pillar A fixes.
+This is machine epsilon — TorchGenomics' GLM Wald is the same OLS estimator as GAPIT's GLM, and they agree exactly (modulo float ordering). All 8 checks pass at §16's floors → **zero regression** from the 9 Pillar A fixes.
 
 ## Why the FarmCPU / BLINK tolerances are looser than GLM / MLM
 
@@ -84,7 +84,7 @@ validation/external/gapit/
 ├── fetch_data.sh           # copies MDP fixture into data/
 ├── run_gapit.sh            # produces 4 reference outputs in outputs/
 ├── run_gapit.R             # invoked by run_gapit.sh when GAPIT is available
-├── compare.py              # asserts §16 tolerances vs TorchGWAS
+├── compare.py              # asserts §16 tolerances vs TorchGenomics
 ├── README.md               # this file
 ├── bin/                    # Rlib/ + gapit_version.txt (ignored)
 ├── data/                   # MDP fixture (ignored)

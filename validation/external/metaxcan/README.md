@@ -1,8 +1,8 @@
 # MetaXcan / S-PrediXcan harness (Tier 1 A1)
 
 Reference-tool comparison between **MetaXcan** (`software/SPrediXcan.py`,
-the canonical S-PrediXcan implementation) and **TorchGWAS**
-`torchgwas.postgwas.twas_sumstat`. Part of the Genome Biology Methods
+the canonical S-PrediXcan implementation) and **TorchGenomics**
+`torchgenomics.postgwas.twas_sumstat`. Part of the Genome Biology Methods
 paper's Tier 1 Pillar B harness suite.
 
 ## Pinned tool version
@@ -24,9 +24,9 @@ Internal `__version__` in `metax/__init__.py` still reports `0.7.5` —
 this is an upstream-known issue (not bumped at every tag). The commit
 SHA is the authoritative identifier.
 
-## TorchGWAS comparison target
+## TorchGenomics comparison target
 
-`torchgwas/postgwas/_twas.py` — `twas_sumstat` (S-PrediXcan-equivalent
+`torchgenomics/postgwas/_twas.py` — `twas_sumstat` (S-PrediXcan-equivalent
 sumstats path). The harness does NOT exercise `twas_individual` because
 that is the PrediXcan (individual-level) entry, validated separately.
 
@@ -126,7 +126,7 @@ add one** for this iteration. Rationale:
   a *separate* covariance reference panel. Per the plan brief, this
   belongs in a sibling `validation/external/fusion/` directory rather
   than this one.
-- The TorchGWAS `twas_sumstat` implementation is FUSION-agnostic: it
+- The TorchGenomics `twas_sumstat` implementation is FUSION-agnostic: it
   consumes any (weights, LD, GWAS z) triple regardless of how the
   weights were derived. A FUSION harness would not exercise additional
   TG code paths.
@@ -167,7 +167,7 @@ Outputs:
 | `fetch_data.sh` | Invoke `simulate_fixture.py` to stage `data/` |
 | `simulate_fixture.py` | Deterministically generate model.db + covariance + GWAS sumstats |
 | `run.sh` | Invoke `MetaXcan/software/SPrediXcan.py` on the staged fixture |
-| `compare.py` | Run `torchgwas.postgwas.twas_sumstat`, compare gene-level results |
+| `compare.py` | Run `torchgenomics.postgwas.twas_sumstat`, compare gene-level results |
 | `results/agreement.json` | Per-check pass/fail + observed numerics |
 | `results/summary.tsv` | Per-gene table (MetaXcan z, TG z, Δz, …) |
 | `results/manifest.sha256` | SHA256 of every artefact (fixture + outputs) |

@@ -2,7 +2,7 @@
 
 Generates synthetic diploid data with known LD block structure, runs
 PLINK 1.9 --blocks to get reference Gabriel blocks, runs all 13
-torchgwas methods, and compares results.  Also validates polyploid
+torchgenomics methods, and compares results.  Also validates polyploid
 (tetraploid) block detection.
 
 Requirements: PLINK 1.9 accessible at the path below.
@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.ld import (
+from torchgenomics.ld import (
     LDBlock,
     compare_all_methods,
     compare_blocks,
@@ -279,7 +279,7 @@ METHODS_SIMPLE = [
 
 @pytest.mark.skipif(not HAS_PLINK, reason="PLINK 1.9 not found")
 class TestPLINKValidation:
-    """Compare torchgwas block detection against PLINK reference."""
+    """Compare torchgenomics block detection against PLINK reference."""
 
     def test_plink_produces_blocks(self, plink_reference_blocks):
         ldblocks, ids = plink_reference_blocks
@@ -621,7 +621,7 @@ class TestFullComparisonReport:
         # Write report
         report_path = tmp_path / "full_comparison_report.txt"
         with open(report_path, "w") as f:
-            f.write("TorchGWAS Block Detection: Full Validation Report\n")
+            f.write("TorchGenomics Block Detection: Full Validation Report\n")
             f.write("=" * 60 + "\n\n")
             f.write(f"Data: {G.shape[0]} samples x {G.shape[1]} SNPs\n")
             f.write("Synthetic: 5 LD blocks of 10 SNPs, 10 independent between\n\n")

@@ -1,4 +1,4 @@
-"""Compare BOLT-LMM (--lmmInfOnly) vs TorchGWAS SingleTraitLMM with LOCO.
+"""Compare BOLT-LMM (--lmmInfOnly) vs TorchGenomics SingleTraitLMM with LOCO.
 
 What we compare
 ---------------
@@ -10,7 +10,7 @@ contamination). Per-SNP it reports BETA, SE, CHISQ_LINREG (linear-regression
 chi-square ignoring the GRM, for sanity), and CHISQ_BOLT_LMM_INF / P_BOLT_LMM_INF
 (the actual LMM result).
 
-TorchGWAS counterpart: ``SingleTraitLMM`` (V1-core, GEMMA-equivalent) paired
+TorchGenomics counterpart: ``SingleTraitLMM`` (V1-core, GEMMA-equivalent) paired
 with ``linalg.grm_loco`` per chromosome. For each chromosome we:
   1. Compute the LOCO kinship K_loco from all OTHER chromosomes.
   2. Fit the null on the full sample with covariates + K_loco.
@@ -23,7 +23,7 @@ PlinkBedReader counts the BIM A1 allele (PLINK 1.9 canonical). BOLT-LMM
 counts ALLELE1 (= BIM A1 in our fixture). Both tools are now on the same
 convention; no manual dosage flip is needed. Pre-2026-05-13, TG counted
 BIM A2 and this harness applied a ``2.0 - G`` flip; the workaround was
-removed once `torchgwas/io/plink.py:_GENO_DECODE` was corrected.
+removed once `torchgenomics/io/plink.py:_GENO_DECODE` was corrected.
 
 Tolerances (observed-then-floored, per Pillar B convention)
 ------------------------------------------------------------
@@ -102,11 +102,11 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE  # noqa: E402
-from torchgwas.io.plink import PlinkBedReader  # noqa: E402
-from torchgwas.linalg.kinship_polyploid import grm_loco  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE  # noqa: E402
+from torchgenomics.io.plink import PlinkBedReader  # noqa: E402
+from torchgenomics.linalg.kinship_polyploid import grm_loco  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
 
 
 @dataclass
@@ -236,7 +236,7 @@ def compare_lmm_inf(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
     # --- Load TG inputs -----------------------------------------------------
     # Post-fix (2026-05-13): PlinkBedReader counts BIM A1 = BOLT ALLELE1
-    # natively (torchgwas/io/plink.py:_GENO_DECODE was fixed to PLINK 1.9
+    # natively (torchgenomics/io/plink.py:_GENO_DECODE was fixed to PLINK 1.9
     # canonical convention). Pre-fix this line was `2.0 - G_a2` to flip from
     # the old A2-counting convention. The variable name `G_a2` is now a
     # historical misnomer; it actually contains count(A1).

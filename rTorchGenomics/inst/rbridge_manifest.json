@@ -1,0 +1,6295 @@
+{
+  "torchgenomics_version": "0.4.0",
+  "schema_version": 1,
+  "commands": [
+    {
+      "name": "bayes_scan",
+      "cli_subcommand": "bayes-scan",
+      "description": "Bayesian variable selection (spike-and-slab) GWAS",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "prior_pi",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "Prior inclusion probability (default 0.01)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "prior_sig2_beta",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "Prior slab variance (default 0.1)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "method",
+          "type": "str",
+          "required": false,
+          "default": "susie",
+          "help": "Inference method: 'susie' (default) or 'cavi'",
+          "choices": [
+            "susie",
+            "cavi"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "n_signals",
+          "type": "int",
+          "required": false,
+          "default": 10,
+          "help": "Number of single-effect layers for SuSiE (default 10)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "learn_hyperparams",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "help": "Learn hyperparameters via empirical Bayes (default True)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "credible_set_coverage",
+          "type": "float",
+          "required": false,
+          "default": 0.95,
+          "help": "Target coverage for credible sets (default 0.95)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.5,
+          "help": "r^2 threshold for LD grouping in credible sets (CAVI only, default 0.5)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Ploidy level (default 2 for diploid)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "bayes_scan_rss",
+      "cli_subcommand": "bayes-scan-rss",
+      "description": "SuSiE-RSS fine-mapping on summary statistics + LD reference",
+      "args": [
+        {
+          "name": "sumstats",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Sumstats TSV",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_ref",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Pre-built LD reference (.pt or .npz)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "geno",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Genotype panel for in-sample LD computation (Tier B; not yet wired)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "regions",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Block regions TSV with start, stop columns (overrides auto block decomposition)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_num_causal",
+          "type": "int",
+          "required": false,
+          "default": 10,
+          "help": "Maximum number of causal variants per locus (L; default 10)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "coverage",
+          "type": "float",
+          "required": false,
+          "default": 0.95,
+          "help": "Credible-set coverage threshold (default 0.95)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "purity",
+          "type": "float",
+          "required": false,
+          "default": 0.5,
+          "help": "Minimum |R_jk| within a credible set (default 0.5)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "prior_pi",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Scalar prior inclusion probability OR path to per-SNP prior file (PRIOR_PI column)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "block_size_threshold",
+          "type": "int",
+          "required": false,
+          "default": 5000,
+          "help": "Maximum p per block before block decomposition kicks in (default 5000)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Output TSV path",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "threads",
+          "type": "int",
+          "required": false,
+          "default": 4,
+          "help": "Number of CPU threads for torch ops (default 4)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "blink_scan",
+      "cli_subcommand": "blink-scan",
+      "description": "BLINK multi-locus GWAS via LD-clustering and BIC selection",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "cutoff",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "Significance cutoff (default: 0.01)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_qtns",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Maximum pseudo-QTNs (0 = unlimited, default: 0)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.7,
+          "help": "LD correlation threshold for clustering (default: 0.7)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_max_samples",
+          "type": "int",
+          "required": false,
+          "default": 200,
+          "help": "Max samples for LD computation (default: 200)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "method_sub",
+          "type": "str",
+          "required": false,
+          "default": "reward",
+          "help": "P-value substitution method (default: reward)",
+          "choices": [
+            "reward",
+            "mean",
+            "median",
+            "penalty"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "help": "Internal MAF threshold for QTN candidacy (default: 0.0)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "combine_gwas_twas",
+      "cli_subcommand": "combine-gwas-twas",
+      "description": "Combine gene-level GWAS evidence with gene-level TWAS evidence using a chosen p-value combination method.",
+      "args": [
+        {
+          "name": "gwas_sumstats",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "GWAS sumstats TSV with columns chr, pos, snp, a1, a2, beta, se, p, n (and optionally af).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "twas_results",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "TWAS results TSV (output of `torchgenomics twas-scan` or a compatible per-gene table with gene_id / chr / start / end / beta / se / z_twas / p_twas / r2_model).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "method",
+          "type": "str",
+          "required": false,
+          "default": "fisher",
+          "help": "Combination method (default: fisher).",
+          "choices": [
+            "fisher",
+            "stouffer",
+            "cauchy",
+            "brown",
+            "empirical_brown",
+            "hmp",
+            "truncated_product",
+            "min_p"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "cis_window_bp",
+          "type": "int",
+          "required": false,
+          "default": 100000,
+          "help": "Symmetric cis window around each gene (bp). Default 100k.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional weighting: 'r2_model' weights TWAS by sqrt(CV-R\u00b2).",
+          "choices": [
+            null,
+            "r2_model"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "Gene-wise multiple-testing correction (default: bh).",
+          "choices": [
+            "none",
+            "bonferroni",
+            "bh",
+            "by",
+            "storey"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "p_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.05,
+          "help": "Significance threshold after correction.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Output TSV path.",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "conditional_scan",
+      "cli_subcommand": "conditional-scan",
+      "description": "LD-conditional GWAS with block-aware conditioning and persistence metrics",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_method",
+          "type": "str",
+          "required": false,
+          "default": "r2",
+          "help": "LD block detection method (default: r2)",
+          "choices": [
+            "gabriel",
+            "four_gamete",
+            "spine",
+            "r2",
+            "big_ld",
+            "cc_graph",
+            "dp_optimize"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "max_kb",
+          "type": "float",
+          "required": false,
+          "default": 200.0,
+          "help": "Max distance in kb for LD blocks (default: 200)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "persistence_ratio",
+          "type": "float",
+          "required": false,
+          "default": 0.5,
+          "help": "Signal retention ratio for persistence metric (default: 0.5)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "sig_threshold",
+          "type": "float",
+          "required": false,
+          "default": 5e-08,
+          "help": "Significance threshold for persistence evaluation (default: 5e-8)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_conditioning",
+          "type": "int",
+          "required": false,
+          "default": 5,
+          "help": "Max lead SNPs to condition on per block (default: 5)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "dosage_call",
+      "cli_subcommand": "dosage-call",
+      "description": "Call polyploid allele dosages from VCF read counts via updog",
+      "args": [
+        {
+          "name": "vcf",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Input VCF with AD format field (biallelic)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Output prefix for .probs.pt / .meta.json / .snp_diag.tsv",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": true,
+          "default": null,
+          "help": "Organism ploidy (2..8)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "model",
+          "type": "str",
+          "required": false,
+          "default": "norm",
+          "help": "updog flexdog model name (default: norm)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "rscript",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Path to Rscript (default: PATH lookup)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "bias",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "help": "Estimate allele bias (default)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "od",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "help": "Estimate overdispersion (default)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "seq_error",
+          "type": "float",
+          "required": false,
+          "default": null,
+          "help": "Fix sequencing error rate (default: estimate)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_cores",
+          "type": "int",
+          "required": false,
+          "default": 1,
+          "help": "Parallelism passed to updog::multidog (default: 1)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "keep_tmpdir",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Skip tempdir cleanup (debug aid)",
+          "choices": null,
+          "nargs": 0
+        }
+      ]
+    },
+    {
+      "name": "family_scan",
+      "cli_subcommand": "family-scan",
+      "description": "Within-family GWAS with confounding diagnostics (Young et al. 2022)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "family_col",
+          "type": "str",
+          "required": false,
+          "default": "FID",
+          "help": "Column name in phenotype file containing family IDs (default: FID)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "min_family_size",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Minimum members per family for within-family scan (default: 2)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "confound_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.5,
+          "help": "Attenuation deviation threshold for confounding flag (default: 0.5)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "farmcpu_scan",
+      "cli_subcommand": "farmcpu-scan",
+      "description": "FarmCPU multi-locus GWAS via iterative FEM/REM",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "p_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "P-value threshold for QTN selection (default: 0.01)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_qtns",
+          "type": "int",
+          "required": false,
+          "default": 20,
+          "help": "Maximum pseudo-QTNs per iteration (default: 20)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "bin_sizes",
+          "type": "str",
+          "required": false,
+          "default": "500000,5000000,50000000",
+          "help": "Comma-separated bin sizes in bp (default: 500000,5000000,50000000)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "method_bin",
+          "type": "str",
+          "required": false,
+          "default": "static",
+          "help": "Binning method (default: static)",
+          "choices": [
+            "static",
+            "optimum"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "method_sub",
+          "type": "str",
+          "required": false,
+          "default": "reward",
+          "help": "P-value substitution method (default: reward)",
+          "choices": [
+            "reward",
+            "mean",
+            "median",
+            "penalty"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "help": "Internal MAF threshold for QTN candidacy (default: 0.0)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "glmm_scan",
+      "cli_subcommand": "glmm-scan",
+      "description": "GLMM association scan (binary/ordinal with random effects, SAIGE-style PQL)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "family",
+          "type": "str",
+          "required": false,
+          "default": "binary",
+          "help": "Phenotype family (default: binary)",
+          "choices": [
+            "binary",
+            "ordinal",
+            "multinomial"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "n_categories",
+          "type": "int",
+          "required": false,
+          "default": 3,
+          "help": "Number of ordinal categories (default: 3, ignored for binary)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "firth",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Use Firth correction for GLM initialisation (binary only)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "no_spa",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Disable SPA tail correction (binary only)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "pql_max_iter",
+          "type": "int",
+          "required": false,
+          "default": 30,
+          "help": "Max PQL outer iterations (default: 30)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "gu_scan",
+      "cli_subcommand": "gu-scan",
+      "description": "Genotype-Uncertainty LMM scan (dosage-variance corrected)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "dosage_var",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Path to dosage variance file (.pt or .npy, shape n\u00d7m)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "probs",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Path to a Phase 55 <prefix>.probs.pt from `torchgenomics dosage-call`. When given, --genotype and --dosage-var are derived internally via expected_dosage / dosage_variance (ploidy read from the sibling <prefix>.meta.json).",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "gxe_scan",
+      "cli_subcommand": "gxe-scan",
+      "description": "Gene-environment interaction LMM scan",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Environment variable file (TSV: SAMPLE, ENV)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gxe_model",
+          "type": "str",
+          "required": false,
+          "default": "het",
+          "help": "GxE model: 'het' (single-trait HetLMM, default) or 'multi' (multi-trait GxELMM)",
+          "choices": [
+            "het",
+            "multi"
+          ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "knockoff_scan",
+      "cli_subcommand": "knockoff-scan",
+      "description": "Knockoff FDR-controlled GWAS (Sesia et al. 2020)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_level",
+          "type": "float",
+          "required": false,
+          "default": 0.05,
+          "help": "Target FDR level (default: 0.05)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_method",
+          "type": "str",
+          "required": false,
+          "default": "gabriel",
+          "help": "LD block detection method (default: gabriel)",
+          "choices": [
+            "gabriel",
+            "four_gamete",
+            "spine",
+            "r2",
+            "gwas_aligned",
+            "uncertainty",
+            "cross_pop",
+            "graphical",
+            "changepoint",
+            "big_ld",
+            "cc_graph",
+            "dp_optimize"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "knockoff_method",
+          "type": "str",
+          "required": false,
+          "default": "equicorrelated",
+          "help": "Knockoff generation method (default: equicorrelated)",
+          "choices": [
+            "equicorrelated"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "aggregation",
+          "type": "str",
+          "required": false,
+          "default": "max_stat",
+          "help": "Block importance aggregation (default: max_stat)",
+          "choices": [
+            "max_stat",
+            "sum_sq"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Random seed for knockoff generation",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "ldsc",
+      "cli_subcommand": "ldsc",
+      "description": "LDSC SNP heritability estimation",
+      "args": [
+        {
+          "name": "sumstats",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Summary statistics TSV",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Genotype file for LD score computation",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "window_kb",
+          "type": "float",
+          "required": false,
+          "default": 1000.0,
+          "help": "LD window in kb (default 1000)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Sample size (if not in sumstats)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "ldsc_rg",
+      "cli_subcommand": "ldsc-rg",
+      "description": "LDSC genetic correlation",
+      "args": [
+        {
+          "name": "sumstats1",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Summary stats for trait 1",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "sumstats2",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Summary stats for trait 2",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Genotype file for LD scores",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "window_kb",
+          "type": "float",
+          "required": false,
+          "default": 1000.0,
+          "help": "LD window in kb (default 1000)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n1",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Sample size trait 1",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n2",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Sample size trait 2",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "lro_scan",
+      "cli_subcommand": "lro-scan",
+      "description": "Leave-Region-Out LMM scan (block-level LOCO)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_method",
+          "type": "str",
+          "required": false,
+          "default": "r2",
+          "help": "LD block detection method (default: r2)",
+          "choices": [
+            "gabriel",
+            "four_gamete",
+            "spine",
+            "r2",
+            "gwas_aligned",
+            "graphical",
+            "changepoint",
+            "big_ld",
+            "cc_graph",
+            "dp_optimize"
+          ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "me_glmm_scan",
+      "cli_subcommand": "me-glmm-scan",
+      "description": "Multi-environment GLMM scan (binary/ordinal across environments)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "family",
+          "type": "str",
+          "required": false,
+          "default": "binary",
+          "help": "Phenotype family (default: binary)",
+          "choices": [
+            "binary",
+            "ordinal"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "n_categories",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Number of ordinal categories (required for ordinal)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env_cols",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated environment column names",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "parameterization",
+          "type": "str",
+          "required": false,
+          "default": "per_env",
+          "help": "Test parameterization (default: per_env)",
+          "choices": [
+            "per_env",
+            "reaction_norm"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "firth",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Use Firth correction for per-env GLM init",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "no_spa",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Disable SPA for per-env binary marginals",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "pql_max_iter",
+          "type": "int",
+          "required": false,
+          "default": 30,
+          "help": "Max PQL outer iterations (default: 30)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "mediate",
+      "cli_subcommand": "mediate",
+      "description": "GRM-corrected single-triple causal mediation (SNP -> M -> Y)",
+      "args": [
+        {
+          "name": "y",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Phenotype vector (.npy/.pt/.tsv)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "snp",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "SNP dosage vector (.npy/.pt/.tsv)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "mediator",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Mediator vector (.npy/.pt/.tsv)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "kinship",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "GRM (n,n) (.npy/.pt)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariates",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Covariates (n,c) (.npy/.pt/.tsv)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "se",
+          "type": "str",
+          "required": false,
+          "default": "monte-carlo",
+          "help": "",
+          "choices": [
+            "sobel",
+            "monte-carlo",
+            "bootstrap"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "n_mc",
+          "type": "int",
+          "required": false,
+          "default": 10000,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_boot",
+          "type": "int",
+          "required": false,
+          "default": 1000,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "no_sensitivity",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Skip Imai rho",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "mediation.json",
+          "help": "Output JSON path",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "mediate_scan",
+      "cli_subcommand": "mediate-scan",
+      "description": "Genome x molecular-feature mediation scan with cis-window filtering",
+      "args": [
+        {
+          "name": "y",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Phenotype vector (.npy/.pt/.tsv)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Genotype matrix (n,s) (.npy/.pt)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "mediator_matrix",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Mediator matrix (n,f) (.npy/.pt)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "kinship",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "GRM (n,n) (.npy/.pt)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "snp_meta",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with columns: id,chrom,pos (one row per SNP)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "feature_meta",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with columns: id,chrom,pos (one row per feature)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariates",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Covariates (.npy/.pt/.tsv)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "cis_window",
+          "type": "int",
+          "required": false,
+          "default": 1000000,
+          "help": "Cis window in bp; -1 means no filter (all pairs)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "se",
+          "type": "str",
+          "required": false,
+          "default": "monte-carlo",
+          "help": "",
+          "choices": [
+            "sobel",
+            "monte-carlo",
+            "bootstrap"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "n_mc",
+          "type": "int",
+          "required": false,
+          "default": 10000,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bh",
+            "by",
+            "storey"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "mediate_scan",
+          "help": "Output prefix (.tsv + .top.tsv)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "met_scan",
+      "cli_subcommand": "met-scan",
+      "description": "Multi-environment trial (MET) GWAS: stable vs environment-contingent effects",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env_cols",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated environment column names in phenotype file (default: all non-ID columns)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Ploidy level (default 2 for diploid)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "parameterization",
+          "type": "str",
+          "required": false,
+          "default": "per_env",
+          "help": "SNP effect decomposition (default: per_env)",
+          "choices": [
+            "per_env",
+            "reaction_norm"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "vg_structure",
+          "type": "str",
+          "required": false,
+          "default": "unstructured",
+          "help": "Genetic covariance structure: 'unstructured' or 'fa(k)' for factor analytic with k factors (default: unstructured)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "kernel_files",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Additional kernel matrix files (.npy or .pt). Used alongside the computed additive GRM for multi-kernel MET.",
+          "choices": null,
+          "nargs": "*"
+        }
+      ]
+    },
+    {
+      "name": "mklmm_scan",
+      "cli_subcommand": "mklmm-scan",
+      "description": "Multi-kernel LMM scan (additive + dominance + epistatic)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "kernels",
+          "type": "str",
+          "required": false,
+          "default": "additive,dominance,epistatic",
+          "help": "Comma-separated kernel types: additive,dominance,epistatic (default: all three)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Ploidy level (default 2)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "grm_method",
+          "type": "str",
+          "required": false,
+          "default": "vanraden",
+          "help": "GRM method for additive kernel",
+          "choices": [
+            "vanraden",
+            "zhang"
+          ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "mtmet_scan",
+      "cli_subcommand": "mtmet-scan",
+      "description": "Multi-trait multi-environment GWAS with separable Kronecker covariance",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env_cols",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Comma-separated environment names (e.g., E1,E2,E3)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "vg_structure",
+          "type": "str",
+          "required": false,
+          "default": "separable",
+          "help": "Vg structure: 'separable' (default), 'unstructured', or 'fa(k)'",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "mvlmm_scan",
+      "cli_subcommand": "mvlmm-scan",
+      "description": "Multi-trait mvLMM association scan",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "grm",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Path to pre-computed GRM matrix (NumPy .npy, .npz, or space/tab-delimited text). If provided, --grm-method is ignored.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "grm_method",
+          "type": "str",
+          "required": false,
+          "default": "vanraden",
+          "help": "GRM method: 'vanraden' (streaming, scalable) or 'zhang' (matches GAPIT, requires full materialization)",
+          "choices": [
+            "vanraden",
+            "zhang"
+          ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "ocf_scan",
+      "cli_subcommand": "ocf-scan",
+      "description": "Orthogonal Cross-Fit LMM scan (DML debiased inference)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_folds",
+          "type": "int",
+          "required": false,
+          "default": 5,
+          "help": "Number of cross-fitting folds (default: 5)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Random seed for fold assignment",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "variance_type",
+          "type": "str",
+          "required": false,
+          "default": "HC",
+          "help": "Variance estimator: HC (sandwich) or homoskedastic (default: HC)",
+          "choices": [
+            "HC",
+            "homoskedastic"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "no_genotype_projection",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Skip projecting genotypes onto covariate space",
+          "choices": null,
+          "nargs": 0
+        }
+      ]
+    },
+    {
+      "name": "phase_poly",
+      "cli_subcommand": "phase-poly",
+      "description": "Polyploid F1 phasing via PolyOrigin (Phase 56)",
+      "args": [
+        {
+          "name": "probs",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Path to .probs.pt from 'dosage-call' (raw (n,m,k+1) tensor or dict). If a raw tensor, the sibling <prefix>.meta.json is read for sample/variant IDs.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "pedigree",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "TSV with columns: offspring, parent1, parent2 (optional: ploidy)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "map",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "TSV with columns: marker, chrom, pos_bp (optional: cm)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Output prefix; writes <prefix>.haplotypes.pt etc.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": true,
+          "default": null,
+          "help": "Organism ploidy (2, 4, or 6)",
+          "choices": [
+            2,
+            4,
+            6
+          ],
+          "nargs": null
+        },
+        {
+          "name": "parent_phased",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional CSV of pre-phased parent genotypes (escape hatch)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "no_refinemap",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "help": "Disable PolyOrigin's map refinement (default: enabled)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "recomrate",
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "help": "cM/Mb to synthesize genetic positions when --map lacks a cm column (default: 1.0)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "julia_path",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Path to an existing Julia binary; else discovered or auto-installed",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "auto_install",
+          "type": "bool",
+          "required": false,
+          "default": null,
+          "help": "Auto-install Julia if not found (non-interactive; sets consent=True)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "keep_workdir",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Do not delete the temp work directory after success (debug aid)",
+          "choices": null,
+          "nargs": 0
+        }
+      ]
+    },
+    {
+      "name": "pipeline",
+      "cli_subcommand": "pipeline",
+      "description": "Full pipeline: impute -> scan -> correct",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "impute",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": [
+            "mean"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "model",
+          "type": "str",
+          "required": false,
+          "default": "lmm",
+          "help": "",
+          "choices": [
+            "glm",
+            "lmm",
+            "mvlmm",
+            "farmcpu",
+            "blink",
+            "mklmm",
+            "gxe",
+            "met"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Ploidy level (default 2 for diploid)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env_cols",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated environment columns (for --model met)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "parameterization",
+          "type": "str",
+          "required": false,
+          "default": "per_env",
+          "help": "SNP effect decomposition for MET (default: per_env)",
+          "choices": [
+            "per_env",
+            "reaction_norm"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "vg_structure",
+          "type": "str",
+          "required": false,
+          "default": "unstructured",
+          "help": "Genetic covariance structure for MET: 'unstructured' or 'fa(k)'",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Environment variable file (TSV: SAMPLE/IID, ENV) for --model gxe",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gxe_model",
+          "type": "str",
+          "required": false,
+          "default": "het",
+          "help": "GxE model for --model gxe: 'het' (default) or 'multi'",
+          "choices": [
+            "het",
+            "multi"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "approx_method",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Approximate eigendecomposition method (default: exact)",
+          "choices": [
+            "randomized_svd",
+            "nystrom",
+            "lobpcg",
+            "sparse"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "approx_components",
+          "type": "int",
+          "required": false,
+          "default": 100,
+          "help": "Number of components for randomized SVD / LOBPCG (default: 100)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "approx_landmarks",
+          "type": "int",
+          "required": false,
+          "default": 500,
+          "help": "Number of landmark samples for Nystrom (default: 500)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "sparse_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.05,
+          "help": "Relatedness threshold for sparse GRM (default: 0.05)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "poly_scan",
+      "cli_subcommand": "poly-scan",
+      "description": "Polyploid GWAS scan",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_action",
+          "type": "str",
+          "required": false,
+          "default": "additive",
+          "help": "",
+          "choices": [
+            "additive",
+            "general",
+            "all",
+            "1-dom",
+            "diplo-additive",
+            "overdominant"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "p3d",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "help": "P3D=TRUE: estimate variance components once (default)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "max_geno_freq",
+          "type": "float",
+          "required": false,
+          "default": null,
+          "help": "Max genotype class frequency filter (e.g. 0.95). Applied after gene-action encoding.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "bp_window",
+          "type": "int",
+          "required": false,
+          "default": 1000000,
+          "help": "Base-pair window for LD peak pruning (default: 1000000)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "peak_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.0001,
+          "help": "P-value threshold for peak detection (default: 1e-4)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "joint_qtl",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Fit multi-QTL joint model on detected peaks",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "meff_method",
+          "type": "str",
+          "required": false,
+          "default": "gao",
+          "help": "Effective test count method (default: gao)",
+          "choices": [
+            "gao",
+            "moskvina"
+          ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "rr_met_scan",
+      "cli_subcommand": "rr-met-scan",
+      "description": "Random Regression LMM \u00d7 Multi-Environment GWAS for longitudinal MET data",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_col",
+          "type": "str",
+          "required": false,
+          "default": "IID",
+          "help": "Phenotype column with sample identifier (default: IID)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env_col",
+          "type": "str",
+          "required": false,
+          "default": "ENV",
+          "help": "Phenotype column with environment label (default: ENV)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "time_col",
+          "type": "str",
+          "required": false,
+          "default": "TIME",
+          "help": "Phenotype column with raw time/age values (default: TIME)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "pheno_col",
+          "type": "str",
+          "required": false,
+          "default": "Y",
+          "help": "Phenotype column with the long-format response (default: Y)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "basis",
+          "type": "str",
+          "required": false,
+          "default": "legendre",
+          "help": "Temporal basis (default: legendre). Pooled across all envs.",
+          "choices": [
+            "legendre",
+            "bspline"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "order",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Legendre polynomial order; b = order + 1 (default: 2)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_knots",
+          "type": "int",
+          "required": false,
+          "default": 4,
+          "help": "B-spline interior knot count (default: 4)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "degree",
+          "type": "int",
+          "required": false,
+          "default": 3,
+          "help": "B-spline degree (default: 3)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "vg_structure",
+          "type": "str",
+          "required": false,
+          "default": "separable",
+          "help": "Genetic covariance structure for the (b\u00b7E) pseudo-traits (default: separable Vg = K_coef \u2297 Vg_env)",
+          "choices": [
+            "separable",
+            "unstructured",
+            "fa(1)",
+            "fa(2)",
+            "fa(3)"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "eval_times",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated raw time values for per-(time, env) \u03c7\u00b2(1) reconstruction. Produces an extra .rr_met_at_t.tsv output.",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "rr_scan",
+      "cli_subcommand": "rr-scan",
+      "description": "Random Regression LMM GWAS for longitudinal / spatio-temporal data",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_col",
+          "type": "str",
+          "required": false,
+          "default": "IID",
+          "help": "Phenotype column with sample identifier (default: IID)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "time_col",
+          "type": "str",
+          "required": false,
+          "default": "TIME",
+          "help": "Phenotype column with raw time/age values (default: TIME)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "pheno_col",
+          "type": "str",
+          "required": false,
+          "default": "Y",
+          "help": "Phenotype column with the long-format response (default: Y)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "basis",
+          "type": "str",
+          "required": false,
+          "default": "legendre",
+          "help": "Temporal basis (default: legendre)",
+          "choices": [
+            "legendre",
+            "bspline"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "order",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Legendre polynomial order; b = order + 1 (default: 2)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_knots",
+          "type": "int",
+          "required": false,
+          "default": 4,
+          "help": "B-spline interior knot count (default: 4)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "degree",
+          "type": "int",
+          "required": false,
+          "default": 3,
+          "help": "B-spline degree (default: 3)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "k_coef_structure",
+          "type": "str",
+          "required": false,
+          "default": "unstructured",
+          "help": "K_coef structure: 'unstructured', 'diagonal', or 'fa(k)'",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "include_pe",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Decompose Ve into a permanent-environment block",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "mode",
+          "type": "str",
+          "required": false,
+          "default": "projection",
+          "help": "Reduction mode (default: projection)",
+          "choices": [
+            "projection",
+            "stacked"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "eval_times",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated raw time values for per-time-point \u03c7\u00b2(1) reconstruction. Produces an extra .rr_at_t.tsv output.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "row_col",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Phenotype column with field-trial row coordinate (enables 2D P-spline spatial smoother).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "col_col",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Phenotype column with field-trial column coordinate.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "spatial_knots_row",
+          "type": "int",
+          "required": false,
+          "default": 8,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "spatial_knots_col",
+          "type": "int",
+          "required": false,
+          "default": 8,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "lambda_row",
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "lambda_col",
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "set_scan",
+      "cli_subcommand": "set-scan",
+      "description": "Set-based association tests (SKAT/Burden/SKAT-O)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "regions",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "BED file defining gene/region boundaries (chr, start, end, [name])",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "set_test",
+          "type": "str",
+          "required": false,
+          "default": "skat",
+          "help": "Set-based test: skat (default), burden, or skat_o",
+          "choices": [
+            "skat",
+            "burden",
+            "skat_o"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "weight_a1",
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "help": "Beta(MAF; a1, a2) weight parameter a1 (default 1.0)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weight_a2",
+          "type": "float",
+          "required": false,
+          "default": 25.0,
+          "help": "Beta(MAF; a1, a2) weight parameter a2 (default 25.0)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ploidy",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "help": "Ploidy level (default 2 for diploid)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "survival_scan",
+      "cli_subcommand": "survival-scan",
+      "description": "Survival GWAS scan (Cox PH frailty model with martingale residual score test)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "time_col",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name for follow-up time (default: first phenotype column)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "event_col",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name for event indicator 0/1 (default: second phenotype column)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "no_spa",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Disable SPA for tail p-values",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "spa_threshold",
+          "type": "float",
+          "required": false,
+          "default": 2.0,
+          "help": "Chi-square threshold for SPA activation (default: 2.0)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "pql_max_iter",
+          "type": "int",
+          "required": false,
+          "default": 30,
+          "help": "Max PQL outer iterations (default: 30)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "pql_tol",
+          "type": "float",
+          "required": false,
+          "default": 0.0001,
+          "help": "PQL convergence tolerance (default: 1e-4)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ties",
+          "type": "str",
+          "required": false,
+          "default": "breslow",
+          "help": "Tie-handling method (default: breslow)",
+          "choices": [
+            "breslow"
+          ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "threshold_scan",
+      "cli_subcommand": "threshold-scan",
+      "description": "Threshold-linear GWAS for ordinal + continuous traits (Bermann et al. 2026)",
+      "args": [
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "test",
+          "type": "str",
+          "required": false,
+          "default": "wald",
+          "help": "",
+          "choices": [
+            "wald",
+            "score",
+            "lrt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "",
+          "choices": [
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey",
+            "simplem",
+            "weighted-bh",
+            "lfdr",
+            "hierarchical",
+            "ihw",
+            "adapt",
+            "none"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "maf_min",
+          "type": "float",
+          "required": false,
+          "default": 0.01,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "miss_max",
+          "type": "float",
+          "required": false,
+          "default": 0.1,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": "torchgenomics_results",
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "chunk_size",
+          "type": "int",
+          "required": false,
+          "default": 1024,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_iter",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Maximum REML optimizer iterations (default: from config)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "weights_file",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with SNP weights for weighted-bh correction (columns: SNP, WEIGHT)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV mapping SNP to gene/group for hierarchical FDR (columns: SNP, GENE)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "fdr_covariate",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "TSV with auxiliary covariate for IHW/AdaPT (columns: SNP, COV). If omitted, MAF from the scan result is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_pcs",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "help": "Number of principal components from GRM eigendecomposition to include as covariates for population structure correction (default: 0, meaning no PCs added)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "id_column",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Column name in phenotype/covariate file containing sample IDs (default: auto-detect from column names like IID, Sample, Taxa)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "trait_types",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Comma-separated trait types: 'ordinal' or 'continuous' (e.g., 'ordinal,ordinal,continuous')",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_categories",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Comma-separated number of categories per trait (use 0 for continuous, e.g., '3,2,0')",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "R_matrix",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Path to residual covariance matrix (c x c, CSV/NPY). If omitted, identity is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "G_matrix",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Path to genetic covariance matrix (c x c, CSV/NPY). If omitted, identity is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "solver",
+          "type": "str",
+          "required": false,
+          "default": "nr",
+          "help": "Solver: 'nr' (T-EM warm-start then Newton-Raphson) or 'em' (SQUAREM-accelerated EM)",
+          "choices": [
+            "nr",
+            "em"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "em_warmup",
+          "type": "int",
+          "required": false,
+          "default": 5,
+          "help": "Number of EM warm-up iterations before NR (default: 5)",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "twas_scan",
+      "cli_subcommand": "twas-scan",
+      "description": "Observed-expression TWAS: gene-trait association on already-normalized RNA-seq expression (no eQTL weights required).",
+      "args": [
+        {
+          "name": "expression",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Path to expression TSV: header row of 'sample_id\\tgene1\\tgene2\\t...'.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Phenotype TSV: PLINK-style 'FID\\tIID\\tTRAIT' or 'sample_id\\tTRAIT'.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "trait",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Trait column name. If omitted, the rightmost non-ID column in the phenotype file is used.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariates",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional covariates TSV (PCs, PEER factors, sex, age, batch). Same ID convention as --phenotype.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "kinship",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional (n, n) kinship / GRM matrix (.npy or tab-separated text). If supplied, switches OLS to LMM for population-stratification correction.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_annotation",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional gene-annotation BED: 'chr\\tstart\\tend\\tgene_id[\\tgene_name]'.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Output TSV path.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bonferroni",
+          "help": "Multiple-testing correction (default: bonferroni).",
+          "choices": [
+            "none",
+            "bonferroni",
+            "holm",
+            "bh",
+            "by",
+            "storey"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "p_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.05,
+          "help": "Significance threshold (default: 0.05).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "standardize",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Per-gene z-score the expression matrix before testing.",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "rank_int",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Apply Blom rank-INT per gene before testing.",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "quantile_norm",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Quantile-normalize columns before testing.",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "peer_factors",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "Number of PEER factors to regress out before testing (requires R + peer).",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    }
+  ]
+}

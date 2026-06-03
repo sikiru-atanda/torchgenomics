@@ -6,7 +6,7 @@ tensors and feeds them into the uncertainty-aware association test
 
 ## Prerequisites
 
-TorchGWAS `dosage-call` shells out to the R package
+TorchGenomics `dosage-call` shells out to the R package
 [`updog`](https://cran.r-project.org/package=updog). Install it once:
 
 ```bash
@@ -21,7 +21,7 @@ field. If you're starting from BAMs, GATK `HaplotypeCaller` and
 ## Step 1 — Call dosages
 
 ```bash
-torchgwas dosage-call \
+torchgenomics dosage-call \
   --vcf calls.vcf.gz \
   --output out/dcall \
   --ploidy 4 \
@@ -43,7 +43,7 @@ internally (via `expected_dosage` / `dosage_variance`, with ploidy
 picked up from the sibling `out/dcall.meta.json`):
 
 ```bash
-torchgwas gu-scan \
+torchgenomics gu-scan \
   --probs out/dcall.probs.pt \
   --phenotype pheno.txt \
   --output results
@@ -60,13 +60,13 @@ manually:
 
 ```python
 import torch
-from torchgwas.preprocess.dosage_uncertainty import expected_dosage
+from torchgenomics.preprocess.dosage_uncertainty import expected_dosage
 probs = torch.load("out/dcall.probs.pt", weights_only=True)
 torch.save(expected_dosage(probs, 4), "out/dosage.pt")
 ```
 
 ```bash
-torchgwas poly-scan \
+torchgenomics poly-scan \
   --genotype out/dosage.pt \
   --phenotype pheno.txt \
   --ploidy 4 \

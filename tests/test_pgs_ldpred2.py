@@ -1,4 +1,4 @@
-"""Tests for torchgwas.pgs.ldpred2 — LDpred2-inf, LDpred2-grid, LDpred2-auto."""
+"""Tests for torchgenomics.pgs.ldpred2 — LDpred2-inf, LDpred2-grid, LDpred2-auto."""
 
 from __future__ import annotations
 
@@ -7,15 +7,15 @@ import math
 import pytest
 import torch
 
-from torchgwas.pgs.base import LDReference
-from torchgwas.pgs.ld_ref import build_ld_reference
-from torchgwas.pgs.ldpred2 import (
+from torchgenomics.pgs.base import LDReference
+from torchgenomics.pgs.ld_ref import build_ld_reference
+from torchgenomics.pgs.ldpred2 import (
     LDpred2Auto,
     LDpred2Grid,
     LDpred2Inf,
     _marginal_beta_std,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _sim_sumstats_with_truth(

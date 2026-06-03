@@ -1,4 +1,4 @@
-"""Compare regenie vs TorchGWAS on the MDP fixture across:
+"""Compare regenie vs TorchGenomics on the MDP fixture across:
 
   1. Step 1 LOCO predictor sanity — regenie's Step 1 ridge output (the
      per-chromosome predictor file) must be finite and the column-major
@@ -8,14 +8,14 @@
      and consume it for downstream Step 2.
 
   2. Step 2 quantitative β / SE / -log10p — `step2_qt_EarHT.regenie` vs
-     TorchGWAS GLM(Wald) with PCs as covariates and the LOCO predictor
+     TorchGenomics GLM(Wald) with PCs as covariates and the LOCO predictor
      subtracted from the phenotype. (Subtracting the LOCO predictor as
      an offset is the closest in-tool analog of regenie's Step 2 path:
      regenie residualizes Y on covariates+LOCO before per-SNP scoring;
      TG GLM regresses on covariates+SNP per SNP after offset removal.)
 
   3. Step 2 binary β / SE / -log10p — `step2_bin_EarHT_bin.regenie` (Firth
-     path) vs TorchGWAS BinaryGLM(firth=True, use_spa=False) with PCs.
+     path) vs TorchGenomics BinaryGLM(firth=True, use_spa=False) with PCs.
 
 Tolerance policy: observed-then-floored. The fixture is small (281
 samples, 2897 SNPs after MAF/geno QC) → regenie's LOCO ridge predictor
@@ -108,11 +108,11 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE  # noqa: E402
-from torchgwas.io.plink import PlinkBedReader  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.binary_glm import BinaryGLM  # noqa: E402
-from torchgwas.models.glm import GLM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE  # noqa: E402
+from torchgenomics.io.plink import PlinkBedReader  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.binary_glm import BinaryGLM  # noqa: E402
+from torchgenomics.models.glm import GLM  # noqa: E402
 
 
 @dataclass
@@ -252,7 +252,7 @@ def _flip_dosage(G: torch.Tensor, ploidy: int = 2) -> torch.Tensor:
 
     Historical: PlinkBedReader used to count BIM A2 while regenie counts
     ALLELE1 = BIM A1, so this comparison harness applied a manual flip.
-    After 2026-05-13 (`_GENO_DECODE` fix in torchgwas/io/plink.py),
+    After 2026-05-13 (`_GENO_DECODE` fix in torchgenomics/io/plink.py),
     PlinkBedReader counts BIM A1 = regenie ALLELE1 — both tools are on
     the same convention. Callers should NOT apply this flip anymore; it
     is preserved here only to make the historical workaround visible in
@@ -310,7 +310,7 @@ def compare_step1_loco(out_dir: Path, data_dir: Path) -> ComparisonReport:
 
 
 def compare_step2_qt(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """regenie Step 2 quantitative vs TorchGWAS GLM Wald with LOCO offset.
+    """regenie Step 2 quantitative vs TorchGenomics GLM Wald with LOCO offset.
 
     Strategy:
       - For each chromosome, load regenie's LOCO predictor for that chrom.
@@ -434,7 +434,7 @@ def compare_step2_qt(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
 
 def compare_step2_binary(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """regenie Step 2 binary (Firth) vs TorchGWAS BinaryGLM(firth=True).
+    """regenie Step 2 binary (Firth) vs TorchGenomics BinaryGLM(firth=True).
 
     Both tools score per-SNP logistic associations with PC1 + PC2 as
     covariates. regenie additionally uses the LOCO predictor as an offset

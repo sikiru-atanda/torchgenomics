@@ -1,7 +1,7 @@
 // Native accelerator for Gabriel et al. (2002) haplotype-block detection.
 //
 // C++ port of the inner loop of
-// ``torchgwas.ld._blocks.detect_blocks_gabriel``. The pure-Python
+// ``torchgenomics.ld._blocks.detect_blocks_gabriel``. The pure-Python
 // implementation remains the canonical algorithmic reference; this
 // module reproduces its semantics exactly (greedy longest-first
 // candidate scan, identical accept rule) but replaces the

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.ld import (
+from torchgenomics.ld import (
     LDBlock,
     compute_dprime_matrix,
     compute_pairwise_ld,
@@ -13,9 +13,9 @@ from torchgwas.ld import (
     detect_blocks,
     save_blocks_bed,
 )
-from torchgwas.ld._dprime_ci import dprime_confidence_interval
-from torchgwas.ld._em_haplotype import build_genotype_counts, em_haplotype_freq
-from torchgwas.ld._pairwise import (
+from torchgenomics.ld._dprime_ci import dprime_confidence_interval
+from torchgenomics.ld._em_haplotype import build_genotype_counts, em_haplotype_freq
+from torchgenomics.ld._pairwise import (
     compute_dprime_phased,
     compute_dprime_unphased,
     compute_r2_pairs,

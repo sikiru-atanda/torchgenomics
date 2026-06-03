@@ -43,7 +43,7 @@ fi
 # --- Tier A placeholder -----------------------------------------------------
 echo "[susieR fetch_data] NOTE: Tier A placeholder."
 echo "[susieR fetch_data] Full Tier B implementation runs:"
-echo "    torchgwas lmm-scan --genotype ${MDP_DIR}/mdp_genotype_test.hmp.txt \\"
+echo "    torchgenomics lmm-scan --genotype ${MDP_DIR}/mdp_genotype_test.hmp.txt \\"
 echo "                       --phenotype ${MDP_DIR}/mdp_traits.txt \\"
 echo "                       --output ${DATA_DIR}/mdp_lmm"
 echo "    plus extract_locus.py to slice a p=500 window around the top hit and"

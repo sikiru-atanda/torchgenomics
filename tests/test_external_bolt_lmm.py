@@ -1,4 +1,4 @@
-"""External-tool harness: BOLT-LMM vs TorchGWAS reference comparison.
+"""External-tool harness: BOLT-LMM vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require:
   - the BOLT-LMM v2.5 prebuilt binary already extracted into
@@ -94,11 +94,11 @@ def _require_install() -> None:
 def compare_mod():
     # Match the docs/validation.md golden CI gate by exercising the
     # pure-Python reference path (native disabled).
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
-def test_bolt_lmm_inf_only_matches_torchgwas(compare_mod) -> None:
+def test_bolt_lmm_inf_only_matches_torchgenomics(compare_mod) -> None:
     """BOLT-LMM --lmmInfOnly per-SNP β / SE / -log10p vs TG SingleTraitLMM+LOCO."""
     _require_install()
     _require_artifacts(

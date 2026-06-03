@@ -1,13 +1,13 @@
-"""Tests for torchgwas.pgs.ct — Clumping + Thresholding."""
+"""Tests for torchgenomics.pgs.ct — Clumping + Thresholding."""
 
 from __future__ import annotations
 
 import pytest
 import torch
 
-from torchgwas.pgs.ct import ClumpingThresholding
-from torchgwas.pgs.ld_ref import build_ld_reference
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.pgs.ct import ClumpingThresholding
+from torchgenomics.pgs.ld_ref import build_ld_reference
+from torchgenomics.postgwas._sumstats import SumStats
 
 
 def _sim_two_loci(n=300, seed=0):

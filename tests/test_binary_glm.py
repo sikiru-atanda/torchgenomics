@@ -10,8 +10,8 @@ import math
 
 import torch
 
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.binary_glm import BinaryGLM
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.binary_glm import BinaryGLM
 
 
 def _simulate_binary_data(

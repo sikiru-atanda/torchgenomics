@@ -1,5 +1,5 @@
 """Tests for the native C++ PELT change-point accelerator
-(``torchgwas._native._pelt_native``).
+(``torchgenomics._native._pelt_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_PELT, _pelt_native
-from torchgwas.ld._changepoint import _native_enabled, dp_changepoint
+from torchgenomics._native import HAS_NATIVE_PELT, _pelt_native
+from torchgenomics.ld._changepoint import _native_enabled, dp_changepoint
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_PELT,
@@ -33,7 +33,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _native_enabled() is True
 
@@ -93,12 +93,12 @@ def test_native_pelt_invalid_cost_raises():
 
 
 def _run_python(sig_t, penalty, min_seg, cost_fn, monkeypatch):
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return list(dp_changepoint(sig_t, penalty=penalty, min_seg=min_seg, cost_fn=cost_fn))
 
 
 def _run_native(sig_t, penalty, min_seg, cost_fn, monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     return list(dp_changepoint(sig_t, penalty=penalty, min_seg=min_seg, cost_fn=cost_fn))
 
 

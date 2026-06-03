@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.models.joint_qtl import fit_joint_qtl
+from torchgenomics.models.joint_qtl import fit_joint_qtl
 
 
 @pytest.fixture

@@ -3,13 +3,13 @@
 **Date**: 2026-05-15
 **Status**: Brainstorming complete; awaiting user review of this spec before transitioning to writing-plans.
 **Author**: Sikiru Atanda (corresponding); additional authors TBD.
-**Working title**: *TorchGWAS: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to fifteen reference tools.*
+**Working title**: *TorchGenomics: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to fifteen reference tools.*
 
 **Verification status (2026-05-15, second pass)**: load-bearing counts in this spec were re-verified against the repo on commit `0a71207` of `modernization/specs` plus `consolidated/na-roundup` (tip `480cc99`), `validation/pillar-B-references`, `efficiency/streaming-scan-audit`, and `research/na1-susie-streaming`. Corrected numbers: 25 native `.cpp` extensions (`find csrc/ -name "*.cpp" \| wc -l` → 25); 40 CLI subcommands (dispatch dict in `cli.py` has 40 `"name": _cmd_*` keys on `modernization/specs`; the count grows on `consolidated/na-roundup` because NA1 adds `bayes-scan-rss` — re-verify on the working branch before manuscript draft); 10 existing algorithmic reference tools — `bolt_lmm`, `gapit`, `gemma`, `gwaspoly`, `ldsc`, `plink2`, `regenie`, `saige`, `susieR`, `twosamplemr` — plus 3 real-data fixtures (`soymd`, `soynam`, `ukb`) and 1 shared library (`_lib`); 13 LD-block-design methods (12 `detect_blocks_*` + 1 `compute_wall_pritchard_diagnostics`); 9 haplotype GWAS methods (HTR/window/block/SKAT + PCHT/HHCT/HSKAT/HapGxE/BayesHap). After Tier 1 the algorithmic-reference count rises to 15 and fixtures stay at 3.
 
 ## 1. Origin
 
-The pre-existing Bioinformatics Application Note scaffold (`paper/PLAN.md`, `paper/drafts/abstract.md` in the `research/na1-susie-streaming` worktree) under-represented the package's capability surface. A capability audit against `torchgwas/` (modules + CLI registry) showed the manuscript named ~10 capabilities while the package implements ~50 across 56 shipped phases. The unmentioned clusters included haplotype GWAS (Phase 46–47), LD-block design (Phases 20–21), TWAS / SMR / HEIDI / coloc / hyprcoloc (Phases 42, 44, 45), GRM-corrected causal mediation (Phase 49), and the entire specialty model family (Phases 22–35).
+The pre-existing Bioinformatics Application Note scaffold (`paper/PLAN.md`, `paper/drafts/abstract.md` in the `research/na1-susie-streaming` worktree) under-represented the package's capability surface. A capability audit against `torchgenomics/` (modules + CLI registry) showed the manuscript named ~10 capabilities while the package implements ~50 across 56 shipped phases. The unmentioned clusters included haplotype GWAS (Phase 46–47), LD-block design (Phases 20–21), TWAS / SMR / HEIDI / coloc / hyprcoloc (Phases 42, 44, 45), GRM-corrected causal mediation (Phase 49), and the entire specialty model family (Phases 22–35).
 
 Per the brainstorming session (2026-05-15), we are switching venue to **Genome Biology — Methods (Software)** to give every cluster a defensible home, and adding five external reference-tool harnesses to validate the new clusters before submission.
 
@@ -37,7 +37,7 @@ Phases 57 / 58 / 59 are design-specced (commit `c8076d5`) but not yet implemente
 
 ## 3. Lead thesis
 
-> TorchGWAS is the first single open-source toolkit to (i) **unify** variant-level, haplotype-level, and multi-omics GWAS in one runtime; (ii) treat **polyploidy** as first-class (arbitrary ploidy k; diploid is k=2); (iii) **stream** from biobank-scale data on commodity GPUs; (iv) ship with end-to-end **numerical equivalence** to fifteen reference tools (ten existing + five new harnesses) plus three real-data fixtures (`soymd`, `soynam`, `ukb`), under observed-then-floored tolerances reproducible from a single shell command.
+> TorchGenomics is the first single open-source toolkit to (i) **unify** variant-level, haplotype-level, and multi-omics GWAS in one runtime; (ii) treat **polyploidy** as first-class (arbitrary ploidy k; diploid is k=2); (iii) **stream** from biobank-scale data on commodity GPUs; (iv) ship with end-to-end **numerical equivalence** to fifteen reference tools (ten existing + five new harnesses) plus three real-data fixtures (`soymd`, `soynam`, `ukb`), under observed-then-floored tolerances reproducible from a single shell command.
 
 To our knowledge, no prior toolkit combines all four properties.
 
@@ -87,17 +87,17 @@ Supplementary figures: per-haplotype-method internals (S3.1–S3.9); extended mu
 
 ## 7. Reproducibility-repo architecture
 
-Separate repo: `github.com/sikiru-atanda/torchgwas-paper-reproducibility`.
+Separate repo: `github.com/sikiru-atanda/torchgenomics-paper-reproducibility`.
 
 ```
-torchgwas-paper-reproducibility/
+torchgenomics-paper-reproducibility/
 ├── reproduce_paper.sh                # one-command driver
 ├── preflight.sh                      # disk + RAM + GPU + network gate (hard rule)
 ├── stages/
 │   ├── 01_install_references.sh      # 16 reference tools via per-tool install.sh
 │   ├── 02_stage_fixtures.sh          # download + verify (SHA256 manifest)
 │   ├── 03_run_references.sh
-│   ├── 04_run_torchgwas.sh
+│   ├── 04_run_torchgenomics.sh
 │   ├── 05_run_streaming_bench.sh
 │   ├── 06_run_native_bench.sh
 │   ├── 07_run_multiomics.sh
@@ -244,8 +244,8 @@ Per `memory/feedback_no_autonomous_push.md`: no agent is permitted to push to an
 
 F7 lists eight specialty models. Six (survival, RR, within-family, threshold-linear, knockoff, OCF) have a credible external reference and are validated through Tier 3 agents C1–C6. The remaining two have no clean external reference:
 
-- **GU (Genotype-Uncertainty LMM, Phase 28)** — dosage-variance score test specific to TorchGWAS; no upstream equivalent.
-- **LRO (Leave-Region-Out LMM, Phase 29)** — block-level LOCO specific to TorchGWAS; no upstream equivalent.
+- **GU (Genotype-Uncertainty LMM, Phase 28)** — dosage-variance score test specific to TorchGenomics; no upstream equivalent.
+- **LRO (Leave-Region-Out LMM, Phase 29)** — block-level LOCO specific to TorchGenomics; no upstream equivalent.
 
 Both are validated against internal-consistency tests (recovery of known dosage variance and known block-resolved h² respectively) under the same observed-then-floored protocol. The paper Discussion discloses this asymmetry explicitly. No parallel agent is dispatched; the main session adds these two simulated fixtures during Tier 4 D2 (figure rendering).
 
@@ -273,5 +273,5 @@ This spec is "complete" when:
 - Final selection of plant multi-omics dataset (maize WiDiv vs Arabidopsis 1001G); resolved by Agent B3 with rationale.
 - Whether Agent A1 ships MetaXcan alone or adds a sibling FUSION harness; the agent must pick one with rationale and may not silently combine both into a single tool dir.
 - Whether soymd / soynam appear as additional columns in F2 alongside the 15 algorithmic refs, or only in the supplement; depends on space when F2 is drawn.
-- Bioconda recipe state — confirm before claiming `conda install -c bioconda torchgwas` in Availability.
+- Bioconda recipe state — confirm before claiming `conda install -c bioconda torchgenomics` in Availability.
 - Docker image inclusion (yes / no; impact on reviewer experience).

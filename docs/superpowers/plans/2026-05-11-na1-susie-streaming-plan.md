@@ -4,7 +4,7 @@
 
 **Goal:** Implement Tier A of the NA1 design spec — a new CLI subcommand `bayes-scan-rss` that performs SuSiE-RSS fine-mapping on summary statistics + LD reference, replacing the materialized-genotype memory cost of the existing `bayes-scan` CLI for biobank-scale loci.
 
-**Architecture:** New class `BayesianVSRss` in new file `torchgwas/models/bayesian_vs_rss.py` (Approach 1 from brainstorming — preserves all 30+ existing `tests/test_bayesian_vs.py` parity tests with zero modification). Algorithm per Zou, Carbonetto, Wang, Stephens (2022) [PLOS Genet]: per-layer Single Effect Regression (SER) on summary statistics, IBSS updates with `R` (LD reference) replacing `X^T X / n`, block decomposition for memory bound `O(p_block_max^2)` instead of `O(n × p)`. New supporting modules `postgwas/_ld_ref_loader.py` (multi-format reader: `.pt`, `.npz`) and `postgwas/_ld_ref_metadata.py` (cohort-mismatch detector). External validation harness `validation/external/susieR/` mirrors Pillar B layout for parity vs upstream `susieR::susie_rss()`.
+**Architecture:** New class `BayesianVSRss` in new file `torchgenomics/models/bayesian_vs_rss.py` (Approach 1 from brainstorming — preserves all 30+ existing `tests/test_bayesian_vs.py` parity tests with zero modification). Algorithm per Zou, Carbonetto, Wang, Stephens (2022) [PLOS Genet]: per-layer Single Effect Regression (SER) on summary statistics, IBSS updates with `R` (LD reference) replacing `X^T X / n`, block decomposition for memory bound `O(p_block_max^2)` instead of `O(n × p)`. New supporting modules `postgwas/_ld_ref_loader.py` (multi-format reader: `.pt`, `.npz`) and `postgwas/_ld_ref_metadata.py` (cohort-mismatch detector). External validation harness `validation/external/susieR/` mirrors Pillar B layout for parity vs upstream `susieR::susie_rss()`.
 
 **Tech Stack:** Python 3.10+, PyTorch ≥ 2.0 (existing), pyarrow (existing), `susieR` R package (CRAN install at validation time only), R ≥ 4.0 for parity runs only.
 
@@ -32,20 +32,20 @@
 
 | Path | Status | Responsibility |
 |---|---|---|
-| `torchgwas/models/bayesian_vs_rss.py` | NEW | `BayesianVSRss` class — SER, IBSS, ELBO, credible-set construction on summary stats |
-| `torchgwas/postgwas/_ld_ref_loader.py` | NEW | Multi-format LD reference loader; in-sample LD computation from genotype |
-| `torchgwas/postgwas/_ld_ref_metadata.py` | NEW | LD reference metadata schema; cohort-mismatch detector |
+| `torchgenomics/models/bayesian_vs_rss.py` | NEW | `BayesianVSRss` class — SER, IBSS, ELBO, credible-set construction on summary stats |
+| `torchgenomics/postgwas/_ld_ref_loader.py` | NEW | Multi-format LD reference loader; in-sample LD computation from genotype |
+| `torchgenomics/postgwas/_ld_ref_metadata.py` | NEW | LD reference metadata schema; cohort-mismatch detector |
 | `tests/test_bayesian_vs_rss.py` | NEW | Tier 1 unit tests for SuSiE-RSS algorithm |
 | `tests/test_ld_ref_loader.py` | NEW | Tier 1 unit tests for loader + metadata |
 | `tests/test_external_susieR.py` | NEW | Tier 2 parity test (`@pytest.mark.external @pytest.mark.golden`) |
 | `validation/external/susieR/install.sh` | NEW | Install `susieR` via CRAN; idempotent; pre-flight |
 | `validation/external/susieR/fetch_data.sh` | NEW | Provision MDP-derived per-locus fixture |
 | `validation/external/susieR/run_susieR.sh` | NEW | Reference run via `susieR::susie_rss()` |
-| `validation/external/susieR/run_torchgwas.sh` | NEW | Our run via `torchgwas bayes-scan-rss` |
+| `validation/external/susieR/run_torchgenomics.sh` | NEW | Our run via `torchgenomics bayes-scan-rss` |
 | `validation/external/susieR/compare.py` | NEW | Compute 6-metric tolerance table; emit findings ledger row |
 | `validation/external/susieR/README.md` | NEW | Operations doc |
-| `torchgwas/models/bayesian_vs.py` | MODIFY | Add `UserWarning` in `fit()` when `p > 10000` (Decision 5); NO algorithmic change |
-| `torchgwas/cli.py` | MODIFY | Add `bayes-scan-rss` subcommand handler |
+| `torchgenomics/models/bayesian_vs.py` | MODIFY | Add `UserWarning` in `fit()` when `p > 10000` (Decision 5); NO algorithmic change |
+| `torchgenomics/cli.py` | MODIFY | Add `bayes-scan-rss` subcommand handler |
 | `docs/cli.md` | MODIFY | Document `bayes-scan-rss` |
 | `tests/test_streaming_memory.py` | MODIFY (or CREATE if Task 0 chooses rebase-then-add) | Memory regression for `bayes-scan-rss` |
 | `bench/native_speedups.py` | MODIFY | Wall-time gate for `bayes-scan-rss` |
@@ -91,7 +91,7 @@ git rebase efficiency/streaming-scan-audit
 
 Expected: clean rebase. The two NA1 commits (research brief + spec) replay on top of the streaming-audit HEAD.
 
-If rebase conflicts arise: the only files NA1 touches at this point are under `docs/superpowers/research/` and `docs/superpowers/specs/` — these should not conflict with streaming-audit changes (which touched `torchgwas/`, `tests/`, `bench/`, etc.). If conflict, abort with `git rebase --abort` and switch to Option B (merge-then-rebase).
+If rebase conflicts arise: the only files NA1 touches at this point are under `docs/superpowers/research/` and `docs/superpowers/specs/` — these should not conflict with streaming-audit changes (which touched `torchgenomics/`, `tests/`, `bench/`, etc.). If conflict, abort with `git rebase --abort` and switch to Option B (merge-then-rebase).
 
 - [ ] **Step 3: Verify streaming infrastructure is now visible**
 
@@ -126,7 +126,7 @@ Confirm: 2 NA1 commits sit on top of streaming-audit HEAD.
 ## Task 1: LD-ref metadata schema + cohort-mismatch detector
 
 **Files:**
-- Create: `torchgwas/postgwas/_ld_ref_metadata.py`
+- Create: `torchgenomics/postgwas/_ld_ref_metadata.py`
 - Test: `tests/test_ld_ref_loader.py` (new file; will accumulate further tests in Task 2-3)
 
 **Background:** Per spec §3.1 and R-NA1-1, every LD reference file must carry metadata stamping `cohort_id`, `n`, `build`, `panel_provenance`. At `bayes-scan-rss` invocation time, the LD ref's metadata is checked against the sumstats; soft mismatch (e.g., different `cohort_id`) → `UserWarning`; hard mismatch (e.g., different `build`) → `ValueError`. Primary failure mode of SuSiE-RSS per Zou 2022 [C4] §6.
@@ -141,7 +141,7 @@ from __future__ import annotations
 
 import pytest
 
-from torchgwas.postgwas._ld_ref_metadata import (
+from torchgenomics.postgwas._ld_ref_metadata import (
     LDReferenceMetadata,
     check_metadata_compatibility,
     MetadataMismatchError,
@@ -219,11 +219,11 @@ def test_metadata_missing_sumstats_metadata_warns():
 pytest tests/test_ld_ref_loader.py -v --tb=short
 ```
 
-Expected: FAIL with `ModuleNotFoundError: No module named 'torchgwas.postgwas._ld_ref_metadata'` or similar.
+Expected: FAIL with `ModuleNotFoundError: No module named 'torchgenomics.postgwas._ld_ref_metadata'` or similar.
 
 - [ ] **Step 3: Implement the metadata module**
 
-Create `torchgwas/postgwas/_ld_ref_metadata.py`:
+Create `torchgenomics/postgwas/_ld_ref_metadata.py`:
 
 ```python
 """LD reference metadata schema and cohort-mismatch detection.
@@ -348,7 +348,7 @@ Expected: all 6 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/postgwas/_ld_ref_metadata.py tests/test_ld_ref_loader.py
+git add torchgenomics/postgwas/_ld_ref_metadata.py tests/test_ld_ref_loader.py
 git commit -m "NA1 Task 1: LD reference metadata schema + cohort-mismatch detector"
 ```
 
@@ -357,10 +357,10 @@ git commit -m "NA1 Task 1: LD reference metadata schema + cohort-mismatch detect
 ## Task 2: LD-ref multi-format loader (.pt + .npz)
 
 **Files:**
-- Create: `torchgwas/postgwas/_ld_ref_loader.py`
+- Create: `torchgenomics/postgwas/_ld_ref_loader.py`
 - Modify: `tests/test_ld_ref_loader.py` (append loader tests)
 
-**Background:** Per spec §3.1 and Decision 4, the loader supports `.pt` (existing TorchGWAS format from Phase 40) and `.npz` (PolyFun format from Phase 59) at Tier A. Each loaded reference carries its `LDReferenceMetadata` from Task 1.
+**Background:** Per spec §3.1 and Decision 4, the loader supports `.pt` (existing TorchGenomics format from Phase 40) and `.npz` (PolyFun format from Phase 59) at Tier A. Each loaded reference carries its `LDReferenceMetadata` from Task 1.
 
 - [ ] **Step 1: Write failing tests for the loader**
 
@@ -370,7 +370,7 @@ Append to `tests/test_ld_ref_loader.py`:
 import numpy as np
 import torch
 
-from torchgwas.postgwas._ld_ref_loader import (
+from torchgenomics.postgwas._ld_ref_loader import (
     load_ld_reference,
     save_ld_reference,
     LDReferenceUnsupportedFormatError,
@@ -440,17 +440,17 @@ def test_load_format_inferred_from_extension(tmp_path):
 pytest tests/test_ld_ref_loader.py -v --tb=short -k "load or save"
 ```
 
-Expected: FAIL with `ModuleNotFoundError: No module named 'torchgwas.postgwas._ld_ref_loader'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'torchgenomics.postgwas._ld_ref_loader'`.
 
 - [ ] **Step 3: Implement the loader**
 
-Create `torchgwas/postgwas/_ld_ref_loader.py`:
+Create `torchgenomics/postgwas/_ld_ref_loader.py`:
 
 ```python
 """Multi-format LD reference loader.
 
 Per NA1 design spec section 3.1 and Decision 4: supports .pt (existing
-TorchGWAS format) and .npz (PolyFun format) at Tier A. Each loaded
+TorchGenomics format) and .npz (PolyFun format) at Tier A. Each loaded
 reference carries its LDReferenceMetadata for cohort-mismatch detection
 at bayes-scan-rss invocation.
 
@@ -464,7 +464,7 @@ from typing import Tuple
 import numpy as np
 import torch
 
-from torchgwas.postgwas._ld_ref_metadata import LDReferenceMetadata
+from torchgenomics.postgwas._ld_ref_metadata import LDReferenceMetadata
 
 
 class LDReferenceUnsupportedFormatError(ValueError):
@@ -564,7 +564,7 @@ Expected: all 10 tests pass (6 from Task 1 + 4 from Task 2).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/postgwas/_ld_ref_loader.py tests/test_ld_ref_loader.py
+git add torchgenomics/postgwas/_ld_ref_loader.py tests/test_ld_ref_loader.py
 git commit -m "NA1 Task 2: LD reference multi-format loader (.pt + .npz)"
 ```
 
@@ -573,7 +573,7 @@ git commit -m "NA1 Task 2: LD reference multi-format loader (.pt + .npz)"
 ## Task 3: In-sample LD computation (`--geno` mode)
 
 **Files:**
-- Modify: `torchgwas/postgwas/_ld_ref_loader.py` (add `compute_in_sample_ld`)
+- Modify: `torchgenomics/postgwas/_ld_ref_loader.py` (add `compute_in_sample_ld`)
 - Modify: `tests/test_ld_ref_loader.py` (append in-sample LD tests)
 
 **Background:** Per Decision 4 and spec §3.1, when user passes `--geno panel.bed` instead of `--ld-ref`, we compute the LD per locus from the supplied genotype panel. Mirrors Phase 59 PolyFun's parity behavior.
@@ -583,7 +583,7 @@ git commit -m "NA1 Task 2: LD reference multi-format loader (.pt + .npz)"
 Append to `tests/test_ld_ref_loader.py`:
 
 ```python
-from torchgwas.postgwas._ld_ref_loader import compute_in_sample_ld
+from torchgenomics.postgwas._ld_ref_loader import compute_in_sample_ld
 
 
 def test_in_sample_ld_matches_corrcoef():
@@ -634,7 +634,7 @@ Expected: FAIL with `ImportError: cannot import name 'compute_in_sample_ld'`.
 
 - [ ] **Step 3: Implement `compute_in_sample_ld`**
 
-Append to `torchgwas/postgwas/_ld_ref_loader.py`:
+Append to `torchgenomics/postgwas/_ld_ref_loader.py`:
 
 ```python
 def compute_in_sample_ld(G: torch.Tensor) -> torch.Tensor:
@@ -680,7 +680,7 @@ Expected: all 14 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/postgwas/_ld_ref_loader.py tests/test_ld_ref_loader.py
+git add torchgenomics/postgwas/_ld_ref_loader.py tests/test_ld_ref_loader.py
 git commit -m "NA1 Task 3: in-sample LD computation for --geno mode"
 ```
 
@@ -689,15 +689,15 @@ git commit -m "NA1 Task 3: in-sample LD computation for --geno mode"
 ## Task 4: Block decomposition primitive
 
 **Files:**
-- Modify: `torchgwas/postgwas/_ld_ref_loader.py` (add `decompose_into_blocks`)
+- Modify: `torchgenomics/postgwas/_ld_ref_loader.py` (add `decompose_into_blocks`)
 - Modify: `tests/test_ld_ref_loader.py` (append block tests)
 
-**Background:** Per spec §2.6 and Decision (Section 2 design lean), block decomposition is Tier A. Auto-detection uses the existing `torchgwas.ld.detect_blocks` if `--regions` not passed; default block-size threshold is 5000 SNPs (matches PolyFun [C5] / ldetect convention).
+**Background:** Per spec §2.6 and Decision (Section 2 design lean), block decomposition is Tier A. Auto-detection uses the existing `torchgenomics.ld.detect_blocks` if `--regions` not passed; default block-size threshold is 5000 SNPs (matches PolyFun [C5] / ldetect convention).
 
-- [ ] **Step 1: Verify `torchgwas.ld.detect_blocks` exists and inspect its signature**
+- [ ] **Step 1: Verify `torchgenomics.ld.detect_blocks` exists and inspect its signature**
 
 ```bash
-grep -n "def detect_blocks" torchgwas/ld/*.py
+grep -n "def detect_blocks" torchgenomics/ld/*.py
 ```
 
 Expected: a function `detect_blocks(R: Tensor, ...) -> list[Region]` or similar. Note its actual signature; the test below assumes it returns a list of `(start, stop)` tuples or a structured object with start/stop attributes.
@@ -709,7 +709,7 @@ If the signature differs from `list[(start, stop)]`, adapt the wrapper in Step 3
 Append to `tests/test_ld_ref_loader.py`:
 
 ```python
-from torchgwas.postgwas._ld_ref_loader import (
+from torchgenomics.postgwas._ld_ref_loader import (
     decompose_into_blocks,
     BlockSpec,
 )
@@ -750,7 +750,7 @@ def test_blocks_above_threshold_splits():
 
 - [ ] **Step 3: Implement `decompose_into_blocks` and `BlockSpec`**
 
-Append to `torchgwas/postgwas/_ld_ref_loader.py`:
+Append to `torchgenomics/postgwas/_ld_ref_loader.py`:
 
 ```python
 from dataclasses import dataclass
@@ -774,7 +774,7 @@ def decompose_into_blocks(
     Per NA1 spec section 2.6 and Decision 4, when the locus exceeds the
     block-size threshold (default 5000 per PolyFun [C5] / ldetect convention),
     the LD ref is decomposed into LD blocks. Block boundaries auto-detected
-    via torchgwas.ld.detect_blocks if `regions` is None. Per-block IBSS is
+    via torchgenomics.ld.detect_blocks if `regions` is None. Per-block IBSS is
     mathematically equivalent to dense IBSS when block boundaries are at
     near-zero-LD positions.
 
@@ -782,7 +782,7 @@ def decompose_into_blocks(
         R: LD correlation matrix, shape (p, p).
         snp_ids: List of p SNP identifiers in order.
         regions: Explicit block specs; if None, auto-detect via
-            torchgwas.ld.detect_blocks (when p > max_block_size) or return
+            torchgenomics.ld.detect_blocks (when p > max_block_size) or return
             a single block (when p <= max_block_size).
         max_block_size: Threshold above which auto-detection kicks in.
 
@@ -796,12 +796,12 @@ def decompose_into_blocks(
     if p <= max_block_size:
         return [BlockSpec(start=0, stop=p)]
 
-    # Auto-detect via torchgwas.ld.detect_blocks
+    # Auto-detect via torchgenomics.ld.detect_blocks
     # NOTE: actual signature of detect_blocks must be inspected at task
     # start; the call below assumes detect_blocks(R) returns a list of
     # (start, stop) tuples. If different, adapt this call.
     try:
-        from torchgwas.ld import detect_blocks
+        from torchgenomics.ld import detect_blocks
         detected = detect_blocks(R)
         # Convert to BlockSpec; assume detect_blocks returns iterable of
         # objects with .start/.stop attributes OR (start, stop) tuples.
@@ -838,7 +838,7 @@ If `detect_blocks` returns an unexpected signature, the auto-detect test (`test_
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/postgwas/_ld_ref_loader.py tests/test_ld_ref_loader.py
+git add torchgenomics/postgwas/_ld_ref_loader.py tests/test_ld_ref_loader.py
 git commit -m "NA1 Task 4: block decomposition primitive (auto-detect via detect_blocks)"
 ```
 
@@ -847,7 +847,7 @@ git commit -m "NA1 Task 4: block decomposition primitive (auto-detect via detect
 ## Task 5: BayesianVSRss class scaffolding + SER posterior closed-form
 
 **Files:**
-- Create: `torchgwas/models/bayesian_vs_rss.py`
+- Create: `torchgenomics/models/bayesian_vs_rss.py`
 - Create: `tests/test_bayesian_vs_rss.py`
 
 **Background:** Per spec §2.2 (eq. 8–10 of Zou 2022 [C4]) — the per-layer Single Effect Regression posterior on summary statistics. Closed-form, deterministic; this is the foundational unit test before IBSS layering on top.
@@ -870,7 +870,7 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.models.bayesian_vs_rss import (
+from torchgenomics.models.bayesian_vs_rss import (
     BayesianVSRss,
     BayesianVSRssResult,
     ser_posterior,
@@ -945,7 +945,7 @@ Expected: FAIL with `ModuleNotFoundError`.
 
 - [ ] **Step 3: Implement `BayesianVSRss` scaffolding + `ser_posterior`**
 
-Create `torchgwas/models/bayesian_vs_rss.py`:
+Create `torchgenomics/models/bayesian_vs_rss.py`:
 
 ```python
 """SuSiE-RSS fine-mapping on summary statistics.
@@ -1077,7 +1077,7 @@ Expected: 3 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
+git add torchgenomics/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
 git commit -m "NA1 Task 5: BayesianVSRss scaffolding + SER posterior closed-form"
 ```
 
@@ -1086,7 +1086,7 @@ git commit -m "NA1 Task 5: BayesianVSRss scaffolding + SER posterior closed-form
 ## Task 6: IBSS update + softmax with per-SNP priors (D3 shim)
 
 **Files:**
-- Modify: `torchgwas/models/bayesian_vs_rss.py` (add `_compute_alpha`, `_run_ibss_layer`)
+- Modify: `torchgenomics/models/bayesian_vs_rss.py` (add `_compute_alpha`, `_run_ibss_layer`)
 - Modify: `tests/test_bayesian_vs_rss.py` (append IBSS + softmax tests)
 
 **Background:** Per spec §2.3 (Zou 2022 [C4] eq. 11): IBSS updates each layer using `R @ b_l = R @ (alpha_l * mu_l)` for the cross-layer residual. Per spec §2.2 + Decision 3 / Phase 59 D3 shim: the per-layer softmax weights priors per SNP — `prior_pi_per_snp` keyword optional, defaulting to uniform.
@@ -1096,7 +1096,7 @@ git commit -m "NA1 Task 5: BayesianVSRss scaffolding + SER posterior closed-form
 Append to `tests/test_bayesian_vs_rss.py`:
 
 ```python
-from torchgwas.models.bayesian_vs_rss import compute_alpha
+from torchgenomics.models.bayesian_vs_rss import compute_alpha
 
 
 def test_softmax_uniform_prior_recovers_softmax_over_bf():
@@ -1144,7 +1144,7 @@ Expected: FAIL with `ImportError: cannot import name 'compute_alpha'`.
 
 - [ ] **Step 3: Implement `compute_alpha`**
 
-Append to `torchgwas/models/bayesian_vs_rss.py`:
+Append to `torchgenomics/models/bayesian_vs_rss.py`:
 
 ```python
 def compute_alpha(
@@ -1190,7 +1190,7 @@ Expected: all tests pass (3 from Task 5 + 4 from Task 6 = 7 total).
 Append to `tests/test_bayesian_vs_rss.py`:
 
 ```python
-from torchgwas.models.bayesian_vs_rss import ibss_residual_update
+from torchgenomics.models.bayesian_vs_rss import ibss_residual_update
 
 
 def test_ibss_residual_subtracts_other_layers():
@@ -1229,7 +1229,7 @@ Expected: FAIL with `ImportError`.
 
 - [ ] **Step 7: Implement `ibss_residual_update`**
 
-Append to `torchgwas/models/bayesian_vs_rss.py`:
+Append to `torchgenomics/models/bayesian_vs_rss.py`:
 
 ```python
 def ibss_residual_update(
@@ -1270,7 +1270,7 @@ Expected: 8 tests pass.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add torchgwas/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
+git add torchgenomics/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
 git commit -m "NA1 Task 6: IBSS update + softmax with per-SNP priors (D3 shim)"
 ```
 
@@ -1279,7 +1279,7 @@ git commit -m "NA1 Task 6: IBSS update + softmax with per-SNP priors (D3 shim)"
 ## Task 7: Full IBSS loop + ELBO computation
 
 **Files:**
-- Modify: `torchgwas/models/bayesian_vs_rss.py` (add `BayesianVSRss._run_ibss`, `_compute_elbo`)
+- Modify: `torchgenomics/models/bayesian_vs_rss.py` (add `BayesianVSRss._run_ibss`, `_compute_elbo`)
 - Modify: `tests/test_bayesian_vs_rss.py` (append loop + ELBO tests)
 
 **Background:** Per spec §2.3 + §2.4 — IBSS iterates the per-layer SER + residual update until convergence (ELBO change < tol or max_iter reached). ELBO is monotone non-decreasing per iteration; this is the critical convergence property to test.
@@ -1357,7 +1357,7 @@ Expected: FAIL with `AttributeError: 'BayesianVSRss' object has no attribute 'fi
 
 - [ ] **Step 3: Implement `BayesianVSRss.fit_rss` with full IBSS loop**
 
-Append to `torchgwas/models/bayesian_vs_rss.py` (add as methods of the `BayesianVSRss` dataclass — convert to a regular class if needed):
+Append to `torchgenomics/models/bayesian_vs_rss.py` (add as methods of the `BayesianVSRss` dataclass — convert to a regular class if needed):
 
 Replace the `BayesianVSRss` dataclass scaffolding with a full class:
 
@@ -1537,7 +1537,7 @@ class BayesianVSRss:
 
 - [ ] **Step 4: Refactor `_compute_elbo` to use `self.sigma_prior_sq`**
 
-Edit `torchgwas/models/bayesian_vs_rss.py`: change `_compute_elbo` from `@staticmethod` to a regular method, and replace the hardcoded `sigma_prior_sq = 0.04` with `self.sigma_prior_sq`. Update the call site in `fit_rss` from `self._compute_elbo(z, R, n, alpha, mu, sigma_sq)` (already correct since it's called via `self.`).
+Edit `torchgenomics/models/bayesian_vs_rss.py`: change `_compute_elbo` from `@staticmethod` to a regular method, and replace the hardcoded `sigma_prior_sq = 0.04` with `self.sigma_prior_sq`. Update the call site in `fit_rss` from `self._compute_elbo(z, R, n, alpha, mu, sigma_sq)` (already correct since it's called via `self.`).
 
 - [ ] **Step 5: Run tests**
 
@@ -1550,7 +1550,7 @@ Expected: all tests pass (8 from previous tasks + 3 new = 11).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add torchgwas/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
+git add torchgenomics/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
 git commit -m "NA1 Task 7: full IBSS loop + ELBO computation (monotone non-decreasing)"
 ```
 
@@ -1559,7 +1559,7 @@ git commit -m "NA1 Task 7: full IBSS loop + ELBO computation (monotone non-decre
 ## Task 8: Credible-set construction
 
 **Files:**
-- Modify: `torchgwas/models/bayesian_vs_rss.py` (add `_build_credible_sets`)
+- Modify: `torchgenomics/models/bayesian_vs_rss.py` (add `_build_credible_sets`)
 - Modify: `tests/test_bayesian_vs_rss.py` (append credible-set tests)
 
 **Background:** Per spec §2.5 — for each layer, sort alpha descending, take smallest set with cumulative ≥ coverage, enforce purity via pairwise |R_jk| ≥ purity threshold.
@@ -1644,7 +1644,7 @@ Expected: FAIL with `AttributeError: '_build_credible_sets' not found` or simila
 
 - [ ] **Step 3: Implement `_build_credible_sets`**
 
-Add as method of `BayesianVSRss` class in `torchgwas/models/bayesian_vs_rss.py`:
+Add as method of `BayesianVSRss` class in `torchgenomics/models/bayesian_vs_rss.py`:
 
 ```python
     def _build_credible_sets(
@@ -1699,7 +1699,7 @@ Add as method of `BayesianVSRss` class in `torchgwas/models/bayesian_vs_rss.py`:
 
 - [ ] **Step 4: Wire `_build_credible_sets` into `fit_rss`**
 
-In `torchgwas/models/bayesian_vs_rss.py`, find the line in `fit_rss` that says:
+In `torchgenomics/models/bayesian_vs_rss.py`, find the line in `fit_rss` that says:
 
 ```python
         # Credible sets (placeholder; full implementation in Task 8)
@@ -1723,7 +1723,7 @@ Expected: all tests pass (11 from previous + 3 new = 14).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add torchgwas/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
+git add torchgenomics/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
 git commit -m "NA1 Task 8: credible-set construction with purity filtering"
 ```
 
@@ -1732,7 +1732,7 @@ git commit -m "NA1 Task 8: credible-set construction with purity filtering"
 ## Task 9: Block decomposition integration in `fit_rss`
 
 **Files:**
-- Modify: `torchgwas/models/bayesian_vs_rss.py` (add `fit_rss_blocked` orchestrator + integrate into `fit_rss` for large p)
+- Modify: `torchgenomics/models/bayesian_vs_rss.py` (add `fit_rss_blocked` orchestrator + integrate into `fit_rss` for large p)
 - Modify: `tests/test_bayesian_vs_rss.py` (append block-equivalence test)
 
 **Background:** Per spec §2.6 and §3.4 — block decomposition is Tier A. When `p > block_size_threshold`, decompose into blocks (auto-detect or user-supplied), run `fit_rss` per block, concatenate results.
@@ -1760,7 +1760,7 @@ def test_block_decomp_matches_dense_for_block_diagonal_R():
     z[35] += 4.0
     n = 1000
 
-    from torchgwas.postgwas._ld_ref_loader import BlockSpec
+    from torchgenomics.postgwas._ld_ref_loader import BlockSpec
     blocks = [BlockSpec(start=0, stop=25), BlockSpec(start=25, stop=50)]
 
     model = BayesianVSRss(max_num_causal=2, max_iter=50, tol=1e-10)
@@ -1784,7 +1784,7 @@ Expected: FAIL with `AttributeError: 'BayesianVSRss' object has no attribute 'fi
 
 - [ ] **Step 3: Implement `fit_rss_blocked`**
 
-Append to `BayesianVSRss` class in `torchgwas/models/bayesian_vs_rss.py`:
+Append to `BayesianVSRss` class in `torchgenomics/models/bayesian_vs_rss.py`:
 
 ```python
     def fit_rss_blocked(
@@ -1886,7 +1886,7 @@ Expected: all 15 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
+git add torchgenomics/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
 git commit -m "NA1 Task 9: block decomposition integration (fit_rss_blocked)"
 ```
 
@@ -1895,7 +1895,7 @@ git commit -m "NA1 Task 9: block decomposition integration (fit_rss_blocked)"
 ## Task 10: Output writer (PolyFun-compatible TSV)
 
 **Files:**
-- Modify: `torchgwas/models/bayesian_vs_rss.py` (add `write_results_tsv`)
+- Modify: `torchgenomics/models/bayesian_vs_rss.py` (add `write_results_tsv`)
 - Modify: `tests/test_bayesian_vs_rss.py` (append output-format test)
 
 **Background:** Per spec §6 — output schema must match Phase 59 PolyFun's exact column set so downstream PolyFun aggregation utilities work without translation.
@@ -1907,7 +1907,7 @@ Append to `tests/test_bayesian_vs_rss.py`:
 ```python
 def test_output_writer_matches_polyfun_schema(tmp_path):
     """Output TSV matches Phase 59 PolyFun column schema exactly."""
-    from torchgwas.models.bayesian_vs_rss import write_results_tsv
+    from torchgenomics.models.bayesian_vs_rss import write_results_tsv
 
     rng = np.random.default_rng(41)
     p = 5
@@ -1957,7 +1957,7 @@ Expected: FAIL with `ImportError`.
 
 - [ ] **Step 3: Implement `write_results_tsv`**
 
-Append to `torchgwas/models/bayesian_vs_rss.py`:
+Append to `torchgenomics/models/bayesian_vs_rss.py`:
 
 ```python
 import csv
@@ -2026,7 +2026,7 @@ Expected: all 16 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
+git add torchgenomics/models/bayesian_vs_rss.py tests/test_bayesian_vs_rss.py
 git commit -m "NA1 Task 10: output writer (Phase 59 PolyFun-compatible TSV)"
 ```
 
@@ -2035,7 +2035,7 @@ git commit -m "NA1 Task 10: output writer (Phase 59 PolyFun-compatible TSV)"
 ## Task 11: CLI subcommand `bayes-scan-rss`
 
 **Files:**
-- Modify: `torchgwas/cli.py` (add subcommand handler)
+- Modify: `torchgenomics/cli.py` (add subcommand handler)
 - Modify: `tests/test_cli.py` (append smoke test)
 
 **Background:** Per spec §6 + Decision 2 + Decision 4 — new subcommand `bayes-scan-rss` taking sumstats + (`--ld-ref` OR `--geno`) + `--regions` + `--max-num-causal` + `--coverage` + `--purity` + `--prior-pi`.
@@ -2043,7 +2043,7 @@ git commit -m "NA1 Task 10: output writer (Phase 59 PolyFun-compatible TSV)"
 - [ ] **Step 1: Inspect existing CLI structure to mirror conventions**
 
 ```bash
-grep -n "_cmd_bayes_scan\|add_subparsers\|bayes-scan" torchgwas/cli.py | head -20
+grep -n "_cmd_bayes_scan\|add_subparsers\|bayes-scan" torchgenomics/cli.py | head -20
 ```
 
 Locate the function `_cmd_bayes_scan` and its argparse setup. Note the registration pattern (subparser group + handler function).
@@ -2054,8 +2054,8 @@ Append to `tests/test_cli.py` (or create `tests/test_cli_bayes_scan_rss.py` if `
 
 ```python
 def test_bayes_scan_rss_help(capsys):
-    """`torchgwas bayes-scan-rss --help` prints usage with expected flags."""
-    from torchgwas.cli import main
+    """`torchgenomics bayes-scan-rss --help` prints usage with expected flags."""
+    from torchgenomics.cli import main
     with pytest.raises(SystemExit) as exc_info:
         main(["bayes-scan-rss", "--help"])
     assert exc_info.value.code == 0
@@ -2076,9 +2076,9 @@ def test_bayes_scan_rss_smoke_runs_end_to_end(tmp_path):
     output file exists and has the expected columns.
     """
     import pandas as pd
-    from torchgwas.postgwas._ld_ref_loader import save_ld_reference
-    from torchgwas.postgwas._ld_ref_metadata import LDReferenceMetadata
-    from torchgwas.cli import main
+    from torchgenomics.postgwas._ld_ref_loader import save_ld_reference
+    from torchgenomics.postgwas._ld_ref_metadata import LDReferenceMetadata
+    from torchgenomics.cli import main
 
     p = 5
     sumstats_path = tmp_path / "sumstats.tsv"
@@ -2133,7 +2133,7 @@ Expected: FAIL with `unrecognized arguments: bayes-scan-rss` or similar.
 
 - [ ] **Step 4: Implement the CLI subcommand**
 
-Edit `torchgwas/cli.py`. Locate the function or block where existing subcommands are registered. Add:
+Edit `torchgenomics/cli.py`. Locate the function or block where existing subcommands are registered. Add:
 
 ```python
 def _cmd_bayes_scan_rss(args) -> int:
@@ -2145,16 +2145,16 @@ def _cmd_bayes_scan_rss(args) -> int:
     import math
     import torch
 
-    from torchgwas.models.bayesian_vs_rss import (
+    from torchgenomics.models.bayesian_vs_rss import (
         BayesianVSRss,
         write_results_tsv,
     )
-    from torchgwas.postgwas._ld_ref_loader import (
+    from torchgenomics.postgwas._ld_ref_loader import (
         load_ld_reference,
         compute_in_sample_ld,
         decompose_into_blocks,
     )
-    from torchgwas.postgwas._ld_ref_metadata import (
+    from torchgenomics.postgwas._ld_ref_metadata import (
         LDReferenceMetadata,
         check_metadata_compatibility,
     )
@@ -2198,7 +2198,7 @@ def _cmd_bayes_scan_rss(args) -> int:
             R = R[order][:, order]
     elif args.geno:
         # Compute in-sample LD from genotype panel
-        from torchgwas.io import auto_read_genotype  # adjust to actual API
+        from torchgenomics.io import auto_read_genotype  # adjust to actual API
         G = auto_read_genotype(args.geno)
         R = compute_in_sample_ld(G)
     else:
@@ -2211,7 +2211,7 @@ def _cmd_bayes_scan_rss(args) -> int:
     if args.regions:
         regions = pd.read_csv(args.regions, sep=None, engine="python")
         # Convert to BlockSpec list
-        from torchgwas.postgwas._ld_ref_loader import BlockSpec
+        from torchgenomics.postgwas._ld_ref_loader import BlockSpec
         blocks = [
             BlockSpec(start=int(row["start"]), stop=int(row["stop"]))
             for _, row in regions.iterrows()
@@ -2297,12 +2297,12 @@ Then locate where existing subcommand parsers are registered (look for `subparse
 pytest tests/test_cli.py -v -k "bayes_scan_rss" --tb=short
 ```
 
-Expected: both tests pass. If `auto_read_genotype` import fails, adapt to the actual io API on this branch (may be `read_genotype` or similar — search `torchgwas/io/__init__.py`).
+Expected: both tests pass. If `auto_read_genotype` import fails, adapt to the actual io API on this branch (may be `read_genotype` or similar — search `torchgenomics/io/__init__.py`).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add torchgwas/cli.py tests/test_cli.py
+git add torchgenomics/cli.py tests/test_cli.py
 git commit -m "NA1 Task 11: CLI subcommand bayes-scan-rss"
 ```
 
@@ -2311,7 +2311,7 @@ git commit -m "NA1 Task 11: CLI subcommand bayes-scan-rss"
 ## Task 12: Soft warning on materialized `bayes-scan` (Decision 5)
 
 **Files:**
-- Modify: `torchgwas/models/bayesian_vs.py` (add `UserWarning` in `fit()`)
+- Modify: `torchgenomics/models/bayesian_vs.py` (add `UserWarning` in `fit()`)
 - Modify: `tests/test_bayesian_vs.py` (add warning capture test — but DO NOT modify any existing tests)
 
 **Background:** Per Decision 5: when `bayes-scan`'s underlying `BayesianVS.fit(G, ...)` is called with `p > 10000`, emit a `UserWarning` pointing at `bayes-scan-rss`.
@@ -2329,7 +2329,7 @@ def test_bayes_scan_warns_on_large_p(monkeypatch):
     """
     import warnings
     import torch
-    from torchgwas.models.bayesian_vs import BayesianVS
+    from torchgenomics.models.bayesian_vs import BayesianVS
 
     # Fabricate a small G but monkey-patch shape attribute to simulate p > 10000
     # OR: build a real but tiny G and check the warning condition independently.
@@ -2342,7 +2342,7 @@ def test_bayes_scan_warns_on_large_p(monkeypatch):
     # NOTE: actual signature of BayesianVS.fit varies; this test may need
     # adaptation. The KEY assertion is that a UserWarning is emitted with
     # text mentioning bayes-scan-rss.
-    from torchgwas.models.base import VariantMeta  # adjust import as needed
+    from torchgenomics.models.base import VariantMeta  # adjust import as needed
     vmeta = VariantMeta(
         snp=[f"rs{i}" for i in range(p)],
         chr=["1"] * p,
@@ -2373,7 +2373,7 @@ Expected: FAIL — no warning is currently emitted.
 
 - [ ] **Step 3: Implement the warning in `BayesianVS.fit`**
 
-Edit `torchgwas/models/bayesian_vs.py`. Locate the `fit` method (around line 115-231 per spec). Add at the very top of the method body, after the `G = G.to(STAT_DTYPE)` upcast line (around line 172):
+Edit `torchgenomics/models/bayesian_vs.py`. Locate the `fit` method (around line 115-231 per spec). Add at the very top of the method body, after the `G = G.to(STAT_DTYPE)` upcast line (around line 172):
 
 ```python
         if G.shape[1] > 10000:
@@ -2381,7 +2381,7 @@ Edit `torchgwas/models/bayesian_vs.py`. Locate the `fit` method (around line 115
             warnings.warn(
                 f"BayesianVS.fit called on locus with p={G.shape[1]} > 10000. "
                 f"This will materialize ~{G.shape[0] * G.shape[1] * 8 / 1e9:.1f} GB. "
-                f"For large loci, prefer 'torchgwas bayes-scan-rss' which operates "
+                f"For large loci, prefer 'torchgenomics bayes-scan-rss' which operates "
                 f"on summary statistics + LD reference (per-locus memory ~O(p^2)). "
                 f"See docs/cli.md#bayes-scan-rss.",
                 UserWarning,
@@ -2400,7 +2400,7 @@ Expected: all existing tests still pass + the new warning test passes. **Critica
 - [ ] **Step 5: Commit**
 
 ```bash
-git add torchgwas/models/bayesian_vs.py tests/test_bayesian_vs.py
+git add torchgenomics/models/bayesian_vs.py tests/test_bayesian_vs.py
 git commit -m "NA1 Task 12: soft warning on materialized bayes-scan (p > 10000)"
 ```
 
@@ -2537,8 +2537,8 @@ import torch
 import numpy as np
 
 # This script is best implemented as a Python helper that:
-# 1. Loads MDP genotype via torchgwas.io.read_hapmap (or equivalent)
-# 2. Runs torchgwas lmm-scan to produce per-variant z-scores
+# 1. Loads MDP genotype via torchgenomics.io.read_hapmap (or equivalent)
+# 2. Runs torchgenomics lmm-scan to produce per-variant z-scores
 # 3. Selects a window of p=500 SNPs around the top hit
 # 4. Computes the LD matrix R for that window
 # 5. Saves locus_z.pt, locus_R.pt, locus_meta.pt (n, snp_ids, chr, bp, a1, a2)
@@ -2574,13 +2574,13 @@ Write `validation/external/susieR/README.md`:
 # susieR external validation harness
 
 This harness runs `susieR::susie_rss()` (upstream R reference) and our
-`torchgwas bayes-scan-rss` on the same per-locus fixture and compares the
+`torchgenomics bayes-scan-rss` on the same per-locus fixture and compares the
 results against the 6-metric tolerance table from NA1 design spec section 5.2.
 
 ## Prerequisites
 
 - R ≥ 4.0 (`conda install -c conda-forge r-base` if missing)
-- TorchGWAS installed in the current Python environment (`pip install -e ".[dev]"`)
+- TorchGenomics installed in the current Python environment (`pip install -e ".[dev]"`)
 - ≥ 2 GB free disk
 - ≥ 4 GB free RAM
 
@@ -2597,12 +2597,12 @@ results against the 6-metric tolerance table from NA1 design spec section 5.2.
 ./run_susieR.sh
 
 # 4. Run our bayes-scan-rss
-./run_torchgwas.sh
+./run_torchgenomics.sh
 
 # 5. Compare and emit findings
 python compare.py \
     --upstream outputs/susieR.tsv \
-    --ours outputs/torchgwas.tsv \
+    --ours outputs/torchgenomics.tsv \
     --findings ../../../docs/validation_findings.md
 ```
 
@@ -2633,11 +2633,11 @@ git commit -m "NA1 Task 13: external validation harness scaffolding (install + f
 
 ---
 
-## Task 14: External validation harness — `run_susieR.sh`, `run_torchgwas.sh`, `compare.py`
+## Task 14: External validation harness — `run_susieR.sh`, `run_torchgenomics.sh`, `compare.py`
 
 **Files:**
 - Create: `validation/external/susieR/run_susieR.sh`
-- Create: `validation/external/susieR/run_torchgwas.sh`
+- Create: `validation/external/susieR/run_torchgenomics.sh`
 - Create: `validation/external/susieR/compare.py`
 - Create: `tests/test_external_susieR.py`
 
@@ -2716,11 +2716,11 @@ chmod +x validation/external/susieR/run_susieR.sh
 bash -n validation/external/susieR/run_susieR.sh
 ```
 
-- [ ] **Step 2: Create `validation/external/susieR/run_torchgwas.sh`**
+- [ ] **Step 2: Create `validation/external/susieR/run_torchgenomics.sh`**
 
 ```bash
 #!/usr/bin/env bash
-# Run torchgwas bayes-scan-rss on the same fixture as run_susieR.sh.
+# Run torchgenomics bayes-scan-rss on the same fixture as run_susieR.sh.
 
 set -euo pipefail
 
@@ -2738,8 +2738,8 @@ fi
 python3 - <<PYEOF
 import torch
 import pandas as pd
-from torchgwas.postgwas._ld_ref_loader import save_ld_reference
-from torchgwas.postgwas._ld_ref_metadata import LDReferenceMetadata
+from torchgenomics.postgwas._ld_ref_loader import save_ld_reference
+from torchgenomics.postgwas._ld_ref_metadata import LDReferenceMetadata
 
 z = torch.load("${DATA_DIR}/locus_z.pt", weights_only=True)
 R = torch.load("${DATA_DIR}/locus_R.pt", weights_only=True)
@@ -2779,30 +2779,30 @@ save_ld_reference("${DATA_DIR}/ld.pt", R, snp_ids, meta)
 PYEOF
 
 START=$(date +%s.%N)
-/usr/bin/time -v torchgwas bayes-scan-rss \
+/usr/bin/time -v torchgenomics bayes-scan-rss \
     --sumstats "${DATA_DIR}/sumstats.tsv" \
     --ld-ref "${DATA_DIR}/ld.pt" \
     --max-num-causal 10 \
     --coverage 0.95 \
     --purity 0.5 \
-    --output "${OUT_DIR}/torchgwas.tsv" \
-    2>"${OUT_DIR}/torchgwas_time.log"
+    --output "${OUT_DIR}/torchgenomics.tsv" \
+    2>"${OUT_DIR}/torchgenomics_time.log"
 END=$(date +%s.%N)
-echo "$END $START" | awk '{print $1 - $2}' > "${OUT_DIR}/torchgwas_walltime_seconds.txt"
-echo "torchgwas bayes-scan-rss run complete: ${OUT_DIR}/torchgwas.tsv"
+echo "$END $START" | awk '{print $1 - $2}' > "${OUT_DIR}/torchgenomics_walltime_seconds.txt"
+echo "torchgenomics bayes-scan-rss run complete: ${OUT_DIR}/torchgenomics.tsv"
 ```
 
 Make executable + verify:
 
 ```bash
-chmod +x validation/external/susieR/run_torchgwas.sh
-bash -n validation/external/susieR/run_torchgwas.sh
+chmod +x validation/external/susieR/run_torchgenomics.sh
+bash -n validation/external/susieR/run_torchgenomics.sh
 ```
 
 - [ ] **Step 3: Create `validation/external/susieR/compare.py`**
 
 ```python
-"""Compare susieR vs torchgwas bayes-scan-rss outputs against the 6-metric tolerance table.
+"""Compare susieR vs torchgenomics bayes-scan-rss outputs against the 6-metric tolerance table.
 
 Per NA1 design spec section 5.2. Emits a single findings ledger row to
 docs/validation_findings.md per F3 severity policy.
@@ -2987,7 +2987,7 @@ def test_susieR_parity_full_workflow():
 
     # Our run
     subprocess.run(
-        ["bash", str(VALIDATION_DIR / "run_torchgwas.sh")],
+        ["bash", str(VALIDATION_DIR / "run_torchgenomics.sh")],
         check=True,
     )
 
@@ -2997,11 +2997,11 @@ def test_susieR_parity_full_workflow():
         "python3",
         str(VALIDATION_DIR / "compare.py"),
         "--upstream", str(out_dir / "susieR.tsv"),
-        "--ours", str(out_dir / "torchgwas.tsv"),
+        "--ours", str(out_dir / "torchgenomics.tsv"),
         "--upstream-walltime", str(out_dir / "susieR_walltime_seconds.txt"),
-        "--ours-walltime", str(out_dir / "torchgwas_walltime_seconds.txt"),
+        "--ours-walltime", str(out_dir / "torchgenomics_walltime_seconds.txt"),
         "--upstream-elbo", str(out_dir / "susieR_elbo.txt"),
-        "--ours-elbo", str(out_dir / "torchgwas_elbo.txt"),
+        "--ours-elbo", str(out_dir / "torchgenomics_elbo.txt"),
     ])
     assert rc == 0, "Tier 2 parity failed; see output above and findings ledger"
 ```
@@ -3019,7 +3019,7 @@ If it doesn't SKIP gracefully (e.g., if `R` is not on PATH and the subprocess ra
 - [ ] **Step 6: Commit**
 
 ```bash
-git add validation/external/susieR/run_susieR.sh validation/external/susieR/run_torchgwas.sh validation/external/susieR/compare.py tests/test_external_susieR.py
+git add validation/external/susieR/run_susieR.sh validation/external/susieR/run_torchgenomics.sh validation/external/susieR/compare.py tests/test_external_susieR.py
 git commit -m "NA1 Task 14: external validation harness run scripts + compare + tier-2 test"
 ```
 
@@ -3059,12 +3059,12 @@ class TestBayesScanRssMemory:
         import torch
         import pandas as pd
         import math
-        from torchgwas.models.bayesian_vs_rss import BayesianVSRss
-        from torchgwas.postgwas._ld_ref_loader import (
+        from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
+        from torchgenomics.postgwas._ld_ref_loader import (
             save_ld_reference,
             BlockSpec,
         )
-        from torchgwas.postgwas._ld_ref_metadata import LDReferenceMetadata
+        from torchgenomics.postgwas._ld_ref_metadata import LDReferenceMetadata
 
         # Build a synthetic locus with p=2000, partitioned into 4 blocks of 500
         rng = torch.Generator()
@@ -3123,7 +3123,7 @@ def bench_bayes_scan_rss(p: int = 1000, n: int = 5000):
     """
     import time
     import torch
-    from torchgwas.models.bayesian_vs_rss import BayesianVSRss
+    from torchgenomics.models.bayesian_vs_rss import BayesianVSRss
 
     rng = torch.Generator()
     rng.manual_seed(0)
@@ -3188,7 +3188,7 @@ typically ~200 MB per LD block at p_block ≤ 5000; vs `bayes-scan` which is
 `O(n × p)` and materializes the full genotype matrix.
 
 ```bash
-torchgwas bayes-scan-rss \
+torchgenomics bayes-scan-rss \
     --sumstats hits.tsv \
     --ld-ref ld_chr22.pt \
     --max-num-causal 10 \
@@ -3208,7 +3208,7 @@ torchgwas bayes-scan-rss \
 ### Optional arguments
 
 - `--regions PATH` — TSV with start, stop columns for explicit block boundaries.
-  Default: auto-detect via `torchgwas.ld.detect_blocks`.
+  Default: auto-detect via `torchgenomics.ld.detect_blocks`.
 - `--max-num-causal INT` — Number of single-effect layers (L). Default: 10.
 - `--coverage FLOAT` — Credible-set coverage threshold. Default: 0.95.
 - `--purity FLOAT` — Minimum |R_jk| within a credible set. Default: 0.5
@@ -3284,11 +3284,11 @@ If the baseline test count drops, find the regression. If new tests fail, find t
 - [ ] **Step 5: Run `mypy` and `ruff` on the new modules**
 
 ```bash
-mypy torchgwas/models/bayesian_vs_rss.py
-mypy torchgwas/postgwas/_ld_ref_loader.py
-mypy torchgwas/postgwas/_ld_ref_metadata.py
-ruff check torchgwas/models/bayesian_vs_rss.py torchgwas/postgwas/_ld_ref_loader.py torchgwas/postgwas/_ld_ref_metadata.py
-ruff format torchgwas/models/bayesian_vs_rss.py torchgwas/postgwas/_ld_ref_loader.py torchgwas/postgwas/_ld_ref_metadata.py
+mypy torchgenomics/models/bayesian_vs_rss.py
+mypy torchgenomics/postgwas/_ld_ref_loader.py
+mypy torchgenomics/postgwas/_ld_ref_metadata.py
+ruff check torchgenomics/models/bayesian_vs_rss.py torchgenomics/postgwas/_ld_ref_loader.py torchgenomics/postgwas/_ld_ref_metadata.py
+ruff format torchgenomics/models/bayesian_vs_rss.py torchgenomics/postgwas/_ld_ref_loader.py torchgenomics/postgwas/_ld_ref_metadata.py
 ```
 
 Expected: clean (or matches the project's existing mypy/ruff baseline).

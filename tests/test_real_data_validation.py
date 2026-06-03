@@ -24,8 +24,8 @@ import pandas as pd
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.models.base import VariantMeta
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.models.base import VariantMeta
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -101,7 +101,7 @@ def mdp():
     )
 
     # GRM for LMM models
-    from torchgwas.linalg.kinship import grm_vanraden
+    from torchgenomics.linalg.kinship import grm_vanraden
     K, _ = grm_vanraden(G_earht, ploidy=2)
 
     # Subset for fast scanning (first 200 SNPs)
@@ -158,7 +158,7 @@ def potato():
     n, m = G.shape
     X0 = torch.ones(n, 1, dtype=STAT_DTYPE)
 
-    from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
+    from torchgenomics.linalg.kinship_polyploid import grm_polyploid_gene_action
     K, _ = grm_polyploid_gene_action(G, model="additive", ploidy=4)
 
     snps = list(geno_sub.columns)[:200]
@@ -207,14 +207,14 @@ class TestDiploidCore:
     """Core V1 models on MDP maize data."""
 
     def test_glm(self, mdp):
-        from torchgwas.models.glm import GLM
+        from torchgenomics.models.glm import GLM
         model = GLM()
         nf = model.fit_null(mdp["Y"], mdp["X0"])
         result = model.score_chunk(mdp["G_scan"], nf, mdp["vmeta_scan"])
         _assert_valid_pvalues(result.p, "GLM")
 
     def test_single_trait_lmm_wald(self, mdp):
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -224,7 +224,7 @@ class TestDiploidCore:
         assert result.beta is not None
 
     def test_single_trait_lmm_score(self, mdp):
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -233,7 +233,7 @@ class TestDiploidCore:
         _assert_valid_pvalues(result.p, "LMM-Score")
 
     def test_multi_trait_lmm(self, mdp):
-        from torchgwas.models.multi_trait_lmm import MultiTraitLMM
+        from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
 
         # Use 2 traits with complete cases
         Y_full = mdp["Y_full"]
@@ -244,7 +244,7 @@ class TestDiploidCore:
         Y2_clean = Y2[valid]
         G_clean = mdp["G"][valid, :100]
         X0_clean = torch.ones(Y2_clean.shape[0], 1, dtype=STAT_DTYPE)
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.kinship import grm_vanraden
         K_clean, _ = grm_vanraden(mdp["G"][valid], ploidy=2)
 
         snps = mdp["vmeta_scan"].snp[:100]
@@ -260,7 +260,7 @@ class TestDiploidCore:
         _assert_valid_pvalues(result.p, "mvLMM")
 
     def test_farmcpu(self, mdp):
-        from torchgwas.models.farmcpu import FarmCPU
+        from torchgenomics.models.farmcpu import FarmCPU
         model = FarmCPU(max_iter=3, p_threshold=0.05)
         nf = model.fit_null(mdp["Y"], mdp["X0"])
         result = model.score_chunk(
@@ -269,7 +269,7 @@ class TestDiploidCore:
         _assert_valid_pvalues(result.p, "FarmCPU")
 
     def test_blink(self, mdp):
-        from torchgwas.models.blink import BLINK
+        from torchgenomics.models.blink import BLINK
         model = BLINK(max_iter=3, p_threshold=0.05)
         nf = model.fit_null(mdp["Y"], mdp["X0"])
         result = model.score_chunk(
@@ -283,7 +283,7 @@ class TestDiploidNovel:
     """Post-V1 novel models on MDP maize data."""
 
     def test_multi_kernel_lmm(self, mdp):
-        from torchgwas.models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
+        from torchgenomics.models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
         kernels, kernel_names = build_multi_kernels(mdp["G"][:, :200], ploidy=2)
         model = MultiKernelLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], kernels=kernels)
@@ -293,7 +293,7 @@ class TestDiploidNovel:
         _assert_valid_pvalues(result.p, "MK-LMM")
 
     def test_het_lmm(self, mdp):
-        from torchgwas.models.lmm_gxe import HetLMM
+        from torchgenomics.models.lmm_gxe import HetLMM
         # Create a fake environment variable
         torch.manual_seed(42)
         env = torch.randn(mdp["n"], dtype=STAT_DTYPE)
@@ -305,9 +305,9 @@ class TestDiploidNovel:
         _assert_valid_pvalues(result.p_joint, "HetLMM")
 
     def test_set_based_skat(self, mdp):
-        from torchgwas.io.regions import Region
-        from torchgwas.models.set_based import SetBasedScanner
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.io.regions import Region
+        from torchgenomics.models.set_based import SetBasedScanner
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
@@ -329,8 +329,8 @@ class TestDiploidNovel:
         _assert_valid_pvalues(result.p, "SKAT")
 
     def test_bayesian_vs_susie(self, mdp):
-        from torchgwas.models.bayesian_vs import BayesianVS
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.bayesian_vs import BayesianVS
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         lmm = SingleTraitLMM()
         nf = lmm.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
@@ -351,7 +351,7 @@ class TestDiploidNovel:
         assert torch.all(result.pip >= 0) and torch.all(result.pip <= 1)
 
     def test_ocf_lmm(self, mdp):
-        from torchgwas.models.ocf_lmm import OCFLMM
+        from torchgenomics.models.ocf_lmm import OCFLMM
         model = OCFLMM(n_folds=3, seed=42)
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -366,7 +366,7 @@ class TestDiploidNovel:
         _assert_valid_pvalues(result.p, "OCF-LMM")
 
     def test_knockoff_lmm(self, mdp):
-        from torchgwas.models.knockoff_lmm import KnockoffLMM
+        from torchgenomics.models.knockoff_lmm import KnockoffLMM
         vmeta_100 = VariantMeta(
             snp=mdp["vmeta_scan"].snp[:100],
             chr=mdp["vmeta_scan"].chr[:100],
@@ -382,7 +382,7 @@ class TestDiploidNovel:
         assert result is not None
 
     def test_gu_lmm(self, mdp):
-        from torchgwas.models.gu_lmm import GULM
+        from torchgenomics.models.gu_lmm import GULM
         # Create fake dosage variance (low uncertainty)
         torch.manual_seed(42)
         dosage_var = torch.rand(mdp["n"], 100, dtype=STAT_DTYPE) * 0.05
@@ -401,7 +401,7 @@ class TestDiploidNovel:
         _assert_valid_pvalues(result.p, "GU-LMM")
 
     def test_lro_lmm(self, mdp):
-        from torchgwas.models.lro_lmm import LROLMM
+        from torchgenomics.models.lro_lmm import LROLMM
         vmeta_100 = VariantMeta(
             snp=mdp["vmeta_scan"].snp[:100],
             chr=mdp["vmeta_scan"].chr[:100],
@@ -439,7 +439,7 @@ class TestDiploidCategorical:
         return Y_ord
 
     def test_binary_glm(self, mdp, binary_data):
-        from torchgwas.models.binary_glm import BinaryGLM
+        from torchgenomics.models.binary_glm import BinaryGLM
         model = BinaryGLM(use_spa=False)
         nf = model.fit_null(binary_data, mdp["X0"])
         result = model.score_chunk(
@@ -454,7 +454,7 @@ class TestDiploidCategorical:
         _assert_valid_pvalues(result.p, "BinaryGLM")
 
     def test_binary_glmm(self, mdp, binary_data):
-        from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
         model = BinaryGLMM(use_spa=False)
         nf = model.fit_null(binary_data, mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -469,7 +469,7 @@ class TestDiploidCategorical:
         _assert_valid_pvalues(result.p, "BinaryGLMM")
 
     def test_ordinal_glm(self, mdp, ordinal_data):
-        from torchgwas.models.ordinal_glm import OrdinalGLM
+        from torchgenomics.models.ordinal_glm import OrdinalGLM
         model = OrdinalGLM(n_categories=3)
         nf = model.fit_null(ordinal_data, mdp["X0"])
         result = model.score_chunk(
@@ -484,7 +484,7 @@ class TestDiploidCategorical:
         _assert_valid_pvalues(result.p, "OrdinalGLM")
 
     def test_ordinal_glmm(self, mdp, ordinal_data):
-        from torchgwas.models.ordinal_glmm import OrdinalGLMM
+        from torchgenomics.models.ordinal_glmm import OrdinalGLMM
         model = OrdinalGLMM(n_categories=3)
         nf = model.fit_null(ordinal_data, mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -504,7 +504,7 @@ class TestDiploidSurvival:
     """Survival GWAS on MDP (simulated time-to-event from EarHT)."""
 
     def test_survival_glmm(self, mdp):
-        from torchgwas.models.survival_glmm import SurvivalGLMM
+        from torchgenomics.models.survival_glmm import SurvivalGLMM
         torch.manual_seed(42)
         # Simulate survival data: higher EarHT → longer survival
         time = torch.exp(0.02 * mdp["Y"] + 0.5 * torch.randn(mdp["n"]))
@@ -535,7 +535,7 @@ class TestDiploidMultiEnv:
     """Multi-environment models on MDP (traits as pseudo-environments)."""
 
     def test_multi_env_lmm(self, mdp):
-        from torchgwas.models.multi_env_lmm import MultiEnvLMM
+        from torchgenomics.models.multi_env_lmm import MultiEnvLMM
 
         # Use two traits as pseudo-environments
         Y_full = mdp["Y_full"]
@@ -545,7 +545,7 @@ class TestDiploidMultiEnv:
         Y_wide = Y2[valid]
         G_sub = mdp["G"][valid, :100]
         X0_sub = torch.ones(Y_wide.shape[0], 1, dtype=STAT_DTYPE)
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.kinship import grm_vanraden
         K_sub, _ = grm_vanraden(mdp["G"][valid], ploidy=2)
 
         model = MultiEnvLMM()
@@ -562,7 +562,7 @@ class TestDiploidMultiEnv:
         _assert_valid_pvalues(result.p, "MultiEnvLMM")
 
     def test_mtmet_lmm(self, mdp):
-        from torchgwas.models.multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
+        from torchgenomics.models.multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
 
         # 2 traits × 2 envs → simulate Y_wide (n, 4)
         Y_full = mdp["Y_full"]
@@ -577,7 +577,7 @@ class TestDiploidMultiEnv:
 
         G_sub = mdp["G"][valid, :100]
         X0_sub = torch.ones(Y_wide.shape[0], 1, dtype=STAT_DTYPE)
-        from torchgwas.linalg.kinship import grm_vanraden
+        from torchgenomics.linalg.kinship import grm_vanraden
         K_sub, _ = grm_vanraden(mdp["G"][valid], ploidy=2)
 
         model = MultiTraitMultiEnvLMM()
@@ -599,8 +599,8 @@ class TestDiploidHaplotype:
     """Haplotype-based GWAS on MDP."""
 
     def test_haplotype_gwas_window(self, mdp):
-        from torchgwas.models.haplotype_gwas import HaplotypeGWAS
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.haplotype_gwas import HaplotypeGWAS
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
@@ -631,7 +631,7 @@ class TestPolyploid:
     """Polyploid models on tetraploid potato data."""
 
     def test_single_trait_lmm_polyploid(self, potato):
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
         model = SingleTraitLMM()
         nf = model.fit_null(potato["Y"], potato["X0"], K=potato["K"])
         result = model.score_chunk(
@@ -640,7 +640,7 @@ class TestPolyploid:
         _assert_valid_pvalues(result.p, "LMM-Polyploid")
 
     def test_glm_polyploid(self, potato):
-        from torchgwas.models.glm import GLM
+        from torchgenomics.models.glm import GLM
         model = GLM()
         nf = model.fit_null(potato["Y"], potato["X0"])
         result = model.score_chunk(
@@ -650,8 +650,8 @@ class TestPolyploid:
 
     def test_gene_action_models(self, potato):
         """Test multiple gene-action model encodings."""
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
-        from torchgwas.preprocess.polyploid import recode_gene_action
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.preprocess.polyploid import recode_gene_action
 
         model = SingleTraitLMM()
         nf = model.fit_null(potato["Y"], potato["X0"], K=potato["K"])
@@ -666,7 +666,7 @@ class TestPolyploid:
             _assert_valid_pvalues(result.p, f"Polyploid-{ga_model}")
 
     def test_multi_kernel_polyploid(self, potato):
-        from torchgwas.models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
+        from torchgenomics.models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
         kernels, _ = build_multi_kernels(
             potato["G"][:, :200], ploidy=4
         )
@@ -678,7 +678,7 @@ class TestPolyploid:
         _assert_valid_pvalues(result.p, "MK-LMM-Polyploid")
 
     def test_farmcpu_polyploid(self, potato):
-        from torchgwas.models.farmcpu import FarmCPU
+        from torchgenomics.models.farmcpu import FarmCPU
         model = FarmCPU(max_iter=3, p_threshold=0.05)
         nf = model.fit_null(potato["Y"], potato["X0"])
         result = model.score_chunk(
@@ -687,7 +687,7 @@ class TestPolyploid:
         _assert_valid_pvalues(result.p, "FarmCPU-Polyploid")
 
     def test_binary_glm_polyploid(self, potato):
-        from torchgwas.models.binary_glm import BinaryGLM
+        from torchgenomics.models.binary_glm import BinaryGLM
         med = potato["Y"].median()
         Y_bin = (potato["Y"] > med).to(STAT_DTYPE)
         model = BinaryGLM(use_spa=False)
@@ -704,7 +704,7 @@ class TestPolyploid:
         _assert_valid_pvalues(result.p, "BinaryGLM-Polyploid")
 
     def test_binary_glmm_polyploid(self, potato):
-        from torchgwas.models.binary_glmm import BinaryGLMM
+        from torchgenomics.models.binary_glmm import BinaryGLMM
         med = potato["Y"].median()
         Y_bin = (potato["Y"] > med).to(STAT_DTYPE)
         model = BinaryGLMM(use_spa=False)
@@ -721,9 +721,9 @@ class TestPolyploid:
         _assert_valid_pvalues(result.p, "BinaryGLMM-Polyploid")
 
     def test_set_based_polyploid(self, potato):
-        from torchgwas.io.regions import Region
-        from torchgwas.models.set_based import SetBasedScanner
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.io.regions import Region
+        from torchgenomics.models.set_based import SetBasedScanner
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
         model = SingleTraitLMM()
         nf = model.fit_null(potato["Y"], potato["X0"], K=potato["K"])
@@ -754,8 +754,8 @@ class TestPostGWAS:
 
     def test_ldsc_h2(self, mdp):
         # Generate summary stats from LMM
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
-        from torchgwas.postgwas._ldsc import ldsc_h2
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.postgwas._ldsc import ldsc_h2
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -779,8 +779,8 @@ class TestPostGWAS:
 
     def test_meta_analysis(self, mdp):
         # Generate two "studies" with slightly different p-values
-        from torchgwas.models.single_trait_lmm import SingleTraitLMM
-        from torchgwas.postgwas._meta import meta_fixed_effect
+        from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+        from torchgenomics.postgwas._meta import meta_fixed_effect
         model = SingleTraitLMM()
         nf = model.fit_null(mdp["Y"], mdp["X0"], K=mdp["K"])
         result = model.score_chunk(
@@ -804,8 +804,8 @@ class TestPostGWAS:
 
     def test_ld_clump(self, mdp):
         # Generate p-values
-        from torchgwas.models.glm import GLM
-        from torchgwas.postgwas._clump import ld_clump
+        from torchgenomics.models.glm import GLM
+        from torchgenomics.postgwas._clump import ld_clump
         model = GLM()
         nf = model.fit_null(mdp["Y"], mdp["X0"])
         result = model.score_chunk(
@@ -837,12 +837,12 @@ class TestVisualization:
         import matplotlib
         matplotlib.use("Agg")
 
-        from torchgwas.models.glm import GLM
+        from torchgenomics.models.glm import GLM
         model = GLM()
         nf = model.fit_null(mdp["Y"], mdp["X0"])
         result = model.score_chunk(mdp["G_scan"], nf, mdp["vmeta_scan"])
 
-        from torchgwas.viz import manhattan_plot
+        from torchgenomics.viz import manhattan_plot
         ax = manhattan_plot(
             chrom=mdp["vmeta_scan"].chr[:200],
             pos=mdp["vmeta_scan"].pos[:200],
@@ -854,12 +854,12 @@ class TestVisualization:
         import matplotlib
         matplotlib.use("Agg")
 
-        from torchgwas.models.glm import GLM
+        from torchgenomics.models.glm import GLM
         model = GLM()
         nf = model.fit_null(mdp["Y"], mdp["X0"])
         result = model.score_chunk(mdp["G_scan"], nf, mdp["vmeta_scan"])
 
-        from torchgwas.viz import qq_plot
+        from torchgenomics.viz import qq_plot
         ax = qq_plot(p=result.p[:200])
         assert ax is not None
 
@@ -874,7 +874,7 @@ class TestLDBlocks:
     """LD block detection on real MDP genotype data."""
 
     def test_gabriel_blocks(self, mdp):
-        from torchgwas.ld import detect_blocks
+        from torchgenomics.ld import detect_blocks
 
         # Use first 100 SNPs on chromosome 1
         chr1_mask = [c == "1" for c in mdp["vmeta_scan"].chr[:100]]
@@ -893,7 +893,7 @@ class TestLDBlocks:
         assert len(blocks) >= 0
 
     def test_spine_blocks(self, mdp):
-        from torchgwas.ld import detect_blocks
+        from torchgenomics.ld import detect_blocks
 
         chr1_count = sum(1 for c in mdp["vmeta_scan"].chr[:100] if c == "1")
         if chr1_count < 10:
@@ -919,7 +919,7 @@ class TestImputation:
     """Imputation methods on MDP with induced missingness."""
 
     def test_mean_imputation(self, mdp):
-        from torchgwas.preprocess.impute import impute_mean
+        from torchgenomics.preprocess.impute import impute_mean
 
         G_miss = mdp["G_scan"][:, :50].clone()
         # Introduce 10% missingness
@@ -931,7 +931,7 @@ class TestImputation:
         assert not torch.isnan(G_imp).any()
 
     def test_knn_imputation(self, mdp):
-        from torchgwas.preprocess.impute import impute_knn
+        from torchgenomics.preprocess.impute import impute_knn
 
         G_miss = mdp["G_scan"][:, :50].clone()
         torch.manual_seed(42)
@@ -952,7 +952,7 @@ class TestQC:
     """Quality control on MDP data."""
 
     def test_maf_filter(self, mdp):
-        from torchgwas.preprocess.standardize import compute_allele_frequencies, compute_maf
+        from torchgenomics.preprocess.standardize import compute_allele_frequencies, compute_maf
 
         af = compute_allele_frequencies(mdp["G_scan"], ploidy=2)
         maf = compute_maf(af)
@@ -960,7 +960,7 @@ class TestQC:
         assert torch.all(maf >= 0) and torch.all(maf <= 0.5)
 
     def test_variant_qc(self, mdp):
-        from torchgwas.preprocess.qc import compute_variant_qc
+        from torchgenomics.preprocess.qc import compute_variant_qc
 
         qc = compute_variant_qc(
             mdp["G_scan"], mdp["vmeta_scan"], ploidy=2,

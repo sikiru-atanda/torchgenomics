@@ -43,7 +43,7 @@ The validation lives in `run_polyorigin` (where Julia is live by definition). Do
 - **Migration tool for older `PhasingResult` artifacts** — re-run `phase-poly` to get the new fields; no backport.
 - **Allele-probability floats per copy** — strict integer alleles, matching `HaplotypeGWAS`'s existing contract.
 - **Allele values restricted to 0/1** — adapter passes through whatever integer values `parent_phased` carries. Biallelic data lands at 0/1 in practice, but the contract doesn't assume.
-- **CLI surface changes** — `torchgwas phase-poly` already runs the full `run_polyorigin` flow; users get the two new files automatically.
+- **CLI surface changes** — `torchgenomics phase-poly` already runs the full `run_polyorigin` flow; users get the two new files automatically.
 
 ### Integration point
 
@@ -60,14 +60,14 @@ PhasingResult now carries:
    • haplotypes_per_copy: (n_off, ploidy, m) int8   ← drop-in for HaplotypeGWAS.scan
                   │
                   ▼
-   torchgwas.models.HaplotypeGWAS.scan(Y=Y, G=G, haplotypes=result.haplotypes_per_copy)
+   torchgenomics.models.HaplotypeGWAS.scan(Y=Y, G=G, haplotypes=result.haplotypes_per_copy)
 ```
 
 ---
 
 ## 2. Components and interfaces
 
-Three new pure helpers in `torchgwas/preprocess/phase_polyorigin.py` plus two new `PhasingResult` fields. No new files; no changes to `_polyorigin_runtime.py`.
+Three new pure helpers in `torchgenomics/preprocess/phase_polyorigin.py` plus two new `PhasingResult` fields. No new files; no changes to `_polyorigin_runtime.py`.
 
 ### 2.1 New `PhasingResult` fields
 
@@ -207,7 +207,7 @@ Atomicity guarantee unchanged: failure at any stage rolls back all already-renam
 ### 2.7 Directory layout
 
 ```
-torchgwas/preprocess/
+torchgenomics/preprocess/
 ├── phase_polyorigin.py   # MODIFIED — adds 3 helpers + 2 PhasingResult fields + orchestration extension
 ├── _polyorigin_runtime.py # unchanged
 └── juliapkg.json          # unchanged
@@ -252,7 +252,7 @@ existing run_polyorigin output (parsed from PolyOrigin CSVs)
    <output>.haplotypes_per_copy.pt
    │
    ▼ downstream (no code changes; new capability)
-   from torchgwas.models import HaplotypeGWAS
+   from torchgenomics.models import HaplotypeGWAS
    scanner = HaplotypeGWAS(method="block", test="f_test", ploidy=ploidy)
    scanner.scan(Y=Y, G=G, haplotypes=result.haplotypes_per_copy)
 ```
@@ -400,11 +400,11 @@ Locked during this brainstorm so the implementation plan doesn't re-litigate:
 ## Appendix: file-level impact summary
 
 **Modified files**:
-- `torchgwas/preprocess/phase_polyorigin.py` — add 3 helpers, extend `PhasingResult`, extend `run_polyorigin`, extend `_persist_result`. ~150 LOC of pure logic.
+- `torchgenomics/preprocess/phase_polyorigin.py` — add 3 helpers, extend `PhasingResult`, extend `run_polyorigin`, extend `_persist_result`. ~150 LOC of pure logic.
 - `tests/test_phase_polyorigin.py` — append ~9 Tier 1 tests.
 - `tests/test_phase_polyorigin_e2e.py` — append 1 Tier 2 end-to-end test.
 
 **Unchanged**:
-- `torchgwas/preprocess/_polyorigin_runtime.py`, `juliapkg.json`, `pyproject.toml`, `torchgwas/cli.py`, `torchgwas/__main__.py`, `torchgwas/models/haplotype_gwas.py`, `docs/getting-started/polyploid_phasing.md`, all other Phase 56 artifacts.
+- `torchgenomics/preprocess/_polyorigin_runtime.py`, `juliapkg.json`, `pyproject.toml`, `torchgenomics/cli.py`, `torchgenomics/__main__.py`, `torchgenomics/models/haplotype_gwas.py`, `docs/getting-started/polyploid_phasing.md`, all other Phase 56 artifacts.
 
 **New** (none — all edits land in existing files).

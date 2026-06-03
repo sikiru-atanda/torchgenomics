@@ -4,7 +4,7 @@
 al. 2002, *AJHG* 70:425-434; CRAN 1.9.8.7) is the canonical R implementation
 of phenotype-haplotype association testing using EM-inferred haplotype
 dosages. This harness compares the R reference (`haplo.em` + `haplo.glm`)
-against TG `torchgwas.models.haplotype_gwas.HaplotypeGWAS` on a 5-SNP
+against TG `torchgenomics.models.haplotype_gwas.HaplotypeGWAS` on a 5-SNP
 high-LD window from the Mouse / Maize Diversity Panel (MDP).
 
 ## Why R/haplo.stats (and not PLINK)
@@ -65,7 +65,7 @@ that single-marker testing cannot achieve.
 bash validation/external/hapref/install.sh        # idempotent CRAN install
 bash validation/external/hapref/fetch_data.sh     # stage MDP fixture + window
 bash validation/external/hapref/run.sh            # haplo.em + haplo.glm
-TORCHGWAS_DISABLE_NATIVE=1 python validation/external/hapref/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python validation/external/hapref/compare.py
 ```
 
 Outputs:
@@ -157,7 +157,7 @@ the same data produces 15 haplotypes including `11111` at 0.1266.
 
 ### Root cause
 
-`_enumerate_haplotypes_unphased` (`torchgwas/models/haplotype_gwas.py`
+`_enumerate_haplotypes_unphased` (`torchgenomics/models/haplotype_gwas.py`
 lines 256-266) caps the candidate set at `max_haplotypes`, ranking by
 
     score(h) = prod_j marginal_allele_freq_j(h_j)
@@ -208,7 +208,7 @@ haplotypes.
 | install (R CRAN cache hit)            | 1 GB | 1 GB | < 100 MB |
 | fetch (copy MDP files; pick window)   | 1 GB | 1 GB | < 50 MB  |
 | run (haplo.em + haplo.glm; 279 x 5)   | 1 GB | 1 GB | ~ 200 MB |
-| compare.py (Python 3 + torchgwas)     | n/a  | n/a  | ~ 750 MB |
+| compare.py (Python 3 + torchgenomics)     | n/a  | n/a  | ~ 750 MB |
 
 ## Layout
 

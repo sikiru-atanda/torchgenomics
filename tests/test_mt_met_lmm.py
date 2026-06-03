@@ -15,9 +15,9 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multi_trait_multi_env_lmm import (
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multi_trait_multi_env_lmm import (
     MTMETScanResult,
     MultiTraitMultiEnvLMM,
 )
@@ -203,7 +203,7 @@ class TestUnstructuredFit:
     def test_unstructured_matches_multi_trait(self):
         """Unstructured MT-MET should match MultiTraitLMM with dE pseudo-traits."""
         data = _simulate_mt_met_data(n=80, n_snps=10, d=2, E=2, seed=23)
-        from torchgwas.models.multi_trait_lmm import MultiTraitLMM
+        from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
 
         # MT-MET unstructured
         model_mt = MultiTraitMultiEnvLMM(vg_structure="unstructured")

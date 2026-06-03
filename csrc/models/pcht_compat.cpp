@@ -1,5 +1,5 @@
 // Native accelerator for the PCHT compat-pair enumeration in
-// ``torchgwas.models.haplotype_novel.compute_dosage_posterior_cov``
+// ``torchgenomics.models.haplotype_novel.compute_dosage_posterior_cov``
 // and its underlying helper ``_reconstruct_compat``.
 //
 // Background. The principal-component haplotype test (PCHT, novel

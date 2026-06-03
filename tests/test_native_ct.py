@@ -1,4 +1,4 @@
-"""Tests for the native C++ C+T clumping accelerator (torchgwas._native._ct_native).
+"""Tests for the native C++ C+T clumping accelerator (torchgenomics._native._ct_native).
 
 These tests are skipped when the compiled extension is unavailable so that CI
 on machines without a C++ toolchain still runs.
@@ -13,15 +13,15 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_CT, _ct_native
-from torchgwas.pgs.ct import (
+from torchgenomics._native import HAS_NATIVE_CT, _ct_native
+from torchgenomics.pgs.ct import (
     ClumpingThresholding,
     _clump_with_ld_reference,
     _clump_with_ld_reference_dispatch,
     _native_enabled,
 )
-from torchgwas.pgs.ld_ref import build_ld_reference
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.pgs.ld_ref import build_ld_reference
+from torchgenomics.postgwas._sumstats import SumStats
 
 pytestmark = pytest.mark.skipif(
     not HAS_NATIVE_CT,
@@ -82,7 +82,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _native_enabled() is True
 
@@ -158,7 +158,7 @@ def test_clump_full_native_matches_python(monkeypatch):
     """Greedy clumping is deterministic — native and Python must match exactly."""
     ss, ld = _make_ss_and_ld(m=40, n=1500, seed=11, mode="full")
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     idx_n, mem_n = _clump_with_ld_reference_dispatch(
         ss.p, ld, chr_labels=ss.chr, pos=ss.pos,
         r2_threshold=0.1, p_threshold=0.05, window_kb=1.0,
@@ -176,7 +176,7 @@ def test_clump_block_native_matches_python(monkeypatch):
     """Same equivalence on a block-diagonal LD reference."""
     ss, ld = _make_ss_and_ld(m=45, n=1500, seed=13, mode="block")
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     idx_n, mem_n = _clump_with_ld_reference_dispatch(
         ss.p, ld, chr_labels=ss.chr, pos=ss.pos,
         r2_threshold=0.1, p_threshold=0.05, window_kb=1.0,
@@ -193,12 +193,12 @@ def test_ct_fit_native_vs_python_identical(monkeypatch):
     """End-to-end ClumpingThresholding.fit must produce identical weights."""
     ss, ld = _make_ss_and_ld(m=40, n=1500, seed=21, mode="full")
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     res_native = ClumpingThresholding(seed=0).fit(
         ss, ld, p_threshold=0.05, r2_threshold=0.1, window_kb=1.0,
     )
 
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     res_python = ClumpingThresholding(seed=0).fit(
         ss, ld, p_threshold=0.05, r2_threshold=0.1, window_kb=1.0,
     )
@@ -207,7 +207,7 @@ def test_ct_fit_native_vs_python_identical(monkeypatch):
 
 
 def test_ct_dispatch_routes_to_native(monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     ss, ld = _make_ss_and_ld(m=20, n=800, seed=3, mode="full")
     idx, mem = _clump_with_ld_reference_dispatch(
         ss.p, ld, chr_labels=ss.chr, pos=ss.pos,
@@ -219,7 +219,7 @@ def test_ct_dispatch_routes_to_native(monkeypatch):
 
 
 def test_ct_dispatch_python_when_disabled(monkeypatch):
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     ss, ld = _make_ss_and_ld(m=20, n=800, seed=4, mode="full")
     idx, mem = _clump_with_ld_reference_dispatch(
         ss.p, ld, chr_labels=ss.chr, pos=ss.pos,

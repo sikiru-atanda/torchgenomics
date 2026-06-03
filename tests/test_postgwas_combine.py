@@ -17,7 +17,7 @@ import pytest
 import torch
 from scipy.stats import chi2 as _chi2
 
-from torchgwas.postgwas import (
+from torchgenomics.postgwas import (
     brown_combined,
     brown_ld_aware,
     cauchy_combined,
@@ -205,7 +205,7 @@ class TestMinPCombined:
 class TestCauchyAndStoufferWrappers:
     def test_cauchy_matches_existing_kernel(self):
         """Wrapper output equals direct cauchy_combination call."""
-        from torchgwas.stats.cauchy import cauchy_combination
+        from torchgenomics.stats.cauchy import cauchy_combination
         p = [0.05, 0.20, 0.001]
         _, p_wrap = cauchy_combined(p)
         p_direct = float(cauchy_combination(

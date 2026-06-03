@@ -11,8 +11,8 @@ import pytest
 import torch
 
 from tests.test_rr_lmm_scan import _simulate_with_planted_signal, _vmeta
-from torchgwas.linalg.basis import evaluate_basis_at
-from torchgwas.models.rr_lmm import RandomRegressionLMM, RRScanResult
+from torchgenomics.linalg.basis import evaluate_basis_at
+from torchgenomics.models.rr_lmm import RandomRegressionLMM, RRScanResult
 
 
 class TestEvalTimesBasic:

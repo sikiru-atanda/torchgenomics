@@ -1,4 +1,4 @@
-"""Compare `mediation::mediate` (R) vs `torchgwas.multiomics.mediate_lmm`
+"""Compare `mediation::mediate` (R) vs `torchgenomics.multiomics.mediate_lmm`
 on the simulated multi-omics triple staged by simulate_multiomics.R.
 
 Three comparisons:
@@ -98,7 +98,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.multiomics import (  # noqa: E402
+from torchgenomics.multiomics import (  # noqa: E402
     MediationResult,
     MediationScanResult,
     mediate_lmm,
@@ -188,7 +188,7 @@ def _load_inputs(data_dir: Path, out_dir: Path) -> dict[str, Any]:
 
 
 def _run_tg_mediate(inp: dict[str, Any]) -> MediationResult:
-    """Run TorchGWAS mediate_lmm on the triple with the simulated K."""
+    """Run TorchGenomics mediate_lmm on the triple with the simulated K."""
     return mediate_lmm(
         Y=inp["outcome"],
         SNP=inp["snp"],
@@ -215,7 +215,7 @@ def compare_stage_coefficients(data_dir: Path, out_dir: Path) -> ComparisonRepor
     d_cp = abs(tg.c_prime - r["model_y"]["c_prime"])
 
     rep = ComparisonReport(
-        name="Stage-wise coefficients (mediation R lm vs TorchGWAS mediate_lmm)",
+        name="Stage-wise coefficients (mediation R lm vs TorchGenomics mediate_lmm)",
         n_compared=inp["n"],
     )
     rep.checks.append(_check_max("|Δ a (SNP -> M)|", d_a, TOL_A))
@@ -252,7 +252,7 @@ def compare_acme(data_dir: Path, out_dir: Path) -> ComparisonReport:
     d_r_truth = abs(r_acme - truth_acme)
 
     rep = ComparisonReport(
-        name="ACME / indirect effect (mediation::mediate vs TorchGWAS mediate_lmm)",
+        name="ACME / indirect effect (mediation::mediate vs TorchGenomics mediate_lmm)",
         n_compared=inp["n"],
     )
     rep.checks.append(_check_max("|Δ ACME (TG vs R)|", d_tg_r, TOL_ACME_TG_R))
@@ -287,7 +287,7 @@ def compare_total_and_ade(data_dir: Path, out_dir: Path) -> ComparisonReport:
     d_ade_tg_r = abs(tg.c_prime - r_ade)
 
     rep = ComparisonReport(
-        name="Total effect + ADE (mediation::mediate vs TorchGWAS mediate_lmm)",
+        name="Total effect + ADE (mediation::mediate vs TorchGenomics mediate_lmm)",
         n_compared=inp["n"],
     )
     rep.checks.append(_check_max("|Δ total (TG vs R)|", d_total_tg_r, TOL_TOTAL_TG_R))

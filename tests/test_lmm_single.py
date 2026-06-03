@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from torchgwas.models.lmm_single import SingleTraitLMM as LegacySingleTraitLMM
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.models.lmm_single import SingleTraitLMM as LegacySingleTraitLMM
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 
 def test_legacy_single_trait_lmm_import_is_shim():

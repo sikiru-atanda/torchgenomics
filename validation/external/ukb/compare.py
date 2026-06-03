@@ -1,14 +1,14 @@
-"""NA3 UKB-scale comparison: TorchGWAS vs REGENIE + LDSC on chr22.
+"""NA3 UKB-scale comparison: TorchGenomics vs REGENIE + LDSC on chr22.
 
 Three checks (per Task NA3 success criteria, SESSION_HANDOFF lines 100-102):
 
-  1. β correlation (TorchGWAS vs REGENIE Step 2 quantitative LMM)
+  1. β correlation (TorchGenomics vs REGENIE Step 2 quantitative LMM)
        target Pearson > 0.999
        (per the v0.3.0-v0.3.8 streaming-audit memory: when both tools
         consume the same UKB chr22 fileset with the same trait + same PC
         covariates, β disagreement should be at the BLAS-precision floor.)
 
-  2. h² delta (TorchGWAS vs LDSC 1.0.1 --h2)
+  2. h² delta (TorchGenomics vs LDSC 1.0.1 --h2)
        target |Δ h²| < 5e-3
        (validated at fixture scale by the validation-branch
         validation/external/ldsc/compare.py: TG ↔ LDSC IRWLS port closed
@@ -28,19 +28,19 @@ Outputs:
   - Exit 0 on all-pass, 1 on any failure.
 
 Inputs come from the harness directories:
-  torchgwas_outputs/lmm_chr22.assoc.tsv        (TG lmm-scan output)
-  torchgwas_outputs/lmm_chr22.time.log         (TG peak RSS via /usr/bin/time)
-  torchgwas_outputs/h2_chr22.json              (TG h² via ldsc_h2 driver)
-  torchgwas_outputs/h2_chr22.time.log
+  torchgenomics_outputs/lmm_chr22.assoc.tsv        (TG lmm-scan output)
+  torchgenomics_outputs/lmm_chr22.time.log         (TG peak RSS via /usr/bin/time)
+  torchgenomics_outputs/h2_chr22.json              (TG h² via ldsc_h2 driver)
+  torchgenomics_outputs/h2_chr22.time.log
   reference_outputs/regenie_step2_<trait>.regenie  (REGENIE step 2 output)
   reference_outputs/regenie_step1.time.log
   reference_outputs/regenie_step2.time.log
   reference_outputs/ldsc_h2.log                (LDSC --h2 log)
   reference_outputs/ldsc_h2.time.log
 
-This script intentionally has NO TorchGWAS imports — it operates purely on
+This script intentionally has NO TorchGenomics imports — it operates purely on
 the on-disk artifacts the run scripts produced. That keeps the harness
-runnable even if the torchgwas package is in a partial install state, and
+runnable even if the torchgenomics package is in a partial install state, and
 mirrors the LDSC Pillar B harness's pattern (compare.py as a thin parser +
 checker over upstream output files).
 """
@@ -206,7 +206,7 @@ def load_regenie_step2(path: Path) -> pd.DataFrame:
     return df
 
 
-# ── TorchGWAS lmm-scan output parser ───────────────────────────────────────
+# ── TorchGenomics lmm-scan output parser ───────────────────────────────────────
 def load_tg_lmm(path: Path) -> pd.DataFrame:
     return pd.read_csv(path, sep="\t")
 
@@ -216,7 +216,7 @@ def compare_beta_correlation(tg_path: Path, regenie_path: Path) -> ComparisonRep
     """Compare per-SNP β across tools with allele-aware sign alignment.
 
     Allele conventions actually in play (verified against
-    https://rgcgithub.github.io/regenie/options/ and torchgwas/io/plink.py):
+    https://rgcgithub.github.io/regenie/options/ and torchgenomics/io/plink.py):
 
       - TG `lmm-scan` writes columns CHR, POS, SNP, A1, A2, AF, BETA, SE.
         TG's BED reader counts the BIM A2 allele as the dosage (decode
@@ -315,7 +315,7 @@ def compare_beta_correlation(tg_path: Path, regenie_path: Path) -> ComparisonRep
     r, _p = pearsonr(a, b)
 
     rep = ComparisonReport(
-        name="β correlation TorchGWAS lmm-scan vs REGENIE Step 2 quant",
+        name="β correlation TorchGenomics lmm-scan vs REGENIE Step 2 quant",
         n_compared=int(mask.sum()),
     )
     rep.checks.append(_check_min("Pearson r(β_TG, β_REGENIE)", float(r), TOL_BETA_PEARSON_R))
@@ -345,7 +345,7 @@ def compare_h2(tg_h2_json: Path, ldsc_log_path: Path) -> ComparisonReport:
     chi2_diff = abs(tg["mean_chi2"] - ldsc.mean_chi2)
 
     rep = ComparisonReport(
-        name="h² TorchGWAS ldsc_h2 vs LDSC --h2 (chr22)",
+        name="h² TorchGenomics ldsc_h2 vs LDSC --h2 (chr22)",
         n_compared=int(tg.get("n_snps_used", -1)),
     )
     rep.checks.append(_check_max("|Δ h²|", h2_diff, TOL_H2_ABSDIFF))
@@ -381,7 +381,7 @@ def compare_peak_memory(
     tg_fraction_of_full = tg_peak_bytes / max(full_bytes, 1.0)
 
     rep = ComparisonReport(
-        name="Peak RAM streaming invariant (TorchGWAS lmm-scan)",
+        name="Peak RAM streaming invariant (TorchGenomics lmm-scan)",
         n_compared=int(m_variants),
     )
     rep.checks.append(
@@ -456,7 +456,7 @@ def render_findings_row(reports: list[ComparisonReport], date_iso: str) -> str:
 
     return (
         f"| {date_iso} | NA3 | UKB | "
-        f"`torchgwas.models.SingleTraitLMM` + `torchgwas.postgwas.ldsc_h2` "
+        f"`torchgenomics.models.SingleTraitLMM` + `torchgenomics.postgwas.ldsc_h2` "
         f"| REGENIE Step 1+2 + LDSC 1.0.1 `--h2` "
         f"| UKB chr22 (user-supplied; n × m_chr22) "
         f"| {delta} | {tol} | {f3_class} | {resolution} |"
@@ -472,7 +472,7 @@ def run_all(
     json_out: Path | None,
     findings_row: Path | None,
 ) -> int:
-    tg_dir = harness_dir / "torchgwas_outputs"
+    tg_dir = harness_dir / "torchgenomics_outputs"
     ref_dir = harness_dir / "reference_outputs"
 
     tg_lmm = tg_dir / "lmm_chr22.assoc.tsv"

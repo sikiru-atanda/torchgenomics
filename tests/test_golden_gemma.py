@@ -1,11 +1,11 @@
-"""Golden tests: TorchGWAS vs GEMMA reference outputs.
+"""Golden tests: TorchGenomics vs GEMMA reference outputs.
 
-These tests compare TorchGWAS results against saved GEMMA 0.98.5 outputs on the
+These tests compare TorchGenomics results against saved GEMMA 0.98.5 outputs on the
 MDP maize dataset (276 individuals, 3093 SNPs). Reference outputs live at
 ``gemma_demo/output/`` and the source genotype/phenotype at ``benchmark/data/``.
 
 The charter's Section 16 specifies 4th-decimal-place agreement as a *target*;
-the thresholds enforced here are the tightest that the current TorchGWAS
+the thresholds enforced here are the tightest that the current TorchGenomics
 implementation reliably meets, and they serve as a regression gate: if a code
 change drops below these levels, the test fails and the gap is surfaced for
 triage. Comments show the actual observed level on the reference dataset.
@@ -38,10 +38,10 @@ import pandas as pd
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multi_trait_lmm import MultiTraitLMM
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.config import STAT_DTYPE, NumericalConfig
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 pytestmark = pytest.mark.golden
 
@@ -175,7 +175,7 @@ def mdp_data():
 
 @pytest.fixture(scope="module")
 def single_null(mdp_data):
-    """Fit TorchGWAS single-trait null once, reuse across tests."""
+    """Fit TorchGenomics single-trait null once, reuse across tests."""
     model = SingleTraitLMM(config=NumericalConfig(reml_method="emma"))
     nf = model.fit_null(mdp_data["Y1"], mdp_data["X0"], K=mdp_data["K"])
     return model, nf
@@ -197,10 +197,10 @@ class TestGEMMALMMSingleTrait:
         ref = _parse_gemma_log(os.path.join(GEMMA_OUT, "mdp_lmm_all.log.txt"))
         assert "vg" in ref and "ve" in ref, f"GEMMA log missing vg/ve, got {ref.keys()}"
         assert abs(float(nf.sig2_g) - ref["vg"]) / ref["vg"] < 1e-3, (
-            f"Vg mismatch: TorchGWAS={float(nf.sig2_g):.6f} vs GEMMA={ref['vg']:.6f}"
+            f"Vg mismatch: TorchGenomics={float(nf.sig2_g):.6f} vs GEMMA={ref['vg']:.6f}"
         )
         assert abs(float(nf.sig2_e) - ref["ve"]) / ref["ve"] < 1e-3, (
-            f"Ve mismatch: TorchGWAS={float(nf.sig2_e):.6f} vs GEMMA={ref['ve']:.6f}"
+            f"Ve mismatch: TorchGenomics={float(nf.sig2_e):.6f} vs GEMMA={ref['ve']:.6f}"
         )
 
     def test_log_likelihood(self, single_null):
@@ -209,7 +209,7 @@ class TestGEMMALMMSingleTrait:
         ref = _parse_gemma_log(os.path.join(GEMMA_OUT, "mdp_lmm_all.log.txt"))
         assert "ll_reml" in ref, f"GEMMA log missing REML log-likelihood: {ref.keys()}"
         assert abs(float(nf.log_likelihood) - ref["ll_reml"]) < 1e-2, (
-            f"REML logL mismatch: TorchGWAS={float(nf.log_likelihood):.4f} "
+            f"REML logL mismatch: TorchGenomics={float(nf.log_likelihood):.4f} "
             f"vs GEMMA={ref['ll_reml']:.4f}"
         )
 

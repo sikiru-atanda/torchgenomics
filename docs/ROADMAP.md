@@ -1,4 +1,4 @@
-# TorchGWAS Roadmap
+# TorchGenomics Roadmap
 
 This page tracks improvements that are **intentionally deferred** out of the
 active execution stream, plus the set of candidate feature phases on the
@@ -20,13 +20,13 @@ critical path. None of them change user-visible behaviour.
 
 ### 1. CLI decomposition
 
-`torchgwas/cli.py` is a single ~4700-line module with 40 subcommands inline.
+`torchgenomics/cli.py` is a single ~4700-line module with 40 subcommands inline.
 Every new subcommand grows the file; every refactor requires reading the
 full surface. The suggested split:
 
 ```
-torchgwas/cli/
-├── __init__.py          # thin dispatcher; keeps `torchgwas.cli:main` stable
+torchgenomics/cli/
+├── __init__.py          # thin dispatcher; keeps `torchgenomics.cli:main` stable
 ├── scans.py             # glm/lmm/mvlmm/mklmm/gxe/bayes/farmcpu/blink/poly
 ├── pgs.py               # pgs-fit, pgs-score
 ├── postgwas.py          # ldsc, meta, clump, coloc, mr, enrichment, twas
@@ -38,13 +38,13 @@ torchgwas/cli/
 ```
 
 **Target**: each file ≤ 800 lines. The public entry point stays at
-`torchgwas.cli:main` (re-exported from `__init__.py`), so neither the
+`torchgenomics.cli:main` (re-exported from `__init__.py`), so neither the
 `console_scripts` entry in `pyproject.toml` nor any user script changes.
 No behaviour change.
 
 **Effort estimate**: 1–2 days. The work is mechanical (move, update
 imports, re-run `pytest tests/test_cli_*.py`) but needs care to preserve
-the argparse grouping so `torchgwas --help` output is unchanged.
+the argparse grouping so `torchgenomics --help` output is unchanged.
 
 ### 2. `csrc/common/` consolidation
 
@@ -56,7 +56,7 @@ re-import OpenMP pragma wrappers. Suggested: extract these into
 - `tensor_from_numpy(py::array, ScalarType)` — buffer-protocol check +
   `torch::from_blob` with ownership management.
 - `OMP_PARALLEL_FOR(n)` macro that collapses to a no-op when
-  `TORCHGWAS_DISABLE_OPENMP` is set at build time.
+  `TORCHGENOMICS_DISABLE_OPENMP` is set at build time.
 - Shared `check_shape_2d` / `check_contiguous` assertions.
 
 **Target**: each of the 24 `.cpp` files loses 15–40 lines of boilerplate
@@ -67,7 +67,7 @@ benchmarks and tests must stay green to within numerical tolerance.
 toolchain matrix (Linux/macOS clang, Linux gcc, Windows MSVC) produces
 bit-identical outputs before/after.
 
-### 3. Visual-regression harness for `torchgwas.viz`
+### 3. Visual-regression harness for `torchgenomics.viz`
 
 `tests/test_viz_*.py` exercise the Manhattan / Miami / QQ / Haploview
 entry points as **headless smoke tests** — they assert the call doesn't
@@ -118,7 +118,7 @@ to any of these — each needs a brainstorming pass before execution.
   from a genotyped panel to the imputed-dosage panel with proper
   treatment of imputation uncertainty (ties into the existing
   `GULM` / `GU-LMM` work). Delivered sensibly, this would let users run
-  `torchgwas lmm-scan --genotype raw.bed --impute-ref 1000G.vcf.gz` in
+  `torchgenomics lmm-scan --genotype raw.bed --impute-ref 1000G.vcf.gz` in
   one step.
 - **Phase 51 — Sex-chromosome GWAS.** The current LMM scanners assume
   autosomal variants. X-chromosome support requires ploidy-aware dosage
@@ -131,7 +131,7 @@ to any of these — each needs a brainstorming pass before execution.
   `SetBasedScanner` already ships SKAT / SKAT-O / burden; the next tier
   is ACAT-O, STAAR, and regenie-style step-2 rare-variant scores.
 - **Phase 54 — Full R wrapper release.** Memory item
-  `project_rtorchgwas_windows_install.md` catalogues the Windows install
+  `project_rtorchgenomics_windows_install.md` catalogues the Windows install
   pitfalls. The R wrapper is installable but not on CRAN; a CRAN
   submission requires tests that don't touch the internet and a
   vignette that walks through a published dataset.

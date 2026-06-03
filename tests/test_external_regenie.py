@@ -1,4 +1,4 @@
-"""External-tool harness: regenie vs TorchGWAS reference comparison.
+"""External-tool harness: regenie vs TorchGenomics reference comparison.
 
 These tests are skipped by default (they require the regenie binary, the
 fetched fixture, and the harness reference outputs). To run:
@@ -62,7 +62,7 @@ def _require_binary() -> None:
 def compare_mod():
     # Match the docs/validation.md golden CI gate by exercising the
     # pure-Python reference path (native disabled).
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
@@ -80,7 +80,7 @@ def test_step1_loco_predictor_finite(compare_mod) -> None:
 
 
 def test_step2_quantitative_matches_regenie(compare_mod) -> None:
-    """regenie Step 2 --qt vs TorchGWAS GLM Wald with LOCO offset on MDP."""
+    """regenie Step 2 --qt vs TorchGenomics GLM Wald with LOCO offset on MDP."""
     _require_binary()
     _require_artifacts(
         DATA / "mdp.bed", DATA / "regenie_pheno.tsv", DATA / "regenie_covar.tsv",
@@ -93,7 +93,7 @@ def test_step2_quantitative_matches_regenie(compare_mod) -> None:
 
 
 def test_step2_binary_firth_matches_regenie(compare_mod) -> None:
-    """regenie Step 2 --bt --firth vs TorchGWAS BinaryGLM(firth=True) on MDP."""
+    """regenie Step 2 --bt --firth vs TorchGenomics BinaryGLM(firth=True) on MDP."""
     _require_binary()
     _require_artifacts(
         DATA / "mdp.bed", DATA / "regenie_pheno.tsv", DATA / "regenie_covar.tsv",

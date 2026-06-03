@@ -1,4 +1,4 @@
-"""Tests for ``torchgwas.postgwas._multi_ancestry`` — multi-ancestry meta-analysis."""
+"""Tests for ``torchgenomics.postgwas._multi_ancestry`` — multi-ancestry meta-analysis."""
 from __future__ import annotations
 
 import math
@@ -6,8 +6,8 @@ import math
 import pytest
 import torch
 
-from torchgwas.postgwas._multi_ancestry import MultiAncestryResult, mantra, mr_mega
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._multi_ancestry import MultiAncestryResult, mantra, mr_mega
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ── Helper ───────────────────────────────────────────────────────────────
 

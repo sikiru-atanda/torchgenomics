@@ -1,4 +1,4 @@
-"""External-tool harness: SoyNAM + rrBLUP vs TorchGWAS reference.
+"""External-tool harness: SoyNAM + rrBLUP vs TorchGenomics reference.
 
 These tests are skipped by default (they require the R packages installed
 by the harness install.sh, the extracted SoyNAM TSVs from fetch_data.sh,
@@ -79,7 +79,7 @@ def _require_install() -> None:
 @pytest.fixture(scope="module")
 def compare_mod():
     # Disable native so we exercise the pure-Python reference path.
-    os.environ.setdefault("TORCHGWAS_DISABLE_NATIVE", "1")
+    os.environ.setdefault("TORCHGENOMICS_DISABLE_NATIVE", "1")
     return _load_compare_module()
 
 
@@ -95,7 +95,7 @@ def _required_artifacts() -> list[Path]:
 
 
 def test_kinship_matches_rrblup_amat(compare_mod) -> None:
-    """rrBLUP A.mat vs TorchGWAS grm_vanraden — kinship matrix equivalence."""
+    """rrBLUP A.mat vs TorchGenomics grm_vanraden — kinship matrix equivalence."""
     _require_install()
     _require_artifacts(*_required_artifacts())
     rep = compare_mod.compare_kinship(DATA, OUT)
@@ -105,7 +105,7 @@ def test_kinship_matches_rrblup_amat(compare_mod) -> None:
 
 
 def test_stlmm_matches_rrblup_gwas(compare_mod) -> None:
-    """rrBLUP::GWAS vs TorchGWAS SingleTraitLMM — variance components + −log10p."""
+    """rrBLUP::GWAS vs TorchGenomics SingleTraitLMM — variance components + −log10p."""
     _require_install()
     _require_artifacts(*_required_artifacts())
     rep = compare_mod.compare_stlmm(DATA, OUT)

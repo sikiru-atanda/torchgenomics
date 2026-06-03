@@ -22,8 +22,8 @@ import warnings
 import pytest
 import torch
 
-from torchgwas.models.base import ScanResult
-from torchgwas.stats import PVEResult, compute_pve
+from torchgenomics.models.base import ScanResult
+from torchgenomics.stats import PVEResult, compute_pve
 
 
 def _make_scan_result(

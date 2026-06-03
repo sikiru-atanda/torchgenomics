@@ -7,10 +7,10 @@ import math
 import pytest
 import torch
 
-from torchgwas.config import NumericalConfig
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import update_null
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.config import NumericalConfig
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import update_null
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -152,7 +152,7 @@ class TestUpdateNullMultiTrait:
         Y[:, 0] = L @ torch.randn(n, dtype=torch.float64) + torch.randn(n, dtype=torch.float64)
         Y[:, 1] = L @ torch.randn(n, dtype=torch.float64) + torch.randn(n, dtype=torch.float64)
 
-        from torchgwas.models.multi_trait_lmm import MultiTraitLMM
+        from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
 
         config = NumericalConfig()
         config.reml_max_iter = 3
@@ -177,7 +177,7 @@ class TestUpdateNullMultiTrait:
         Y[:, 0] = L @ torch.randn(n, dtype=torch.float64) + torch.randn(n, dtype=torch.float64)
         Y[:, 1] = L @ torch.randn(n, dtype=torch.float64) + torch.randn(n, dtype=torch.float64)
 
-        from torchgwas.models.multi_trait_lmm import MultiTraitLMM
+        from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
 
         config = NumericalConfig()
         config.reml_max_iter = 5
@@ -207,7 +207,7 @@ class TestUpdateNullMultiKernel:
         L = torch.linalg.cholesky(K_a + 1e-6 * torch.eye(n, dtype=torch.float64))
         Y = L @ torch.randn(n, dtype=torch.float64) + torch.randn(n, dtype=torch.float64)
 
-        from torchgwas.models.multi_kernel_lmm import MultiKernelLMM
+        from torchgenomics.models.multi_kernel_lmm import MultiKernelLMM
 
         config = NumericalConfig()
         config.reml_max_iter = 3

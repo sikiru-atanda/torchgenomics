@@ -1,4 +1,4 @@
-// Native accelerator for ``torchgwas.preprocess.impute.impute_ld``.
+// Native accelerator for ``torchgenomics.preprocess.impute.impute_ld``.
 //
 // The Python reference iterates ``len(miss)`` missing entries and for each
 // recomputes per-window correlations against the target SNP via repeated

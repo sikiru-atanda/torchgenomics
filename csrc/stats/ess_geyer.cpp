@@ -1,6 +1,6 @@
 // Geyer initial-positive sequence ESS estimator.
 //
-// C++ port of the inner loop of torchgwas.pgs.diagnostics.ess. Given a
+// C++ port of the inner loop of torchgenomics.pgs.diagnostics.ess. Given a
 // per-lag autocorrelation matrix ``acorr_mean`` of shape (N, m) (one column
 // per parameter, averaged across chains), compute the per-parameter ESS:
 //

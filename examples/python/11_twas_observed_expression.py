@@ -21,8 +21,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from torchgwas.postgwas import twas_observed_expression
-from torchgwas.preprocess import inverse_normal_transform, quantile_normalize
+from torchgenomics.postgwas import twas_observed_expression
+from torchgenomics.preprocess import inverse_normal_transform, quantile_normalize
 
 OUT_DIR = Path(__file__).resolve().parent / "results"
 OUT_DIR.mkdir(parents=True, exist_ok=True)

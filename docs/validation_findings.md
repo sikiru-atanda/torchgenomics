@@ -1,4 +1,4 @@
-# TorchGWAS Validation Findings Ledger
+# TorchGenomics Validation Findings Ledger
 
 Append-only ledger of every divergence found during the validation
 campaign. Schema and policy: spec §11 + §9.
@@ -12,29 +12,29 @@ Classifications per F3:
 
 | Date | Pillar | Tier | Module / Function | Reference | Dataset | Δ observed | Tolerance | F3 class | Resolution |
 |------|--------|------|-------------------|-----------|---------|------------|-----------|----------|------------|
-| 2026-04-30 | A | 1 | `torchgwas.stats.calibrate.compare_pvalues` | self-paired p-vector | synthetic | function raised `NotImplementedError` (Phase 4 stub) | impl required for Tier 1 coverage | V1-core / fix-now | implemented compare_pvalues with `n / mean_abs_diff / max_abs_diff / frac_within_tolerance / corr_neglog10 / mean_abs_diff_neglog10 / tolerance` keys; -log10 corr is NaN-safe; commit on this branch |
-| 2026-04-30 | A | 1 | `torchgwas.models.lmm_single` / `lmm_multi` / `lmm_multi_fit` | canonical-path import | n/a | three modules carried Phase 4/5 `NotImplementedError` stubs that diverged from the actual Phase-4/5 implementations in `single_trait_lmm` / `multi_trait_lmm` / `optim.pxem_nr_mvreml` / `optim.lbfgs_reml` | impl required for Tier 1 coverage | V1-core / fix-now | converted `lmm_single` and `lmm_multi` to thin re-export modules and replaced `lmm_multi_fit.fit_mvlmm_null_{ai_reml,lbfgs}` with wrappers around `pxem_nr_mvreml` / `lbfgs_reml` returning a populated `NullFit`; commit on this branch |
-| 2026-04-30 | A | 1 | `torchgwas.optim.fisher_scoring.fisher_scoring_reml` | self-paired EMMA REML | synthetic n=30 single-trait | function raised `NotImplementedError` (Phase 4 stub) | impl required for Tier 1 coverage | V1-core / fix-now | implemented Fisher-scoring REML for single-trait LMM in rotated eigenspace (expected-info Newton update on lambda = sig2_g/sig2_e, profiled sig2_e analytically), verified log-likelihood is within tolerance of EMMA grid + Brent on the same problem; commit on this branch |
-| 2026-04-30 | A | 2 | `torchgwas.io.convert.convert` (`_write_zarr`) | Tier-2 behavioral test on zarr 3.1.5 | tiny.bed → zarr round-trip in `tmp_path` | `TypeError: AsyncGroup.create_dataset() missing 1 required keyword-only argument: 'shape'` — zarr v3 dropped the `data=` kwarg path used by `_write_zarr` | impl required for Tier 2 coverage; `io` is V1-platform | V1-core / fix-now | switched `_write_zarr` to a v3-aware path: detect `create_array` and pass `shape`+`dtype`+`chunks` then slice-assign data; v2 fallback retains `create_dataset(name, data=...)`; verified round-trip via `tests/test_coverage_io.py::TestConvert::test_edge_bed_to_zarr` and confirmed existing `tests/test_io_zarr.py` still passes; commit on this branch |
-| 2026-04-30 | A | 2 | `torchgwas.postgwas._ld_scores.compute_ld_scores` | Tier-2 behavioral test on shape contract | synthetic G(50, 10) + 5-element chr_labels | function silently truncated the per-SNP grouping loop to the shorter of `m=G.shape[1]` and `len(chr_labels)`, leaving trailing SNPs at LD score = 1.0 (the initialised value) instead of erroring | impl required for Tier 2 coverage; `postgwas` is V1-platform | V1-core / fix-now | added length guards on `pos_arr` and `chr_arr` against `m = G.shape[1]` raising `ValueError` with explicit message before any iteration; verified via `tests/test_coverage_postgwas_heritability.py::TestComputeLdScores::test_chr_labels_length_mismatch_errors` and confirmed all existing `test_postgwas_ldsc.py` / consumers still pass; commit on this branch |
-| 2026-04-30 | A | 2 | `torchgwas.postgwas._clump.ld_clump` | Tier-2 behavioral test on shape contract | synthetic p(5) + G(50, 10) | function silently used `m = p.shape[0]` and ignored excess SNP columns of G, producing a `ClumpResult` over the wrong subset instead of raising | impl required for Tier 2 coverage; `postgwas` is V1-platform | V1-core / fix-now | added length guards on `G.shape[1]`, `pos`, and `chr_labels` against `m = p.shape[0]` raising `ValueError` before any iteration; verified via `tests/test_coverage_postgwas_heritability.py::TestLdClump::test_p_g_size_mismatch_errors` and confirmed all existing `test_postgwas_clump.py` / `test_native_postgwas_clump.py` / CLI consumers still pass; commit on this branch |
-| 2026-04-30 | B | B3 | `torchgwas.postgwas._mr.mr_egger` | TwoSampleMR 0.7.5 `mr_egger_regression` + `mr_pleiotropy_test` | simulated K=30 instruments, θ=0.5, seed=42 | TG slope β̂ = 0.4648 vs R = 0.5124 (\|Δ\| 4.76e-2); intercept = +0.0048 vs R = -0.0088 (\|Δ\| 1.36e-2); SE = 0.0722 vs R = 0.1121 (\|Δ\| 4.0e-2) — sign convention, overdispersion-clip direction, and p-value distribution all diverged | spec §16 anchor: \|Δ β\| < 1e-3, \|Δ intercept\| < 1e-3 | V1-core / fix-now | rewrote `mr_egger` to follow Bowden 2015 / TwoSampleMR exactly: (1) Bowden orientation (flip outcome betas by `sign(bx)` and take `bx ← \|bx\|`), (2) `lm()`-style SE divided by `min(1, sigma_hat)` (deflate only under under-dispersion), (3) Student's t with K-2 d.f. for slope + intercept p-values. Post-fix: \|Δ β\| 4.1e-5, \|Δ intercept\| 2.2e-5, \|Δ SE\| 4.1e-5. Updated `tests/test_bench_mr.py::test_bench_egger_pvalue_slope_matches_scipy` to reference `scipy.stats.t.sf` instead of `norm.sf`; all 88 MR-related tests still pass. Verified via `validation/external/twosamplemr/compare.py::compare_egger` (4/4 checks pass). |
-| 2026-04-30 | B | B3 | `torchgwas.postgwas._mr.mr_presso` | MRPRESSO 1.0 `mr_presso(NbDistribution=1000)` | simulated K=30 instruments, θ=0.5, 3 planted pleiotropic SNPs, seed=42 | pre-fix: TG global p = 1.0 vs R = 1e-3 (\|Δ\| 9.99e-1); outlier-set Jaccard 0.5 (R flags {15,21}; TG flags {15}; truth {15,18,21}); raw IVW β agrees to 3e-5 | algorithmic divergence: TG used permutation null over outcome betas; MRPRESSO uses parametric LOO bootstrap (Verbanck 2018 Eq. 2) | post-V1 / fix-now (Phase 44 follow-up) | ported MRPRESSO 1.0's parametric LOO bootstrap into `torchgwas.postgwas._mr.mr_presso`: (1) replaced the per-replicate `randperm`-based outcome-shuffle null with a vectorized parametric draw `bx_boot ~ N(bx, se_x²)` + `by_boot ~ N(β_LOO_obs · bx, se_y²)` matching MRPRESSO's `getRandomData` exactly; (2) replaced the LOO-residual permutation outlier test with the unweighted-residual-from-observed-β_LOO formulation matching MRPRESSO's per-SNP `Dif`/`Exp` block; (3) added Bonferroni correction `min(p_i·K, 1)` matching the `apply(cbind(p*nrow,1), 1, min)` line; (4) added `null="parametric"` (new default) / `null="permutation"` (legacy) selector for backward compat. Post-fix: \|Δ raw β\| 3.0e-5, \|Δ corrected β\| 3.1e-5, \|Δ global p\| 1.0e-3 (MC-noise-bound at NbDistribution=1000), outlier set {15,21} = {15,21} exact match. Updated `validation/external/twosamplemr/compare.py`: tightened `TOL_PRESSO_GLOBAL_P` from 1.0 → 5e-2, `TOL_PRESSO_BETA_CORR` from 1e-1 → 5e-3. New tests `tests/test_coverage_postgwas_mr_twas.py::TestMrPresso::{test_both_nulls_run,test_parametric_default,test_invalid_null_raises,test_parametric_matches_mrpresso_reference}` gate the parametric contract end-to-end. Updated `tests/test_bench_mr.py::test_bench_presso_rss_matches_manual` to reference the LOO RSS formulation. All 4/4 TwoSampleMR comparisons pass. |
-| 2026-04-30 | B | B3 | `torchgwas.postgwas._mr.mr_weighted_median` | TwoSampleMR 0.7.5 `mr_weighted_median` | simulated K=30 instruments, θ=0.5, seed=42 | bootstrap SE: TG = 0.0293 vs R = 0.0651 (\|Δ\| 3.6e-2); point estimate β̂ agrees to 2.2e-4 | implementation choice: TG uses non-parametric resample-with-replacement bootstrap; TwoSampleMR uses parametric bootstrap (resample bx, by from N(., se²)) | post-V1 / documented | tolerance floored at 5e-2 with comment; point-estimate tolerance 5e-3 still gates the weighted-median estimator itself; future TG-side `parametric=True` flag would close the SE gap. Not a Pillar B prerequisite. |
-| 2026-04-30 | C | C1 | `torchgwas.cli` (`glmm-scan` / `me-glmm-scan` / `survival-scan`) | smoke matrix on `tests/fixtures/tiny.bed` + tiny phenotype | three callers raised `ModuleNotFoundError: No module named 'torchgwas.linalg.grm'` — they imported a module that does not exist in `torchgwas/linalg/` (only `kinship.py`, no `grm.py`) and called the missing `grm()` helper | impl required: V1-platform CLI must run on minimum-viable input | V1-platform / fix-now | replaced all three sites in `torchgwas/cli.py` (lines 1580, 1637, 1682) with `from .linalg.kinship import grm_vanraden` + `K, _ = grm_vanraden(G.to(device))` (the canonical streaming helper used by every other LMM-family scan in the same file). All three subcommands now exit 0 on the tiny fixture and emit `<output>.assoc.tsv`. Verified via `tests/test_cli_matrix.py` smoke cells. |
-| 2026-04-30 | C | C1 | `torchgwas.cli._apply_correction_and_save` | smoke matrix on `tests/fixtures/tiny.bed` for `gxe-scan` / `mvlmm-scan` / `me-glmm-scan` | helper assumed every scan result exposed scalar `result.p` + 1-D `beta` / `se` / `stat`. Three real models violate this: `GxEScanResult` exposes `beta_main` / `beta_interact` / `p_main` / `p_interact` / `p_joint` (no `beta` / `p`); `mvlmm-scan` / `me-glmm-scan` return 2-D `beta` / `se` / `stat` of shape `(m, d)` from which pandas refused to build a DataFrame (`ValueError: Per-column arrays must each be 1-dimensional`) | impl required: V1-platform CLI must run on minimum-viable input | V1-platform / fix-now | restructured `_apply_correction_and_save` (`torchgwas/cli.py` line 3029): (1) prefer `result.p_joint` when `result.p` is absent, raising a clear AttributeError otherwise; (2) flatten 2-D tensors into per-dimension columns (`BETA_d0`, `BETA_d1`, …); (3) detect GxE schema (`beta_main` / `beta_interact` / `stat_joint`) and emit `BETA_MAIN` / `BETA_INTERACT` / `STAT_JOINT` columns alongside `P_MAIN` / `P_INTERACT` / `P` (= joint p); (4) made `result.inference_type` access `getattr`-safe. All three subcommands now exit 0 on the tiny fixture; verified via `tests/test_cli_matrix.py` smoke cells. |
-| 2026-04-30 | C | C1 | `torchgwas.cli._load_genotype_matrix` | smoke matrix on `tests/fixtures/tiny.bed` for `impute --method mean` | helper iterated `reader.iter_chunks()` and dereferenced ``chunk.dosage``, but every reader in `torchgwas/io/` yields a ``(G_chunk, vmeta)`` tuple. Result: `AttributeError: 'tuple' object has no attribute 'dosage'` on `impute` for every committed format | impl required: V1-platform CLI must run on minimum-viable input | V1-platform / fix-now | rewrote `_load_genotype_matrix` to handle both shapes (canonical tuple + legacy `.dosage` attribute), pulling out the genotype tensor in either case; verified via the three `impute-{bed,hmp,csv}` cells in `tests/test_cli_matrix.py`. |
-| 2026-04-30 | C | C1 | `torchgwas.cli._cmd_lmm_scan_single` (and `SparseLMM` branch) | GPU smoke cell `lmm-scan-bed` with `--device cuda` | when `--device cuda` was passed, K was constructed on CUDA via `grm_vanraden_streaming(device=device)` but Y / X0 were left on CPU; `single_trait_lmm.fit_null` then hit `RuntimeError: Expected all tensors to be on the same device, but got mat is on cuda:0, different from other tensors on cpu` inside the eigenspace rotation. Parallel `mvlmm-scan` path already had the right `.to(device)` calls (lines 499–501) | impl required: GPU codepath must run end-to-end | V1-platform / fix-now | added explicit `.to(device)` for Y, X0, K before `model.fit_null(...)` in both the dense and sparse branches of `_cmd_lmm_scan_single`; verified via the GPU subset of `tests/test_cli_matrix.py` (RTX 2000 Ada). |
+| 2026-04-30 | A | 1 | `torchgenomics.stats.calibrate.compare_pvalues` | self-paired p-vector | synthetic | function raised `NotImplementedError` (Phase 4 stub) | impl required for Tier 1 coverage | V1-core / fix-now | implemented compare_pvalues with `n / mean_abs_diff / max_abs_diff / frac_within_tolerance / corr_neglog10 / mean_abs_diff_neglog10 / tolerance` keys; -log10 corr is NaN-safe; commit on this branch |
+| 2026-04-30 | A | 1 | `torchgenomics.models.lmm_single` / `lmm_multi` / `lmm_multi_fit` | canonical-path import | n/a | three modules carried Phase 4/5 `NotImplementedError` stubs that diverged from the actual Phase-4/5 implementations in `single_trait_lmm` / `multi_trait_lmm` / `optim.pxem_nr_mvreml` / `optim.lbfgs_reml` | impl required for Tier 1 coverage | V1-core / fix-now | converted `lmm_single` and `lmm_multi` to thin re-export modules and replaced `lmm_multi_fit.fit_mvlmm_null_{ai_reml,lbfgs}` with wrappers around `pxem_nr_mvreml` / `lbfgs_reml` returning a populated `NullFit`; commit on this branch |
+| 2026-04-30 | A | 1 | `torchgenomics.optim.fisher_scoring.fisher_scoring_reml` | self-paired EMMA REML | synthetic n=30 single-trait | function raised `NotImplementedError` (Phase 4 stub) | impl required for Tier 1 coverage | V1-core / fix-now | implemented Fisher-scoring REML for single-trait LMM in rotated eigenspace (expected-info Newton update on lambda = sig2_g/sig2_e, profiled sig2_e analytically), verified log-likelihood is within tolerance of EMMA grid + Brent on the same problem; commit on this branch |
+| 2026-04-30 | A | 2 | `torchgenomics.io.convert.convert` (`_write_zarr`) | Tier-2 behavioral test on zarr 3.1.5 | tiny.bed → zarr round-trip in `tmp_path` | `TypeError: AsyncGroup.create_dataset() missing 1 required keyword-only argument: 'shape'` — zarr v3 dropped the `data=` kwarg path used by `_write_zarr` | impl required for Tier 2 coverage; `io` is V1-platform | V1-core / fix-now | switched `_write_zarr` to a v3-aware path: detect `create_array` and pass `shape`+`dtype`+`chunks` then slice-assign data; v2 fallback retains `create_dataset(name, data=...)`; verified round-trip via `tests/test_coverage_io.py::TestConvert::test_edge_bed_to_zarr` and confirmed existing `tests/test_io_zarr.py` still passes; commit on this branch |
+| 2026-04-30 | A | 2 | `torchgenomics.postgwas._ld_scores.compute_ld_scores` | Tier-2 behavioral test on shape contract | synthetic G(50, 10) + 5-element chr_labels | function silently truncated the per-SNP grouping loop to the shorter of `m=G.shape[1]` and `len(chr_labels)`, leaving trailing SNPs at LD score = 1.0 (the initialised value) instead of erroring | impl required for Tier 2 coverage; `postgwas` is V1-platform | V1-core / fix-now | added length guards on `pos_arr` and `chr_arr` against `m = G.shape[1]` raising `ValueError` with explicit message before any iteration; verified via `tests/test_coverage_postgwas_heritability.py::TestComputeLdScores::test_chr_labels_length_mismatch_errors` and confirmed all existing `test_postgwas_ldsc.py` / consumers still pass; commit on this branch |
+| 2026-04-30 | A | 2 | `torchgenomics.postgwas._clump.ld_clump` | Tier-2 behavioral test on shape contract | synthetic p(5) + G(50, 10) | function silently used `m = p.shape[0]` and ignored excess SNP columns of G, producing a `ClumpResult` over the wrong subset instead of raising | impl required for Tier 2 coverage; `postgwas` is V1-platform | V1-core / fix-now | added length guards on `G.shape[1]`, `pos`, and `chr_labels` against `m = p.shape[0]` raising `ValueError` before any iteration; verified via `tests/test_coverage_postgwas_heritability.py::TestLdClump::test_p_g_size_mismatch_errors` and confirmed all existing `test_postgwas_clump.py` / `test_native_postgwas_clump.py` / CLI consumers still pass; commit on this branch |
+| 2026-04-30 | B | B3 | `torchgenomics.postgwas._mr.mr_egger` | TwoSampleMR 0.7.5 `mr_egger_regression` + `mr_pleiotropy_test` | simulated K=30 instruments, θ=0.5, seed=42 | TG slope β̂ = 0.4648 vs R = 0.5124 (\|Δ\| 4.76e-2); intercept = +0.0048 vs R = -0.0088 (\|Δ\| 1.36e-2); SE = 0.0722 vs R = 0.1121 (\|Δ\| 4.0e-2) — sign convention, overdispersion-clip direction, and p-value distribution all diverged | spec §16 anchor: \|Δ β\| < 1e-3, \|Δ intercept\| < 1e-3 | V1-core / fix-now | rewrote `mr_egger` to follow Bowden 2015 / TwoSampleMR exactly: (1) Bowden orientation (flip outcome betas by `sign(bx)` and take `bx ← \|bx\|`), (2) `lm()`-style SE divided by `min(1, sigma_hat)` (deflate only under under-dispersion), (3) Student's t with K-2 d.f. for slope + intercept p-values. Post-fix: \|Δ β\| 4.1e-5, \|Δ intercept\| 2.2e-5, \|Δ SE\| 4.1e-5. Updated `tests/test_bench_mr.py::test_bench_egger_pvalue_slope_matches_scipy` to reference `scipy.stats.t.sf` instead of `norm.sf`; all 88 MR-related tests still pass. Verified via `validation/external/twosamplemr/compare.py::compare_egger` (4/4 checks pass). |
+| 2026-04-30 | B | B3 | `torchgenomics.postgwas._mr.mr_presso` | MRPRESSO 1.0 `mr_presso(NbDistribution=1000)` | simulated K=30 instruments, θ=0.5, 3 planted pleiotropic SNPs, seed=42 | pre-fix: TG global p = 1.0 vs R = 1e-3 (\|Δ\| 9.99e-1); outlier-set Jaccard 0.5 (R flags {15,21}; TG flags {15}; truth {15,18,21}); raw IVW β agrees to 3e-5 | algorithmic divergence: TG used permutation null over outcome betas; MRPRESSO uses parametric LOO bootstrap (Verbanck 2018 Eq. 2) | post-V1 / fix-now (Phase 44 follow-up) | ported MRPRESSO 1.0's parametric LOO bootstrap into `torchgenomics.postgwas._mr.mr_presso`: (1) replaced the per-replicate `randperm`-based outcome-shuffle null with a vectorized parametric draw `bx_boot ~ N(bx, se_x²)` + `by_boot ~ N(β_LOO_obs · bx, se_y²)` matching MRPRESSO's `getRandomData` exactly; (2) replaced the LOO-residual permutation outlier test with the unweighted-residual-from-observed-β_LOO formulation matching MRPRESSO's per-SNP `Dif`/`Exp` block; (3) added Bonferroni correction `min(p_i·K, 1)` matching the `apply(cbind(p*nrow,1), 1, min)` line; (4) added `null="parametric"` (new default) / `null="permutation"` (legacy) selector for backward compat. Post-fix: \|Δ raw β\| 3.0e-5, \|Δ corrected β\| 3.1e-5, \|Δ global p\| 1.0e-3 (MC-noise-bound at NbDistribution=1000), outlier set {15,21} = {15,21} exact match. Updated `validation/external/twosamplemr/compare.py`: tightened `TOL_PRESSO_GLOBAL_P` from 1.0 → 5e-2, `TOL_PRESSO_BETA_CORR` from 1e-1 → 5e-3. New tests `tests/test_coverage_postgwas_mr_twas.py::TestMrPresso::{test_both_nulls_run,test_parametric_default,test_invalid_null_raises,test_parametric_matches_mrpresso_reference}` gate the parametric contract end-to-end. Updated `tests/test_bench_mr.py::test_bench_presso_rss_matches_manual` to reference the LOO RSS formulation. All 4/4 TwoSampleMR comparisons pass. |
+| 2026-04-30 | B | B3 | `torchgenomics.postgwas._mr.mr_weighted_median` | TwoSampleMR 0.7.5 `mr_weighted_median` | simulated K=30 instruments, θ=0.5, seed=42 | bootstrap SE: TG = 0.0293 vs R = 0.0651 (\|Δ\| 3.6e-2); point estimate β̂ agrees to 2.2e-4 | implementation choice: TG uses non-parametric resample-with-replacement bootstrap; TwoSampleMR uses parametric bootstrap (resample bx, by from N(., se²)) | post-V1 / documented | tolerance floored at 5e-2 with comment; point-estimate tolerance 5e-3 still gates the weighted-median estimator itself; future TG-side `parametric=True` flag would close the SE gap. Not a Pillar B prerequisite. |
+| 2026-04-30 | C | C1 | `torchgenomics.cli` (`glmm-scan` / `me-glmm-scan` / `survival-scan`) | smoke matrix on `tests/fixtures/tiny.bed` + tiny phenotype | three callers raised `ModuleNotFoundError: No module named 'torchgenomics.linalg.grm'` — they imported a module that does not exist in `torchgenomics/linalg/` (only `kinship.py`, no `grm.py`) and called the missing `grm()` helper | impl required: V1-platform CLI must run on minimum-viable input | V1-platform / fix-now | replaced all three sites in `torchgenomics/cli.py` (lines 1580, 1637, 1682) with `from .linalg.kinship import grm_vanraden` + `K, _ = grm_vanraden(G.to(device))` (the canonical streaming helper used by every other LMM-family scan in the same file). All three subcommands now exit 0 on the tiny fixture and emit `<output>.assoc.tsv`. Verified via `tests/test_cli_matrix.py` smoke cells. |
+| 2026-04-30 | C | C1 | `torchgenomics.cli._apply_correction_and_save` | smoke matrix on `tests/fixtures/tiny.bed` for `gxe-scan` / `mvlmm-scan` / `me-glmm-scan` | helper assumed every scan result exposed scalar `result.p` + 1-D `beta` / `se` / `stat`. Three real models violate this: `GxEScanResult` exposes `beta_main` / `beta_interact` / `p_main` / `p_interact` / `p_joint` (no `beta` / `p`); `mvlmm-scan` / `me-glmm-scan` return 2-D `beta` / `se` / `stat` of shape `(m, d)` from which pandas refused to build a DataFrame (`ValueError: Per-column arrays must each be 1-dimensional`) | impl required: V1-platform CLI must run on minimum-viable input | V1-platform / fix-now | restructured `_apply_correction_and_save` (`torchgenomics/cli.py` line 3029): (1) prefer `result.p_joint` when `result.p` is absent, raising a clear AttributeError otherwise; (2) flatten 2-D tensors into per-dimension columns (`BETA_d0`, `BETA_d1`, …); (3) detect GxE schema (`beta_main` / `beta_interact` / `stat_joint`) and emit `BETA_MAIN` / `BETA_INTERACT` / `STAT_JOINT` columns alongside `P_MAIN` / `P_INTERACT` / `P` (= joint p); (4) made `result.inference_type` access `getattr`-safe. All three subcommands now exit 0 on the tiny fixture; verified via `tests/test_cli_matrix.py` smoke cells. |
+| 2026-04-30 | C | C1 | `torchgenomics.cli._load_genotype_matrix` | smoke matrix on `tests/fixtures/tiny.bed` for `impute --method mean` | helper iterated `reader.iter_chunks()` and dereferenced ``chunk.dosage``, but every reader in `torchgenomics/io/` yields a ``(G_chunk, vmeta)`` tuple. Result: `AttributeError: 'tuple' object has no attribute 'dosage'` on `impute` for every committed format | impl required: V1-platform CLI must run on minimum-viable input | V1-platform / fix-now | rewrote `_load_genotype_matrix` to handle both shapes (canonical tuple + legacy `.dosage` attribute), pulling out the genotype tensor in either case; verified via the three `impute-{bed,hmp,csv}` cells in `tests/test_cli_matrix.py`. |
+| 2026-04-30 | C | C1 | `torchgenomics.cli._cmd_lmm_scan_single` (and `SparseLMM` branch) | GPU smoke cell `lmm-scan-bed` with `--device cuda` | when `--device cuda` was passed, K was constructed on CUDA via `grm_vanraden_streaming(device=device)` but Y / X0 were left on CPU; `single_trait_lmm.fit_null` then hit `RuntimeError: Expected all tensors to be on the same device, but got mat is on cuda:0, different from other tensors on cpu` inside the eigenspace rotation. Parallel `mvlmm-scan` path already had the right `.to(device)` calls (lines 499–501) | impl required: GPU codepath must run end-to-end | V1-platform / fix-now | added explicit `.to(device)` for Y, X0, K before `model.fit_null(...)` in both the dense and sparse branches of `_cmd_lmm_scan_single`; verified via the GPU subset of `tests/test_cli_matrix.py` (RTX 2000 Ada). |
 | 2026-04-30 | D | D0 | GEMMA 0.98.5 reference fixture (`gemma_demo/output/`: `mdp_kinship.cXX.txt` + `mdp_lmm_all.{assoc,log}.txt` + `mdp_mvlmm_wald.{assoc,log}.txt`) | fresh GEMMA 0.98.5 re-run via `validation/external/gemma/run_gemma.sh` | MDP maize 276×3093 BIMBAM (committed) | 0.000e+00 across all 19 checks (β, SE, p_wald, p_lrt, p_score, vg, ve, ll_reml, ll_ml, Vg, Ve, GRM cXX, af, logl_H1) | ≤ 1e-10 (GRM) / 1e-6 (β/SE/Vg/Ve rel) / 1e-4 (-log10p, log-likelihood) / 1e-8 (raw p) | **fixture-authoritative** | none — the fixture exactly reproduces against fresh upstream. The static AMD64 binary at `gemma_demo/gemma-0.98.5` is fully deterministic; the BIMBAM input fixture is byte-identical to what GEMMA originally consumed. Pillar D verdict: **fixture is authoritative; do NOT regenerate.** Drift report at `validation/reproducibility/outputs/gemma_drift.json`. |
 | 2026-04-30 | D | D0 | GAPIT3 reference fixture (`benchmark/gapit_results/`: `GLM_GWAS.csv`, `MLM_GWAS.csv`, `FarmCPU_GWAS.csv`, `BLINK_GWAS.csv`) | fresh GAPIT3 re-run via `validation/external/gapit/run_gapit.sh` | n/a (install blocked on this host) | n/a — `validation/external/gapit/install.sh` failed in this env: BiocManager could not reach `mirrors.ustc.edu.cn` to fetch `snpStats` (a hard transitive dependency of GAPIT 4.1 / GAPIT3); GAPIT itself failed `lazy loading` because of the missing `snpStats`. `multtest`, `bigmemory`, `EMMREML`, `genetics` etc. installed successfully — the blocker is exactly one Bioconductor package | n/a | infra-blocker (RESOLVED 2026-04-30 via D3) | superseded by the D3 row below — `install.sh` now explicitly overrides `options(repos = ...)` to point at `https://bioconductor.org/packages/<bioc_ver>/...` (Bioc 3.21 against R 4.5.1), bypassing the unreachable system mirror. `snpStats` installs cleanly and GAPIT 4.1.0 builds end-to-end. |
 | 2026-04-30 | D | D3 | GAPIT3 reference fixture (`benchmark/gapit_results/`: `GLM_GWAS.csv`, `MLM_GWAS.csv`, `FarmCPU_GWAS.csv`, `BLINK_GWAS.csv`) | fresh GAPIT 4.1.0 re-run via `validation/external/gapit/run_gapit.sh` | MDP maize (276 × 3093 numeric) | 10 / 10 checks within tolerance: `GLM P.value` max \|Δ\| = 1.6e-13 (gate 1e-8), `GLM effect` max \|Δ\| = 1.7e-12 (gate 1e-6), `MLM P.value` max \|Δ\| = 1.9e-13, `MLM effect` max \|Δ\| = 1.4e-12, `FarmCPU` top-10 overlap = 1.0, `BLINK` top-10 overlap = 1.0; FarmCPU/BLINK informational `-log10 p` max \|Δ\| ~ 2e-11 | ≤ 1e-8 (raw p) / 1e-6 (effect, maf) / 1e-4 (-log10 p) / ≥ 0.7 top-10 overlap (multi-locus) | **fixture-authoritative** | none — fresh GAPIT 4.1.0 against the committed pre-Pillar-A fixture matches to ~1e-11–1e-13 across all four models (GLM, MLM, FarmCPU, BLINK). Pillar D verdict for GAPIT3: **fixture is authoritative; do NOT regenerate.** Drift report at `validation/reproducibility/outputs/gapit_drift.json`. Resolves the prior infra-blocker. |
 | 2026-05-04 | D | D3 | GWASpoly 2.12 reference fixture (`benchmark/gwaspoly_results/` per-model CSVs) | fresh GWASpoly 2.14 re-run via `validation/external/gwaspoly/run_gwaspoly.sh GWASPOLY_FORCE_RERUN=1` | tetraploid potato fixture (957 individuals × 9888 markers) | max \|Δ\| ≤ 8.07e-11 across all 25 checks (8 gene-action models × 3 metrics each [pvalue, score, -log10p] + 957×957 GRM with max \|Δ\|=1.02e-14); n_common matches across all 8 model files (additive 9888, 1_dom_alt 6114, 1_dom_ref 7976, 2_dom_alt 7784, 2_dom_ref 8529, diplo_additive 9888, diplo_general 9888, general 9888) | ≤ 1e-08 (raw p) / ≤ 1e-04 (-log10p, score) / ≤ 1e-06 (GRM) | **fixture-authoritative** | none — fresh GWASpoly 2.14 reproduces the committed v2.12 fixture across every model and the kinship matrix to FP precision. Pillar D verdict for GWASpoly: **fixture is authoritative; do NOT regenerate.** Drift report at `validation/reproducibility/outputs/gwaspoly_drift.json`. The 47-min stall in the prior session traced to two issues now fixed: (1) PSOCK workers couldn't load rrBLUP from per-harness Rlib because `R_LIBS` wasn't propagated (commit `75da474`); (2) `ggplot2` was missing from per-harness Rlib (transitive GWASpoly dep, available via default user lib). |
-| 2026-04-30 | B | B2 | `torchgwas.postgwas._ldsc.ldsc_h2` / `ldsc_intercept` / `ldsc_rg` / `ldsc_rg_from_z` | LDSC 1.0.1 (Bulik-Sullivan 2015) `--h2` and `--rg` with `--two-step 99999` (single-pass IRWLS) | simulated chr22 sumstats (17 489 SNPs; truth h²=0.4, rg=0.5) at `validation/external/ldsc/data/` | pre-fix: TG used single-pass WLS with `w = 1/max(l², 1)` and no `w_ld` input; intercept divergence \|Δ\| 0.10 (T1) and 0.28 (T2) vs LDSC's IRWLS reference; h² and rg agreement was already 4e-3 / 3.5e-3, within spec | spec §16: \|Δ h²\| < 1e-2, \|Δ intercept\| < 5e-3, \|Δ rg\| < 2e-2 | post-V1 / fix-now (Phase 37 follow-up) | ported LDSC's IRWLS algorithm into `torchgwas/postgwas/_ldsc.py`: (1) added `_hsq_weights` mirroring LDSC's `Hsq.weights` heteroscedastic formula `w_j = 1/(2·(intercept + (h²·N/M)·l_j)² · w_ld_j)`, (2) added `_irwls_h2_fit` / `_irwls_gencov_fit` running LDSC's fixed 2-iteration IRWLS loop on the Nbar-scaled design matrix, (3) extended public APIs (`ldsc_h2`, `ldsc_intercept`, `ldsc_rg`, `ldsc_rg_from_z`) with optional `w_ld=None` (defaults to `ld_scores`), `n_iter=2` (LDSC default), `two_step=False`, and per-SNP `n` Tensor support — backward-compatible with all existing `(chi2, ld_scores, n, m_total)` callers, (4) updated `validation/external/ldsc/compare.py` to load the `--w-ld` regression-weight LD score file and pass via `w_ld=`, tightened `TOL_INTERCEPT_ABSDIFF` from 3.5e-1 to 5e-3 (spec anchor). Post-fix: \|Δ h²\| 1.0e-5, \|Δ intercept\| 2.6e-5 (T1) / 3.9e-5 (T2), \|Δ rg\| 1.1e-5 — all 3/3 comparisons pass. New tests `tests/test_coverage_postgwas_heritability.py::TestLdscH2::{test_irwls_default_converges_in_two_iterations,test_irwls_matches_hand_rolled_reference}` gate the IRWLS contract. `sldsc_h2_partitioned` updated to use `_hsq_weights` for the initial weights (still single-pass; IRWLS promotion deferred). Existing single-pass-equivalence tests use `ldsc_h2(..., n_iter=0)` to keep stable. |
-| 2026-04-30 | A | review | `torchgwas.optim.pql.pql_fit` (used by `BinaryGLMM`, `OrdinalGLMM`, `MultinomialGLMM`, `MultiEnvGLMM`, `SurvivalGLMM`) | self-paired SAIGE harness behavioral note: TG `BinaryGLMM` reports `converged=False` on a fixture where β/SE/p match SAIGE to within 5%, due to PQL's β-only convergence criterion firing before β stabilizes (β co-evolves with the working response z so it lags the actual ll/VC plateau) | spec: `converged` flag should reflect actual numerical convergence | post-V1 / improvement (Phase 33 follow-up) | added a dual delta-check escape clause to `_quasi_loglik`-based PQL convergence in `torchgwas/optim/pql.py`: in addition to the existing β-stable criterion `param_change < tol`, the loop now also breaks (and sets `converged=True`) when the relative change in penalized quasi-log-likelihood **and** both variance components (`sig2_g`, `sig2_e`) are below `tol` for the same iteration; requires `outer > 1` to avoid spurious early flat-step convergence. Surgical change (~15 lines); does not refactor the loop. New test `tests/test_binary_glmm.py::TestBinaryGLMMNull::test_converged_flag_log_likelihood_criterion` gates the new criterion on a clean balanced fixture. All 81 PQL-based GLMM tests still pass (binary / ordinal / multinomial / multi-env / survival). |
-| 2026-04-30 | A | review | `torchgwas.models.lmm_multi_fit.fit_mvlmm_null_{ai_reml,lbfgs}` | self-paired T7 reviewer note: the wrappers' `converged` flag was inferred from a trace-tail relative-ll heuristic which returned `False` when the optimizer stopped at exactly `max_iter` even if the optimizer's own delta-check passed on the final step | spec: `converged` flag should reflect optimizer's own convergence judgment | post-V1 / improvement | (1) added explicit `converged` boolean tracking inside `torchgwas/optim/pxem_nr_mvreml.py::pxem_nr_mvreml` and `torchgwas/optim/lbfgs_reml.py::lbfgs_reml`, set when each optimizer's intra-loop delta-check fires; stashed into `trace[-1]["converged"]` to preserve the existing 4-tuple return contract. (2) updated `torchgwas/models/lmm_multi_fit.py::_build_null_fit` to read `trace[-1]["converged"]` directly when present, falling back to the legacy trace-tail heuristic for backward compat. New tests `tests/test_coverage_models.py::TestConvergedFlagPlumbing::{test_plumbed_flag_lbfgs_matches_optimizer,test_plumbed_flag_aireml_matches_optimizer,test_max_iter_one_reports_not_converged}` gate the plumbed-flag contract. All 163 optimizer / mvLMM tests still pass. |
-| 2026-04-30 | E | E0 | All 40 CLI subcommands surveyed for streaming-vs-materialized behavior | self-paired audit (no external reference; spec §1 efficiency contract) | trace through `_cmd_<name>` → adapter → model on every CLI subcommand registered in `torchgwas/cli.py` | 25 subcommands materialize the full `(n_samples × n_variants)` genotype matrix via `_load_scan_data` / `_load_full_genotype` / `_load_genotype_matrix` / `torch.cat([chunk for chunk in iter_chunks])`. At biobank scale (UKB n=500K × m=10M) this is ~40 TB float64, infeasible for any single-machine RAM. 13 stream cleanly (lmm-scan default, mvlmm-scan default, glm-scan, conditional-scan, mtmet-scan, ocf-scan, family-scan, dosage-call, phase-poly, pgs-score, pipeline-glm/lmm/mvlmm); 2 are partial (lmm-scan/mvlmm-scan with `--grm-method zhang`, opt-in only). | n/a (efficiency audit) | post-V1 / efficiency improvement | Audit table at `docs/efficiency/streaming_audit.md` lists every subcommand with classification, peak-memory estimate at 500K×10M, and rewrite tractability. Identified set-scan + glmm-scan as the highest-leverage rewrites (V1-platform, V1-relevant, surgical fix); deferred 11 others (FarmCPU/BLINK/BayesianVS/MultiKernelLMM/LROLMM/KnockoffLMM/poly-scan/met-scan/threshold-scan/gu-scan/me-glmm-scan/survival-scan/rr-scan/rr-met-scan/gxe-scan) with concrete next-step notes per subcommand. F3 verdict: not fix-now (no silent docs-vs-behavior divergence found); the rewrites are pure efficiency. Reviewer cadence: self-paired only — no R4 fresh-env re-run because there is no math claim being verified. |
-| 2026-04-30 | E | E1 | `torchgwas.models.set_based.SetBasedScanner` + `torchgwas.cli._cmd_set_scan` | self-paired ref: legacy `SetBasedScanner.scan_regions` materialized path on the same fixture | n=200 / m=500 in-memory fixture (TestSetScanStreamingMemory); behavioral parity vs materialized | streaming q-stat / p-value tensors agree to float64 tolerance (\|Δ\| < 1e-10) against the legacy materialized path on the n=200/m=500 fixture; absolute peak memory <8 MiB on the same fixture; peak grows < 2× when m grows 5× (regions held fixed) → confirming streaming behavior. At biobank scale (UKB n=500K × m=10M, ~20K gene regions × ~50 SNPs/gene = 1M region-SNPs): materialized peak ≈ 40 TB float64; streaming peak ≈ 4 GB (n × Σ region_size × 8 B) + per-chunk overhead. | spec §1 efficiency contract: streaming path must not silently regress vs explicit `iter_chunks` consumer pattern. | post-V1 / efficiency improvement | added `SetBasedScanner.scan_regions_streaming(chunk_iter, regions, ...)` that takes a chunk iterator and accumulates per-region buffers chunk-by-chunk (peak bounded by `n × Σ region_size_j` plus one chunk). Rewired `_cmd_set_scan` to use `_align_samples` + `grm_vanraden_streaming` + `scan_regions_streaming` instead of `_load_scan_data` + `grm_vanraden(G_full)` + `scan_regions(G_full, ...)`. Memory regression tests in `tests/test_streaming_memory.py::TestSetScanStreamingMemory` (3 tests: behavioral parity, absolute budget, region-vs-m scaling). Existing 17 set-based unit tests + 2 cli_matrix smoke cells continue to pass. Commit `14bae60`. |
-| 2026-04-30 | E | E1 | `torchgwas.cli._cmd_glmm_scan` (BinaryGLMM / OrdinalGLMM / MultinomialGLMM dispatch) | self-paired ref: legacy single-`score_chunk(G_full, ...)` path on the same fixture | n=200 / m=500 in-memory fixture (TestGlmmScanStreamingMemory); behavioral parity vs single-chunk full-G path | streaming `stat` / `p` tensors agree to float64 tolerance against the single-chunk legacy path on the n=200/m=500 fixture; absolute peak memory <16 MiB on the same fixture. At biobank scale (UKB n=500K × m=10M): materialized peak ≈ 40 TB float64; streaming peak per chunk ≈ n × chunk_size × 8 B (default chunk=1024 → 4 GB/chunk). The GRM remains the dominant allocation (n²×8B = ~1 TB at UKB), itself constrained to streaming via `grm_vanraden_streaming`. | spec §1 efficiency contract: streaming path must drive `score_chunk` per-chunk, not in one big-G call. | post-V1 / efficiency improvement | rewired `_cmd_glmm_scan` from `_load_scan_data` + `grm_vanraden(G_full)` + single `model.score_chunk(G_full, nf, vmeta)` to `_align_samples` + `grm_vanraden_streaming` + `UnifiedScanner(reader, model, config).scan(nf, test="score", qc_config=qc)`. UnifiedScanner is the canonical streaming consumer — chunks flow through `model.score_chunk` one at a time; null fit is unaffected (PQL only depends on Y, X0, K). Memory regression tests in `tests/test_streaming_memory.py::TestGlmmScanStreamingMemory` (2 tests: behavioral parity, absolute budget). Same single-chunk-score_chunk pattern still appears in **me-glmm-scan, survival-scan, mklmm-scan, gxe-scan, threshold-scan, gu-scan, lro-scan, met-scan, mtmet-scan-met-only-branch, poly-scan, rr-scan, rr-met-scan, mediate-scan** — all tractable next-step deferrals listed in `docs/efficiency/streaming_audit.md` §"Deferred rewrites". Commit `e553604`. |
+| 2026-04-30 | B | B2 | `torchgenomics.postgwas._ldsc.ldsc_h2` / `ldsc_intercept` / `ldsc_rg` / `ldsc_rg_from_z` | LDSC 1.0.1 (Bulik-Sullivan 2015) `--h2` and `--rg` with `--two-step 99999` (single-pass IRWLS) | simulated chr22 sumstats (17 489 SNPs; truth h²=0.4, rg=0.5) at `validation/external/ldsc/data/` | pre-fix: TG used single-pass WLS with `w = 1/max(l², 1)` and no `w_ld` input; intercept divergence \|Δ\| 0.10 (T1) and 0.28 (T2) vs LDSC's IRWLS reference; h² and rg agreement was already 4e-3 / 3.5e-3, within spec | spec §16: \|Δ h²\| < 1e-2, \|Δ intercept\| < 5e-3, \|Δ rg\| < 2e-2 | post-V1 / fix-now (Phase 37 follow-up) | ported LDSC's IRWLS algorithm into `torchgenomics/postgwas/_ldsc.py`: (1) added `_hsq_weights` mirroring LDSC's `Hsq.weights` heteroscedastic formula `w_j = 1/(2·(intercept + (h²·N/M)·l_j)² · w_ld_j)`, (2) added `_irwls_h2_fit` / `_irwls_gencov_fit` running LDSC's fixed 2-iteration IRWLS loop on the Nbar-scaled design matrix, (3) extended public APIs (`ldsc_h2`, `ldsc_intercept`, `ldsc_rg`, `ldsc_rg_from_z`) with optional `w_ld=None` (defaults to `ld_scores`), `n_iter=2` (LDSC default), `two_step=False`, and per-SNP `n` Tensor support — backward-compatible with all existing `(chi2, ld_scores, n, m_total)` callers, (4) updated `validation/external/ldsc/compare.py` to load the `--w-ld` regression-weight LD score file and pass via `w_ld=`, tightened `TOL_INTERCEPT_ABSDIFF` from 3.5e-1 to 5e-3 (spec anchor). Post-fix: \|Δ h²\| 1.0e-5, \|Δ intercept\| 2.6e-5 (T1) / 3.9e-5 (T2), \|Δ rg\| 1.1e-5 — all 3/3 comparisons pass. New tests `tests/test_coverage_postgwas_heritability.py::TestLdscH2::{test_irwls_default_converges_in_two_iterations,test_irwls_matches_hand_rolled_reference}` gate the IRWLS contract. `sldsc_h2_partitioned` updated to use `_hsq_weights` for the initial weights (still single-pass; IRWLS promotion deferred). Existing single-pass-equivalence tests use `ldsc_h2(..., n_iter=0)` to keep stable. |
+| 2026-04-30 | A | review | `torchgenomics.optim.pql.pql_fit` (used by `BinaryGLMM`, `OrdinalGLMM`, `MultinomialGLMM`, `MultiEnvGLMM`, `SurvivalGLMM`) | self-paired SAIGE harness behavioral note: TG `BinaryGLMM` reports `converged=False` on a fixture where β/SE/p match SAIGE to within 5%, due to PQL's β-only convergence criterion firing before β stabilizes (β co-evolves with the working response z so it lags the actual ll/VC plateau) | spec: `converged` flag should reflect actual numerical convergence | post-V1 / improvement (Phase 33 follow-up) | added a dual delta-check escape clause to `_quasi_loglik`-based PQL convergence in `torchgenomics/optim/pql.py`: in addition to the existing β-stable criterion `param_change < tol`, the loop now also breaks (and sets `converged=True`) when the relative change in penalized quasi-log-likelihood **and** both variance components (`sig2_g`, `sig2_e`) are below `tol` for the same iteration; requires `outer > 1` to avoid spurious early flat-step convergence. Surgical change (~15 lines); does not refactor the loop. New test `tests/test_binary_glmm.py::TestBinaryGLMMNull::test_converged_flag_log_likelihood_criterion` gates the new criterion on a clean balanced fixture. All 81 PQL-based GLMM tests still pass (binary / ordinal / multinomial / multi-env / survival). |
+| 2026-04-30 | A | review | `torchgenomics.models.lmm_multi_fit.fit_mvlmm_null_{ai_reml,lbfgs}` | self-paired T7 reviewer note: the wrappers' `converged` flag was inferred from a trace-tail relative-ll heuristic which returned `False` when the optimizer stopped at exactly `max_iter` even if the optimizer's own delta-check passed on the final step | spec: `converged` flag should reflect optimizer's own convergence judgment | post-V1 / improvement | (1) added explicit `converged` boolean tracking inside `torchgenomics/optim/pxem_nr_mvreml.py::pxem_nr_mvreml` and `torchgenomics/optim/lbfgs_reml.py::lbfgs_reml`, set when each optimizer's intra-loop delta-check fires; stashed into `trace[-1]["converged"]` to preserve the existing 4-tuple return contract. (2) updated `torchgenomics/models/lmm_multi_fit.py::_build_null_fit` to read `trace[-1]["converged"]` directly when present, falling back to the legacy trace-tail heuristic for backward compat. New tests `tests/test_coverage_models.py::TestConvergedFlagPlumbing::{test_plumbed_flag_lbfgs_matches_optimizer,test_plumbed_flag_aireml_matches_optimizer,test_max_iter_one_reports_not_converged}` gate the plumbed-flag contract. All 163 optimizer / mvLMM tests still pass. |
+| 2026-04-30 | E | E0 | All 40 CLI subcommands surveyed for streaming-vs-materialized behavior | self-paired audit (no external reference; spec §1 efficiency contract) | trace through `_cmd_<name>` → adapter → model on every CLI subcommand registered in `torchgenomics/cli.py` | 25 subcommands materialize the full `(n_samples × n_variants)` genotype matrix via `_load_scan_data` / `_load_full_genotype` / `_load_genotype_matrix` / `torch.cat([chunk for chunk in iter_chunks])`. At biobank scale (UKB n=500K × m=10M) this is ~40 TB float64, infeasible for any single-machine RAM. 13 stream cleanly (lmm-scan default, mvlmm-scan default, glm-scan, conditional-scan, mtmet-scan, ocf-scan, family-scan, dosage-call, phase-poly, pgs-score, pipeline-glm/lmm/mvlmm); 2 are partial (lmm-scan/mvlmm-scan with `--grm-method zhang`, opt-in only). | n/a (efficiency audit) | post-V1 / efficiency improvement | Audit table at `docs/efficiency/streaming_audit.md` lists every subcommand with classification, peak-memory estimate at 500K×10M, and rewrite tractability. Identified set-scan + glmm-scan as the highest-leverage rewrites (V1-platform, V1-relevant, surgical fix); deferred 11 others (FarmCPU/BLINK/BayesianVS/MultiKernelLMM/LROLMM/KnockoffLMM/poly-scan/met-scan/threshold-scan/gu-scan/me-glmm-scan/survival-scan/rr-scan/rr-met-scan/gxe-scan) with concrete next-step notes per subcommand. F3 verdict: not fix-now (no silent docs-vs-behavior divergence found); the rewrites are pure efficiency. Reviewer cadence: self-paired only — no R4 fresh-env re-run because there is no math claim being verified. |
+| 2026-04-30 | E | E1 | `torchgenomics.models.set_based.SetBasedScanner` + `torchgenomics.cli._cmd_set_scan` | self-paired ref: legacy `SetBasedScanner.scan_regions` materialized path on the same fixture | n=200 / m=500 in-memory fixture (TestSetScanStreamingMemory); behavioral parity vs materialized | streaming q-stat / p-value tensors agree to float64 tolerance (\|Δ\| < 1e-10) against the legacy materialized path on the n=200/m=500 fixture; absolute peak memory <8 MiB on the same fixture; peak grows < 2× when m grows 5× (regions held fixed) → confirming streaming behavior. At biobank scale (UKB n=500K × m=10M, ~20K gene regions × ~50 SNPs/gene = 1M region-SNPs): materialized peak ≈ 40 TB float64; streaming peak ≈ 4 GB (n × Σ region_size × 8 B) + per-chunk overhead. | spec §1 efficiency contract: streaming path must not silently regress vs explicit `iter_chunks` consumer pattern. | post-V1 / efficiency improvement | added `SetBasedScanner.scan_regions_streaming(chunk_iter, regions, ...)` that takes a chunk iterator and accumulates per-region buffers chunk-by-chunk (peak bounded by `n × Σ region_size_j` plus one chunk). Rewired `_cmd_set_scan` to use `_align_samples` + `grm_vanraden_streaming` + `scan_regions_streaming` instead of `_load_scan_data` + `grm_vanraden(G_full)` + `scan_regions(G_full, ...)`. Memory regression tests in `tests/test_streaming_memory.py::TestSetScanStreamingMemory` (3 tests: behavioral parity, absolute budget, region-vs-m scaling). Existing 17 set-based unit tests + 2 cli_matrix smoke cells continue to pass. Commit `14bae60`. |
+| 2026-04-30 | E | E1 | `torchgenomics.cli._cmd_glmm_scan` (BinaryGLMM / OrdinalGLMM / MultinomialGLMM dispatch) | self-paired ref: legacy single-`score_chunk(G_full, ...)` path on the same fixture | n=200 / m=500 in-memory fixture (TestGlmmScanStreamingMemory); behavioral parity vs single-chunk full-G path | streaming `stat` / `p` tensors agree to float64 tolerance against the single-chunk legacy path on the n=200/m=500 fixture; absolute peak memory <16 MiB on the same fixture. At biobank scale (UKB n=500K × m=10M): materialized peak ≈ 40 TB float64; streaming peak per chunk ≈ n × chunk_size × 8 B (default chunk=1024 → 4 GB/chunk). The GRM remains the dominant allocation (n²×8B = ~1 TB at UKB), itself constrained to streaming via `grm_vanraden_streaming`. | spec §1 efficiency contract: streaming path must drive `score_chunk` per-chunk, not in one big-G call. | post-V1 / efficiency improvement | rewired `_cmd_glmm_scan` from `_load_scan_data` + `grm_vanraden(G_full)` + single `model.score_chunk(G_full, nf, vmeta)` to `_align_samples` + `grm_vanraden_streaming` + `UnifiedScanner(reader, model, config).scan(nf, test="score", qc_config=qc)`. UnifiedScanner is the canonical streaming consumer — chunks flow through `model.score_chunk` one at a time; null fit is unaffected (PQL only depends on Y, X0, K). Memory regression tests in `tests/test_streaming_memory.py::TestGlmmScanStreamingMemory` (2 tests: behavioral parity, absolute budget). Same single-chunk-score_chunk pattern still appears in **me-glmm-scan, survival-scan, mklmm-scan, gxe-scan, threshold-scan, gu-scan, lro-scan, met-scan, mtmet-scan-met-only-branch, poly-scan, rr-scan, rr-met-scan, mediate-scan** — all tractable next-step deferrals listed in `docs/efficiency/streaming_audit.md` §"Deferred rewrites". Commit `e553604`. |
 
 ## NA1 SuSiE-RSS Tier 2 parity vs susieR — first head-to-head run (2026-05-12)
 
@@ -189,7 +189,7 @@ flagged as a `compare.py` reframing item ("monotonicity assertion" not
 | Wall-time ratio | ≤ 2× | **1.61×** | PASS |
 | Convergence (both) | True | **True both** | PASS |
 
-**TorchGWAS bayes-scan-rss is now statistically indistinguishable from susieR::susie_rss() on this fixture.** All 5 numerical parity metrics pass; both implementations converge.
+**TorchGenomics bayes-scan-rss is now statistically indistinguishable from susieR::susie_rss() on this fixture.** All 5 numerical parity metrics pass; both implementations converge.
 
 **Diagnostic ELBO values logged separately** (susieR: -662.29, ours: -93.28) — different formula scales, not comparable.
 
@@ -214,7 +214,7 @@ p=1000 variants, 5 planted causals, AR(1) rho=0.6 (stronger LD).
 | Convergence (both) | True | True both | True both |
 
 **Notable**:
-- TorchGWAS is **1.5x faster than susieR at the larger scale** (0.67x ratio).
+- TorchGenomics is **1.5x faster than susieR at the larger scale** (0.67x ratio).
 - Both tools recover all 5 planted causals at PIP=1.000.
 - β_sd Pearson is slightly worse at larger scale (0.9959 vs 0.9993) due to
   more noise-floor variants where the V-update fixed-point vs susieR's
@@ -266,7 +266,7 @@ regression, take p=200 window around top hit (idx 100 = SNP `PZD00032.1`,
 exactly 1 variant (idx 100, the EarHT QTL) with PIP > 0.5 → Jaccard = 1.000.
 For practical interpretation, the two implementations are indistinguishable.
 
-**Notable**: TorchGWAS continues to scale better than susieR — 0.72× walltime
+**Notable**: TorchGenomics continues to scale better than susieR — 0.72× walltime
 at p=1000, comparable at p=200. β_sd Pearson degrades slightly with realistic
 LD (0.994 vs synthetic's 0.996-0.999), but well within the noise-floor V-update
 fixed-point gap documented earlier. Threshold floored at 0.993 to admit MDP.
@@ -326,7 +326,7 @@ all fixtures, well above the 0.993 multi-fixture floor).
 
 ### Update 2026-05-12: Tier C optim path landed (per-layer marginal-evidence V update)
 
-**Implementation**: `find_optimal_V(z, R, n, V_init, prior_pi)` in `torchgwas/models/bayesian_vs_rss.py`.
+**Implementation**: `find_optimal_V(z, R, n, V_init, prior_pi)` in `torchgenomics/models/bayesian_vs_rss.py`.
 Per Wang 2020 [C1] §3.2 / Zou 2022 [C4]: 1D bounded optimization of the
 marginal log-likelihood `L(V) = logsumexp_j(log_BF_j(V) + log pi_j)` in a narrow
 log-V window `[log(V_init)-10, log(V_init)+10]` (mirrors susieR's
@@ -412,7 +412,7 @@ quite sensitive to.
 H1 alone explains 100% of the gap. H2 and H3 are red herrings.
 
 **Fix landed**. Module-level helper `apply_z_score_adjustment(z, n)` in
-`torchgwas/models/bayesian_vs_rss.py`. New `BayesianVSRss.__init__` parameter
+`torchgenomics/models/bayesian_vs_rss.py`. New `BayesianVSRss.__init__` parameter
 `z_adjustment: bool = True` (default on, mirrors susieR; opt-out preserved
 for callers passing pre-adjusted z). 4 new tests in `test_bayesian_vs_rss.py`
 covering formula correctness, vanishing for large n, default-on, and opt-out
@@ -480,7 +480,7 @@ PIP-stability convergence trips correctly.
 - susieR head-to-head on 4 sampled loci (0, 4, 8, 12): **PIP, β_mean, β_sd all
   Pearson 1.0000 across the chromosome** — parity holds at every locus tested
 - Per-locus wall-time crossover: 1.73× susieR at p=200; 0.45-0.65× at p=500-1000.
-  TorchGWAS pays a per-call overhead but scales better with p.
+  TorchGenomics pays a per-call overhead but scales better with p.
 
 ### Update 2026-05-13: NA3 empirical validation (Tracks A + B)
 
@@ -542,12 +542,12 @@ covariates = PC1, PC2. Both tools run on the same BED+pheno.
 | -log10 p max abs diff | 0.0168 | ≤ 0.10 | PASS |
 | β max abs relative diff | 5e-6 | (informational) | exact |
 
-Wall-time: torchgwas lmm-scan 4.5s; regenie step 1+2 22.1s. (regenie step 1
+Wall-time: torchgenomics lmm-scan 4.5s; regenie step 1+2 22.1s. (regenie step 1
 ridge dominates; not a fair head-to-head on speed since the LMM vs ridge
 approximation are different algorithms.)
 
 **Effect-allele sign-flip finding (NEW)**. Raw β correlation was -1.000000
-before allele alignment. The TorchGWAS lmm-scan CLI reports BETA on the
+before allele alignment. The TorchGenomics lmm-scan CLI reports BETA on the
 opposite allele convention vs regenie: regenie codes BETA on `ALLELE1` (the
 second BIM allele), TG appears to code on `A1` (the first BIM allele) but
 reports the effect-allele-opposite sign. This affects only the sign of β,
@@ -579,13 +579,13 @@ biobank-n benchmark, (3) Pillar B regenie test re-run.
 
 **(1) Sign-flip — ROOT CAUSE LOCATED, awaiting fix approval**
 
-`torchgwas/io/plink.py:25` defines
+`torchgenomics/io/plink.py:25` defines
 
     _GENO_DECODE = np.array([0.0, np.nan, 1.0, 2.0], dtype=np.float64)
 
 decoding the PLINK BED 2-bit codes as `00 (homo A1) → dosage 0`, i.e.
-**dosage = count(A2)**. Meanwhile `torchgwas/io/vcf.py:74` (`# REF = a2,
-ALT[0] = a1, effect allele`) and `torchgwas/io/plink2.py` explicitly mark
+**dosage = count(A2)**. Meanwhile `torchgenomics/io/vcf.py:74` (`# REF = a2,
+ALT[0] = a1, effect allele`) and `torchgenomics/io/plink2.py` explicitly mark
 `a1 = ALT = effect allele = counted allele` — the inverse convention.
 PLINK 1.9 and regenie code BETA on `count(A1) = count(col 5 of BIM)`.
 
@@ -628,13 +628,13 @@ swamp all other terms and sparse would deliver >10× savings on the GRM
 contribution alone. Not benchmarked at that scale this session.
 
 **Bug found in this benchmark** (NEW, V1-core): with CUDA visible,
-`torchgwas/optim/sparse_reml.py:195` calls `scipy.optimize.minimize_scalar`
+`torchgenomics/optim/sparse_reml.py:195` calls `scipy.optimize.minimize_scalar`
 with a CUDA tensor in the objective closure, raising:
 
     TypeError: can't convert cuda:0 device type tensor to numpy.
                Use Tensor.cpu() to copy the tensor to host memory first.
 
-Workaround: `CUDA_VISIBLE_DEVICES="" python -m torchgwas lmm-scan
+Workaround: `CUDA_VISIBLE_DEVICES="" python -m torchgenomics lmm-scan
 --approx-method sparse ...` (the sparse path runs cleanly on CPU). This
 is exactly the class of silent-CUDA-fallback bug Pillar C surfaced 5 of
 and that NA2's GPU CI is designed to catch on PRs going forward. Filed
@@ -645,7 +645,7 @@ scipy call inside the closure.
 
 Staged `validation/external/plink2/install.sh + fetch_data.sh` then
 `validation/external/regenie/fetch_data.sh + run_regenie.sh` then
-`TORCHGWAS_DISABLE_NATIVE=1 python validation/external/regenie/compare.py`.
+`TORCHGENOMICS_DISABLE_NATIVE=1 python validation/external/regenie/compare.py`.
 
 Results on MDP (n=281, m=2897):
 
@@ -660,7 +660,7 @@ Results on MDP (n=281, m=2897):
 
 3/3 comparison blocks pass. The Step 2 β correlation of 0.71 (vs LARGE/MDP
 1KG fixtures' 1.000) reflects the methodological difference: Pillar B
-compares regenie's Step 2 against `torchgwas.models.GLM(Wald)` ON
+compares regenie's Step 2 against `torchgenomics.models.GLM(Wald)` ON
 `Y - LOCO_offset` (the regenie pipeline), not against lmm-scan. The
 agreement is well within Pillar B's documented tolerance for biobank-tool
 adaptation to the MDP scale (n=281 ≪ regenie's design regime).
@@ -679,7 +679,7 @@ adaptation to the MDP scale (n=281 ≪ regenie's design regime).
 The user approved both fixes. Each shipped TDD: failing regression test
 written first, fix applied, test passes + no broader regressions.
 
-**Fix 2 (sparse-GRM CUDA leak) — `torchgwas/optim/sparse_reml.py:146`**
+**Fix 2 (sparse-GRM CUDA leak) — `torchgenomics/optim/sparse_reml.py:146`**
 
 Wrapped `stochastic_logdet(...)` in `float(...)` so the closure returned
 to `scipy.optimize.minimize_scalar` is always a host scalar, never a CUDA
@@ -691,7 +691,7 @@ runs end-to-end on CUDA: at n=10K, sparse on CUDA is 26.8s vs dense on
 CUDA 48.7s — **sparse path is now 1.8× faster than dense on CUDA** (was
 crashing).
 
-**Fix 1 (BED reader allele convention) — `torchgwas/io/plink.py:25`**
+**Fix 1 (BED reader allele convention) — `torchgenomics/io/plink.py:25`**
 
 Inverted `_GENO_DECODE` from `[0.0, NaN, 1.0, 2.0]` (dosage = count A2)
 to `[2.0, NaN, 1.0, 0.0]` (dosage = count A1, matching PLINK 1.9 / regenie
@@ -833,8 +833,8 @@ tag `v0.8.1`, commit `964f1fdb5bf9585585690e85bb0eca7b67663ddb`
 (GitHub: hakyimlab/MetaXcan; verified via GitHub Releases API on
 2026-05-15).
 
-**TorchGWAS target:** `torchgwas.postgwas.twas_sumstat`
-(`torchgwas/postgwas/_twas.py`).
+**TorchGenomics target:** `torchgenomics.postgwas.twas_sumstat`
+(`torchgenomics/postgwas/_twas.py`).
 
 **Fixture:** deterministic simulated PrediXcan triple (model.db with 5
 genes × 8 cis-SNPs, model.txt.gz covariance in correlation form
@@ -888,7 +888,7 @@ sub-component of MetaXcan).
 
 **Harness:** `validation/external/hyprcoloc/` — R hyprcoloc @ commit
 `0348bbd` (jrs95/hyprcoloc HEAD; 2024-04-08) vs
-`torchgwas.postgwas._hyprcoloc.hyprcoloc` (Phase 42 implementation
+`torchgenomics.postgwas._hyprcoloc.hyprcoloc` (Phase 42 implementation
 of Foley et al. 2021).
 
 **Fixture:** simulated 3-trait sumstats with a single shared causal
@@ -966,7 +966,7 @@ in `_hyprcoloc.py:204-218` with the hierarchical prior:
     Pr(H_S) = sum_{R: S subset of R} Pr(R associated) * c^(|S|-1) * (1-c)^(|R|-|S|)
 
 where the sum over R is approximated as in Algorithm 1. This will
-require a TorchGWAS-internal F3 fix commit. Estimated impact: ~40-line
+require a TorchGenomics-internal F3 fix commit. Estimated impact: ~40-line
 change in `_hyprcoloc.py`; existing TG-internal tests in
 `tests/test_postgwas_hyprcoloc.py` will need their prior expectations
 re-derived from Foley Eq. 2 (the existing tests use round-trip
@@ -988,7 +988,7 @@ post-paper as part of the Pillar A documented-divergences-closeout.
 
 ---
 
-## 2026-05-15 -- Pillar B coloc.abf vs torchgwas.postgwas.coloc_pairwise
+## 2026-05-15 -- Pillar B coloc.abf vs torchgenomics.postgwas.coloc_pairwise
 
 > **STATUS: RESOLVED 2026-05-21** — Closed by the F3 #2 patch (H3
 > outer-minus-diagonal + drop `-log m`); commit `c3bc22a` on master
@@ -1016,7 +1016,7 @@ Candidate SNP id agrees exactly on all 3 scenarios. Cross-scenario
 Pearson r on the 5-vec PP = 0.9926.
 
 **Root cause (numerically confirmed by inline reproducer):** TG
-`coloc_pairwise` formula in `torchgwas/postgwas/_hyprcoloc.py:360-365`
+`coloc_pairwise` formula in `torchgenomics/postgwas/_hyprcoloc.py:360-365`
 deviates from Giambartolomei 2014 / R `coloc::combine.abf` in two ways:
 
 1. **Spurious `-log m` normalization** on H1, H2, H3, H4. The `1/m`
@@ -1082,7 +1082,7 @@ deferred.
 
 **Harness:** `validation/external/hapref/`
 **Tools:** haplo.stats 1.9.8.7 (CRAN) + haplo.glm + jsonlite 2.0.0 + R 4.5.1
-vs `torchgwas.models.haplotype_gwas.HaplotypeGWAS`.
+vs `torchgenomics.models.haplotype_gwas.HaplotypeGWAS`.
 **Fixture:** MDP maize panel, chr1:238902012-238902252 (5 SNPs, mean |r|=0.867,
 MAF 0.146-0.242), phenotype `EarHT` (279 taxa).
 
@@ -1104,7 +1104,7 @@ MAF 0.146-0.242), phenotype `EarHT` (279 taxa).
 On the 11111 haplotype (the only one with a strong effect: beta ~ -5.7 mm
 on EarHT, p ~ 0.003 in both tools), agreement is 4 sig-figs on beta and p.
 
-**F2 finding:** TG `_enumerate_haplotypes_unphased` (`torchgwas/models/
+**F2 finding:** TG `_enumerate_haplotypes_unphased` (`torchgenomics/models/
 haplotype_gwas.py`:256-266) uses a per-SNP marginal-allele-frequency product
 to rank candidate haplotypes when their count exceeds `max_haplotypes`
 (default 20). Under tight LD (mean|r| > 0.5 with >= 5 SNPs), this
@@ -1152,7 +1152,7 @@ License). Zip URL
 `https://yanglab.westlake.edu.cn/software/smr/download/smr-1.3.1-linux-x86_64.zip`,
 SHA256 `4d779197a0b3399db36c9cdf7b4b4190ea40fa33a47253f5419ad27c3bce251e`.
 
-**TG target:** `torchgwas.postgwas._smr.smr_test` + `heidi_test` (Phase 45).
+**TG target:** `torchgenomics.postgwas._smr.smr_test` + `heidi_test` (Phase 45).
 
 **Fixture:** deterministically simulated single-probe SMR fixture (seed 42),
 15 cis-SNPs with mild compound-symmetric LD (rho_haplotype = 0.6,
@@ -1176,7 +1176,7 @@ and ~60% in p relative.
 **Root cause of HEIDI divergence:** SMR (Yang lab) computes the variance
 of `d_i = b_g_i/b_e_i - b_g_top/b_e_top` from a full LD-weighted
 covariance matrix derived from the PLINK reference panel (Zhu 2016
-supplementary, HEIDI test, computation of variance of d). TorchGWAS
+supplementary, HEIDI test, computation of variance of d). TorchGenomics
 `heidi_test` uses a delta-method diagonal variance assuming the SNPs
 are mutually uncorrelated. For perfectly independent SNPs the two
 estimators agree, but SMRs HEIDI inclusion filter `0.05 <= r^2 <= 0.9`
@@ -1187,7 +1187,7 @@ than the diagonal-only variance, giving smaller SMR chi^2 / larger SMR p.
 
 **F3 classification: post-V1 / documented, no fix planned for V1.**
   - SMR / HEIDI is Phase 45 (post-V1).
-  - TorchGWAS is *conservative* in the HEIDI verdict (smaller variance
+  - TorchGenomics is *conservative* in the HEIDI verdict (smaller variance
     -> larger chi^2 -> smaller p -> more likely to reject the
     single-causal hypothesis), so it does not silently inflate false
     positives in SMRs pleiotropy-vs-linkage call.
@@ -1199,8 +1199,8 @@ than the diagonal-only variance, giving smaller SMR chi^2 / larger SMR p.
 
 **Fix path (deferred, not for V1 release):** port the Zhu 2016
 supplementary LD-weighted variance formula into
-`torchgwas.postgwas._smr.heidi_test` (take an optional `ld_matrix`
-argument symmetric to `torchgwas.postgwas._twas.twas_sumstat`). Once
+`torchgenomics.postgwas._smr.heidi_test` (take an optional `ld_matrix`
+argument symmetric to `torchgenomics.postgwas._twas.twas_sumstat`). Once
 shipped, re-tighten `TOL_REL_CHI2_HEIDI` and `TOL_REL_P_HEIDI` to
 observed-then-floored values around 1e-3 - 1e-2.
 
@@ -1229,7 +1229,7 @@ posterior SD bars are roughly the same magnitude as the modes -- the chain
 has not mixed.  This is a property of the reference tool at the chain length
 the harness can afford in CI (~3 min wall time).
 
-TorchGWAS NR solver on the same data with R, G clamped to simulator truth
+TorchGenomics NR solver on the same data with R, G clamped to simulator truth
 converges in 12 iterations and recovers the 5 causal SNP betas to mean abs
 deviation 3.81e-2.
 
@@ -1287,14 +1287,14 @@ TG-side stages 3+4 were re-run from the main session today).
 ridge nuisance learner. (R `DoubleML` not installed in environment;
 fallback documented in `validation/specialty/ocf/README.md`.)
 
-**TG target:** `torchgwas.models.ocf_lmm.OCFLMM` (Phase 26).
+**TG target:** `torchgenomics.models.ocf_lmm.OCFLMM` (Phase 26).
 
 **Fixture:** 100 replicates of Chernozhukov 2018 partially-linear DGP
 (N=400, M=20, θ₀=0.30, K=5 folds, seed=42, non-linear confounders).
 
 **Observed agreement (full end-to-end, 100 reps):**
 
-| Metric | Reference DML2 | TorchGWAS OCFLMM | Gate | Status |
+| Metric | Reference DML2 | TorchGenomics OCFLMM | Gate | Status |
 |---|---|---|---|---|
 | Empirical 95% CI coverage | 0.910 | **0.410** | [0.92, 0.98] | FAIL |
 | Mean θ̂ | 0.3177 | **0.4976** | n/a | bias +0.198 (vs ref +0.018) |
@@ -1324,10 +1324,10 @@ fallback documented in `validation/specialty/ocf/README.md`.)
 
 **Numerical evidence:** see `validation/specialty/ocf/results/{summary.tsv,
 agreement.json}`. 100-replicate trace at one-decimal precision in
-`outputs/torchgwas_results.tsv` and `outputs/reference_results.tsv`.
+`outputs/torchgenomics_results.tsv` and `outputs/reference_results.tsv`.
 
 **Proposed fix path (deferred):**
-- Add a `nuisance_learner` argument to `torchgwas.models.ocf_lmm.OCFLMM`
+- Add a `nuisance_learner` argument to `torchgenomics.models.ocf_lmm.OCFLMM`
   that accepts non-linear learners (quadratic-feature ridge or
   scikit-learn estimator), mirroring `DoubleML`'s `ml_g` / `ml_m`
   parameters. Default to linear ridge for V1 release; users with
@@ -1346,7 +1346,7 @@ agreement.json}`. 100-replicate trace at one-decimal precision in
 **Resolution of the 2026-05-15 Pillar B `coloc.abf` vs
 `coloc_pairwise` finding above.**
 
-**Patch:** `torchgwas/postgwas/_hyprcoloc.py` (+
+**Patch:** `torchgenomics/postgwas/_hyprcoloc.py` (+
 `tests/test_postgwas_hyprcoloc.py`) rewrites the H3 marginal in
 `coloc_pairwise` and removes the spurious `-log m` per-hypothesis
 normalizer that inverted the H1/H3 Bayes-factor balance. The new
@@ -1390,7 +1390,7 @@ post-patch it passes.
 pass unchanged.
 
 **Files touched:**
-- `torchgwas/postgwas/_hyprcoloc.py` — added `_log_diff_exp` helper,
+- `torchgenomics/postgwas/_hyprcoloc.py` — added `_log_diff_exp` helper,
   rewrote H3 marginal under `coloc_pairwise`, removed `-log m`.
 - `tests/test_postgwas_hyprcoloc.py` — added regression test.
 
@@ -1411,7 +1411,7 @@ the floor by three orders of magnitude.
 **Resolution of the 2026-05-15 Tier 1 A4 hyprcoloc R-vs-TG finding
 above.**
 
-**Patch:** `torchgwas/postgwas/_hyprcoloc.py` (+
+**Patch:** `torchgenomics/postgwas/_hyprcoloc.py` (+
 `tests/test_postgwas_hyprcoloc.py`) replaces the product-of-marginals
 prior in `hyprcoloc._log_prior` with Foley (2021) Eq. 2 hierarchical
 *conditional* prior:
@@ -1471,7 +1471,7 @@ updated with a docstring note explaining the change.
 unchanged (one parameter update + one new regression test).
 
 **Files touched:**
-- `torchgwas/postgwas/_hyprcoloc.py` — rewrote `_log_prior` per Foley
+- `torchgenomics/postgwas/_hyprcoloc.py` — rewrote `_log_prior` per Foley
   2021 Eq. 2.
 - `tests/test_postgwas_hyprcoloc.py` — added regression test, updated
   one pre-existing test docstring.
@@ -1491,7 +1491,7 @@ without admitting structural divergence.
 
 **Resolution of the 2026-05-18 Tier 3 C6 finding above.**
 
-**Patch:** `torchgwas/models/ocf_lmm.py` (+ `tests/test_ocf_lmm.py`)
+**Patch:** `torchgenomics/models/ocf_lmm.py` (+ `tests/test_ocf_lmm.py`)
 adds a `nuisance_learner` parameter to `OCFLMM.__init__`. Default
 remains `"linear"` (V1 backward-compatible); the new `"ridge_quadratic"`
 option augments the covariate block X0 = [1, W] with squared and
@@ -1533,7 +1533,7 @@ that re-narrows it also fails the test).
 bit-identically — the default code path is unchanged.
 
 **Files touched:**
-- `torchgwas/models/ocf_lmm.py` — added `_expand_quadratic_features`
+- `torchgenomics/models/ocf_lmm.py` — added `_expand_quadratic_features`
   helper, plumbed `nuisance_learner` through `OCFLMM.__init__`,
   `OCFNullFit`, `_fit_fold`, `_dml_score_batch`, and the `fit_null` →
   `score_chunk` boundary.
@@ -1558,7 +1558,7 @@ below them so they tolerate 40-rep noise. They are not aspirational.
 **Resolution of the 2026-05-15 Tier 1 A2 finding above (HEIDI variance
 divergence against the upstream SMR reference tool).**
 
-**Patch:** `torchgwas/postgwas/_smr.py` (+ `tests/test_postgwas_smr.py`)
+**Patch:** `torchgenomics/postgwas/_smr.py` (+ `tests/test_postgwas_smr.py`)
 adds an optional ``ld_matrix`` parameter to ``heidi_test`` and threads
 it through ``smr_heidi``. When ``None`` (V1 default) HEIDI uses the
 pre-patch diagonal delta-method variance (bit-identical to prior
@@ -1608,14 +1608,14 @@ All 11 pre-existing SMR tests continue to pass (default code path
 unchanged).
 
 **Files touched:**
-- `torchgwas/postgwas/_smr.py` — added the LD-weighted branch under
+- `torchgenomics/postgwas/_smr.py` — added the LD-weighted branch under
   ``heidi_test``, threaded ``ld_matrix`` through ``smr_heidi``.
 - `tests/test_postgwas_smr.py` — added ``TestHeidiLdMatrix`` (5 tests).
 
 **Reference:** Zhu et al. (2016, *Nature Genetics* 48:481) supplementary
 note; the SMR command-line tool (Yang lab v1.3.1) uses the same
 reference-panel LD r weighting that this patch now exposes through
-TorchGWAS. The single-SNP delta-method derivation is in Zhu 2016 eq.
+TorchGenomics. The single-SNP delta-method derivation is in Zhu 2016 eq.
 S18; the multi-SNP HEIDI chi² is its natural matrix generalization.
 
 **Tolerance posture (observed-then-floored):** all assertion thresholds
@@ -1636,7 +1636,7 @@ F3 #3 patch threading the reference-panel LD r matrix into `heidi_test`.
   numbers in `results/agreement.json` (SMR binary not re-installed; the
   reference numbers are deterministic on the fixture seed).
 - `compare.py` extended with `--use-ld-matrix`: when set, loads `ref.bed`
-  via `torchgwas.io.PlinkBedReader`, computes the (15, 15) cis-block
+  via `torchgenomics.io.PlinkBedReader`, computes the (15, 15) cis-block
   Pearson r matrix, identity-pads to (M_gwas, M_gwas) where M_gwas=65
   (15 cis + 50 background SNPs that HEIDI never selects), and passes to
   `heidi_test(..., ld_matrix=R)`.
@@ -1682,7 +1682,7 @@ the directional behavior under matched / phase-flipped helper SNPs.)
   tag through the per-check label.
 
 **Source changes (committed in this commit):**
-- `torchgwas/postgwas/_smr.py` — replaced the multivariate Σ_d^{-1}
+- `torchgenomics/postgwas/_smr.py` — replaced the multivariate Σ_d^{-1}
   formulation with the SMR-convention per-SNP-pair LD-corrected
   sum-of-squares (Zhu 2016 sup. eq. 18). Both formulations documented
   in the docstring; the SMR convention is what users expect.
@@ -1690,7 +1690,7 @@ the directional behavior under matched / phase-flipped helper SNPs.)
   semantics (identity LD now reduces to diagonal exactly; concordant /
   discordant sign behavior gated separately).
 
-**Conclusion: F3 #3 RESOLVED.** TorchGWAS `heidi_test` with
+**Conclusion: F3 #3 RESOLVED.** TorchGenomics `heidi_test` with
 `ld_matrix=R` now agrees with the upstream SMR v1.3.1 tool to ~3 sig-
 figs on chi² and ~2 sig-figs on p_HEIDI on this fixture — well inside
 the floored harness tolerances.

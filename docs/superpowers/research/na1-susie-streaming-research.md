@@ -5,8 +5,8 @@
 - **Date:** 2026-05-11.
 - **Branch:** `research/na1-susie-streaming` (worktree at `.claude/worktrees/na1-susie-streaming/`). Local commits only.
 - **Primary upstream task:** `docs/superpowers/SESSION_HANDOFF.md` § "Task NA1 — bayes-scan SuSiE streaming".
-- **Subject module:** `torchgwas/models/bayesian_vs.py` (`BayesianVS.fit`).
-- **CLI surface:** `torchgwas bayes-scan` (wired in `torchgwas/cli.py:_cmd_bayes_scan` at line ~718).
+- **Subject module:** `torchgenomics/models/bayesian_vs.py` (`BayesianVS.fit`).
+- **CLI surface:** `torchgenomics bayes-scan` (wired in `torchgenomics/cli.py:_cmd_bayes_scan` at line ~718).
 
 This brief surveys four candidate paths to remove `bayes-scan` from the materialized-scan list (the only one of 40 remaining per `docs/efficiency/streaming_audit.md` once it is merged). It is **not** a plan; it is the evidence base the brainstorming session will consume to align scope with the user before any code is written.
 
@@ -16,12 +16,12 @@ This brief surveys four candidate paths to remove `bayes-scan` from the material
 
 ### 1.1 Current behavior
 
-`BayesianVS.fit(G, variant_meta, ...)` (`torchgwas/models/bayesian_vs.py` lines 115–231) accepts the **full** `(n × p)` genotype matrix `G` as a positional argument. Inside `fit`:
+`BayesianVS.fit(G, variant_meta, ...)` (`torchgenomics/models/bayesian_vs.py` lines 115–231) accepts the **full** `(n × p)` genotype matrix `G` as a positional argument. Inside `fit`:
 
 1. `G` is upcast to `STAT_DTYPE` (float64) — `G = G.to(STAT_DTYPE)` (line 172).
 2. Allele frequencies are computed from `G`.
 3. `G_centered = G - G.mean(0, keepdim=True)` materializes a second `(n × p)` tensor.
-4. `G_rot = rotate(G_centered, U)` (`torchgwas/linalg/eigh.py`) materializes a third `(n × p)` tensor in the rotated eigenspace.
+4. `G_rot = rotate(G_centered, U)` (`torchgenomics/linalg/eigh.py`) materializes a third `(n × p)` tensor in the rotated eigenspace.
 5. Both `G` (original) and `G_rot` are then carried through `_fit_susie` / `_fit_cavi` for the entire optimization loop.
 
 In `_fit_susie` (line 702) and `_fit_cavi` (line 233):
@@ -52,7 +52,7 @@ Per `docs/efficiency/streaming_audit.md` line 73 (efficiency campaign tip on `ef
 
 So the real problem statement is two-pronged:
 
-- **Pragmatic (CLI hygiene):** users currently can call `torchgwas bayes-scan --genotype chr22.bed` and silently materialize 800 GB. We need either a streaming variant or a hard guardrail with a clear "use a sumstats path" exit.
+- **Pragmatic (CLI hygiene):** users currently can call `torchgenomics bayes-scan --genotype chr22.bed` and silently materialize 800 GB. We need either a streaming variant or a hard guardrail with a clear "use a sumstats path" exit.
 - **Architectural (streaming-first invariant):** per `feedback_streaming`, every CLI scan command must stream chunks via `iter_chunks`. `bayes-scan` is the last violator; closing it makes the invariant universal.
 
 ---
@@ -119,7 +119,7 @@ Hoffman, Blei, Wang, Paisley (2013) [C6] introduced Stochastic Variational Infer
 
 Applied to SuSiE-style models: each iteration samples a chunk `B_b` of SNPs, runs a local SuSiE-on-chunk update, and applies a stochastic update to the global `(alpha_L, mu_L, sigma2_L, sig2_l)`. The local update is conjugate (closed-form Gaussian-Multinomial, per [C1] eq. 3.4), so the natural-gradient step has a closed form.
 
-A separately important precedent: **Quickdraws** [C8] (Cresswell et al., Nat Genet 2025) implements **GPU-accelerated spike-and-slab VI** for biobank-scale GWAS (UKB, 500K samples, ~10M SNPs). It does not use SuSiE-style single-effect layers — it uses a per-SNP sigmoid mean-field approximation (closer to TorchGWAS' CAVI mode, line 233) — but it processes the full genome in **GPU mini-batches** with a stochastic ELBO objective. This is the closest-to-shipped instance of streaming spike-and-slab VI for fine-mapping.
+A separately important precedent: **Quickdraws** [C8] (Cresswell et al., Nat Genet 2025) implements **GPU-accelerated spike-and-slab VI** for biobank-scale GWAS (UKB, 500K samples, ~10M SNPs). It does not use SuSiE-style single-effect layers — it uses a per-SNP sigmoid mean-field approximation (closer to TorchGenomics' CAVI mode, line 233) — but it processes the full genome in **GPU mini-batches** with a stochastic ELBO objective. This is the closest-to-shipped instance of streaming spike-and-slab VI for fine-mapping.
 
 ### 3.2 Pros
 
@@ -148,7 +148,7 @@ For a UKB-scale `n=500K`, `p=10M` matrix at MAF=0.001: `nnz ≈ 500K × 10M × 0
 ### 4.2 Trade-offs
 
 - **Random column access:** CSR slicing by column is cheap (`O(nnz_col)`); `G[:, j]` for sparse format returns a sparse vector. The CAVI inner sweep (lines 422–454) needs `g_j = G_rot[:, j]` and `wg_j = wG[:, j]` — but **`G_rot = U^T @ G_centered` is dense regardless of `G`'s sparsity**, because `U` is generally dense. This kills the sparse-G premise as soon as we rotate.
-- **Workaround:** skip the rotation. Operate on un-rotated `G` directly, but then the within-iteration matrices `K = G G^T / p_eff` are no longer pre-diagonalized, and the residual updates require either (a) a per-iteration solve via PCG (TorchGWAS already has this, `optim/pcg.py`), or (b) an in-the-loop application of `(K + λI)^{-1}` via the rotated form of just the residual `r`. Option (b) is feasible — rotate `r` once per iteration, not `G`.
+- **Workaround:** skip the rotation. Operate on un-rotated `G` directly, but then the within-iteration matrices `K = G G^T / p_eff` are no longer pre-diagonalized, and the residual updates require either (a) a per-iteration solve via PCG (TorchGenomics already has this, `optim/pcg.py`), or (b) an in-the-loop application of `(K + λI)^{-1}` via the rotated form of just the residual `r`. Option (b) is feasible — rotate `r` once per iteration, not `G`.
 - **Centering also kills sparsity.** `G - G.mean(0, keepdim=True)` for a dense mean vector produces a fully dense matrix. Workaround: factor out the centering algebraically — every place `(G - mean)` appears in the ELBO and update equations becomes `G - mean_vec`, and we compute `G @ x` and then subtract `(mean_vec.T @ x) * 1` (a rank-1 correction). This is standard sparse-PCA territory ([C15], Allen et al. 2014). Not novel, but a careful rewrite.
 
 ### 4.3 Precedent in the literature
@@ -193,8 +193,8 @@ This is the algorithm that polyfun [C10] uses internally; the upstream susieR R 
 ### 5.3 Pros
 
 - **Different problem shape, not an "approximation."** SuSiE-RSS is mathematically equivalent to SuSiE on standardized X up to scaling under the assumption that the LD reference `R` matches the sumstats sample LD. This is the standard fine-mapping workflow in biobank cohorts (e.g., FinnGen, UKB-PPP).
-- **Existing TorchGWAS infrastructure:** `torchgwas.postgwas._ld_scores`, `torchgwas.postgwas._clump`, and `torchgwas.ld.detect_blocks` already produce the needed inputs (LD matrices, blocks, sumstats from `lmm-scan`). Wiring SuSiE-RSS would compose directly.
-- **Aligns with PolyFun (Phase 59 spec).** Per `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md` §2.3: PolyFun injects per-SNP priors into SuSiE via a D3 backward-compat shim. PolyFun's reference implementation is **already** RSS-based (it doesn't take raw G). A SuSiE-RSS path in TorchGWAS would unblock full PolyFun parity without the `_load_scan_data` materialization for `bayes-scan`.
+- **Existing TorchGenomics infrastructure:** `torchgenomics.postgwas._ld_scores`, `torchgenomics.postgwas._clump`, and `torchgenomics.ld.detect_blocks` already produce the needed inputs (LD matrices, blocks, sumstats from `lmm-scan`). Wiring SuSiE-RSS would compose directly.
+- **Aligns with PolyFun (Phase 59 spec).** Per `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md` §2.3: PolyFun injects per-SNP priors into SuSiE via a D3 backward-compat shim. PolyFun's reference implementation is **already** RSS-based (it doesn't take raw G). A SuSiE-RSS path in TorchGenomics would unblock full PolyFun parity without the `_load_scan_data` materialization for `bayes-scan`.
 - **Closes the materialized-scan list with zero new approximations.** The `bayes-scan` CLI today takes raw `--genotype`. A new `bayes-scan-rss --sumstats S.tsv --ld-ref ld.pt` CLI subcommand is a clean addition — no semantic regression on the existing path.
 
 ### 5.4 Cons
@@ -235,7 +235,7 @@ This is the algorithm that polyfun [C10] uses internally; the upstream susieR R 
 
 ### 7.1 Why this hybrid
 
-1. **Path D (SuSiE-RSS) is the natural primary path.** It aligns with the canonical biobank fine-mapping workflow (compute sumstats → fine-map per locus on sumstats + LD), composes cleanly with the PolyFun Phase 59 spec (which is also RSS-based per `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md`), and reuses TorchGWAS' existing `postgwas` LD infrastructure. The implementation surface is bounded — a new `bayesian_vs_rss.py` module + `bayes-scan-rss` CLI subcommand. Tier-2-style validation against susieR's `susie_rss()` is straightforward.
+1. **Path D (SuSiE-RSS) is the natural primary path.** It aligns with the canonical biobank fine-mapping workflow (compute sumstats → fine-map per locus on sumstats + LD), composes cleanly with the PolyFun Phase 59 spec (which is also RSS-based per `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md`), and reuses TorchGenomics' existing `postgwas` LD infrastructure. The implementation surface is bounded — a new `bayesian_vs_rss.py` module + `bayes-scan-rss` CLI subcommand. Tier-2-style validation against susieR's `susie_rss()` is straightforward.
 
 2. **Path A (chunked IBSS) preserves the raw-`G` API.** Some users — especially in plant breeding (the user's primary domain per `user_role.md`) — fine-map within small-N panels (a few hundred lines, MAF ≥ 5%) where the raw-G form is more natural and the marginal-sumstats workflow adds friction. Path A keeps `bayes-scan` working for these users at any locus size while satisfying the `feedback_streaming` invariant.
 
@@ -249,7 +249,7 @@ The brainstorming session should resolve the following before any code is writte
 - **Q2 (deprecation policy):** when Path D ships, do we hard-deprecate the materialized `bayes-scan` (warn on `p > 10K` and point to `bayes-scan-rss`), or do we keep it and add Path A in a follow-on? `feedback_streaming` argues for hard-deprecation; user-friendliness argues for keeping it as-is until Path A lands.
 - **Q3 (fidelity gate):** what credible-set Jaccard threshold do we accept vs exact susieR on a representative fixture? `SESSION_HANDOFF.md` § "NA1 success criteria" specifies > 0.95. Confirm.
 - **Q4 (CLI shape):** new subcommand `bayes-scan-rss` (clean), or extend existing `bayes-scan` with `--input-mode {raw,rss}` (compact but messier flag set)? Per the F1 ledger pattern (e.g., `lmm-scan --grm-method`) the codebase prefers flag-driven dispatch; per the Phase 40 pattern (`pgs-fit` separate from `lmm-scan`) it prefers separate subcommands when input shape changes.
-- **Q5 (LD ref source):** does the brainstorming want to ship a TorchGWAS-internal LD-ref builder (`torchgwas ld-ref --genotype panel.bed --output ld.pt`) alongside `bayes-scan-rss`, or assume users bring their own LD file? Phase 40 (`pgs-fit`) has the same dependency; check whether it ships an LD-ref builder.
+- **Q5 (LD ref source):** does the brainstorming want to ship a TorchGenomics-internal LD-ref builder (`torchgenomics ld-ref --genotype panel.bed --output ld.pt`) alongside `bayes-scan-rss`, or assume users bring their own LD file? Phase 40 (`pgs-fit`) has the same dependency; check whether it ships an LD-ref builder.
 
 ### 7.3 Out of scope for the brainstorming
 
@@ -283,7 +283,7 @@ Per `feedback_benchmark_against_installed_tools`: every numerical claim must be 
 Per `feedback_validation_spec` (observed-then-floored):
 
 1. Run `susieR::susie()` (or `susie_rss()` for Path D) on the MDP-derived fixture once.
-2. Capture: (a) credible-set Jaccard vs the same regions from TorchGWAS; (b) PIP correlation; (c) ELBO at convergence; (d) wall-time + peak memory.
+2. Capture: (a) credible-set Jaccard vs the same regions from TorchGenomics; (b) PIP correlation; (c) ELBO at convergence; (d) wall-time + peak memory.
 3. Set tolerances at `(observed × 1.25)`, with hard floors:
    - **Credible-set Jaccard ≥ 0.95** (per `SESSION_HANDOFF.md` NA1 success criteria — this is a hard contract).
    - **PIP correlation ≥ 0.99** for SNPs with PIP > 0.1 in either tool (lenient on near-zero PIPs which are noisy in both).
@@ -314,7 +314,7 @@ Memory pre-flight: every shell in this harness sources `validation/external/_lib
 
 `BayesianVS.fit(G, variant_meta, ...)` is the only public entry point. It is currently called from:
 
-- `torchgwas/cli.py:_cmd_bayes_scan` (line 741) — passes a fully materialized `G`.
+- `torchgenomics/cli.py:_cmd_bayes_scan` (line 741) — passes a fully materialized `G`.
 - `tests/test_bayesian_vs.py` — 30+ tests that pass `G` directly (see fixtures `lmm_null_data`, `causal_data`).
 
 Any streaming variant must **either** keep `fit(G, ...)` as a working wrapper that internally rebuilds a chunk-iterator from the dense G (preserves all tests; trivial), **or** add a parallel `fit_streaming(reader, vmeta, ...)` and route the CLI through the new path while keeping `fit(G)` as a thin wrapper. Recommended: the wrapper approach (no test churn). For Path D, the SuSiE-RSS variant is a *new* class `BayesianVSRss` (or a new method `fit_rss(z, R, n, vmeta)`), so existing tests are not at risk.
@@ -394,8 +394,8 @@ Per `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md` §2.3:
 
 **Repo files cited (not counted in the 19 above):**
 
-- `torchgwas/models/bayesian_vs.py` (subject module)
-- `torchgwas/cli.py:_cmd_bayes_scan` (line ~718)
+- `torchgenomics/models/bayesian_vs.py` (subject module)
+- `torchgenomics/cli.py:_cmd_bayes_scan` (line ~718)
 - `docs/efficiency/streaming_audit.md` (lives on `efficiency/streaming-scan-audit` branch, not on this research branch)
 - `docs/superpowers/SESSION_HANDOFF.md` § "NEXT AGENT TASKS" (NA1 description)
 - `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md` (D3 shim, §2.3)

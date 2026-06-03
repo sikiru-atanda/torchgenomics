@@ -1,6 +1,6 @@
 # Within-family LMM reference harness (Plan B Tier 3 / Agent C3)
 
-Head-to-head validation harness for `torchgwas.models.within_family_lmm.WithinFamilyLMM`
+Head-to-head validation harness for `torchgenomics.models.within_family_lmm.WithinFamilyLMM`
 (Phase 23; Young, Benonisdottir, Przeworski & Kong 2022, *Nat Genet* **54**:263-273,
 "Mendelian imputation of parental genotypes improves estimates of direct genetic
 effects", doi:10.1038/s41588-022-01016-z) against either the canonical Python
@@ -74,7 +74,7 @@ with the following identifications under the generative model (Young 2022 eq. 2-
 The reference implementation is in `reference_paper.py` and is a self-contained
 numpy + pandas OLS fit per SNP, with no external tool dependency.
 
-## TorchGWAS mapping
+## TorchGenomics mapping
 
 The harness compares the following quantities:
 
@@ -150,7 +150,7 @@ No F3 fix-now finding.
 bash validation/specialty/family/install.sh        # snipar install (falls back to paper_simulator)
 bash validation/specialty/family/fetch_data.sh     # generate sib-pair fixture (seed=42)
 bash validation/specialty/family/run.sh            # run the reference estimator
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/specialty/family/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/specialty/family/compare.py
 ```
 
 Each shell script sources `validation/external/_lib/preflight.sh` and asserts

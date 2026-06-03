@@ -1,6 +1,6 @@
 {
   "kernel": "_compute_elbo Cholesky cache",
-  "location": "torchgwas.models.bayesian_vs_rss",
+  "location": "torchgenomics.models.bayesian_vs_rss",
   "date": "2026-06-01",
   "host": "linux-x86_64",
   "notes": "Cache torch.linalg.cholesky(R) once per fit_rss and reuse via torch.cholesky_solve in _compute_elbo (called once per IBSS outer iteration). Replaces O(p^3) linalg.solve with O(p^2) substitution. R is constant across IBSS iterations so the factor amortises across max_iter calls. Bench against AR(1) rho=0.5 LD, L=10, n_causal=3, estimate_prior_method='optim'.",

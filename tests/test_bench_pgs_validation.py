@@ -1,4 +1,4 @@
-"""Benchmark: torchgwas PGS validation vs scipy / statsmodels reference.
+"""Benchmark: torchgenomics PGS validation vs scipy / statsmodels reference.
 
 Validates R², AUC, correlations, and Nagelkerke R² against established
 reference implementations.
@@ -14,7 +14,7 @@ import torch
 from scipy import stats as sp_stats
 from statsmodels.discrete.discrete_model import Logit
 
-from torchgwas.pgs.validation import validate_pgs
+from torchgenomics.pgs.validation import validate_pgs
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,7 +45,7 @@ def _numpy_ols_r2(y: np.ndarray, X: np.ndarray) -> float:
 
 
 class TestBenchPearsonR:
-    """Pearson r: torchgwas vs scipy.stats.pearsonr."""
+    """Pearson r: torchgenomics vs scipy.stats.pearsonr."""
 
     def test_bench_pearson_r_matches_scipy(self):
         y, pgs = _make_continuous_data(seed=42)
@@ -58,7 +58,7 @@ class TestBenchPearsonR:
 
 
 class TestBenchSpearmanR:
-    """Spearman r: torchgwas vs scipy.stats.spearmanr."""
+    """Spearman r: torchgenomics vs scipy.stats.spearmanr."""
 
     def test_bench_spearman_r_matches_scipy(self):
         y, pgs = _make_continuous_data(seed=42)
@@ -71,7 +71,7 @@ class TestBenchSpearmanR:
 
 
 class TestBenchR2:
-    """R² (PGS-only model): torchgwas vs numpy OLS."""
+    """R² (PGS-only model): torchgenomics vs numpy OLS."""
 
     def test_bench_r2_matches_numpy_ols(self):
         y, pgs = _make_continuous_data(seed=42)
@@ -88,7 +88,7 @@ class TestBenchR2:
 
 
 class TestBenchIncrementalR2:
-    """Incremental R²: torchgwas vs manual numpy OLS difference."""
+    """Incremental R²: torchgenomics vs manual numpy OLS difference."""
 
     def test_bench_incremental_r2_matches_numpy(self):
         rng = np.random.RandomState(99)
@@ -118,7 +118,7 @@ class TestBenchIncrementalR2:
 
 
 class TestBenchAUC:
-    """AUC: torchgwas vs scipy Mann-Whitney U."""
+    """AUC: torchgenomics vs scipy Mann-Whitney U."""
 
     def test_bench_auc_matches_scipy_mannwhitney(self):
         rng = np.random.RandomState(77)
@@ -147,7 +147,7 @@ class TestBenchAUC:
 
 
 class TestBenchNagelkerkeR2:
-    """Nagelkerke R²: torchgwas vs statsmodels Logit."""
+    """Nagelkerke R²: torchgenomics vs statsmodels Logit."""
 
     def test_bench_nagelkerke_r2_matches_statsmodels(self):
         rng = np.random.RandomState(55)
@@ -180,7 +180,7 @@ class TestBenchNagelkerkeR2:
 
 
 class TestBenchMAE:
-    """MAE: torchgwas vs manual numpy computation."""
+    """MAE: torchgenomics vs manual numpy computation."""
 
     def test_bench_mae_matches_numpy(self):
         y, pgs = _make_continuous_data(seed=42)

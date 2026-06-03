@@ -1,5 +1,5 @@
 // Native accelerator for the OrdinalGLMM threshold-update Newton-
-// Raphson inner step in ``torchgwas.models.ordinal_glmm``.
+// Raphson inner step in ``torchgenomics.models.ordinal_glmm``.
 //
 // Background. Per outer PQL iteration the Python reference runs ~5
 // Newton-Raphson updates on the (J−1) cumulative-link thresholds, and

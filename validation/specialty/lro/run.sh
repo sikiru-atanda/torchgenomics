@@ -12,5 +12,5 @@ source "${HERE}/../../external/_lib/preflight.sh"
 # Small fixture; 1 GB disk + 2 GB RAM is plenty.
 preflight_check "specialty-lro" 1 2
 
-TORCHGWAS_DISABLE_NATIVE="${TORCHGWAS_DISABLE_NATIVE:-1}" \
+TORCHGENOMICS_DISABLE_NATIVE="${TORCHGENOMICS_DISABLE_NATIVE:-1}" \
     python3 "${HERE}/generate_and_compare.py"

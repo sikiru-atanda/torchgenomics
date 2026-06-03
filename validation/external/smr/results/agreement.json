@@ -1,5 +1,5 @@
 {
-  "name": "SMR + HEIDI (Yang lab v1.3.1 vs torchgwas.postgwas.smr_test/heidi_test)",
+  "name": "SMR + HEIDI (Yang lab v1.3.1 vs torchgenomics.postgwas.smr_test/heidi_test)",
   "n_compared": 1,
   "passed": true,
   "checks": [

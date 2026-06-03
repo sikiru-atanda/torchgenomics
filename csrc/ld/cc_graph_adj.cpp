@@ -1,5 +1,5 @@
 // Native accelerator for the windowed r² adjacency build inside
-// ``torchgwas.ld._blocks_literature.detect_blocks_cc_graph``.
+// ``torchgenomics.ld._blocks_literature.detect_blocks_cc_graph``.
 //
 // The pure-Python implementation walks every (i, j) pair within a
 // (window, max_bp) constraint and re-computes r² SNP-by-SNP using:

@@ -1,6 +1,6 @@
 // PELT (Pruned Exact Linear Time) change-point detection.
 //
-// C++ port of torchgwas.ld._changepoint.dp_changepoint. The pure-Python
+// C++ port of torchgenomics.ld._changepoint.dp_changepoint. The pure-Python
 // implementation is the canonical reference; this module mirrors it
 // step-for-step using std::vector and a packed candidate list.
 //

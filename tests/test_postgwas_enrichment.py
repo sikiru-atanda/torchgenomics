@@ -1,16 +1,16 @@
-"""Tests for ``torchgwas.postgwas._enrichment`` -- gene-set enrichment."""
+"""Tests for ``torchgenomics.postgwas._enrichment`` -- gene-set enrichment."""
 
 from __future__ import annotations
 
 import torch
 
-from torchgwas.postgwas._enrichment import (
+from torchgenomics.postgwas._enrichment import (
     EnrichmentResult,
     GeneResult,
     gene_set_enrichment,
     snp_to_gene,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Helper

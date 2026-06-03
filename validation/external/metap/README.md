@@ -1,6 +1,6 @@
 # validation/external/metap — R-side p-value combination reference
 
-Head-to-head agreement between TorchGWAS's p-value combination kernels
+Head-to-head agreement between TorchGenomics's p-value combination kernels
 and the CRAN `metap` (Fisher / Stouffer / HMP / Tippett) +
 Bioconductor `EmpiricalBrownsMethod` reference implementations.
 
@@ -13,7 +13,7 @@ simulate_fixture.py  Fixture generator (deterministic on --seed)
 run_reference.R      Call metap::sumlog / sumz / minimump / hmp.stat +
                      EmpiricalBrownsMethod::empiricalBrownsMethod
 run.sh               Invoke run_reference.R with the right args
-compare.py           Compare R outputs vs TorchGWAS (postgwas.fisher_combined,
+compare.py           Compare R outputs vs TorchGenomics (postgwas.fisher_combined,
                      etc.); write results/summary.tsv + agreement.json
 data/                Fixture inputs (pvalues.tsv, data_matrix.tsv, sim_truth.json)
 outputs/             R reference output (reference.tsv)

@@ -1,5 +1,5 @@
 """Tests for the dedicated GPU kernels in
-``torchgwas.preprocess._impute_gpu``.
+``torchgenomics.preprocess._impute_gpu``.
 
 The kernels are written entirely in vectorized torch, so they run on any
 device — including CPU. This file deliberately exercises them on CPU
@@ -16,12 +16,12 @@ import os
 import pytest
 import torch
 
-from torchgwas.preprocess._impute_gpu import (
+from torchgenomics.preprocess._impute_gpu import (
     impute_knn_gpu,
     impute_ld_gpu,
     impute_mode_gpu,
 )
-from torchgwas.preprocess.impute import (
+from torchgenomics.preprocess.impute import (
     impute_knn,
     impute_ld,
     impute_mode,
@@ -33,27 +33,27 @@ from torchgwas.preprocess.impute import (
 
 
 def _python_reference_mode(G):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return impute_mode(G)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 def _python_reference_knn(G, K, k):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return impute_knn(G, K, k=k)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 def _python_reference_ld(G, w):
-    os.environ["TORCHGWAS_DISABLE_NATIVE"] = "1"
+    os.environ["TORCHGENOMICS_DISABLE_NATIVE"] = "1"
     try:
         return impute_ld(G, window_size=w)
     finally:
-        del os.environ["TORCHGWAS_DISABLE_NATIVE"]
+        del os.environ["TORCHGENOMICS_DISABLE_NATIVE"]
 
 
 cuda_required = pytest.mark.skipif(
@@ -193,7 +193,7 @@ def test_ld_gpu_matches_python_basic():
     G = G_full.clone()
     G[torch.rand(G.shape) < 0.1] = float("nan")
 
-    from torchgwas.preprocess.impute import impute_mean
+    from torchgenomics.preprocess.impute import impute_mean
     G_complete = impute_mean(G)
     mask = torch.isnan(G)
 
@@ -208,7 +208,7 @@ def test_ld_gpu_matches_python_wide_window():
     G = G_full.clone()
     G[torch.rand(G.shape) < 0.15] = float("nan")
 
-    from torchgwas.preprocess.impute import impute_mean
+    from torchgenomics.preprocess.impute import impute_mean
     G_complete = impute_mean(G)
     mask = torch.isnan(G)
 
@@ -223,7 +223,7 @@ def test_ld_gpu_polyploid_window():
     G = G_full.clone()
     G[torch.rand(G.shape) < 0.2] = float("nan")
 
-    from torchgwas.preprocess.impute import impute_mean
+    from torchgenomics.preprocess.impute import impute_mean
     G_complete = impute_mean(G)
     mask = torch.isnan(G)
 
@@ -271,7 +271,7 @@ def test_ld_gpu_cuda_matches_cpu():
     G_full = torch.randint(0, 3, (40, 30), dtype=torch.float64)
     G = G_full.clone()
     G[torch.rand(G.shape) < 0.1] = float("nan")
-    from torchgwas.preprocess.impute import impute_mean
+    from torchgenomics.preprocess.impute import impute_mean
     G_complete = impute_mean(G)
     mask = torch.isnan(G)
 

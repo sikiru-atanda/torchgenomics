@@ -3,8 +3,8 @@
 import pytest
 import torch
 
-from torchgwas.postgwas._ld_scores import compute_ld_scores
-from torchgwas.postgwas._ldsc import ldsc_h2, ldsc_intercept, ldsc_rg_from_z
+from torchgenomics.postgwas._ld_scores import compute_ld_scores
+from torchgenomics.postgwas._ldsc import ldsc_h2, ldsc_intercept, ldsc_rg_from_z
 
 
 def _simulate_infinitesimal(n=1000, m=500, h2=0.5, seed=42):

@@ -1,10 +1,10 @@
-"""Compare TwoSampleMR R reference vs TorchGWAS on simulated MR sumstats.
+"""Compare TwoSampleMR R reference vs TorchGenomics on simulated MR sumstats.
 
 Four comparisons (one per MR estimator):
-  1. IVW                 — `mr(method_list="mr_ivw")` vs `torchgwas.postgwas.mr_ivw`
+  1. IVW                 — `mr(method_list="mr_ivw")` vs `torchgenomics.postgwas.mr_ivw`
   2. MR-Egger            — `mr_egger_regression` + `mr_pleiotropy_test` vs `mr_egger`
   3. Weighted median     — `mr_weighted_median` (R bootstrap) vs `mr_weighted_median`
-  4. MR-PRESSO           — `MRPRESSO::mr_presso` vs `torchgwas.postgwas.mr_presso`
+  4. MR-PRESSO           — `MRPRESSO::mr_presso` vs `torchgenomics.postgwas.mr_presso`
 
 Both tools see the *same* `data/sumstats.tsv` (simulated by `simulate_mr.R`
 with seed 42, theta_true = 0.5, K = 30, 3 pleiotropic SNPs), so disagreement
@@ -17,7 +17,7 @@ Notes on expected divergences:
 
 * IVW is *not* parameter-free agreement: TwoSampleMR's `mr_ivw` uses the
   multiplicative-random-effects estimator (overdispersion-corrected by
-  default, only when Cochran's Q > K-1). TorchGWAS' `mr_ivw` does the
+  default, only when Cochran's Q > K-1). TorchGenomics' `mr_ivw` does the
   same overdispersion correction, so the slope and SE match closely. The
   observed |Δ β| floor is loose to accommodate the case where R's WLS
   uses `lm()` weights and TG uses an explicit Wald-ratio sum.
@@ -26,7 +26,7 @@ Notes on expected divergences:
   Slope, intercept, and their SEs are textbook closed-form WLS.
 
 * Weighted median: TwoSampleMR uses 1000-replicate parametric bootstrap
-  (`mr_weighted_median_bootstrap`); TorchGWAS uses a 1000-replicate
+  (`mr_weighted_median_bootstrap`); TorchGenomics uses a 1000-replicate
   resample bootstrap with the same K and seed=42. Different bootstrap
   schemes → bootstrap SE differs by a few percent. The point estimate
   is deterministic (no MC noise) and should agree to 1e-4.
@@ -66,12 +66,12 @@ import torch
 #   MR-PRESSO          |Δ global p| 1.0e-3 (post parametric-LOO port)
 #
 # The MR-Egger near-bit-equal agreement is a result of the F3 fix applied
-# to `torchgwas.postgwas._mr.mr_egger` in this same Pillar B work (sign-
+# to `torchgenomics.postgwas._mr.mr_egger` in this same Pillar B work (sign-
 # orientation per Bowden 2015, Bowden-style overdispersion clipping, and
 # t-distribution p-values with K-2 d.f.). See git log for "Pillar B B3 F3".
 #
 # **MR-PRESSO global-p**: as of the post-V1 follow-up commit (see
-# `git log --grep="MR-PRESSO parametric"`), `torchgwas.postgwas.mr_presso`
+# `git log --grep="MR-PRESSO parametric"`), `torchgenomics.postgwas.mr_presso`
 # defaults to the **Verbanck-2018 parametric LOO bootstrap** matching
 # MRPRESSO 1.0 exactly. The legacy permutation null is preserved under
 # `mr_presso(..., null="permutation")`. Post-fix, |Δ global p| floors at
@@ -113,7 +113,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import (  # noqa: E402
+from torchgenomics.postgwas import (  # noqa: E402
     SumStats,
     mr_egger,
     mr_ivw,
@@ -184,7 +184,7 @@ def _load_inputs(data_dir: Path, out_dir: Path) -> dict[str, Any]:
     se_y = torch.tensor(sumstats["se_outcome"].to_numpy(np.float64), dtype=torch.float64)
     K = bx.shape[0]
 
-    # Build SumStats objects for TorchGWAS. p, n, af are needed by the
+    # Build SumStats objects for TorchGenomics. p, n, af are needed by the
     # dataclass but not by mr_*; we set p from the z-score and n=10000 stub.
     z_x = (bx / se_x).numpy()
     z_y = (by / se_y).numpy()
@@ -230,7 +230,7 @@ def compare_ivw(data_dir: Path, out_dir: Path) -> ComparisonReport:
     d_p = abs(tg.p_value - r["pval"])
 
     rep = ComparisonReport(
-        name="IVW (TwoSampleMR mr_ivw vs TorchGWAS mr_ivw)",
+        name="IVW (TwoSampleMR mr_ivw vs TorchGenomics mr_ivw)",
         n_compared=inp["K"],
     )
     rep.checks.append(_check_max("|Δ β|", d_b, TOL_IVW_BETA))
@@ -260,7 +260,7 @@ def compare_egger(data_dir: Path, out_dir: Path) -> ComparisonReport:
     d_int_se = abs(tg.intercept_se - r["intercept_se"])
 
     rep = ComparisonReport(
-        name="MR-Egger (TwoSampleMR vs TorchGWAS mr_egger)",
+        name="MR-Egger (TwoSampleMR vs TorchGenomics mr_egger)",
         n_compared=inp["K"],
     )
     rep.checks.append(_check_max("|Δ β|", d_b, TOL_EGGER_BETA))
@@ -286,7 +286,7 @@ def compare_weighted_median(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
     # Same n_boot=1000 + seed=42 in both tools, but the bootstrap schemes
     # differ: TwoSampleMR uses a parametric bootstrap (resample β_y from
-    # N(β_y, se_y²) and β_x from N(β_x, se_x²)), while TorchGWAS resamples
+    # N(β_y, se_y²) and β_x from N(β_x, se_x²)), while TorchGenomics resamples
     # SNP indices with replacement (non-parametric bootstrap). The point
     # estimate is deterministic; only the SE diverges between the two.
     tg = mr_weighted_median(inp["exposure"], inp["outcome"], n_boot=1000, seed=42)
@@ -295,7 +295,7 @@ def compare_weighted_median(data_dir: Path, out_dir: Path) -> ComparisonReport:
     d_se = abs(tg.se - r["se"])
 
     rep = ComparisonReport(
-        name="Weighted median (TwoSampleMR vs TorchGWAS mr_weighted_median)",
+        name="Weighted median (TwoSampleMR vs TorchGenomics mr_weighted_median)",
         n_compared=inp["K"],
     )
     rep.checks.append(_check_max("|Δ β|", d_b, TOL_WMED_BETA))
@@ -340,7 +340,7 @@ def compare_presso(data_dir: Path, out_dir: Path) -> ComparisonReport:
     )
 
     rep = ComparisonReport(
-        name="MR-PRESSO (TwoSampleMR vs TorchGWAS mr_presso)",
+        name="MR-PRESSO (TwoSampleMR vs TorchGenomics mr_presso)",
         n_compared=inp["K"],
     )
     rep.checks.append(_check_max("|Δ raw β|", d_raw, TOL_PRESSO_BETA_RAW))

@@ -1,4 +1,4 @@
-"""Tier-2 behavioral coverage tests for the FINAL ``torchgwas.postgwas`` public
+"""Tier-2 behavioral coverage tests for the FINAL ``torchgenomics.postgwas`` public
 symbols across five submodules:
 
 - ``_enrichment``: ``EnrichmentResult``, ``GeneResult``, ``gene_set_enrichment``,
@@ -26,7 +26,7 @@ from dataclasses import fields
 import pytest
 import torch
 
-from torchgwas.postgwas import (
+from torchgenomics.postgwas import (
     EnrichmentResult,
     GeneResult,
     MultiAncestryResult,

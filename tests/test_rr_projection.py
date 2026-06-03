@@ -3,8 +3,8 @@
 import pytest
 import torch
 
-from torchgwas.linalg.basis import legendre_basis, standardize_time
-from torchgwas.models.rr_lmm import (
+from torchgenomics.linalg.basis import legendre_basis, standardize_time
+from torchgenomics.models.rr_lmm import (
     LongitudinalProjection,
     RandomRegressionLMM,
     longitudinal_to_wide,

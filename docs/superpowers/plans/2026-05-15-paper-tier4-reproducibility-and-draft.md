@@ -31,7 +31,7 @@ Expected: every command exits 0.
 
 ## 2. D1 — Reproducibility repo skeleton
 
-The reproducibility repo is a *separate* git repo at `github.com/sikiru-atanda/torchgwas-paper-reproducibility` (to be created at D5; for now, develop locally under `paper/reproducibility/`).
+The reproducibility repo is a *separate* git repo at `github.com/sikiru-atanda/torchgenomics-paper-reproducibility` (to be created at D5; for now, develop locally under `paper/reproducibility/`).
 
 ### Task D1.1: Create reproducibility-repo directory structure
 
@@ -41,7 +41,7 @@ The reproducibility repo is a *separate* git repo at `github.com/sikiru-atanda/t
 - Create: `paper/reproducibility/stages/01_install_references.sh`
 - Create: `paper/reproducibility/stages/02_stage_fixtures.sh`
 - Create: `paper/reproducibility/stages/03_run_references.sh`
-- Create: `paper/reproducibility/stages/04_run_torchgwas.sh`
+- Create: `paper/reproducibility/stages/04_run_torchgenomics.sh`
 - Create: `paper/reproducibility/stages/05_run_streaming_bench.sh`
 - Create: `paper/reproducibility/stages/06_run_native_bench.sh`
 - Create: `paper/reproducibility/stages/07_run_multiomics.sh`
@@ -67,7 +67,7 @@ bash preflight.sh
 bash stages/01_install_references.sh
 bash stages/02_stage_fixtures.sh
 bash stages/03_run_references.sh
-bash stages/04_run_torchgwas.sh
+bash stages/04_run_torchgenomics.sh
 bash stages/05_run_streaming_bench.sh
 bash stages/06_run_native_bench.sh
 bash stages/07_run_multiomics.sh
@@ -145,7 +145,7 @@ chmod +x paper/reproducibility/stages/08_render_figures.py
 
 ```bash
 cat > paper/reproducibility/README.md <<'EOF'
-# TorchGWAS paper reproducibility
+# TorchGenomics paper reproducibility
 
 One-command pipeline: `bash reproduce_paper.sh`. Regenerates every number in every figure/table in the Genome Biology Methods manuscript.
 
@@ -197,7 +197,7 @@ git commit -m "Tier 4 D2: figure-render registry scaffold"
 - Create: `paper/reproducibility/render_figures/f1_capability_map.py`
 - Output: `output/F1.pdf`
 
-**Agent brief outline:** Render a sunburst / treemap of all ~50 capabilities grouped by cluster (variant / haplotype / multi-omics / polyploid / specialty / GLM/GLMM family / post-GWAS / multiple-testing / viz / annotate / pre-process / native). Source data: hand-curated JSON of the 7 clusters × their constituent CLI subcommands + module functions. The agent must extract the data from `torchgwas/cli.py` (40 dispatch dict entries) + the module-level public surface.
+**Agent brief outline:** Render a sunburst / treemap of all ~50 capabilities grouped by cluster (variant / haplotype / multi-omics / polyploid / specialty / GLM/GLMM family / post-GWAS / multiple-testing / viz / annotate / pre-process / native). Source data: hand-curated JSON of the 7 clusters × their constituent CLI subcommands + module functions. The agent must extract the data from `torchgenomics/cli.py` (40 dispatch dict entries) + the module-level public surface.
 
 - [ ] Dispatch subagent for F1
 - [ ] Audit: `python -c "from paper.reproducibility.render_figures import f1_capability_map; f1_capability_map.render('/tmp/F1.pdf')"` produces F1.pdf > 10 KB
@@ -286,7 +286,7 @@ git commit -m "Tier 4 D2: figure-render registry scaffold"
 **Files:**
 - Create: `bench/streaming_p_sweep.py`
 
-**Agent brief outline:** Author a script that runs torchgwas lmm-scan in both streaming and materialized mode at p ∈ {1e4, 3e4, 1e5, 3e5, 1e6} on a synthetic fixture (n=2000), measures peak RSS, and emits `bench/streaming_p_sweep_results.json`. Use the existing `tests/test_streaming_memory.py` patterns as the structural reference. Pre-flight gate from `validation/external/_lib/preflight.sh` required.
+**Agent brief outline:** Author a script that runs torchgenomics lmm-scan in both streaming and materialized mode at p ∈ {1e4, 3e4, 1e5, 3e5, 1e6} on a synthetic fixture (n=2000), measures peak RSS, and emits `bench/streaming_p_sweep_results.json`. Use the existing `tests/test_streaming_memory.py` patterns as the structural reference. Pre-flight gate from `validation/external/_lib/preflight.sh` required.
 
 - [ ] Dispatch
 - [ ] Audit (`python bench/streaming_p_sweep.py --quick` produces a JSON with 5 entries)
@@ -295,8 +295,8 @@ git commit -m "Tier 4 D2: figure-render registry scaffold"
 ### Task D2.9: GU + LRO internal-consistency simulators
 
 **Files:**
-- Create: `validation/specialty/gu/{generate.py,run_torchgwas.py,compare.py,README.md,results/}`
-- Create: `validation/specialty/lro/{generate.py,run_torchgwas.py,compare.py,README.md,results/}`
+- Create: `validation/specialty/gu/{generate.py,run_torchgenomics.py,compare.py,README.md,results/}`
+- Create: `validation/specialty/lro/{generate.py,run_torchgenomics.py,compare.py,README.md,results/}`
 
 **Agent brief outline:** GU validates recovery of known dosage variance; LRO validates block-resolved h² recovery. Both are internal-consistency only (no external reference exists per the spec §10.6). Document this asymmetry in each README.md and in the F7 panel caption.
 
@@ -331,7 +331,7 @@ Each manuscript section is one bite-sized task. The agent for each section reads
 ```bash
 mkdir -p paper/manuscript/sections paper/manuscript/supplement
 cat > paper/manuscript/metadata.yaml <<'EOF'
-title: "TorchGWAS: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to fifteen reference tools"
+title: "TorchGenomics: a GPU-accelerated, polyploid-first toolkit unifying variant, haplotype, and multi-omics GWAS at biobank scale, with end-to-end numerical equivalence to fifteen reference tools"
 venue: "Genome Biology — Methods (Software)"
 authors:
   - name: "Sikiru Atanda"
@@ -339,8 +339,8 @@ authors:
     affiliation: "PulseSmartLab Innovations"
     corresponding: true
 license: "Apache 2.0 (subject to confirmation)"
-repo: "github.com/sikiru-atanda/torchgwas"
-reproducibility_repo: "github.com/sikiru-atanda/torchgwas-paper-reproducibility"
+repo: "github.com/sikiru-atanda/torchgenomics"
+reproducibility_repo: "github.com/sikiru-atanda/torchgenomics-paper-reproducibility"
 spec: "docs/superpowers/specs/2026-05-15-genome-biology-paper-design.md"
 EOF
 
@@ -394,7 +394,7 @@ git commit -m "Tier 4 D3.0: manuscript scaffold + metadata"
 
 **File:** `paper/manuscript/sections/05_multiomics.md`
 
-**Agent brief:** Describe TWAS (S-PrediXcan + PrediXcan) + SMR/HEIDI + coloc + hyprcoloc + GRM-corrected mediation (`torchgwas.multiomics`). Walk through F4's three panels (simulated truth recovery + GTEx/UKB SORT1/LDL + plant multi-omics). Emphasize this is the SNP ↔ transcriptomics comparative analysis cluster that justified the manuscript-rewrite scope.
+**Agent brief:** Describe TWAS (S-PrediXcan + PrediXcan) + SMR/HEIDI + coloc + hyprcoloc + GRM-corrected mediation (`torchgenomics.multiomics`). Walk through F4's three panels (simulated truth recovery + GTEx/UKB SORT1/LDL + plant multi-omics). Emphasize this is the SNP ↔ transcriptomics comparative analysis cluster that justified the manuscript-rewrite scope.
 
 - [ ] Dispatch
 - [ ] Audit
@@ -424,7 +424,7 @@ git commit -m "Tier 4 D3.0: manuscript scaffold + metadata"
 
 **File:** `paper/manuscript/sections/08_gpu_streaming.md`
 
-**Agent brief:** Describe the device-aware dispatcher (`torchgwas._dispatch.select_path`); the 25 native C++ accelerators; the streaming I/O surface (`iter_chunks` on every reader; `grm_vanraden_streaming`; sparse-GRM + PCG-REML). Walk through F6 — native speedup distribution + memory slope + sparse-GRM 1.8× + GPU parity. UKB-scale data point from NA3 harness.
+**Agent brief:** Describe the device-aware dispatcher (`torchgenomics._dispatch.select_path`); the 25 native C++ accelerators; the streaming I/O surface (`iter_chunks` on every reader; `grm_vanraden_streaming`; sparse-GRM + PCG-REML). Walk through F6 — native speedup distribution + memory slope + sparse-GRM 1.8× + GPU parity. UKB-scale data point from NA3 harness.
 
 - [ ] Dispatch
 - [ ] Audit
@@ -454,7 +454,7 @@ git commit -m "Tier 4 D3.0: manuscript scaffold + metadata"
 
 **File:** `paper/manuscript/sections/11_availability.md`
 
-**Agent brief:** License (Apache 2.0, subject to user confirmation); installation (`pip install torchgwas`, bioconda recipe state TBC); docs site URL; reproducibility script `paper/reproducibility/reproduce_paper.sh`; bench data accession.
+**Agent brief:** License (Apache 2.0, subject to user confirmation); installation (`pip install torchgenomics`, bioconda recipe state TBC); docs site URL; reproducibility script `paper/reproducibility/reproduce_paper.sh`; bench data accession.
 
 - [ ] Dispatch
 - [ ] Audit
@@ -487,12 +487,12 @@ The spec §6 mandates 8 supplementary deliverables. Each can be dispatched as it
 **Agent briefs (one per S-item; 8 subagents):**
 
 - **S1**: Walk `validation/external/<tool>/results/agreement.json` for all 15 tools + 3 fixtures; emit a single table with rows = tool, columns = metric (β / SE / p / PIP / coverage / FDR), cells = observed agreement value + floored tolerance.
-- **S2**: Walk `torchgwas.cli` dispatch dict + every public function under `torchgwas/{io,preprocess,linalg,models,scan,stats,ld,optim,pgs,postgwas,multiomics,viz,annotate}`; emit a table with columns = (capability, CLI subcommand, module path, phase number, test file, validation harness). Target: every one of the ~50 capabilities has a row.
+- **S2**: Walk `torchgenomics.cli` dispatch dict + every public function under `torchgenomics/{io,preprocess,linalg,models,scan,stats,ld,optim,pgs,postgwas,multiomics,viz,annotate}`; emit a table with columns = (capability, CLI subcommand, module path, phase number, test file, validation harness). Target: every one of the ~50 capabilities has a row.
 - **S3**: Copy `docs/validation_findings.md` verbatim into the supplement with a header pointing to the canonical path.
 - **S4**: Crawl every `validation/external/*/install.sh` for pinned versions; assemble into a single table (tool, version, source URL, SHA256, install command summary).
 - **S5**: Describe the observed-then-floored protocol (cite `memory/feedback_validation_spec.md` semantics in third-person). Per-tool numerical drift tables: pull from S1.
 - **S6**: For each main figure, render 2–3 supplementary panels with the same renderer code (e.g., F3.1–F3.9 = per-haplotype-method internals; F4.1–F4.3 = per-multi-omics-method internals at extended n; F5.1–F5.5 = per-ploidy parity at k=4,6,8 + simulated k=10).
-- **S7**: Run the existing test suite under each of: TORCHGWAS_DISABLE_NATIVE=1, TORCHGWAS_DISABLE_GPU=1, TORCHGWAS_DISABLE_OPENMP=1 (build re-required). Emit a parity table showing the equivalence-tolerance under each toggle. Demonstrates the spec's "GPU + CPU agree at FP64 tolerance" claim.
+- **S7**: Run the existing test suite under each of: TORCHGENOMICS_DISABLE_NATIVE=1, TORCHGENOMICS_DISABLE_GPU=1, TORCHGENOMICS_DISABLE_OPENMP=1 (build re-required). Emit a parity table showing the equivalence-tolerance under each toggle. Demonstrates the spec's "GPU + CPU agree at FP64 tolerance" claim.
 - **S8**: For each F1–F7, author a Jupyter notebook that reads from the harness outputs and renders the figure inline, with prose explaining each step. Notebooks should run end-to-end on a fresh checkout after `bash paper/reproducibility/reproduce_paper.sh`.
 
 **Acceptance gate per S-item:**

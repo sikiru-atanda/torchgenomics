@@ -96,7 +96,7 @@ cat(sprintf(
 #   bb.alg  = TRUE  - branch-and-bound algorithm (default; faster for K large)
 #   bb.selection = "regional" - regional PP for stopping (matches paper)
 #
-# TorchGWAS prior wiring:
+# TorchGenomics prior wiring:
 #   prior_1 = 1e-4 - matches hyprcoloc::prior.1
 #   prior_2 = 0.98 - TG's "prior probability that two associated traits share
 #                    a causal variant". hyprcoloc parameterizes the same

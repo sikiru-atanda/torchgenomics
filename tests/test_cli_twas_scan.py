@@ -1,4 +1,4 @@
-"""CLI smoke tests for ``torchgwas twas-scan`` (observed-expression TWAS).
+"""CLI smoke tests for ``torchgenomics twas-scan`` (observed-expression TWAS).
 
 Both tests build a tiny in-memory fixture, write the inputs to a tmp
 directory, invoke the CLI as a subprocess, and parse the output TSV.
@@ -65,7 +65,7 @@ def _build_fixture(tmp_path: Path, n: int = 100, n_genes: int = 4,
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess:
-    cmd = [sys.executable, "-m", "torchgwas.cli", *args]
+    cmd = [sys.executable, "-m", "torchgenomics.cli", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, check=False,
         cwd=str(REPO_ROOT),

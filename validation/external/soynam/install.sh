@@ -14,7 +14,7 @@
 #     Association Mapping panel (~5000 RILs across 40+ families × ~5000 SNPs).
 #   - rrBLUP (Endelman 2011) is the canonical kinship-aware single-trait
 #     LMM implementation in agriculture; provides the reference for
-#     TorchGWAS' SingleTraitLMM at this scale + ag-trait-noise regime.
+#     TorchGenomics' SingleTraitLMM at this scale + ag-trait-noise regime.
 #
 # SoyNAM compile note: the package contains a small amount of compiled C++
 # (Rcpp; for kinship + simulation utilities). On RHEL 9.6 with the

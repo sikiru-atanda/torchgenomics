@@ -1,12 +1,12 @@
-"""Tests for ``torchgwas.postgwas._mr`` --- Mendelian Randomization."""
+"""Tests for ``torchgenomics.postgwas._mr`` --- Mendelian Randomization."""
 from __future__ import annotations
 
 import math
 
 import torch
 
-from torchgwas.postgwas._mr import MRResult, mr_all, mr_egger, mr_ivw, mr_presso, mr_weighted_median
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._mr import MRResult, mr_all, mr_egger, mr_ivw, mr_presso, mr_weighted_median
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Helper

@@ -1,4 +1,4 @@
-"""Deterministic simulated multi-omics fixture for TorchGWAS paper Figure 4-A.
+"""Deterministic simulated multi-omics fixture for TorchGenomics paper Figure 4-A.
 
 Generates ground-truth (G, expr, trait) under a known causal architecture
 G -> expr -> trait, plus a non-causal coloc / SMR negative control,
@@ -276,7 +276,7 @@ def _build_truth_dict(sim, cfg):
     truth = dict()
     truth["schema_version"] = "1.0"
     truth["description"] = (
-        "Simulated multi-omics ground truth for TorchGWAS Genome Biology "
+        "Simulated multi-omics ground truth for TorchGenomics Genome Biology "
         "paper Figure 4 panel A. G -> expr -> trait with sparse beta_GE, "
         "sparse beta_ET, a pleiotropic direct-effect component, and a "
         "non-causal coloc/SMR negative control."
@@ -349,12 +349,12 @@ def _build_floors_dict(cfg):
 
 def _build_api_dict():
     api = dict()
-    api["twas"] = "torchgwas.postgwas._twas.twas_sumstat (S-PrediXcan)"
-    api["smr"] = "torchgwas.postgwas._smr.smr_test + smr_heidi"
-    api["coloc"] = "torchgwas.postgwas._hyprcoloc.coloc_pairwise"
-    api["mediation"] = "torchgwas.multiomics._mediate.mediate_lmm"
+    api["twas"] = "torchgenomics.postgwas._twas.twas_sumstat (S-PrediXcan)"
+    api["smr"] = "torchgenomics.postgwas._smr.smr_test + smr_heidi"
+    api["coloc"] = "torchgenomics.postgwas._hyprcoloc.coloc_pairwise"
+    api["mediation"] = "torchgenomics.multiomics._mediate.mediate_lmm"
     api["batched_mediation"] = (
-        "torchgwas.multiomics._scan_batched.batched_scan_pairs"
+        "torchgenomics.multiomics._scan_batched.batched_scan_pairs"
     )
     return api
 

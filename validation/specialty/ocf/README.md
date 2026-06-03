@@ -2,13 +2,13 @@
 
 ## Goal
 
-Validate `torchgwas.models.ocf_lmm.OCFLMM` (Phase 26; Chernozhukov et al.
+Validate `torchgenomics.models.ocf_lmm.OCFLMM` (Phase 26; Chernozhukov et al.
 2018 *Econometrica* Double/Debiased ML, DML) against an independent
 reference implementation under a known DGP with confounding.  The harness
 produces:
 
 1. Empirical coverage of the 95% Wald CI across 100 replicates, for BOTH
-   the reference DML pipeline and TorchGWAS OCFLMM.
+   the reference DML pipeline and TorchGenomics OCFLMM.
 2. Mean debiased estimator bias against the planted truth `theta0 = 0.30`.
 3. A signed-hash manifest of every artefact so a reviewer can rerun and
    confirm bit-for-bit reproduction (modulo BLAS non-determinism).
@@ -35,7 +35,7 @@ using a deterministic quadratic-feature ridge nuisance learner.
 This is **stronger** than calling DoubleML as a black box for *this* harness:
 - It removes any stochasticity in the nuisance learner (no random splits
   inside the learner, no random forest seeds, no boosted-tree noise).
-- It makes the *only* difference between reference and torchgwas attributable
+- It makes the *only* difference between reference and torchgenomics attributable
   to algorithmic implementation details rather than learner choice.
 - The reference is the paper formula, not a re-derivation of it.
 
@@ -76,7 +76,7 @@ an `(n, m)` genotype matrix.
 | gate | target | rationale |
 |---|---|---|
 | reference empirical coverage 95% | in [0.92, 0.98] | Wald CI is asymptotically exact under the DML score; 100 reps give a binomial Monte Carlo SE of ~0.022 around the true 0.95, so [0.92, 0.98] is the conservative interior. |
-| TorchGWAS empirical coverage 95% | in [0.92, 0.98] | same rationale. |
+| TorchGenomics empirical coverage 95% | in [0.92, 0.98] | same rationale. |
 | `|Delta mean theta_hat|` | <= 5e-2 absolute | both implementations are unbiased to `O(n^{-1/2})`; the cross-population mean is therefore expected to agree to 1-2 SE.  The 5e-2 floor is 5x the per-rep SE and 50x the cross-population SE. |
 
 If a gate is violated, the harness:
@@ -105,11 +105,11 @@ N=400 M=20 REPS=100 KFOLD=5 SEED=42 THETA0=0.30 RIDGE=1e-2 ./run.sh
 
 ```
 validation/specialty/ocf/
-    install.sh                 # toolchain check (R, R packages, torchgwas import)
+    install.sh                 # toolchain check (R, R packages, torchgenomics import)
     fetch_data.sh              # generator smoke test (no network downloads)
     generate.R                 # simulate 100 replicates of the partially-linear DGP
     run_reference.R            # hand-coded DML2 estimator (R)
-    run_torchgwas.py           # TorchGWAS OCFLMM on the same replicates
+    run_torchgenomics.py           # TorchGenomics OCFLMM on the same replicates
     compare.py                 # acceptance check + summary.tsv + manifest.sha256
     run.sh                     # orchestrator (4-stage pipeline)
     README.md                  # this file
@@ -127,7 +127,7 @@ disk + RAM headroom before any download / run.  The full pipeline needs:
 
 - ~50 MB disk (`data/` ~30 MB across 100 reps, `outputs/` ~1 MB).
 - ~500 MB RAM peak (per-rep fixture is `400*20*8` ~ 64 KB; reference DML
-  ridge solves a `~30 x 30` quadratic-feature normal equation; TorchGWAS
+  ridge solves a `~30 x 30` quadratic-feature normal equation; TorchGenomics
   OCFLMM eigendecomposes the `400 x 400` identity kinship).
 
 
@@ -153,12 +153,12 @@ cd results && sha256sum -c manifest.sha256
   regression for quantitative and binary traits. Nature Genetics, 53,
   1097-1103.  REGENIE step-2 is an approximate cross-fit; OCFLMM is a
   paper-exact variant.
-- TorchGWAS Phase 26 commit (git log --grep=Phase 26) -- canonical
-  algorithmic spec for torchgwas.models.ocf_lmm.OCFLMM.
+- TorchGenomics Phase 26 commit (git log --grep=Phase 26) -- canonical
+  algorithmic spec for torchgenomics.models.ocf_lmm.OCFLMM.
 
 ## Findings ledger pointer
 
-Any divergence between reference and torchgwas implementations larger than
+Any divergence between reference and torchgenomics implementations larger than
 the floor above MUST be routed through docs/validation_findings.md per
 the F3 severity policy in memory/feedback_f3.md.  This harness is post-V1
 scope, so divergences are documented, not blockers.

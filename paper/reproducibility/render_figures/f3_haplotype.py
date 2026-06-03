@@ -1,18 +1,18 @@
 """F3 -- Haplotype layer (LD-block design + haplotype GWAS + novel hit detail).
 
-Three-panel summary of the TorchGWAS haplotype stack for the Genome
+Three-panel summary of the TorchGenomics haplotype stack for the Genome
 Biology Methods manuscript (Section 3, Results: Haplotype layer):
 
   Panel A -- 13 LD-block-design methods on MDP vs PLINK 1.9 --blocks
             (Gabriel).  Source: validation/external/plink2/ once the
             PLINK Gabriel reference and per-method block counts land;
-            the method list is sourced from torchgwas.ld (4 classical
+            the method list is sourced from torchgenomics.ld (4 classical
             + 5 novel + 3 literature + 1 diagnostic).
 
   Panel B -- 9 haplotype GWAS methods on SoyMD.  HTR / window / block /
             SKAT from HaplotypeGWAS plus the 5 novel methods PCHT,
             HHCT, HSKAT, HapGxE, BayesHap from
-            torchgwas.models.haplotype_novel.  The haplo.stats
+            torchgenomics.models.haplotype_novel.  The haplo.stats
             agreement at validation/external/hapref/results/agreement.json
             is the only concrete row available at D2.3 authoring time;
             the other eight rows are scaffold placeholders pending
@@ -22,7 +22,7 @@ Biology Methods manuscript (Section 3, Results: Haplotype layer):
             chr1 5-SNP MDP window -- the same locus the F2 hapref row
             passes on).  When BayesHap / PCHT / HHCT per-haplotype PIPs
             land in a future harness, they replace this panel bar chart;
-            until then we render the haplo.stats vs TorchGWAS per-
+            until then we render the haplo.stats vs TorchGenomics per-
             haplotype beta alignment as the concrete signal.
 
 Panels A and B are *scaffold-flagged* -- they render layout, method
@@ -53,7 +53,7 @@ from . import register
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
-# Panel A 13 LD-block-design methods (torchgwas.ld).
+# Panel A 13 LD-block-design methods (torchgenomics.ld).
 LD_BLOCK_METHODS = [
     ("gabriel",         "classical"),
     ("four_gamete",     "classical"),
@@ -303,7 +303,7 @@ def _render_panel_c(ax):
     ax.bar(x - width / 2, r_beta, width, color="#4a7ab8", edgecolor="black",
            linewidth=0.4, label="haplo.stats beta")
     ax.bar(x + width / 2, tg_beta, width, color="#d97a2c", edgecolor="black",
-           linewidth=0.4, label="TorchGWAS beta")
+           linewidth=0.4, label="TorchGenomics beta")
 
     ax.axhline(0, color="black", linewidth=0.6)
     ax.set_xticks(x)

@@ -7,13 +7,13 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.eigh import eigendecompose, rotate
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.lmm_multi_fit import fit_mvlmm_null_lbfgs
-from torchgwas.optim.ai_reml import ai_reml_single
-from torchgwas.optim.controller import OptimizerController, OptimizerMode
-from torchgwas.optim.em_warmstart import px_em_warmstart
-from torchgwas.optim.fisher_scoring import fisher_scoring_reml
+from torchgenomics.linalg.eigh import eigendecompose, rotate
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.lmm_multi_fit import fit_mvlmm_null_lbfgs
+from torchgenomics.optim.ai_reml import ai_reml_single
+from torchgenomics.optim.controller import OptimizerController, OptimizerMode
+from torchgenomics.optim.em_warmstart import px_em_warmstart
+from torchgenomics.optim.fisher_scoring import fisher_scoring_reml
 
 
 @pytest.fixture

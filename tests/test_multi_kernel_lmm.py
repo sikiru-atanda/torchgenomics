@@ -7,12 +7,12 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.linalg.kinship_advanced import grm_vitezica_dominance
-from torchgwas.linalg.kinship_polyploid import grm_epistatic_hadamard
-from torchgwas.models.base import BaseModel, NullFit, ScanResult, VariantMeta
-from torchgwas.models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
-from torchgwas.optim.multikernel_reml import multikernel_reml
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.linalg.kinship_advanced import grm_vitezica_dominance
+from torchgenomics.linalg.kinship_polyploid import grm_epistatic_hadamard
+from torchgenomics.models.base import BaseModel, NullFit, ScanResult, VariantMeta
+from torchgenomics.models.multi_kernel_lmm import MultiKernelLMM, build_multi_kernels
+from torchgenomics.optim.multikernel_reml import multikernel_reml
 
 # ---------------------------------------------------------------
 # Fixtures: simulate multi-kernel data

@@ -24,7 +24,7 @@ for fixture in sim gtex_ukb plant; do
     fi
     if [[ -f "$dir/compare.py" ]]; then
         echo "[stage 07] ==> compare multiomics/$fixture"
-        TORCHGWAS_DISABLE_NATIVE="${TORCHGWAS_DISABLE_NATIVE:-1}" \
+        TORCHGENOMICS_DISABLE_NATIVE="${TORCHGENOMICS_DISABLE_NATIVE:-1}" \
             python3 "$dir/compare.py"
     else
         echo "[stage 07] (multiomics/$fixture: no compare.py; data-only stage)"

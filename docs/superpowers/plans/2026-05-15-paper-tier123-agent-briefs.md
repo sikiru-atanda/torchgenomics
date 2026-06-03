@@ -67,8 +67,8 @@ Project context:
 - Repo root: /home/sikiru.atanda/Documents/GWAS_Expert
 - Branch: paper/genome-biology-methods (must not be changed)
 - Authoritative spec: docs/superpowers/specs/2026-05-15-genome-biology-paper-design.md (read §10 dispatch tiers and §10.2 briefing template before starting)
-- TorchGWAS module the harness compares against: <MODULE_PATH>
-- TorchGWAS CLI subcommand (if any): <CLI_SUBCOMMAND>
+- TorchGenomics module the harness compares against: <MODULE_PATH>
+- TorchGenomics CLI subcommand (if any): <CLI_SUBCOMMAND>
 - Reference harness to mirror in structure: <TEMPLATE_DIR>  (e.g., validation/external/twosamplemr/ for an R-tool harness; validation/external/regenie/ for a CLI-tool harness; validation/external/ukb/ for a real-data fixture)
 
 Standing rules (§2 of plan B — read in full):
@@ -101,7 +101,7 @@ Do not push to any remote. Stop and report if you cannot meet any acceptance cri
 - Create: `validation/external/metaxcan/README.md`
 - Create: `validation/external/metaxcan/results/{summary.tsv,agreement.json,manifest.sha256}`
 
-**TorchGWAS comparison target:** `torchgwas/postgwas/_twas.py` — `twas_sumstat` (sumstats path) and `twas_individual` (individual-level path); CLI integration via `torchgwas mediate-scan` is unrelated (do not confuse).
+**TorchGenomics comparison target:** `torchgenomics/postgwas/_twas.py` — `twas_sumstat` (sumstats path) and `twas_individual` (individual-level path); CLI integration via `torchgenomics mediate-scan` is unrelated (do not confuse).
 
 **Tool-specific guidance:**
 - Default choice: **MetaXcan / S-PrediXcan** (https://github.com/hakyimlab/MetaXcan, the sumstats path). FUSION (Gusev) is a sibling method that uses different SNP weights and is *optional*. If A1 decides to also benchmark FUSION, place it under a *separate* sibling directory `validation/external/fusion/` and document the rationale in `metaxcan/README.md` § "FUSION sibling decision". Do not silently combine FUSION and MetaXcan into one tool dir.
@@ -134,7 +134,7 @@ head -3 validation/external/metaxcan/install.sh | grep -q "preflight.sh"
 **Files:**
 - Create: `validation/external/smr/{install.sh,fetch_data.sh,run.sh,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/postgwas/_smr.py` — `smr_test`, `heidi_test`, `smr_heidi` (combined).
+**TorchGenomics comparison target:** `torchgenomics/postgwas/_smr.py` — `smr_test`, `heidi_test`, `smr_heidi` (combined).
 
 **Tool-specific guidance:**
 - Reference: Yang lab SMR tool (https://yanglab.westlake.edu.cn/software/smr/) at pinned version (e.g., 1.3.1). Record SHA256 of the downloaded binary in `manifest.sha256`.
@@ -154,7 +154,7 @@ head -3 validation/external/metaxcan/install.sh | grep -q "preflight.sh"
 **Files:**
 - Create: `validation/external/coloc/{install.sh,fetch_data.sh,run.R,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/postgwas/` — the two-trait classical coloc path (Giambartolomei 2014). Search the repo for `def coloc` or `_coloc_classic` to find the exact entry point.
+**TorchGenomics comparison target:** `torchgenomics/postgwas/` — the two-trait classical coloc path (Giambartolomei 2014). Search the repo for `def coloc` or `_coloc_classic` to find the exact entry point.
 
 **Tool-specific guidance:**
 - Reference: R `coloc` package (CRAN), pinned version ≥ 5.2 (record `packageVersion('coloc')` output in README.md).
@@ -175,7 +175,7 @@ head -3 validation/external/metaxcan/install.sh | grep -q "preflight.sh"
 **Files:**
 - Create: `validation/external/hyprcoloc/{install.sh,fetch_data.sh,run.R,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/postgwas/_hyprcoloc.py` — multi-trait coloc (Foley 2021).
+**TorchGenomics comparison target:** `torchgenomics/postgwas/_hyprcoloc.py` — multi-trait coloc (Foley 2021).
 
 **Tool-specific guidance:**
 - Reference: R `hyprcoloc` package (GitHub: `jrs95/hyprcoloc`), pinned at a release SHA.
@@ -196,7 +196,7 @@ head -3 validation/external/metaxcan/install.sh | grep -q "preflight.sh"
 **Files:**
 - Create: `validation/external/hapref/{install.sh,fetch_data.sh,run.sh,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/models/haplotype_gwas.py` (HaplotypeGWAS class; HTR/window/block/SKAT methods).
+**TorchGenomics comparison target:** `torchgenomics/models/haplotype_gwas.py` (HaplotypeGWAS class; HTR/window/block/SKAT methods).
 
 **Tool-specific guidance:**
 - Reference tool selection: pick exactly one, with rationale recorded in `README.md`:
@@ -305,9 +305,9 @@ Decision must be recorded in `README.md` with rationale tied to (a) data availab
 ### Agent C1: Survival GWAS fixture (Cox PH frailty)
 
 **Files:**
-- Create: `validation/specialty/survival/{generate.py,run_torchgwas.py,run_reference.R,compare.py,README.md,results/}`
+- Create: `validation/specialty/survival/{generate.py,run_torchgenomics.py,run_reference.R,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/models/survival_glmm.py` (SurvivalGLMM; Cox PH frailty with SPACox SPA path).
+**TorchGenomics comparison target:** `torchgenomics/models/survival_glmm.py` (SurvivalGLMM; Cox PH frailty with SPACox SPA path).
 
 **Tool-specific guidance:**
 - Reference: prefer `coxKM` (R) for a small-n SPA-validated comparison; if `coxKM` install fails, fall back to SAIGE-COX (already installed for `validation/external/saige/`) — document choice.
@@ -332,9 +332,9 @@ test -f validation/specialty/survival/results/manifest.sha256
 ### Agent C2: Random regression (longitudinal) fixture
 
 **Files:**
-- Create: `validation/specialty/rr/{generate.py,run_torchgwas.py,run_reference.{R,sh},compare.py,README.md,results/}`
+- Create: `validation/specialty/rr/{generate.py,run_torchgenomics.py,run_reference.{R,sh},compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/models/rr_lmm.py` (RandomRegressionLMM; Legendre + B-spline bases) + `torchgwas/models/rr_spatial.py` (SpatioTemporalRR).
+**TorchGenomics comparison target:** `torchgenomics/models/rr_lmm.py` (RandomRegressionLMM; Legendre + B-spline bases) + `torchgenomics/models/rr_spatial.py` (SpatioTemporalRR).
 
 **Tool-specific guidance:**
 - Reference: prefer `asreml` (R) if license available; else `gibbs1f90` (BLUPF90 family; free); else a published reference simulator (document choice).
@@ -353,9 +353,9 @@ test -f validation/specialty/survival/results/manifest.sha256
 ### Agent C3: Within-family LMM fixture
 
 **Files:**
-- Create: `validation/specialty/family/{generate.py,run_torchgwas.py,run_reference.py,compare.py,README.md,results/}`
+- Create: `validation/specialty/family/{generate.py,run_torchgenomics.py,run_reference.py,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/models/within_family_lmm.py` (WithinFamilyLMM; Young et al. 2022 attenuation diagnostics).
+**TorchGenomics comparison target:** `torchgenomics/models/within_family_lmm.py` (WithinFamilyLMM; Young et al. 2022 attenuation diagnostics).
 
 **Tool-specific guidance:**
 - Reference: `snipar` (Young et al. 2022; GitHub: `AlexTISYoung/snipar`) at pinned release. If unavailable, fall back to published-paper simulator with documented citation.
@@ -374,9 +374,9 @@ test -f validation/specialty/survival/results/manifest.sha256
 ### Agent C4: Threshold-linear (categorical) fixture
 
 **Files:**
-- Create: `validation/specialty/threshold/{generate.py,run_torchgwas.py,run_reference.{f,sh},compare.py,README.md,results/}`
+- Create: `validation/specialty/threshold/{generate.py,run_torchgenomics.py,run_reference.{f,sh},compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/models/threshold_linear.py` (ThresholdLinearModel; Bermann et al. 2026; T-EM / T-NR / SQUAREM / ssGWAS solvers).
+**TorchGenomics comparison target:** `torchgenomics/models/threshold_linear.py` (ThresholdLinearModel; Bermann et al. 2026; T-EM / T-NR / SQUAREM / ssGWAS solvers).
 
 **Tool-specific guidance:**
 - Reference: `THRGIBBSF90` (BLUPF90 family) for multi-trait ordinal; install via the standard BLUPF90 distribution.
@@ -395,9 +395,9 @@ test -f validation/specialty/survival/results/manifest.sha256
 ### Agent C5: Knockoff FDR-control fixture
 
 **Files:**
-- Create: `validation/specialty/knockoff/{generate.py,run_torchgwas.py,run_reference.R,compare.py,README.md,results/}`
+- Create: `validation/specialty/knockoff/{generate.py,run_torchgenomics.py,run_reference.R,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/models/knockoff_lmm.py` (KnockoffLMM; Sesia et al. 2020; group knockoffs + knockoff+ filter).
+**TorchGenomics comparison target:** `torchgenomics/models/knockoff_lmm.py` (KnockoffLMM; Sesia et al. 2020; group knockoffs + knockoff+ filter).
 
 **Tool-specific guidance:**
 - Reference: R `knockoff` package (CRAN) at pinned version.
@@ -416,9 +416,9 @@ test -f validation/specialty/survival/results/manifest.sha256
 ### Agent C6: OCF (Orthogonal Cross-Fit) coverage fixture
 
 **Files:**
-- Create: `validation/specialty/ocf/{generate.py,run_torchgwas.py,run_reference.py,compare.py,README.md,results/}`
+- Create: `validation/specialty/ocf/{generate.py,run_torchgenomics.py,run_reference.py,compare.py,README.md,results/}`
 
-**TorchGWAS comparison target:** `torchgwas/models/ocf_lmm.py` (OCFLMM; Chernozhukov et al. 2018; DML cross-fit with K-fold sample splitting).
+**TorchGenomics comparison target:** `torchgenomics/models/ocf_lmm.py` (OCFLMM; Chernozhukov et al. 2018; DML cross-fit with K-fold sample splitting).
 
 **Tool-specific guidance:**
 - Reference: the Chernozhukov-published reference implementation in R / Python (e.g., `DoubleML` package) at pinned version. If unavailable, use a hand-coded DML pipeline matching the paper's eq. (3.1) — document explicitly.

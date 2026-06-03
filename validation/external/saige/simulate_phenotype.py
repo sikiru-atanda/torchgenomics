@@ -52,7 +52,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.io.plink import PlinkBedReader  # noqa: E402
+from torchgenomics.io.plink import PlinkBedReader  # noqa: E402
 
 
 def _mean_impute(G: np.ndarray) -> np.ndarray:

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.stats.spa import (
+from torchgenomics.stats.spa import (
     _cgf,
     _cgf_deriv1,
     _cgf_deriv2,
@@ -72,7 +72,7 @@ class TestSPAPvalue:
         Y = torch.bernoulli(mu).to(torch.float64)
         score = G.T @ (Y - mu)
 
-        from torchgwas.stats.tests import chi2_sf
+        from torchgenomics.stats.tests import chi2_sf
         W = mu * (1.0 - mu)
         V = ((G ** 2).T @ W)
         chi2_stat = score ** 2 / torch.clamp(V, min=1e-20)

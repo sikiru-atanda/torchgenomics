@@ -1,6 +1,6 @@
 {
   "kernel": "dosage_posterior_cov",
-  "ext": "torchgwas._native._pcht_native",
+  "ext": "torchgenomics._native._pcht_native",
   "date": "2026-05-29",
   "host": "linux-x86_64",
   "notes": "One pass for compat-pair enumeration + posterior-covariance accumulation per individual. OpenMP across the outer sample loop with per-thread (H, H) accumulators reduced at end. The F2 LD-aware-pruning fix (haplotype_gwas._compute_ld_aware_score, commit f601f20) is upstream of this kernel and inherited via the already-pruned labels/freq arguments. Random planted haplotype fixture: G[i] = hap[a_i] + hap[b_i] with (a, b) drawn from the Dirichlet-distributed frequency vector.",

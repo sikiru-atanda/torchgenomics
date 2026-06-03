@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import VariantMeta
-from torchgwas.models.multi_env_lmm import MultiEnvLMM
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import VariantMeta
+from torchgenomics.models.multi_env_lmm import MultiEnvLMM
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

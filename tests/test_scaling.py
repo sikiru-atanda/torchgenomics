@@ -18,9 +18,9 @@ import pytest
 import torch
 from scipy import stats as sp_stats
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.linalg.eigh import auto_n_components
-from torchgwas.linalg.kronecker_eed import (
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.linalg.eigh import auto_n_components
+from torchgenomics.linalg.kronecker_eed import (
     diagonal_precision,
     inverse_rotate_from_ked,
     ked_reml_quantities,
@@ -266,7 +266,7 @@ class TestKEDRemlLL:
         Ve = torch.kron(Ve_t, Ve_e)
 
         # Dense REML LL
-        from torchgwas.optim.mvlmm_reml import mvlmm_reml_loglikelihood
+        from torchgenomics.optim.mvlmm_reml import mvlmm_reml_loglikelihood
         ll_dense = mvlmm_reml_loglikelihood(Vg, Ve, Y, X0, evals)
 
         # KED REML LL
@@ -314,7 +314,7 @@ class TestScoreVsWald:
     @pytest.fixture
     def mt_met_model(self):
         """Create a fitted MT-MET model at small scale."""
-        from torchgwas.models.multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
+        from torchgenomics.models.multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
         return MultiTraitMultiEnvLMM(vg_structure="separable")
 
     def test_null_pvalues_uniform_wald(self, mt_met_model):
@@ -334,7 +334,7 @@ class TestScoreVsWald:
         G_grm = torch.randn(n, 50, dtype=STAT_DTYPE)
         K = G_grm @ G_grm.T / 50 + 0.01 * torch.eye(n, dtype=STAT_DTYPE)
 
-        from torchgwas.models.base import VariantMeta
+        from torchgenomics.models.base import VariantMeta
         vm = VariantMeta(
             chr=["1"] * m,
             pos=list(range(m)),
@@ -419,7 +419,7 @@ class TestTieredDispatch:
 
     def test_small_de_uses_wald(self):
         """dE <= 64 should use Wald (no KED attributes)."""
-        from torchgwas.models.multi_trait_multi_env_lmm import _KED_THRESHOLD
+        from torchgenomics.models.multi_trait_multi_env_lmm import _KED_THRESHOLD
 
         torch.manual_seed(50)
         n, d, E = 100, 2, 3
@@ -428,7 +428,7 @@ class TestTieredDispatch:
         assert dE <= _KED_THRESHOLD
 
         # Simulate and fit
-        from torchgwas.models.multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
+        from torchgenomics.models.multi_trait_multi_env_lmm import MultiTraitMultiEnvLMM
         model = MultiTraitMultiEnvLMM(vg_structure="separable")
 
         X0 = torch.cat([
@@ -445,7 +445,7 @@ class TestTieredDispatch:
 
     def test_ked_threshold_value(self):
         """KED threshold should be 64."""
-        from torchgwas.models.multi_trait_multi_env_lmm import _KED_THRESHOLD
+        from torchgenomics.models.multi_trait_multi_env_lmm import _KED_THRESHOLD
         assert _KED_THRESHOLD == 64
 
 
@@ -558,7 +558,7 @@ class TestSeparableKronREMLKED:
 
     def test_ked_reml_runs_without_error(self):
         """separable_kron_reml_ked should converge."""
-        from torchgwas.optim.separable_kron_reml import separable_kron_reml_ked
+        from torchgenomics.optim.separable_kron_reml import separable_kron_reml_ked
 
         torch.manual_seed(90)
         d, E, n = 3, 4, 100
@@ -599,7 +599,7 @@ class TestSeparableKronREMLKED:
         Vg = torch.kron(Vg_t, Vg_e)
         Ve = torch.kron(Ve_t, Ve_e)
 
-        from torchgwas.optim.mvlmm_reml import mvlmm_reml_loglikelihood
+        from torchgenomics.optim.mvlmm_reml import mvlmm_reml_loglikelihood
         ll_dense = mvlmm_reml_loglikelihood(
             Vg, Ve, sim["Y"], sim["X0"], sim["evals_K"])
 

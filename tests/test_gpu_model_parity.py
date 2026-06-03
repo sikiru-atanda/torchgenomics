@@ -18,9 +18,9 @@ from typing import Any
 import pytest
 import torch
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models import (
+from torchgenomics.config import STAT_DTYPE, NumericalConfig
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models import (
     BLINK,
     FarmCPU,
     HaplotypeGWAS,

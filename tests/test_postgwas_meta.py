@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from torchgwas.postgwas._meta import (
+from torchgenomics.postgwas._meta import (
     meta_fixed_effect,
     meta_han_eskin,
     meta_random_effect,

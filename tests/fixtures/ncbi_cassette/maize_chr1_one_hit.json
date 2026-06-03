@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "description": "End-to-end NCBI exchange for annotate_hits(crop='maize', p_threshold=5e-8, include_go=True) on a single chr1 hit. Response payloads use the LIVE NCBI Datasets v2 schema (genomic_locations[] + gene_ontology buckets) so the _ensure_legacy_genomic_ranges and _ensure_legacy_ontology_terms adapters are actually exercised. If NCBI changes a response shape (e.g. renaming gene_ontology.processes), the cassette's legacy-shape assertions will fail — that is the canary.",
-    "refresh_instructions": "Set TORCHGWAS_NCBI_LIVE=1 and re-run scripts/record_ncbi_cassette.py (not included) to re-capture from live NCBI endpoints. Commit the refreshed JSON if upstream shape has evolved."
+    "refresh_instructions": "Set TORCHGENOMICS_NCBI_LIVE=1 and re-run scripts/record_ncbi_cassette.py (not included) to re-capture from live NCBI endpoints. Commit the refreshed JSON if upstream shape has evolved."
   },
   "interactions": [
     {

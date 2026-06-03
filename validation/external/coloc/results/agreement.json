@@ -1,5 +1,5 @@
 {
-  "name": "R coloc::coloc.abf vs torchgwas.postgwas.coloc_pairwise (3 scenarios)",
+  "name": "R coloc::coloc.abf vs torchgenomics.postgwas.coloc_pairwise (3 scenarios)",
   "n_compared": 150,
   "passed": true,
   "reports": [

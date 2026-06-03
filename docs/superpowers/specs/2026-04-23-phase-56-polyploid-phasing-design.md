@@ -8,15 +8,15 @@
 
 ## 1. Motivation and scope boundary
 
-TorchGWAS already contains the downstream half of a polyploid haplotype-GWAS pipeline:
+TorchGenomics already contains the downstream half of a polyploid haplotype-GWAS pipeline:
 
-- `torchgwas.preprocess.phase.load_haplotypes` — ploidy-generic, reads a phased polyploid VCF into `(n, ploidy, m)` tensors.
-- `torchgwas.models.haplotype_gwas` — Phase 46/47 haplotype scans, ploidy-generic on the input side (consumes `(n, ploidy, m)` tensors directly).
-- `torchgwas.preprocess.dosage_call.run_updog` (Phase 55) — produces posterior dosage probabilities `(n, m, k+1)` from VCF read counts.
+- `torchgenomics.preprocess.phase.load_haplotypes` — ploidy-generic, reads a phased polyploid VCF into `(n, ploidy, m)` tensors.
+- `torchgenomics.models.haplotype_gwas` — Phase 46/47 haplotype scans, ploidy-generic on the input side (consumes `(n, ploidy, m)` tensors directly).
+- `torchgenomics.preprocess.dosage_call.run_updog` (Phase 55) — produces posterior dosage probabilities `(n, m, k+1)` from VCF read counts.
 
-What is *missing* is the **producer** side of phased haplotypes for polyploids. `torchgwas/preprocess/phase.py::phase_beagle` is explicitly diploid-only (BEAGLE 5.x does not phase polyploids; the docstring was corrected alongside the Phase 55 commit). There is no tool inside TorchGWAS that converts posterior dosages on a connected F1 polyploid population into phased haplotypes.
+What is *missing* is the **producer** side of phased haplotypes for polyploids. `torchgenomics/preprocess/phase.py::phase_beagle` is explicitly diploid-only (BEAGLE 5.x does not phase polyploids; the docstring was corrected alongside the Phase 55 commit). There is no tool inside TorchGenomics that converts posterior dosages on a connected F1 polyploid population into phased haplotypes.
 
-Phase 56 delivers **exactly one** piece of that producer side: a thin external-wrapper module `torchgwas.preprocess.phase_polyorigin` that invokes the Julia package [`PolyOrigin.jl`](https://github.com/chaozhi/PolyOrigin.jl) (Zheng et al. 2021, *Genetics* 219(2):iyab106) to phase connected tetraploid/hexaploid F1 populations. Output is tensor-native, consumed by Phase 46/47 without modification.
+Phase 56 delivers **exactly one** piece of that producer side: a thin external-wrapper module `torchgenomics.preprocess.phase_polyorigin` that invokes the Julia package [`PolyOrigin.jl`](https://github.com/chaozhi/PolyOrigin.jl) (Zheng et al. 2021, *Genetics* 219(2):iyab106) to phase connected tetraploid/hexaploid F1 populations. Output is tensor-native, consumed by Phase 46/47 without modification.
 
 ### In scope
 
@@ -24,7 +24,7 @@ Phase 56 delivers **exactly one** piece of that producer side: a thin external-w
 - One dataclass `PhasingResult` describing the phasing output.
 - One private runtime module `_polyorigin_runtime.py` holding the discover-first Julia bootstrap (via `juliacall`).
 - Two pure private converters `_build_polyorigin_pedfile`, `_build_polyorigin_genofile` (independently unit-testable without Julia).
-- One CLI subcommand `torchgwas phase-poly`.
+- One CLI subcommand `torchgenomics phase-poly`.
 - Tests: ~25 always-on Python tests (juliacall-stubbed) plus ~6 release-time end-to-end tests that run real PolyOrigin.jl.
 - One getting-started recipe; one memory file.
 
@@ -36,7 +36,7 @@ Phase 56 delivers **exactly one** piece of that producer side: a thin external-w
 - **Ploidies other than {2, 4, 6}** — upstream hard constraint.
 - **A `haplotypes.pt → phased VCF` export utility** — no current consumer in the pipeline; queue if asked.
 - **Julia sysimage build** — juliacall's own caching handles same-process warm-up; a sysimage recipe may be a later documentation follow-up.
-- **Integration with the `torchgwas pipeline` monolithic subcommand** — same cleanup concern as Phase 55.
+- **Integration with the `torchgenomics pipeline` monolithic subcommand** — same cleanup concern as Phase 55.
 - **A pure-Python reimplementation of PolyOrigin** — producer step, matches `impute_external.py` / `dosage_call.py` precedent.
 
 ### Integration point
@@ -61,11 +61,11 @@ No code changes to the downstream path. Scope boundary enforced by an explicit `
 
 ## 2. Components and interfaces
 
-Four components in one new file `torchgwas/preprocess/phase_polyorigin.py`, plus a shared runtime helper at `torchgwas/preprocess/_polyorigin_runtime.py`, plus one shipped dep-manifest `torchgwas/preprocess/juliapkg.json`.
+Four components in one new file `torchgenomics/preprocess/phase_polyorigin.py`, plus a shared runtime helper at `torchgenomics/preprocess/_polyorigin_runtime.py`, plus one shipped dep-manifest `torchgenomics/preprocess/juliapkg.json`.
 
 ### 2.1 `PhasingResult` dataclass
 
-Mirrors `DosageCallResult` in `torchgwas/preprocess/dosage_call.py` for conceptual symmetry.
+Mirrors `DosageCallResult` in `torchgenomics/preprocess/dosage_call.py` for conceptual symmetry.
 
 ```python
 @dataclass
@@ -103,7 +103,7 @@ def run_polyorigin(
     sample_ids: list[str] | None = None,      # required if probs is a tensor
     variant_ids: list[str] | None = None,     # required if probs is a tensor
     parent_phased_csv: str | None = None,     # optional escape hatch for pre-phased parents
-    julia_path: str | None = None,            # override discovery; else TORCHGWAS_JULIA; else discover
+    julia_path: str | None = None,            # override discovery; else TORCHGENOMICS_JULIA; else discover
     auto_install_julia: bool = False,         # consent to download Julia if discovery fails
     refinemap: bool = True,                   # PolyOrigin default
     recomrate: float = 1.0,                   # cM/Mb; used to synthesize cm if map lacks it
@@ -162,20 +162,20 @@ def get_runtime(
     auto_install_julia: bool = False,
 ) -> tuple[Any, Any, str]:
     """Bootstrap PolyOrigin on demand. Steps:
-    1. Resolve julia_path: arg > TORCHGWAS_JULIA env > discover common locations.
+    1. Resolve julia_path: arg > TORCHGENOMICS_JULIA env > discover common locations.
     2. If found, probe `julia --version`; reject if < 1.10.
     3. If not found or rejected: interactive consent (tty) or auto_install_julia=True,
        else RuntimeError naming both escape hatches.
     4. If a user-Julia was accepted, pin it via juliacall's env var (PYTHON_JULIAPKG_EXE
        per current juliacall docs; verified at implementation time) BEFORE importing juliacall.
-    5. from juliacall import Main as jl; jl.seval("using Pkg; Pkg.activate(<torchgwas-project>); Pkg.instantiate()")
+    5. from juliacall import Main as jl; jl.seval("using Pkg; Pkg.activate(<torchgenomics-project>); Pkg.instantiate()")
        — juliapkg.json drives PolyOrigin.jl install from pinned URL+rev if not already present.
     6. jl.seval("using PolyOrigin"); capture pkgversion(PolyOrigin).
     7. Cache (jl, PolyOrigin module, version) module-wide; return.
     """
 ```
 
-**Shipped**: `torchgwas/preprocess/juliapkg.json`
+**Shipped**: `torchgenomics/preprocess/juliapkg.json`
 
 ```json
 {
@@ -190,7 +190,7 @@ def get_runtime(
 }
 ```
 
-Rationale for in-process via `juliacall` over subprocess + embedded driver string: (1) auto-install of Julia across Linux/macOS/Windows is `juliacall`'s core feature, avoiding a per-OS installer in TorchGWAS; (2) same-process JIT amortization matters for users phasing multiple populations in one session; (3) library-call failure modes are cleaner (Julia exceptions become Python exceptions via `juliacall`).
+Rationale for in-process via `juliacall` over subprocess + embedded driver string: (1) auto-install of Julia across Linux/macOS/Windows is `juliacall`'s core feature, avoiding a per-OS installer in TorchGenomics; (2) same-process JIT amortization matters for users phasing multiple populations in one session; (3) library-call failure modes are cleaner (Julia exceptions become Python exceptions via `juliacall`).
 
 ### 2.4 Pure helper converters
 
@@ -207,7 +207,7 @@ Two module-private pure functions in `phase_polyorigin.py`, unit-testable withou
 ### 2.5 Directory layout
 
 ```
-torchgwas/preprocess/
+torchgenomics/preprocess/
 ├── phase.py                    # unchanged (legacy BEAGLE diploid wrapper)
 ├── phase_polyorigin.py         # NEW — run_polyorigin, PhasingResult, helper converters
 ├── _polyorigin_runtime.py      # NEW — juliacall bootstrap, discover-first, cached
@@ -297,10 +297,10 @@ Four failure classes, each with a deterministic response. Mirrors Phase 55's tax
 
 | Failure | Response |
 | --- | --- |
-| `juliacall` not importable (user pip-installed without the `polyploid-phase` extra) | `RuntimeError("Install the polyploid-phase extra: pip install torchgwas[polyploid-phase]")` |
+| `juliacall` not importable (user pip-installed without the `polyploid-phase` extra) | `RuntimeError("Install the polyploid-phase extra: pip install torchgenomics[polyploid-phase]")` |
 | Julia not discovered, `auto_install_julia=False`, no tty | `RuntimeError` naming both escape hatches (https://julialang.org/downloads/ and `auto_install_julia=True`) |
 | Julia found but `julia --version` < 1.10 | `RuntimeError("Julia at {path} is v{ver}; PolyOrigin requires >= 1.10.")` |
-| `julia_path=` or `TORCHGWAS_JULIA` points to a nonexistent/non-executable file | `ValueError` |
+| `julia_path=` or `TORCHGENOMICS_JULIA` points to a nonexistent/non-executable file | `ValueError` |
 | Managed install network failure | Propagate juliacall's exception; point to `~/.julia/logs/juliapkg.log` |
 | PolyOrigin.jl install fails (transient network, Git host down) | `RuntimeError` with `Pkg.resolve()` recovery pointer |
 | First-call startup cost (cold: ~30 s to ~2 min for Julia download + Pkg.instantiate + PolyOrigin precompile; warm same-process: seconds) | `logger.info(...)` single line; not an error |
@@ -348,7 +348,7 @@ After parsing:
 
 | Dependency | Install trigger | Disk cost |
 | --- | --- | --- |
-| `juliacall` (Python) | `pip install torchgwas[polyploid-phase]` | ~15 MB |
+| `juliacall` (Python) | `pip install torchgenomics[polyploid-phase]` | ~15 MB |
 | Julia ≥ 1.10 | first `run_polyorigin` call **iff** no existing Julia found **iff** user consents | ~300 MB (managed) or 0 (reused) |
 | `PolyOrigin.jl` v1.0.3 | first `run_polyorigin` call | ~5 MB |
 | `pandas`, `torch` | already hard deps | n/a |
@@ -391,7 +391,7 @@ File: `tests/test_phase_polyorigin.py`. No Julia involved. `_polyorigin_runtime.
 | Input validation | `ploidy not in {2,4,6}` → `ValueError` |
 | | `probs` tensor without `sample_ids` → `ValueError` |
 | | probs IDs ⊋ pedigree IDs → `ValueError` listing missing |
-| Bootstrap discovery | `TORCHGWAS_JULIA` set to stub `julia --version=1.10.0` → picked |
+| Bootstrap discovery | `TORCHGENOMICS_JULIA` set to stub `julia --version=1.10.0` → picked |
 | | Stub `julia --version=1.8.0` → rejected |
 | | Nothing on PATH + `auto_install_julia=False` + non-tty → `RuntimeError` naming both escape hatches |
 | | `julia_path=` to nonexistent file → `ValueError` |
@@ -412,7 +412,7 @@ File: `tests/test_phase_polyorigin.py`. No Julia involved. `_polyorigin_runtime.
 
 ### 5.2 Tier 2 — end-to-end with real PolyOrigin (release-time + local)
 
-File: `tests/test_phase_polyorigin_e2e.py`. Module-level `pytest.mark.skipif` gates on (i) `juliacall` importable, (ii) a Julia ≥ 1.10 discoverable, (iii) PolyOrigin.jl available or `TORCHGWAS_ALLOW_AUTO_INSTALL=1` set.
+File: `tests/test_phase_polyorigin_e2e.py`. Module-level `pytest.mark.skipif` gates on (i) `juliacall` importable, (ii) a Julia ≥ 1.10 discoverable, (iii) PolyOrigin.jl available or `TORCHGENOMICS_ALLOW_AUTO_INSTALL=1` set.
 
 | Test | Pass criterion |
 | --- | --- |
@@ -435,7 +435,7 @@ File: `bench/calibrate_polyorigin_recovery.py`. Not pytest-collected. Run once a
 2. All Tier 2 tests pass on a machine with Julia ≥ 1.10 + PolyOrigin.jl v1.0.3.
 3. `test_gwaspoly_potato_roundtrip` specifically passes — the roadmap's named integration target.
 4. The Phase 56 entry in `docs/ROADMAP.md` is **removed** (shipped).
-5. `torchgwas phase-poly --help` captured in `docs/cli.md`.
+5. `torchgenomics phase-poly --help` captured in `docs/cli.md`.
 6. `docs/getting-started/polyploid_phasing.md` has one recipe for the `dosage-call → phase-poly → haplotype-scan` chain.
 7. A memory file `project_polyploid_phasing.md` added alongside the other per-phase memories.
 8. No `csrc/` changes → no `bench/native_speedups.md` entry.
@@ -448,10 +448,10 @@ Tier 1 canned CSVs (tetraploid F1, 10 markers) are ~4 KB total. The `test_gwaspo
 
 ## 6. CLI
 
-New subcommand `torchgwas phase-poly`, wired into `torchgwas/cli.py`. No `cli.py` decomposition in this phase (same standing cleanup as Phase 55).
+New subcommand `torchgenomics phase-poly`, wired into `torchgenomics/cli.py`. No `cli.py` decomposition in this phase (same standing cleanup as Phase 55).
 
 ```bash
-torchgwas phase-poly \
+torchgenomics phase-poly \
   --probs out/dcall.probs.pt \
   --pedigree pedigree.tsv \
   --map markers.tsv \
@@ -484,14 +484,14 @@ torchgwas phase-poly \
 
 ```bash
 # End-to-end tetraploid F1 pipeline
-torchgwas dosage-call  --vcf calls.vcf.gz              --output out/dcall  --ploidy 4
-torchgwas phase-poly   --probs out/dcall.probs.pt      --pedigree ped.tsv \
+torchgenomics dosage-call  --vcf calls.vcf.gz              --output out/dcall  --ploidy 4
+torchgenomics phase-poly   --probs out/dcall.probs.pt      --pedigree ped.tsv \
                        --map markers.tsv               --output out/phased --ploidy 4
 
 python <<'PY'
 import torch
-from torchgwas.models import HaplotypeGWAS
-from torchgwas.preprocess.dosage_uncertainty import expected_dosage
+from torchgenomics.models import HaplotypeGWAS
+from torchgenomics.preprocess.dosage_uncertainty import expected_dosage
 
 # Phase-56 phased haplotypes (refined-map order)
 haps = torch.load('out/phased.haplotypes.pt')            # (n_off, 4, m)
@@ -516,7 +516,7 @@ re-alignment step on realistic data.
 ### Deferred cleanup (not Phase 56)
 
 - `haplotypes.pt → phased VCF` export utility.
-- `phase-poly` wiring into the `torchgwas pipeline` monolithic subcommand.
+- `phase-poly` wiring into the `torchgenomics pipeline` monolithic subcommand.
 - WhatsHap-polyphase wrapper for unrelated diversity panels.
 
 ---
@@ -554,9 +554,9 @@ Recorded so the implementation plan doesn't re-litigate:
 ## Appendix: file-level impact summary
 
 **New files**:
-- `torchgwas/preprocess/phase_polyorigin.py` — ~500 LOC including helper converters.
-- `torchgwas/preprocess/_polyorigin_runtime.py` — ~150 LOC, discover-first bootstrap.
-- `torchgwas/preprocess/juliapkg.json` — dep manifest, hand-edited.
+- `torchgenomics/preprocess/phase_polyorigin.py` — ~500 LOC including helper converters.
+- `torchgenomics/preprocess/_polyorigin_runtime.py` — ~150 LOC, discover-first bootstrap.
+- `torchgenomics/preprocess/juliapkg.json` — dep manifest, hand-edited.
 - `tests/test_phase_polyorigin.py` — Tier 1, ~25 tests.
 - `tests/test_phase_polyorigin_e2e.py` — Tier 2, ~6 tests.
 - `tests/fixtures/phase_polyorigin/` — canned CSVs, toy VCF.
@@ -565,17 +565,17 @@ Recorded so the implementation plan doesn't re-litigate:
 - `~/.claude/projects/.../memory/project_polyploid_phasing.md` — phase memory.
 
 **Modified files**:
-- `torchgwas/cli.py` — one new subcommand (`phase-poly`) + argparse entry.
-- `torchgwas/preprocess/__init__.py` — re-export `run_polyorigin`, `PhasingResult`.
+- `torchgenomics/cli.py` — one new subcommand (`phase-poly`) + argparse entry.
+- `torchgenomics/preprocess/__init__.py` — re-export `run_polyorigin`, `PhasingResult`.
 - `pyproject.toml` — two edits:
   - `[project.optional-dependencies]` gains `polyploid-phase = ["juliacall>=0.9"]`.
-  - `[tool.setuptools.package-data]` gains `"torchgwas.preprocess" = ["juliapkg.json"]` so the Julia dep manifest ships in the wheel (currently the block only declares `"torchgwas._native" = ["*.pyi"]`).
+  - `[tool.setuptools.package-data]` gains `"torchgenomics.preprocess" = ["juliapkg.json"]` so the Julia dep manifest ships in the wheel (currently the block only declares `"torchgenomics._native" = ["*.pyi"]`).
 - `docs/ROADMAP.md` — remove the Phase 56 entry on ship.
-- `docs/cli.md` — `torchgwas phase-poly --help` capture.
+- `docs/cli.md` — `torchgenomics phase-poly --help` capture.
 - `CLAUDE.md` — add `phase-poly` to CLI commands; bump the subcommand count by 1 (the exact displayed number follows the convention CLAUDE.md uses for counting — docs-visible user-facing commands, not raw `add_parser(` calls — which the implementer confirms at integration time).
 
 **Unchanged**:
-- `torchgwas/preprocess/phase.py` (legacy BEAGLE diploid wrapper).
-- `torchgwas/preprocess/dosage_call.py` (Phase 55 consumer).
-- `torchgwas/models/haplotype_gwas.py` (already ploidy-generic on input).
-- `torchgwas/preprocess/load_haplotypes` in `phase.py` (unused by Phase 56 but preserved for other paths).
+- `torchgenomics/preprocess/phase.py` (legacy BEAGLE diploid wrapper).
+- `torchgenomics/preprocess/dosage_call.py` (Phase 55 consumer).
+- `torchgenomics/models/haplotype_gwas.py` (already ploidy-generic on input).
+- `torchgenomics/preprocess/load_haplotypes` in `phase.py` (unused by Phase 56 but preserved for other paths).

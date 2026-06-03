@@ -2,12 +2,12 @@
 
 import torch
 
-from torchgwas.io.regions import Region
-from torchgwas.ld._blocks import LDBlock
-from torchgwas.models.haplotype_gwas import (
+from torchgenomics.io.regions import Region
+from torchgenomics.ld._blocks import LDBlock
+from torchgenomics.models.haplotype_gwas import (
     _enumerate_haplotypes_phased,
 )
-from torchgwas.models.haplotype_multi import (
+from torchgenomics.models.haplotype_multi import (
     HaplotypeMTMETGWAS,
     HaplotypeMTMETResult,
     HaplotypeMultiEnvGWAS,

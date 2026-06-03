@@ -1,4 +1,4 @@
-"""Tier-1 math-correctness coverage tests for torchgwas.linalg.
+"""Tier-1 math-correctness coverage tests for torchgenomics.linalg.
 
 Bar (spec section 4.3 Tier 1):
 - Closed-form / scipy / Monte-Carlo verification per public function.
@@ -13,7 +13,7 @@ import pytest
 import scipy.linalg as sla
 import torch
 
-from torchgwas.linalg import (
+from torchgenomics.linalg import (
     GRMMetadata,
     auto_n_components,
     compute_weights,
@@ -38,7 +38,7 @@ from torchgwas.linalg import (
     woodbury_inverse,
     woodbury_logdet,
 )
-from torchgwas.linalg.basis import (
+from torchgenomics.linalg.basis import (
     bspline_basis,
     difference_penalty,
     evaluate_basis_at,
@@ -47,9 +47,9 @@ from torchgwas.linalg.basis import (
     pspline_2d,
     standardize_time,
 )
-from torchgwas.linalg.batched import batched_cholesky, batched_cholesky_solve
-from torchgwas.linalg.eigh import EigenDecomp
-from torchgwas.linalg.kronecker_eed import (
+from torchgenomics.linalg.batched import batched_cholesky, batched_cholesky_solve
+from torchgenomics.linalg.eigh import EigenDecomp
+from torchgenomics.linalg.kronecker_eed import (
     KronEED,
     diagonal_precision,
     inverse_rotate_from_ked,
@@ -59,8 +59,8 @@ from torchgwas.linalg.kronecker_eed import (
     rotate_to_ked_basis,
     woodbury_fa_precision,
 )
-from torchgwas.linalg.safe import symmetrize
-from torchgwas.linalg.truncated_mvn import (
+from torchgenomics.linalg.safe import symmetrize
+from torchgenomics.linalg.truncated_mvn import (
     bivariate_truncated_moments,
     mvn_truncated_moments,
     truncated_normal_moments,
@@ -688,7 +688,7 @@ class TestWoodburyLogdet:
 
 # ============================================================================
 # Tier-1 coverage for the GRM variants in
-# torchgwas.linalg.kinship_advanced and torchgwas.linalg.kinship_polyploid.
+# torchgenomics.linalg.kinship_advanced and torchgenomics.linalg.kinship_polyploid.
 # Bar (spec section 4.3 Tier 1):
 # - Symmetric to FP64 precision (1e-12).
 # - PSD up to floating-point noise unless documented otherwise.
@@ -1280,7 +1280,7 @@ class TestGrmPolyploidGeneAction:
 
 
 # ===================================================================
-# torchgwas.linalg.basis
+# torchgenomics.linalg.basis
 # ===================================================================
 
 
@@ -1620,7 +1620,7 @@ class TestPspline2d:
 
 
 # ===================================================================
-# torchgwas.linalg.truncated_mvn
+# torchgenomics.linalg.truncated_mvn
 # ===================================================================
 
 
@@ -2237,7 +2237,7 @@ class TestSparseGrmMatvec:
         return K_dense.to_sparse_coo(), K_dense
 
     def test_matches_dense_matvec_1d(self):
-        from torchgwas.linalg.sparse_grm import sparse_grm_matvec
+        from torchgenomics.linalg.sparse_grm import sparse_grm_matvec
 
         K_sparse, K_dense = self._make_sparse_psd(20)
         x = torch.randn(20, dtype=torch.float64)
@@ -2246,7 +2246,7 @@ class TestSparseGrmMatvec:
         assert torch.allclose(got, expected, atol=1e-12)
 
     def test_matches_dense_matvec_2d(self):
-        from torchgwas.linalg.sparse_grm import sparse_grm_matvec
+        from torchgenomics.linalg.sparse_grm import sparse_grm_matvec
 
         K_sparse, K_dense = self._make_sparse_psd(20)
         X = torch.randn(20, 3, dtype=torch.float64)
@@ -2260,7 +2260,7 @@ class TestMakeSparseMatvec:
     V = sig2_g * K + sig2_e * I."""
 
     def test_callable_matches_explicit_form(self):
-        from torchgwas.linalg.sparse_grm import make_sparse_matvec
+        from torchgenomics.linalg.sparse_grm import make_sparse_matvec
 
         torch.manual_seed(0)
         n = 15
@@ -2277,7 +2277,7 @@ class TestMakeSparseMatvec:
         assert torch.allclose(got, expected, atol=1e-12)
 
     def test_zero_sig2_g_collapses_to_identity_scale(self):
-        from torchgwas.linalg.sparse_grm import make_sparse_matvec
+        from torchgenomics.linalg.sparse_grm import make_sparse_matvec
 
         n = 10
         K_dense = torch.eye(n, dtype=torch.float64)

@@ -1,5 +1,5 @@
 """Tests for the native C++ Big-LD candidate-interval accelerator
-(``torchgwas._native._big_ld_native``).
+(``torchgenomics._native._big_ld_native``).
 
 Skipped when the compiled extension is unavailable so CI on machines
 without a C++ toolchain still runs.
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas._native import HAS_NATIVE_BIG_LD, _big_ld_native
-from torchgwas.ld._blocks_literature import (
+from torchgenomics._native import HAS_NATIVE_BIG_LD, _big_ld_native
+from torchgenomics.ld._blocks_literature import (
     _big_ld_native_enabled,
     detect_blocks_big_ld,
 )
@@ -36,7 +36,7 @@ def test_native_module_loads():
 
 
 def test_native_dispatch_active_by_default():
-    if os.environ.get("TORCHGWAS_DISABLE_NATIVE"):
+    if os.environ.get("TORCHGENOMICS_DISABLE_NATIVE"):
         pytest.skip("env disables native path")
     assert _big_ld_native_enabled() is True
 
@@ -144,11 +144,11 @@ def test_dispatch_native_matches_python_blocks(monkeypatch):
     pos = list(range(m))
     chrs = ["1"] * m
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks_big_ld(
         G, pos, chrs, r2_threshold=0.4, window_size=20, max_kb=1000.0
     )
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks_big_ld(
         G, pos, chrs, r2_threshold=0.4, window_size=20, max_kb=1000.0
     )
@@ -169,11 +169,11 @@ def test_dispatch_native_matches_python_random(monkeypatch):
     pos = list(range(m))
     chrs = ["1"] * m
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks_big_ld(
         G, pos, chrs, r2_threshold=0.2, window_size=10, max_kb=1000.0
     )
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks_big_ld(
         G, pos, chrs, r2_threshold=0.2, window_size=10, max_kb=1000.0
     )
@@ -188,11 +188,11 @@ def test_dispatch_native_matches_python_multi_chrom(monkeypatch):
     # Two chromosomes
     chrs = ["1"] * (m // 2) + ["2"] * (m - m // 2)
 
-    monkeypatch.delenv("TORCHGWAS_DISABLE_NATIVE", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_DISABLE_NATIVE", raising=False)
     blocks_native = detect_blocks_big_ld(
         G, pos, chrs, r2_threshold=0.3, window_size=15, max_kb=1000.0
     )
-    monkeypatch.setenv("TORCHGWAS_DISABLE_NATIVE", "1")
+    monkeypatch.setenv("TORCHGENOMICS_DISABLE_NATIVE", "1")
     blocks_python = detect_blocks_big_ld(
         G, pos, chrs, r2_threshold=0.3, window_size=15, max_kb=1000.0
     )

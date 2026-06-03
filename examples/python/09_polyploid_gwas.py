@@ -16,10 +16,10 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE
-from torchgwas.linalg.kinship_polyploid import grm_polyploid_gene_action
-from torchgwas.models import SingleTraitLMM, VariantMeta
-from torchgwas.preprocess.polyploid import recode_gene_action
+from torchgenomics.config import STAT_DTYPE
+from torchgenomics.linalg.kinship_polyploid import grm_polyploid_gene_action
+from torchgenomics.models import SingleTraitLMM, VariantMeta
+from torchgenomics.preprocess.polyploid import recode_gene_action
 
 ROOT = Path(__file__).resolve().parents[2]
 GWASPOLY_DATA = ROOT / "benchmark" / "gwaspoly_data"

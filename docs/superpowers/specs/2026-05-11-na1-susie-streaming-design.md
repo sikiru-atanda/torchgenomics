@@ -13,12 +13,12 @@
 
 ## 1. Goal & scope
 
-Add SuSiE-RSS (Zou, Carbonetto, Wang, Stephens 2022 [C4]) — the summary-statistics-input variant of SuSiE — to TorchGWAS as a new CLI subcommand `bayes-scan-rss`. SuSiE-RSS operates on per-locus z-scores + an LD reference matrix, replacing the raw-genotype $X^\top X / n$ in the per-layer Single Effect Regression (SER) update with the LD reference $R$. Memory bound becomes per-locus $O(p^2)$ for $R$ + $O(L \cdot p)$ for posteriors — typically ~200 MB per LD block at $p \le 5000$, vs $O(n \cdot p)$ for raw-G SuSiE which is up to 800 GB at UKB chr22 scale.
+Add SuSiE-RSS (Zou, Carbonetto, Wang, Stephens 2022 [C4]) — the summary-statistics-input variant of SuSiE — to TorchGenomics as a new CLI subcommand `bayes-scan-rss`. SuSiE-RSS operates on per-locus z-scores + an LD reference matrix, replacing the raw-genotype $X^\top X / n$ in the per-layer Single Effect Regression (SER) update with the LD reference $R$. Memory bound becomes per-locus $O(p^2)$ for $R$ + $O(L \cdot p)$ for posteriors — typically ~200 MB per LD block at $p \le 5000$, vs $O(n \cdot p)$ for raw-G SuSiE which is up to 800 GB at UKB chr22 scale.
 
 **Why now**: the existing `bayes-scan` CLI (raw-G `BayesianVS.fit`) is the only remaining materialized scan path per `docs/efficiency/streaming_audit.md`. SuSiE-RSS:
 - Aligns with the canonical biobank fine-mapping workflow (sumstats → fine-map per locus on sumstats + LD).
 - Composes cleanly with Phase 59 PolyFun (which is RSS-based per `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md`).
-- Reuses TorchGWAS' existing `postgwas` LD infrastructure.
+- Reuses TorchGenomics' existing `postgwas` LD infrastructure.
 - Ships with bounded scope (~1 week of focused work) per the brainstorming Decision 1 (Path D only; Path A chunked IBSS deferred to follow-on).
 
 **Brainstorming decisions locked** (all from 2026-05-11 brainstorming session with the user):
@@ -33,10 +33,10 @@ Add SuSiE-RSS (Zou, Carbonetto, Wang, Stephens 2022 [C4]) — the summary-statis
 
 **In scope (Path D MVP):**
 
-- New class `BayesianVSRss` in new file `torchgwas/models/bayesian_vs_rss.py` (Approach 1 from brainstorming — separate file preserves all 30+ existing `tests/test_bayesian_vs.py` parity tests with zero modification).
+- New class `BayesianVSRss` in new file `torchgenomics/models/bayesian_vs_rss.py` (Approach 1 from brainstorming — separate file preserves all 30+ existing `tests/test_bayesian_vs.py` parity tests with zero modification).
 - New CLI subcommand `bayes-scan-rss` accepting `--sumstats` + (`--ld-ref` OR `--geno`) + `--regions` + `--max-num-causal` + `--coverage` + `--purity` + `--prior-pi` (D3 shim).
-- Block decomposition as **Tier A**: auto-detect via `torchgwas.ld.detect_blocks` if `--regions` not passed; per-block IBSS (one block of $R$ in RAM at a time).
-- Multi-format LD ref loader: `.pt` (existing TorchGWAS), `.npz` (PolyFun) at Tier A; `.bcor` (FINEMAP) deferred to Tier B.
+- Block decomposition as **Tier A**: auto-detect via `torchgenomics.ld.detect_blocks` if `--regions` not passed; per-block IBSS (one block of $R$ in RAM at a time).
+- Multi-format LD ref loader: `.pt` (existing TorchGenomics), `.npz` (PolyFun) at Tier A; `.bcor` (FINEMAP) deferred to Tier B.
 - LD reference metadata schema + cohort-mismatch detector (warn on mismatch, refuse on hard mismatch e.g. different genome build).
 - D3 backward-compat shim: `prior_pi_per_snp: Optional[Tensor] = None` keyword preserves uniform-prior default; per-SNP vector triggers PolyFun-style prior injection.
 - External validation harness `validation/external/susieR/` mirroring Pillar B layout.
@@ -112,7 +112,7 @@ Pairwise $|R_{jk}|$ comes directly from $R$ — no need to re-read genotypes (a 
 
 ### 2.6 Block decomposition (Tier A per Section 3 design lean)
 
-When the locus exceeds a memory threshold (default `--block-size-threshold 5000` SNPs, mirroring PolyFun's [C5] convention), the LD ref is decomposed into LD blocks. Block boundaries auto-detected via `torchgwas.ld.detect_blocks` if user doesn't pass `--regions`. Per-block IBSS is mathematically equivalent to dense IBSS on the full locus when the block boundaries are at near-zero-LD positions (this is the standard fine-mapping practice; PolyFun [C10] uses ldetect blocks averaging ~1500 SNPs).
+When the locus exceeds a memory threshold (default `--block-size-threshold 5000` SNPs, mirroring PolyFun's [C5] convention), the LD ref is decomposed into LD blocks. Block boundaries auto-detected via `torchgenomics.ld.detect_blocks` if user doesn't pass `--regions`. Per-block IBSS is mathematically equivalent to dense IBSS on the full locus when the block boundaries are at near-zero-LD positions (this is the standard fine-mapping practice; PolyFun [C10] uses ldetect blocks averaging ~1500 SNPs).
 
 **Block decomposition correctness invariant** (Tier 1 §5 test): block decomp on `p = 100` fixture (4 blocks of 25) matches dense `p = 100` run to ≤ 1e-10 absolute. If blocks are correctly chosen, this is exact, not approximation.
 
@@ -136,15 +136,15 @@ Per locus: $O(p_{block,max}^2)$ for $R_{block}$ + $O(L \cdot p)$ for $\boldsymbo
 
 | Path | Purpose |
 |---|---|
-| `torchgwas/models/bayesian_vs_rss.py` | `BayesianVSRss` class implementing SuSiE-RSS per §2. Pure-torch path is the spec body per `Python-as-spec, native-as-shortcut`. |
-| `torchgwas/postgwas/_ld_ref_loader.py` | Multi-format LD reference loader (`.pt` + `.npz` at Tier A; `.bcor` at Tier B). In-sample LD via `compute_in_sample_ld(genotype_path, locus)` for the `--geno` mode per Decision 4. |
-| `torchgwas/postgwas/_ld_ref_metadata.py` | LD reference metadata schema + cohort-mismatch detector. Stamps `cohort_id`, `n`, `build`, `panel_provenance` into LD ref files at build time; refuses-with-warning when `bayes-scan-rss` sees a mismatch with the sumstats cohort. |
+| `torchgenomics/models/bayesian_vs_rss.py` | `BayesianVSRss` class implementing SuSiE-RSS per §2. Pure-torch path is the spec body per `Python-as-spec, native-as-shortcut`. |
+| `torchgenomics/postgwas/_ld_ref_loader.py` | Multi-format LD reference loader (`.pt` + `.npz` at Tier A; `.bcor` at Tier B). In-sample LD via `compute_in_sample_ld(genotype_path, locus)` for the `--geno` mode per Decision 4. |
+| `torchgenomics/postgwas/_ld_ref_metadata.py` | LD reference metadata schema + cohort-mismatch detector. Stamps `cohort_id`, `n`, `build`, `panel_provenance` into LD ref files at build time; refuses-with-warning when `bayes-scan-rss` sees a mismatch with the sumstats cohort. |
 | `tests/test_bayesian_vs_rss.py` | Tier 1 unit tests for the RSS algorithm (closed-form / scipy comparisons). |
 | `tests/test_ld_ref_loader.py` | Tier 1 tests for the loader + metadata. |
 | `validation/external/susieR/install.sh` | Install `susieR` via CRAN; idempotent; pre-flight per `feedback_preflight`. Falls back to containerized R per R-NA1-2 mitigation. |
 | `validation/external/susieR/fetch_data.sh` | Provision the MDP-derived per-locus `(z, R, n)` triple from `benchmark/data/`. |
 | `validation/external/susieR/run_susieR.sh` | R script invokes `susieR::susie_rss(z, R, n, L=10, coverage=0.95)`. Captures credible sets, PIPs, posterior $\beta_{mean}$ + $\beta_{sd}$, ELBO at convergence, wall-time, peak RSS. |
-| `validation/external/susieR/run_torchgwas.sh` | Same fixture through our `torchgwas bayes-scan-rss` with identical flags. |
+| `validation/external/susieR/run_torchgenomics.sh` | Same fixture through our `torchgenomics bayes-scan-rss` with identical flags. |
 | `validation/external/susieR/compare.py` | Compute the 6 tolerance metrics from §5; emit findings ledger row per F3 severity. |
 | `validation/external/susieR/README.md` | Operations doc; how to run; expected runtime; failure modes. |
 | `tests/test_external_susieR.py` | `pytestmark = [pytest.mark.external, pytest.mark.golden]` — invokes `compare.py` flow as a Tier 2 test. |
@@ -153,8 +153,8 @@ Per locus: $O(p_{block,max}^2)$ for $R_{block}$ + $O(L \cdot p)$ for $\boldsymbo
 
 | Path | Change | Backward compat |
 |---|---|---|
-| `torchgwas/models/bayesian_vs.py` | Add `UserWarning` in `fit()` when `p > 10000` per Decision 5. NO algorithmic change. | YES — warning only |
-| `torchgwas/cli.py` | Add `bayes-scan-rss` subcommand handler. | YES — additive |
+| `torchgenomics/models/bayesian_vs.py` | Add `UserWarning` in `fit()` when `p > 10000` per Decision 5. NO algorithmic change. | YES — warning only |
+| `torchgenomics/cli.py` | Add `bayes-scan-rss` subcommand handler. | YES — additive |
 | `docs/cli.md` | Document new subcommand. | YES |
 | `tests/test_streaming_memory.py` | Add memory regression for `bayes-scan-rss` (peak ≤ `O(p_max_block^2 + L * p_total)`). | YES — additive |
 | `bench/native_speedups.py` | Add wall-time gate for `bayes-scan-rss` per `feedback_regression_nets`. | YES — additive |
@@ -162,14 +162,14 @@ Per locus: $O(p_{block,max}^2)$ for $R_{block}$ + $O(L \cdot p)$ for $\boldsymbo
 
 ### 3.3 Files NOT touched
 
-- `torchgwas/models/bayesian_vs.py` `BayesianVS` class internals — preserves V1 parity tests; only the warning in `fit()` is added.
-- `torchgwas/postgwas/_finemapping.py` — credible-set utilities reused as-is.
-- `torchgwas/pgs/ld_ref.py` (existing single-population container) — unrelated; SuSiE-RSS LD ref is per-locus, not per-ancestry.
+- `torchgenomics/models/bayesian_vs.py` `BayesianVS` class internals — preserves V1 parity tests; only the warning in `fit()` is added.
+- `torchgenomics/postgwas/_finemapping.py` — credible-set utilities reused as-is.
+- `torchgenomics/pgs/ld_ref.py` (existing single-population container) — unrelated; SuSiE-RSS LD ref is per-locus, not per-ancestry.
 
 ### 3.4 Public API surface
 
 ```python
-# torchgwas/models/bayesian_vs_rss.py
+# torchgenomics/models/bayesian_vs_rss.py
 class BayesianVSRss:
     """SuSiE-RSS fine-mapping on summary statistics.
 
@@ -213,7 +213,7 @@ Either: --ld-ref ld_chr22.pt    OR    --geno panel.bed
    ↓ (postgwas/_ld_ref_loader.py)
 LD reference R (per-locus or per-block; metadata-stamped per §3.1)
    +
-Either: --regions regions.tsv    OR    auto-detected via torchgwas.ld.detect_blocks
+Either: --regions regions.tsv    OR    auto-detected via torchgenomics.ld.detect_blocks
    ↓ (BayesianVSRss.fit_rss per locus, per block)
 Per-locus posteriors: alpha (L × p), mu (L × p), sigma^2 (L × p), credible_sets, PIPs, beta_mean, beta_sd, ELBO
    ↓ (output writer: PolyFun-compatible columns)
@@ -253,7 +253,7 @@ Test in `tests/test_external_susieR.py` (marker: `pytestmark = [pytest.mark.exte
 - **Pre-flight**: `validation/external/susieR/install.sh` installs `susieR` via CRAN if not present; ≥ 2 GB free disk, ≥ 4 GB RAM check per `feedback_preflight`. Falls back to containerized R (`docker run --rm rocker/r-ver:latest R -e 'install.packages("susieR")'`) per R-NA1-2 mitigation.
 - **Fixture**: MDP-derived per-locus `(z, R, n)` triple. Build via `lmm-scan` on MDP genotype + phenotype → take a window of $p = 500$ SNPs around the strongest hit → `compute_pairwise_ld` for $R$. Reproducible from `validation/external/susieR/fetch_data.sh`.
 - **Reference run**: R script invokes `susieR::susie_rss(z, R, n, L=10, coverage=0.95)`; captures credible sets, PIPs, posterior $\beta_{mean}$ + $\beta_{sd}$, ELBO at convergence, wall-time, peak memory (RSS via `/usr/bin/time -v`).
-- **Our run**: same inputs through `torchgwas bayes-scan-rss --max-num-causal 10 --coverage 0.95`; same captures.
+- **Our run**: same inputs through `torchgenomics bayes-scan-rss --max-num-causal 10 --coverage 0.95`; same captures.
 - **Comparison** in `compare.py`:
 
 | Metric | Threshold | Source |
@@ -279,7 +279,7 @@ Per Phase 59 §5.5 contract: all existing `tests/test_bayesian_vs.py` tests run 
 ## 6. CLI integration
 
 ```bash
-torchgwas bayes-scan-rss \
+torchgenomics bayes-scan-rss \
     --sumstats hits.tsv \              # Z, BETA, SE, A1, A2, CHR, BP, SNP, N columns
     --ld-ref ld_chr22.pt \             # PRE-BUILT LD ref (.pt or .npz) — OR --geno
     --geno panel.bed \                 # alt: compute in-sample LD per locus
@@ -317,14 +317,14 @@ SNP   CHR   BP   A1   A2   Z   N   PIP   BETA_MEAN   BETA_SD   CREDIBLE_SET
 
 **Soft warning on materialized `bayes-scan` (Decision 5):**
 
-In `torchgwas/models/bayesian_vs.py::BayesianVS.fit()`:
+In `torchgenomics/models/bayesian_vs.py::BayesianVS.fit()`:
 
 ```python
 if G.shape[1] > 10000:
     warnings.warn(
         f"BayesianVS.fit called on locus with p={G.shape[1]} > 10000. "
         f"This will materialize ~{G.shape[0] * G.shape[1] * 8 / 1e9:.1f} GB. "
-        f"For large loci, prefer 'torchgwas bayes-scan-rss' which operates "
+        f"For large loci, prefer 'torchgenomics bayes-scan-rss' which operates "
         f"on summary statistics + LD reference (per-locus memory ~O(p^2)). "
         f"See docs/cli.md#bayes-scan-rss.",
         UserWarning,
@@ -379,7 +379,7 @@ Per master spec §7 — post-V1 → divergences documented, regressions in exist
 ### 9.2 Open questions deferred to implementation kickoff
 
 - **OQ-NA1-1**: Path A (chunked IBSS for raw-G `bayes-scan`) follow-on — when? After Phase 57 lands, in parallel with Phase 58/59, or a standalone effort? Default lean: standalone effort tracked separately as "NA1-followon" once NA1 ships. **Per Section 6 design lean (b), this OQ is documented here for the master-spec-style decisions ledger**.
-- **OQ-NA1-2**: For the `--ld-ref` multi-format loader, do we ship `.bcor` (FINEMAP format) reader in Tier A or defer to Tier B? Default lean: Tier B — `.pt` (TorchGWAS) and `.npz` (PolyFun) cover the immediate needs; FINEMAP integration is a Phase-59-Tier-C concern.
+- **OQ-NA1-2**: For the `--ld-ref` multi-format loader, do we ship `.bcor` (FINEMAP format) reader in Tier A or defer to Tier B? Default lean: Tier B — `.pt` (TorchGenomics) and `.npz` (PolyFun) cover the immediate needs; FINEMAP integration is a Phase-59-Tier-C concern.
 - **OQ-NA1-3**: ELBO at convergence — does `bayes-scan-rss` write the per-iteration trace by default (for diagnostic) or only the final value? Default lean: final + max diff, with a `--write-elbo-trace` flag for deeper diagnostics.
 - **OQ-NA1-4**: `--purity` threshold default. `susieR` defaults to 0.5; PolyFun's wrapper uses 0.1 in some configurations. Pick one and document. Default lean: **0.5** (susieR default) for the parity test; expose `--purity` flag for users.
 
@@ -393,13 +393,13 @@ Shippable when: `bayes-scan-rss` runs end-to-end on the MDP-derived per-locus fi
 |---|---|---|
 | **A0** Pre-flight: confirm `tests/test_streaming_memory.py` infrastructure available (R-NA1-7 — rebase or merge `efficiency/streaming-scan-audit`) | (sequencing gate) | n/a |
 | **A1** LD-ref loader: `.pt` + `.npz` formats, in-sample LD via `--geno`, metadata schema + cohort-mismatch detection | `postgwas/_ld_ref_loader.py`, `postgwas/_ld_ref_metadata.py` | `tests/test_ld_ref_loader.py` |
-| **A2** Block-decomposition primitive: split `R` by regions; auto-detect via `torchgwas.ld.detect_blocks` if `--regions` not passed | `postgwas/_ld_ref_loader.py` extension | block-equivalence test |
+| **A2** Block-decomposition primitive: split `R` by regions; auto-detect via `torchgenomics.ld.detect_blocks` if `--regions` not passed | `postgwas/_ld_ref_loader.py` extension | block-equivalence test |
 | **A3** SuSiE-RSS algorithm: SER posterior + IBSS update + ELBO + credible sets — pure-torch implementation per §2 | `models/bayesian_vs_rss.py` | Tier 1 unit tests in `tests/test_bayesian_vs_rss.py` |
 | **A4** D3 shim: `prior_pi_per_snp` keyword — accepts scalar OR per-SNP vector, normalizes per locus | `models/bayesian_vs_rss.py` | per-SNP-prior unit test |
 | **A5** Output writer: TSV with PolyFun-compatible columns (§6 schema) | `models/bayesian_vs_rss.py` | output-format unit test |
 | **A6** CLI subcommand `bayes-scan-rss` | `cli.py` | `tests/test_cli.py` smoke |
 | **A7** Soft warning on materialized `bayes-scan` when `p > 10000` | `models/bayesian_vs.py` (warning only) | warning capture test |
-| **A8** External validation harness: `validation/external/susieR/` mirroring Pillar B layout | `validation/external/susieR/{install,fetch_data,run_susieR,run_torchgwas}.sh` + `compare.py` + `README.md` | manual smoke first, then `tests/test_external_susieR.py` |
+| **A8** External validation harness: `validation/external/susieR/` mirroring Pillar B layout | `validation/external/susieR/{install,fetch_data,run_susieR,run_torchgenomics}.sh` + `compare.py` + `README.md` | manual smoke first, then `tests/test_external_susieR.py` |
 | **A9** Tier 2 parity test vs `susieR::susie_rss` on MDP fixture | `tests/test_external_susieR.py` (`@pytest.mark.external @pytest.mark.golden`) | this test |
 | **A10** Memory regression test for `bayes-scan-rss` | `tests/test_streaming_memory.py` extension | this test |
 | **A11** Wall-time regression net | `bench/native_speedups.py` extension | this test |
@@ -439,7 +439,7 @@ Shippable when: 1KG-derived secondary fixture passes Tier 2; `.bcor` (FINEMAP) L
 - **[C9] Lu, Z., Cao, J., et al. (2024).** *SuShiE: Sum of Shared Single Effects, ancestry-aware fine-mapping using GWAS summary statistics.* Nature Communications 15. <https://www.nature.com/articles/s41467-024-54571-w>. Cross-ancestry extension reference for Tier C C5.
 - **[C10] Weissbrod, O., et al. (2020).** *Functionally informed fine-mapping and polygenic localization of complex trait heritability.* Nature Genetics 52: 1355–1363. <https://doi.org/10.1038/s41588-020-00735-5>. PolyFun; uses SuSiE-RSS internally; ldetect-block convention.
 - **[C11] PolyFun GitHub repository.** <https://github.com/omerwe/polyfun>. Reference Python implementation; documents the LD-block-per-locus workflow Path D depends on.
-- **[C-PHASE-59] TorchGWAS Phase 59 PolyFun design spec.** `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md`. D3 shim definition (§2.3); §5.5 backward-compat regression net.
+- **[C-PHASE-59] TorchGenomics Phase 59 PolyFun design spec.** `docs/superpowers/specs/2026-05-11-phase-59-polyfun-design.md`. D3 shim definition (§2.3); §5.5 backward-compat regression net.
 - **[C-NA1-BRIEF] NA1 research brief.** `docs/superpowers/research/na1-susie-streaming-research.md`. 19 primary citations; comparison matrix §6; recommended path §7.
 - **[C-SESSION-HANDOFF] SESSION_HANDOFF.md NA1 task definition.** `docs/superpowers/SESSION_HANDOFF.md` § "Task NA1 — bayes-scan SuSiE streaming". Source of credible-set Jaccard ≥ 0.95 success criterion.
 

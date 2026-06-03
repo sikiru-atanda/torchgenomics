@@ -36,7 +36,7 @@ if [[ -z "${SOURCE_DIR}" ]]; then
     echo "[gapit fetch]   ${ROOT}/benchmark/data/"
     echo "[gapit fetch]   ${HOME}/Documents/GWAS_Expert/benchmark/data/"
     echo "[gapit fetch] These are committed fixtures from the canonical"
-    echo "[gapit fetch] TorchGWAS checkout. Restore benchmark/data/ before retrying."
+    echo "[gapit fetch] TorchGenomics checkout. Restore benchmark/data/ before retrying."
     exit 1
 fi
 

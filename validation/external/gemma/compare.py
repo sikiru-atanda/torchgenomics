@@ -1,6 +1,6 @@
-"""Compare GEMMA 0.98.5 vs TorchGWAS on the MDP fixture across:
+"""Compare GEMMA 0.98.5 vs TorchGenomics on the MDP fixture across:
 
-  1. GRM (centered, -gk 1) vs torchgwas.linalg.kinship.grm_centered_gemma
+  1. GRM (centered, -gk 1) vs torchgenomics.linalg.kinship.grm_centered_gemma
   2. Single-trait LMM (Wald, LRT, score) — variance components, log-likelihood,
      β / SE, p-value −log10 correlation per test
   3. Multi-trait mvLMM (joint Wald) — Vg / Ve matrices, p-value −log10 correlation
@@ -56,10 +56,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig  # noqa: E402
-from torchgwas.models.base import VariantMeta  # noqa: E402
-from torchgwas.models.multi_trait_lmm import MultiTraitLMM  # noqa: E402
-from torchgwas.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
+from torchgenomics.config import STAT_DTYPE, NumericalConfig  # noqa: E402
+from torchgenomics.models.base import VariantMeta  # noqa: E402
+from torchgenomics.models.multi_trait_lmm import MultiTraitLMM  # noqa: E402
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM  # noqa: E402
 
 
 # ── Result dataclasses ───────────────────────────────────────────────────────
@@ -231,9 +231,9 @@ def _load_mdp(data_dir: Path, gemma_grm: np.ndarray | None = None) -> dict:
 
 
 def compare_grm(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """GEMMA --gk 1 cXX kinship vs the same matrix loaded by TorchGWAS.
+    """GEMMA --gk 1 cXX kinship vs the same matrix loaded by TorchGenomics.
 
-    GEMMA's centered kinship is the reference; we use it as K in TorchGWAS'
+    GEMMA's centered kinship is the reference; we use it as K in TorchGenomics'
     LMM null fit. This comparison is an identity check — confirming we read
     GEMMA's matrix back correctly without any precision loss.
     """
@@ -263,7 +263,7 @@ def compare_grm(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
 
 def compare_lmm_single(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """GEMMA -lmm 4 (Wald + LRT + score) vs TorchGWAS SingleTraitLMM.
+    """GEMMA -lmm 4 (Wald + LRT + score) vs TorchGenomics SingleTraitLMM.
 
     Asserts:
       - Variance components vg, ve match within 1e-3 relative.
@@ -356,7 +356,7 @@ def compare_lmm_single(data_dir: Path, out_dir: Path) -> ComparisonReport:
 
 
 def compare_mvlmm(data_dir: Path, out_dir: Path) -> ComparisonReport:
-    """GEMMA -lmm 1 -n 1 2 (mvLMM joint Wald) vs TorchGWAS MultiTraitLMM."""
+    """GEMMA -lmm 1 -n 1 2 (mvLMM joint Wald) vs TorchGenomics MultiTraitLMM."""
     K_gemma = pd.read_csv(out_dir / "mdp_kinship.cXX.txt", sep="\t", header=None).values
     log = _parse_gemma_log(out_dir / "mdp_mvlmm_wald.log.txt")
     gemma_assoc = pd.read_csv(out_dir / "mdp_mvlmm_wald.assoc.txt", sep="\t")

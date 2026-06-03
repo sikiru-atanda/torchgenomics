@@ -1,7 +1,7 @@
-"""Golden tests: TorchGWAS vs GAPIT3 reference outputs.
+"""Golden tests: TorchGenomics vs GAPIT3 reference outputs.
 
 GAPIT3 (an R package) generates reference outputs for FarmCPU and BLINK on the
-MDP maize dataset. TorchGWAS's FarmCPU / BLINK models are compared against these
+MDP maize dataset. TorchGenomics's FarmCPU / BLINK models are compared against these
 references with Section-16 tolerances.
 
 Reference outputs are expected at ``gapit_demo/output/``:
@@ -60,7 +60,7 @@ class TestGAPITFarmCPU:
             pytest.skip(_MISSING_MSG.format(path=GAPIT_OUT))
         # When fixtures land, the body below activates automatically:
         # ref = pd.read_csv(os.path.join(GAPIT_OUT, fname))
-        # p_ref, p_tg = _aligned_pvalues(ref, torchgwas_farmcpu_result)
+        # p_ref, p_tg = _aligned_pvalues(ref, torchgenomics_farmcpu_result)
         # assert _pvalue_correlation(p_ref, p_tg) > 0.99
         pytest.fail(
             "FarmCPU comparison body not implemented — fixture is present but "
@@ -70,7 +70,7 @@ class TestGAPITFarmCPU:
         )
 
     def test_pseudo_qtns(self):
-        """Pseudo-QTN set convergence: TorchGWAS ∩ GAPIT3 / GAPIT3 > 0.5."""
+        """Pseudo-QTN set convergence: TorchGenomics ∩ GAPIT3 / GAPIT3 > 0.5."""
         fname = "mdp_farmcpu.GWAS.Results.csv"
         if not _have(fname):
             pytest.skip(_MISSING_MSG.format(path=GAPIT_OUT))

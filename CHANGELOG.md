@@ -2,6 +2,128 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] — 2026-06-02
+
+Rebrand and surface-expansion release. The package is renamed from
+`torchgwas` to `torchgenomics` to reflect a scope that now covers far
+more than GWAS (post-GWAS, PGS, MR, TWAS, multi-omics, LD, imputation,
+annotation, visualization). On top of the rename, two new surfaces ship:
+a curated one-call API for novice / notebook users, and an MCP server
+exposing 13 tier-1 tools to LLM clients (Claude Desktop, Claude Code).
+
+Existing `torchgwas` users keep working without code changes — the
+legacy package, CLI binary, and environment variables stay live as a
+deprecation shim through the v0.x series and are removed in v1.0.0.
+
+### Added — high-level API facade (`torchgenomics.api`)
+
+A new `torchgenomics.api` module (also re-exported at the top level)
+provides 12 one-call tier-1 functions designed for three audiences
+sharing a single code path:
+
+- **Data tier (3)**: `validate`, `convert`, `impute`
+- **Scan tier (2)**: `lmm_scan`, `glm_scan`
+- **LD / post-GWAS tier (3)**: `ld_blocks`, `clump`, `meta`
+- **PGS tier (2)**: `pgs_fit`, `pgs_score`
+- **Utility tier (2)**: `annotate_hits`, `manhattan` (+ bonus `qq`)
+
+Each returns a typed result dataclass with `.summary()`, `.to_dict()`
+(JSON-safe), `.runtime_s`, `.output_files`, and per-kind extras
+(`.top_hits` DataFrame, `.manhattan()` / `.qq()` matplotlib helpers,
+`.lambda_gc`, etc.). Smart defaults: format auto-detection, sample
+auto-alignment, auto-named output directories, first-trait auto-pick.
+
+### Added — MCP server (`torchgenomics-mcp`)
+
+A new `torchgenomics.mcp` subpackage publishes the 13 tier-1 api
+functions as Model Context Protocol tools over stdio:
+
+```bash
+pip install "torchgenomics[mcp]"
+```
+
+```json
+{
+  "mcpServers": {
+    "torchgenomics": {"command": "torchgenomics-mcp"}
+  }
+}
+```
+
+Wrapper layer strips non-JSON-serializable params (`progress_callback`,
+`Path` → `str`), preserves `Literal` enums as JSON Schema enums, and
+auto-`.to_dict()`'s api result objects. The `torchgenomics-mcp
+--list-tools` flag emits the tool registry as JSON without booting the
+server.
+
+### Changed — package rename
+
+- `torchgwas` → `torchgenomics` across the Python package, CLI binary,
+  PyPI distribution, GitHub repo, charter, README, CLAUDE.md, all docs,
+  manuscript text, and 10 GitHub Actions workflows.
+- 24 native C++ extension module names rebuilt as `torchgenomics._native._*`.
+- All `TORCHGWAS_*` env vars renamed to `TORCHGENOMICS_*` (DISABLE_NATIVE,
+  DISABLE_GPU, DISABLE_OPENMP, JULIA, BENCH_CI/QUICK/REALISTIC,
+  ALLOW_AUTO_INSTALL, NCBI_LIVE).
+- Charter file: `TorchGWAS_AI_Agent_Handoff_Charter.md` →
+  `TorchGenomics_AI_Agent_Handoff_Charter.md`.
+
+### Added — backwards-compat shim (removed at v1.0.0)
+
+- `torchgwas` Python package — meta-path finder redirects every
+  `torchgwas[.X]` import to `torchgenomics[.X]`. Same module objects.
+  Emits one-shot `DeprecationWarning`.
+- `torchgwas` console script — prints stderr deprecation banner once,
+  then forwards argv unchanged to `torchgenomics.cli:main`.
+- `TORCHGWAS_DISABLE_NATIVE` / `_GPU` / `_OPENMP` env vars — accepted
+  with one-shot `DeprecationWarning`; new `TORCHGENOMICS_*` names take
+  precedence when both are set.
+- Centralized via `torchgenomics._dispatch.env_var(name)` helper; 9
+  direct `os.environ.get` sites under `ld/` and `pgs/` migrated to
+  `native_disabled()` so the legacy alias is honored uniformly.
+
+### Refactored — CLI ↔ api dependency direction
+
+For 7 of the 12 tier-1 functions (clump, meta, pgs_fit, pgs_score,
+ld_blocks, lmm_scan, glm_scan), the api facade now calls thin
+primitive-args helpers in `cli.py` (`_run_clump`, `_run_meta`, etc.)
+rather than constructing synthetic `argparse.Namespace` objects. No
+api module imports argparse anymore. Side-fix: `api.clump` was
+silently passing wrong attribute names (`r2_threshold`/`bp_window_kb`
+instead of `r2`/`window_kb`) — corrected. No CLI test was exercising
+the api.clump path.
+
+### Tests
+
+- `tests/test_compat_shim.py` (13 tests) — import shim, env-var compat,
+  CLI proxy banner + dispatch.
+- `tests/test_api_facade.py` (43 tests) — registry, top-level
+  re-exports, result-class invariants, end-to-end smoke for validate /
+  lmm_scan / glm_scan / ld_blocks / manhattan / qq.
+- `tests/test_mcp_server.py` (12 tests) — wrapper hygiene
+  (progress_callback stripped, Path → str, Literal preserved), server
+  boot, schema validity, end-to-end in-process MCP tool call.
+
+**Verification**: 3,071 passed (3,003 baseline + 68 new), 417 skipped,
+0 failures (excluding opt-in external / cli_matrix / reproducibility /
+gpu markers). 2m 22s wall time.
+
+### Migration
+
+```python
+# Before
+import torchgwas
+from torchgwas.models import SingleTraitLMM
+
+# After
+import torchgenomics
+from torchgenomics.models import SingleTraitLMM
+```
+
+CLI: `torchgwas <cmd>` → `torchgenomics <cmd>` (old form proxies with a
+banner). Env vars: `TORCHGWAS_DISABLE_NATIVE=1` → `TORCHGENOMICS_DISABLE_NATIVE=1`.
+Python API surface is unchanged.
+
 ## [0.3.10] — 2026-06-01
 
 Performance + infrastructure release. Seven new native C++ accelerators
@@ -11,9 +133,9 @@ The public API is unchanged; this is purely faster and safer.
 
 ### Added — native C++ accelerators (7 new; 24 → 31 total)
 
-Each is opt-in via `pip install torchgwas[native]`, falls through to
+Each is opt-in via `pip install torchgenomics[native]`, falls through to
 the pure-Python algorithmic spec when the build is unavailable or
-when `TORCHGWAS_DISABLE_NATIVE=1` is set.
+when `TORCHGENOMICS_DISABLE_NATIVE=1` is set.
 
 - **SuSiE-RSS IBSS inner sweep** (`csrc/models/susie_rss_ibss.cpp`).
   One full IBSS iteration — per-layer SER + residual update + Brent
@@ -79,12 +201,12 @@ silently to the un-factored path.
   *intersection* semantic, not union; the workflow now runs two
   pytest passes so unmarked CUDA-skipif tests still run.
 - `fix(ci): GPU workflow smoke step uses --help not --version`.
-  The `torchgwas` CLI is subcommand-based and has no `--version`
+  The `torchgenomics` CLI is subcommand-based and has no `--version`
   flag.
 
 ### Internal
 
-- Version synchronisation: `torchgwas.__version__` was stuck at
+- Version synchronisation: `torchgenomics.__version__` was stuck at
   `"0.2.0"` while `pyproject.toml` advanced to `"0.3.8"`. Both now
   agree at `"0.3.10"`.
 - `MANIFEST.in` now explicitly bundles `CHANGELOG.md` and adds
@@ -109,7 +231,7 @@ to **3038 passed, 0 failed**.
 
 ### Added
 
-- **GWAS↔TWAS integration** — `torchgwas.postgwas.combine_gwas_twas`
+- **GWAS↔TWAS integration** — `torchgenomics.postgwas.combine_gwas_twas`
   routes GWAS sumstats through MAGMA-style `snp_to_gene` aggregation
   and combines the gene-level GWAS p with the TWAS p via any of 14
   kernels.
@@ -124,16 +246,16 @@ to **3038 passed, 0 failed**.
     `cauchy_multi_tissue_plus_lead_snp` (S-MultiXcan + lead-SNP via
     ACAT), `gwas_twas_conditional` (ConditionalLMM-mediated; flags
     mediated vs independent), `gwas_twas_hyprcoloc_gated` (PPFC-gated).
-  - New CLI: `torchgwas combine-gwas-twas`. Subcommand count 39 → 40.
+  - New CLI: `torchgenomics combine-gwas-twas`. Subcommand count 39 → 40.
 - **Observed-expression TWAS** — `twas_observed_expression()` for the
   workflow where the user has measured normalized expression and a
-  phenotype, plus the corresponding `torchgwas twas-scan` CLI. OLS by
+  phenotype, plus the corresponding `torchgenomics twas-scan` CLI. OLS by
   default; LMM (kinship-corrected) when a GRM is provided. New
-  preprocessing module `torchgwas.preprocess.expression` with
+  preprocessing module `torchgenomics.preprocess.expression` with
   `inverse_normal_transform` (Blom rank-INT), `quantile_normalize`,
   and `peer_residualize` (R-subprocess wrapper around PEER).
 - **PrediXcan / FUSION `.db` reader** —
-  `torchgwas.io.read_predixcan_db()` returns a `PredixcanModel`
+  `torchgenomics.io.read_predixcan_db()` returns a `PredixcanModel`
   dataclass with weights / snp_lists / eff_alleles / ref_alleles /
   r2_models / gene_names dicts ready to drop into `twas_sumstat`. Plus
   `list_genes_in_db()` convenience helper. Tolerates alternate r²
@@ -158,31 +280,31 @@ to **3038 passed, 0 failed**.
 ### Fixed
 
 - **F3 #1 — hyprcoloc Foley 2021 conditional prior**
-  (`torchgwas/postgwas/_hyprcoloc.py`). Replaces the product prior
+  (`torchgenomics/postgwas/_hyprcoloc.py`). Replaces the product prior
   with the hierarchical conditional prior. Cluster membership now
   matches R hyprcoloc exactly on the 3-trait shared-causal fixture
   ([0, 1, 2] vs [0, 2] pre-patch).
 - **F3 #2 — coloc_pairwise H3 formula**
-  (`torchgwas/postgwas/_hyprcoloc.py`). H3 marginal rewritten as
+  (`torchgenomics/postgwas/_hyprcoloc.py`). H3 marginal rewritten as
   *outer − diagonal* of per-SNP weights; spurious `-log m`
   per-hypothesis factor removed. PP.H3 on the distinct-signal fixture
   goes from 0.85 (pre-patch) to 0.997, matching R `coloc::coloc.abf`
   to FP precision.
 - **F3 #3 — heidi_test LD-weighted variance**
-  (`torchgwas/postgwas/_smr.py`). New optional `ld_matrix` parameter
+  (`torchgenomics/postgwas/_smr.py`). New optional `ld_matrix` parameter
   applies the Zhu 2016 sup. eq. 18 per-SNP-pair LD-corrected variance,
   matching SMR v1.3.1 to 0.67% on chi²_HEIDI and 1.55% on p_HEIDI on
   the harness fixture.
 - **F3 #4 — OCFLMM `nuisance_learner='ridge_quadratic'`**
-  (`torchgwas/models/ocf_lmm.py`). New optional nuisance learner with
+  (`torchgenomics/models/ocf_lmm.py`). New optional nuisance learner with
   quadratic feature expansion + small ridge; default stays `'linear'`
   for V1 backward compatibility. Empirical 95% coverage moves from
   0.41 (linear, biased under nonlinear confounding) to 0.94 on the
   Chernozhukov 2018 partially-linear DGP.
-- **GPU haplotype parity** (`torchgwas/models/haplotype_gwas.py`).
+- **GPU haplotype parity** (`torchgenomics/models/haplotype_gwas.py`).
   Uses `torch.argsort(stable=True)` for tied LD-aware scores, fixing
   the pre-existing CPU/CUDA divergence in `HaplotypeGWAS(method="window")`.
-- **PGS parser cleanup** (`torchgwas/cli.py`). Restored the missing
+- **PGS parser cleanup** (`torchgenomics/cli.py`). Restored the missing
   `_add_pgs_fit_parser` / `_add_pgs_score_parser` / `_cmd_pgs_fit` /
   `_cmd_pgs_score` function bodies that had been referenced in
   `cli.py` but never defined on master, closing 40 NameError test
@@ -229,7 +351,7 @@ subcommands; 2 → 1 materialized.**
 
 ### Added
 
-- **`torchgwas.linalg.multi_kernel_streaming.build_multi_kernels_streaming`**
+- **`torchgenomics.linalg.multi_kernel_streaming.build_multi_kernels_streaming`**
   (commit `c075a8b`) — stream-builds the additive / dominance /
   epistatic kernel set from an `iter_chunks` reader. Each base kernel
   (additive, dominance) is accumulated chunk-by-chunk in float64;
@@ -277,7 +399,7 @@ counted as partial).**
 
 ### Added
 
-- **`torchgwas.models.farmcpu.FarmCPU.score_streaming(reader, null_fit,
+- **`torchgenomics.models.farmcpu.FarmCPU.score_streaming(reader, null_fit,
   chunk_size, test)`** — orchestrates the FEM / REM iteration
   externally. Per iteration: stream the genome once for
   `_glm_scan_streaming` (per-SNP gtg / gty / beta / se / p
@@ -291,14 +413,14 @@ counted as partial).**
   tolerance vs. eager `score_chunk` (max p diff ~1.8e-15 on a
   100 × 200 fixture).
 
-- **`torchgwas.models.blink.BLINK.score_streaming(reader, null_fit,
+- **`torchgenomics.models.blink.BLINK.score_streaming(reader, null_fit,
   chunk_size, test)`** — same shape as FarmCPU. LD-removal
   (`_ld_remove_block_with_cols`) and BIC selection
   (`_bic_forward_select_with_cols`) operate on candidate column
   matrices read from the reader on demand (`_read_columns_from_reader`).
   Behavioral parity (max p diff 0.0 on a 100 × 200 fixture).
 
-- **`torchgwas.multiomics._scan_batched.batched_scan_pairs_streaming`** —
+- **`torchgenomics.multiomics._scan_batched.batched_scan_pairs_streaming`** —
   per-SNP-block lazy rotation. Groups pairs first by SNP-block, then
   by feature-block; for each SNP-block lazy-rotates only that
   block's columns, dispatches all paired feature-blocks, frees. The
@@ -365,7 +487,7 @@ counts: 26 → 32 streaming subcommands; 12 → 6 materialized.**
 
 ### Added
 
-- **`torchgwas.postgwas.compute_ld_scores_streaming`** — sliding-
+- **`torchgenomics.postgwas.compute_ld_scores_streaming`** — sliding-
   window LD-score helper. Per-chromosome buffer holds only SNPs whose
   right edge has not yet been crossed by the latest streamed position.
   Running r² partial sums accumulate chunk-by-chunk so each pair
@@ -373,7 +495,7 @@ counts: 26 → 32 streaming subcommands; 12 → 6 materialized.**
   independent of total m. Behavioral parity to float64 tolerance vs.
   the in-memory `compute_ld_scores`.
 
-- **`torchgwas.models.lro_lmm.LROLMM.run` — `K_full` / `normalizer`
+- **`torchgenomics.models.lro_lmm.LROLMM.run` — `K_full` / `normalizer`
   kwargs.** When supplied, `LROLMM.run` skips its internal
   `grm_vanraden(G)` call and uses the caller's genome-wide GRM. The
   per-block `K_b = G_block @ G_block^T / normalizer` semantics are
@@ -439,7 +561,7 @@ counts: 26 → 32 streaming subcommands; 12 → 6 materialized.**
 Performance regression CI release (E5). The wall-time analog to the
 streaming-memory regression nets shipped in v0.3.2–v0.3.4. PRs that
 slow any monitored native kernel by > 10% now fail CI; > 5% gets a
-warning. Closes the regression-net loop on TorchGWAS' 24 native C++
+warning. Closes the regression-net loop on TorchGenomics' 24 native C++
 accelerators.
 
 ### Added
@@ -450,7 +572,7 @@ accelerators.
 - **`bench/native_speedups.py --kernel-subset ci`** — fast 12-kernel
   subset (Gabriel / PELT / CC-graph blocks, KNN / mode imputation,
   LDpred2 / PRS-CS Gibbs, HWE diploid, SPA, LDSC jackknife, GRM
-  streaming, VanRaden GRM). Plus `TORCHGWAS_BENCH_CI=1` env var that
+  streaming, VanRaden GRM). Plus `TORCHGENOMICS_BENCH_CI=1` env var that
   shrinks input sizes for kernels with O(m⁴) / O(n²) Python reference
   paths so the full CI cycle stays under the 8-min budget.
 - **`bench/diff_perf.py`** — reads two benchmark JSON files (master
@@ -499,7 +621,7 @@ subcommands; 25 → 12 materialized.**
 
 ### Added
 
-- **`torchgwas.preprocess.impute`** — four streaming-friendly
+- **`torchgenomics.preprocess.impute`** — four streaming-friendly
   building blocks alongside the in-memory reference functions:
   `compute_column_means_streaming`, `compute_column_modes_streaming`,
   `impute_chunk_with_means`, `impute_chunk_with_modes`,
@@ -848,7 +970,7 @@ examples) is materially larger.
   MultiKernelLMM, MultiEnvLMM, GxELMM, FarmCPU, BLINK, HaplotypeGWAS,
   RandomRegressionLMM). CUDA-gated; auto-skips on CPU-only CI.
 - `.github/workflows/ci.yml` — new `test-no-openmp` matrix entry that
-  sets `TORCHGWAS_DISABLE_OPENMP=1` at build + test time.
+  sets `TORCHGENOMICS_DISABLE_OPENMP=1` at build + test time.
 - `.github/workflows/gpu.yml` — scheduled + manual-dispatch GPU job
   on GitHub cloud GPU runners; runs the parity tests plus a smoke CLI
   test.
@@ -856,7 +978,7 @@ examples) is materially larger.
   `win_amd64`, `macos_arm64` on CPython 3.10/3.11/3.12. Publishes to
   PyPI on release tag with OIDC trusted publishing. Coexists with the
   existing sdist publisher via `skip-existing: true` — Windows users
-  without MSVC can now `pip install torchgwas` and get the native-path
+  without MSVC can now `pip install torchgenomics` and get the native-path
   speedups.
 - `pyproject.toml` — new `docs` optional-dependency group and
   `[tool.cibuildwheel]` block.
@@ -900,7 +1022,7 @@ examples) is materially larger.
 
 ### Fixed
 
-- `torchgwas.scan.unified.merge_scan_results` — now propagates the
+- `torchgenomics.scan.unified.merge_scan_results` — now propagates the
   dynamic `_conditional` attribute that `ConditionalLMM` attaches to
   each per-chunk `ScanResult`. Closes the R-wrapper bug where
   `gwas_conditional()` silently lost LD-block metadata for scans
@@ -908,7 +1030,7 @@ examples) is materially larger.
 
 ### Changed
 
-- `torchgwas.models.base.ScanResult` — new canonical `to_dict`,
+- `torchgenomics.models.base.ScanResult` — new canonical `to_dict`,
   `to_dataframe`, `to_tsv`, `to_parquet` methods. Replaces the
   per-CLI-subcommand hand-rolled DataFrame construction pattern;
   multi-trait `beta` automatically expands into `beta_1..beta_d` /
@@ -923,10 +1045,10 @@ examples) is materially larger.
 ## [0.1.1] — 2026-04-15
 
 ### Added
-- `torchgwas.annotate` — NCBI gene annotation for GWAS hit SNPs (Phase 48). Resolves
+- `torchgenomics.annotate` — NCBI gene annotation for GWAS hit SNPs (Phase 48). Resolves
   crop/taxid/assembly, fetches overlapping genes per hit in a configurable window,
-  attaches descriptions, GO terms, and optional orthologs. `torchgwas annotate` CLI.
-- `torchgwas.multiomics` — GRM-corrected causal mediation + multi-kernel heritability
+  attaches descriptions, GO terms, and optional orthologs. `torchgenomics annotate` CLI.
+- `torchgenomics.multiomics` — GRM-corrected causal mediation + multi-kernel heritability
   (Phase 49). `mediate_lmm` (single-triple, Sobel / Monte-Carlo / bootstrap SE, Imai
   ρ-sensitivity), `scan_mediation` (cis-window filter + BH/BY/Storey FDR),
   `mkernel_h2` (genotype GRM + regulatory-state kernel partition),
@@ -934,15 +1056,15 @@ examples) is materially larger.
   bring the CLI surface from 32 to 35 subcommands.
 
 ### Fixed
-- `torchgwas.annotate` region queries now use E-utilities `esearch` with
+- `torchgenomics.annotate` region queries now use E-utilities `esearch` with
   `[Base Position]`. The Datasets v2 `annotation_report` endpoint silently ignored
   `chromosomes`/`start`/`stop` filters and returned the whole assembly.
-- `torchgwas.annotate` gene details now route through `POST /gene` (the
+- `torchgenomics.annotate` gene details now route through `POST /gene` (the
   `POST /gene/id` path was removed). Live response shape changes (coordinates moved
   to `annotations[0].genomic_locations[].genomic_range`; GO terms to
   `gene_ontology.{processes,functions,components}`) are translated back to the
   legacy shape via `_ensure_legacy_genomic_ranges` / `_ensure_legacy_ontology_terms`.
-- `torchgwas.io.numeric` — marker-axis orientation now uses the companion `.map` /
+- `torchgenomics.io.numeric` — marker-axis orientation now uses the companion `.map` /
   `.bim` file's SNP IDs as a ground-truth disambiguator when both row and column
   IDs are non-numeric. Fixes misclassification of GAPIT-style `mdp_numeric.txt`.
 

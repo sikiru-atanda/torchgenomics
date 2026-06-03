@@ -1,4 +1,4 @@
-"""Benchmark: torchgwas multi-ancestry meta-analysis vs statsmodels / numpy.
+"""Benchmark: torchgenomics multi-ancestry meta-analysis vs statsmodels / numpy.
 
 Validates MR-MEGA regression against statsmodels WLS and MANTRA Bayes
 factors against manual conjugate-normal calculations.
@@ -11,8 +11,8 @@ import statsmodels.api as sm
 import torch
 from scipy import stats as sp_stats
 
-from torchgwas.postgwas._multi_ancestry import mantra, mr_mega
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._multi_ancestry import mantra, mr_mega
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ── Fixture helper ───────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ def _make_benchmark_ancestry_data(
 ) -> tuple[list[SumStats], np.ndarray, np.ndarray, np.ndarray]:
     """Create synthetic multi-ancestry summary statistics.
 
-    Returns both the list[SumStats] for torchgwas and the raw numpy
+    Returns both the list[SumStats] for torchgenomics and the raw numpy
     arrays (betas, ses, afs) for manual calculation.
 
     SNP 0 is the signal SNP (large shared effect).

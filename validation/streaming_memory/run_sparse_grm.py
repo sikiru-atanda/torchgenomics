@@ -1,7 +1,7 @@
 """Benchmark sparse-GRM path vs dense at n=10K.
 
 At n=10K the dense GRM is 800 MB (n²×8B). The sparse path
-(`torchgwas.linalg.sparse_grm`) keeps only off-diagonal entries above a
+(`torchgenomics.linalg.sparse_grm`) keeps only off-diagonal entries above a
 threshold (default 0.05 in correlation units), giving 10×-100× memory
 reduction. This benchmark:
 
@@ -95,7 +95,7 @@ def main() -> int:
     # --- Run 1: DENSE path (default) ---
     dense_out = args.out_dir / "dense"
     cmd_dense = [
-        sys.executable, "-m", "torchgwas", "lmm-scan",
+        sys.executable, "-m", "torchgenomics", "lmm-scan",
         "--genotype", f"{args.prefix}.bed",
         "--phenotype", str(pheno_path),
         "--covariate", str(covar_path),
@@ -115,7 +115,7 @@ def main() -> int:
     # --- Run 2: SPARSE path ---
     sparse_out = args.out_dir / "sparse"
     cmd_sparse = [
-        sys.executable, "-m", "torchgwas", "lmm-scan",
+        sys.executable, "-m", "torchgenomics", "lmm-scan",
         "--genotype", f"{args.prefix}.bed",
         "--phenotype", str(pheno_path),
         "--covariate", str(covar_path),

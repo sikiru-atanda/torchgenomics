@@ -1,7 +1,7 @@
 # Polyploid Phasing (Phase 56)
 
 End-to-end recipe for phasing a connected tetraploid F1 population with
-`torchgwas phase-poly`, chaining off `dosage-call`. This doc reflects the
+`torchgenomics phase-poly`, chaining off `dosage-call`. This doc reflects the
 **current Phase 56 output shapes**; the integration path into
 `HaplotypeGWAS` requires a follow-up adapter (see "What's next").
 
@@ -14,7 +14,7 @@ End-to-end recipe for phasing a connected tetraploid F1 population with
 Install the polyploid-phase extra:
 
 ```bash
-pip install torchgwas[polyploid-phase]
+pip install torchgenomics[polyploid-phase]
 ```
 
 This adds `juliacall` (~15 MB). Julia itself is **not** downloaded by `pip
@@ -25,7 +25,7 @@ install` — it is discovered or installed on the first `phase-poly` run.
 On first `phase-poly` run, the wrapper searches for an existing Julia in
 this order:
 
-1. The path in the `TORCHGWAS_JULIA` environment variable (if set).
+1. The path in the `TORCHGENOMICS_JULIA` environment variable (if set).
 2. `julia` on your `PATH`.
 3. Common platform install locations (`~/.juliaup/bin/julia`, etc.).
 
@@ -43,7 +43,7 @@ process are fast.
 ### Step 1 — Posterior dosage calling (Phase 55)
 
 ```bash
-torchgwas dosage-call \
+torchgenomics dosage-call \
   --vcf       calls.vcf.gz \
   --output    out/dcall \
   --ploidy    4
@@ -55,7 +55,7 @@ posterior tensor — plus `out/dcall.meta.json` and `out/dcall.snp_diag.tsv`.
 ### Step 2 — Polyploid phasing
 
 ```bash
-torchgwas phase-poly \
+torchgenomics phase-poly \
   --probs     out/dcall.probs.pt \
   --pedigree  pedigree.tsv \
   --map       markers.tsv \
@@ -111,7 +111,7 @@ haplotype tensor row order.
 
 ## What's next
 
-Integration with `torchgwas.models.HaplotypeGWAS` requires a shape
+Integration with `torchgenomics.models.HaplotypeGWAS` requires a shape
 adapter that reconstructs per-copy offspring haplotypes `(n_off, ploidy,
 m)` from `(joint_origin_state, parent_phased)`. That adapter is a
 follow-up; the current Phase 56 output is tensor-ready for custom
@@ -122,7 +122,7 @@ Until the adapter ships, you can use the `postdose_probs` tensor to derive
 expected dosage for standard polyploid GWAS:
 
 ```python
-from torchgwas.preprocess.dosage_uncertainty import expected_dosage
+from torchgenomics.preprocess.dosage_uncertainty import expected_dosage
 G = expected_dosage(postdose, ploidy=4)   # (n_off, m) float64
 # G is now compatible with poly-scan / gu-scan
 ```
@@ -132,7 +132,7 @@ G = expected_dosage(postdose, ploidy=4)   # (n_off, m) float64
 | Symptom | Remedy |
 | --- | --- |
 | `PolyOrigin failed: ...` | Inspect the Julia log printed to stderr. Re-run with `--keep-workdir` to preserve the Julia working directory for manual re-invocation. |
-| `Julia at ... is v1.8.x; requires >= 1.10` | Install a newer Julia via `juliaup` (`juliaup install 1.10 && juliaup default 1.10`) or unset `TORCHGWAS_JULIA`. |
+| `Julia at ... is v1.8.x; requires >= 1.10` | Install a newer Julia via `juliaup` (`juliaup install 1.10 && juliaup default 1.10`) or unset `TORCHGENOMICS_JULIA`. |
 | First run hangs for 1–2 minutes | Normal — Julia JIT + PolyOrigin.jl precompilation. Subsequent calls in the same process are fast. |
 | `ValueError: PolyOrigin supports ploidy 2, 4, or 6 only` | PolyOrigin.jl supports these three ploidies. Triploid / pentaploid data is not supported upstream. |
 | `Expected header: offspring, parent1, parent2` | Your pedigree TSV must have those column names in the header row; the `ploidy` column is optional. |

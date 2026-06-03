@@ -19,7 +19,7 @@ expectations:
     into the n_PC > n_samples / 50 rule of thumb.
 
 The phenotype simulator is deliberately simple (thresholding, not logistic
-regression on planted causal SNPs) — we want regenie and TorchGWAS to see
+regression on planted causal SNPs) — we want regenie and TorchGenomics to see
 the *same* phenotype data; the harness compares per-SNP statistics, not the
 ability to recover a planted truth. A planted-truth design would be useful
 for power calibration but is not needed for tool-to-tool equivalence.
@@ -44,7 +44,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.io.plink import PlinkBedReader  # noqa: E402
+from torchgenomics.io.plink import PlinkBedReader  # noqa: E402
 
 
 def _mean_impute(G: np.ndarray) -> np.ndarray:

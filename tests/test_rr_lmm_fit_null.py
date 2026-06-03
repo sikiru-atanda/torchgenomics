@@ -3,9 +3,9 @@
 import pytest
 import torch
 
-from torchgwas.linalg.basis import legendre_basis, standardize_time
-from torchgwas.models.multi_trait_lmm import MultiTraitLMM
-from torchgwas.models.rr_lmm import RandomRegressionLMM, longitudinal_to_wide
+from torchgenomics.linalg.basis import legendre_basis, standardize_time
+from torchgenomics.models.multi_trait_lmm import MultiTraitLMM
+from torchgenomics.models.rr_lmm import RandomRegressionLMM, longitudinal_to_wide
 
 
 def _simulate_rr_dataset(n=60, T=8, b=3, h2=0.5, seed=0):

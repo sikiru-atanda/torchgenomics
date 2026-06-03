@@ -7,14 +7,14 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgwas.io.phenotype import load_phenotype, write_alignment_manifest
+from torchgenomics.io.phenotype import load_phenotype, write_alignment_manifest
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 GENO_IDS = [f"IND{i:03d}" for i in range(10)]
 
 
 class TestPhenotypeLoader:
-    """Tests for torchgwas.io.phenotype.load_phenotype."""
+    """Tests for torchgenomics.io.phenotype.load_phenotype."""
 
     def test_load_phenotype_basic(self):
         """Loads phenotype file and returns PhenotypeData."""

@@ -14,14 +14,14 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchgwas.postgwas._smr import (
+from torchgenomics.postgwas._smr import (
     SMRResult,
     SMRSummary,
     heidi_test,
     smr_heidi,
     smr_test,
 )
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Helper

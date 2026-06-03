@@ -72,5 +72,5 @@ def tiny_covariates():
 
 @pytest.fixture(scope="module")
 def stat_dtype():
-    """The statistical-inference dtype TorchGWAS uses."""
+    """The statistical-inference dtype TorchGenomics uses."""
     return torch.float64

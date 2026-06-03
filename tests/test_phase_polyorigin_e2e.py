@@ -1,7 +1,7 @@
 """Phase 56 Tier 2 tests — require real Julia + PolyOrigin.jl.
 
 Gated: (i) juliacall importable, (ii) Julia >= 1.10 discoverable,
-(iii) PolyOrigin available (or TORCHGWAS_ALLOW_AUTO_INSTALL=1).
+(iii) PolyOrigin available (or TORCHGENOMICS_ALLOW_AUTO_INSTALL=1).
 """
 from __future__ import annotations
 
@@ -22,11 +22,11 @@ def _tier2_skipif_reason() -> str | None:
     # `"juliacall" not in sys.modules`. find_spec checks availability without
     # loading the package.
     if importlib.util.find_spec("juliacall") is None:
-        return "juliacall not installed (pip install torchgwas[polyploid-phase])"
-    from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
+        return "juliacall not installed (pip install torchgenomics[polyploid-phase])"
+    from torchgenomics.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
     jl = _find_existing_julia(override=None)
-    if jl is None and not os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"):
-        return "No Julia found and TORCHGWAS_ALLOW_AUTO_INSTALL unset"
+    if jl is None and not os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"):
+        return "No Julia found and TORCHGENOMICS_ALLOW_AUTO_INSTALL unset"
     if jl is not None:
         ok, ver = _probe_version(jl)
         if not ok:
@@ -81,8 +81,8 @@ def test_parity_tetraploid_f1(tmp_path):
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
-    auto = bool(os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"))
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
+    auto = bool(os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"))
     result_ours = run_polyorigin(
         probs=probs,
         pedigree_tsv=str(ped),
@@ -103,7 +103,7 @@ def test_parity_tetraploid_f1(tmp_path):
     # raw CSV outputs directly gives bit-identical tensors — confirming the
     # wrapper's parse path matches our standalone parsers.
     workdir = Path(result_ours.workdir)
-    from torchgwas.preprocess.phase_polyorigin import (
+    from torchgenomics.preprocess.phase_polyorigin import (
         _parse_genoprob,
         _parse_parentphased,
     )
@@ -210,9 +210,9 @@ def test_haplotypegwas_scan_consumes_per_copy(tmp_path):
     """
     import numpy as np
 
-    from torchgwas.models import HaplotypeGWAS
-    from torchgwas.preprocess.dosage_uncertainty import expected_dosage
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.models import HaplotypeGWAS
+    from torchgenomics.preprocess.dosage_uncertainty import expected_dosage
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     rng = np.random.default_rng(42)
     n_off, m, ploidy = 6, 10, 4
@@ -233,7 +233,7 @@ def test_haplotypegwas_scan_consumes_per_copy(tmp_path):
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    auto = bool(os.environ.get("TORCHGWAS_ALLOW_AUTO_INSTALL"))
+    auto = bool(os.environ.get("TORCHGENOMICS_ALLOW_AUTO_INSTALL"))
     result = run_polyorigin(
         probs=probs,
         pedigree_tsv=str(ped),

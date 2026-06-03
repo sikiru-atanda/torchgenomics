@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import torch
 
-from torchgwas.ld._changepoint import dp_changepoint, ld_decay_signal
-from torchgwas.ld._graph_utils import (
+from torchgenomics.ld._changepoint import dp_changepoint, ld_decay_signal
+from torchgenomics.ld._graph_utils import (
     adjacency_to_laplacian,
     connected_components,
     greedy_mwis,

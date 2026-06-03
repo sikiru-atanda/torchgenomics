@@ -1,9 +1,9 @@
-"""Compare LDSC 1.0.1 vs TorchGWAS on simulated chr22 sumstats.
+"""Compare LDSC 1.0.1 vs TorchGenomics on simulated chr22 sumstats.
 
 Three comparisons:
-  1. Univariate h² for trait 1 — `ldsc.py --h2` vs `torchgwas.postgwas.ldsc_h2`
+  1. Univariate h² for trait 1 — `ldsc.py --h2` vs `torchgenomics.postgwas.ldsc_h2`
   2. Univariate h² for trait 2 — same, on second simulated trait
-  3. Genetic correlation rg     — `ldsc.py --rg` vs `torchgwas.postgwas.ldsc_rg_from_z`
+  3. Genetic correlation rg     — `ldsc.py --rg` vs `torchgenomics.postgwas.ldsc_rg_from_z`
 
 Both tools see the *same* chi² statistics (parsed from the simulated
 sumstats.gz files) and the *same* per-SNP LD scores (parsed from the
@@ -42,19 +42,19 @@ import torch
 #
 # Observed values from the IRWLS-port run (2026-04-30, 17 489 chr22 SNPs,
 # single-pass IRWLS via `--two-step 99999` + the proper LDSC `--w-ld`
-# regression-weight LD scores piped into TorchGWAS' new `w_ld` argument):
+# regression-weight LD scores piped into TorchGenomics' new `w_ld` argument):
 #
-#   h² (trait 1)        LDSC 0.4049, TorchGWAS 0.4049 → |Δ| 1.0e-5
-#   h² (trait 2)        LDSC 0.3914, TorchGWAS 0.3914 → |Δ| ~1e-5
-#   intercept (T1)      LDSC 0.9788, TorchGWAS 0.9788 → |Δ| 2.6e-5  ← bit-equal
-#   intercept (T2)      LDSC 1.1380, TorchGWAS 1.1380 → |Δ| ~3e-5  ← bit-equal
-#   rg                  LDSC 0.4981, TorchGWAS 0.4981 → |Δ| ~3e-4
-#   mean chi²           LDSC 44.589, TorchGWAS 44.589 → |Δ| 4.6e-5  (bit-equal sum)
-#   h² SE               LDSC 0.0086, TorchGWAS 0.0084 → |Δ| 1.5e-4
+#   h² (trait 1)        LDSC 0.4049, TorchGenomics 0.4049 → |Δ| 1.0e-5
+#   h² (trait 2)        LDSC 0.3914, TorchGenomics 0.3914 → |Δ| ~1e-5
+#   intercept (T1)      LDSC 0.9788, TorchGenomics 0.9788 → |Δ| 2.6e-5  ← bit-equal
+#   intercept (T2)      LDSC 1.1380, TorchGenomics 1.1380 → |Δ| ~3e-5  ← bit-equal
+#   rg                  LDSC 0.4981, TorchGenomics 0.4981 → |Δ| ~3e-4
+#   mean chi²           LDSC 44.589, TorchGenomics 44.589 → |Δ| 4.6e-5  (bit-equal sum)
+#   h² SE               LDSC 0.0086, TorchGenomics 0.0084 → |Δ| 1.5e-4
 #
 # All values now within / well-below spec §16's anchors. The historical
 # intercept divergence (\|Δ\| up to 2.8e-1 from the single-pass-WLS regime)
-# is closed by the Phase 37 IRWLS port in `torchgwas.postgwas._ldsc`. We
+# is closed by the Phase 37 IRWLS port in `torchgenomics.postgwas._ldsc`. We
 # tighten `TOL_INTERCEPT_ABSDIFF` from the previous 3.5e-1 floor to 5e-3,
 # matching the brief's anchor.
 #
@@ -72,7 +72,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from torchgwas.postgwas import ldsc_h2, ldsc_rg_from_z  # noqa: E402
+from torchgenomics.postgwas import ldsc_h2, ldsc_rg_from_z  # noqa: E402
 
 
 @dataclass
@@ -267,7 +267,7 @@ def _load_inputs(data_dir: Path) -> dict[str, Any]:
     weight LD scores (LDSC's ``--w-ld``) + N + M.
 
     The IRWLS-port comparison passes the regression-weight LD scores to
-    TorchGWAS' new ``w_ld=...`` keyword on ``ldsc_h2`` / ``ldsc_rg_from_z``
+    TorchGenomics' new ``w_ld=...`` keyword on ``ldsc_h2`` / ``ldsc_rg_from_z``
     so the heteroscedastic weights match LDSC's ``Hsq.weights`` formula
     bit-for-bit.
     """
@@ -343,7 +343,7 @@ def _compare_h2_one(
     ldsc_log: LDSCH2Log,
     truth_h2: float,
 ) -> ComparisonReport:
-    # TorchGWAS' ldsc_h2 with the new `w_ld=` regression-weight LD scores
+    # TorchGenomics' ldsc_h2 with the new `w_ld=` regression-weight LD scores
     # (LDSC's --w-ld) and IRWLS (2 iterations) — matches LDSC's
     # `--two-step 99999` (single-pass IRWLS) bit-for-bit.
     tg = ldsc_h2(chi2, ld, n=n, m_total=m_total, w_ld=w_ld)
@@ -376,7 +376,7 @@ def compare_h2_trait1(data_dir: Path, out_dir: Path) -> ComparisonReport:
     inputs = _load_inputs(data_dir)
     log = parse_ldsc_h2_log(out_dir / "h2_trait1.log")
     return _compare_h2_one(
-        name="h² trait 1 (IRWLS, LDSC --h2 vs TorchGWAS ldsc_h2)",
+        name="h² trait 1 (IRWLS, LDSC --h2 vs TorchGenomics ldsc_h2)",
         chi2=inputs["chi2_1"], ld=inputs["ld_1"], w_ld=inputs["w_ld_1"],
         n=inputs["n_1"], m_total=inputs["m_total"],
         ldsc_log=log, truth_h2=inputs["truth"]["h2_1"],
@@ -387,7 +387,7 @@ def compare_h2_trait2(data_dir: Path, out_dir: Path) -> ComparisonReport:
     inputs = _load_inputs(data_dir)
     log = parse_ldsc_h2_log(out_dir / "h2_trait2.log")
     return _compare_h2_one(
-        name="h² trait 2 (IRWLS, LDSC --h2 vs TorchGWAS ldsc_h2)",
+        name="h² trait 2 (IRWLS, LDSC --h2 vs TorchGenomics ldsc_h2)",
         chi2=inputs["chi2_2"], ld=inputs["ld_2"], w_ld=inputs["w_ld_2"],
         n=inputs["n_2"], m_total=inputs["m_total"],
         ldsc_log=log, truth_h2=inputs["truth"]["h2_2"],
@@ -401,7 +401,7 @@ def compare_rg(data_dir: Path, out_dir: Path) -> ComparisonReport:
     log = parse_ldsc_rg_log(out_dir / "rg.log")
 
     # We use signed z-scores (preserves sign of rg). LDSC's --rg uses signed
-    # Z internally too. TorchGWAS' ldsc_rg_from_z is the parallel API.
+    # Z internally too. TorchGenomics' ldsc_rg_from_z is the parallel API.
     # IRWLS port: pass the regression-weight LD scores via `w_ld=` so the
     # heteroscedastic weights match LDSC bit-for-bit.
     tg = ldsc_rg_from_z(
@@ -421,7 +421,7 @@ def compare_rg(data_dir: Path, out_dir: Path) -> ComparisonReport:
     gencov_int_diff = abs(tg.intercept - log.gencov_intercept)
 
     rep = ComparisonReport(
-        name="Genetic correlation rg (LDSC --rg vs TorchGWAS ldsc_rg_from_z)",
+        name="Genetic correlation rg (LDSC --rg vs TorchGenomics ldsc_rg_from_z)",
         n_compared=int(inputs["z_1"].shape[0]),
     )
     rep.checks.append(_check_max("|Δ rg|", rg_diff, TOL_RG_ABSDIFF))

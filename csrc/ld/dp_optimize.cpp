@@ -1,5 +1,5 @@
 // Native accelerator for the dynamic-programming block segmentation in
-// ``torchgwas.ld._blocks_literature.detect_blocks_dp_optimize``.
+// ``torchgenomics.ld._blocks_literature.detect_blocks_dp_optimize``.
 //
 // The pure-Python implementation runs an O(m * max_block_snps) DP and
 // for each candidate (i, j) calls ``_block_cost`` which is *itself*

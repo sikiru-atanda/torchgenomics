@@ -6,7 +6,7 @@ Fan, Janson & Lv (2018) JRSSB and the group-knockoff GWAS extension of
 Sesia, Sabatti & Candes (2020) JASA.  This harness installs `knockoff` +
 `glmnet`, simulates block-LD genotype/phenotype replicates with a known
 causal SNP set, runs both R `knockoff::knockoff.filter` (per-SNP fixed-design
-filter) and `torchgwas.models.knockoff_lmm.KnockoffLMM` (per-block LMM-aware
+filter) and `torchgenomics.models.knockoff_lmm.KnockoffLMM` (per-block LMM-aware
 filter) on the same fixtures, and compares empirical FDR + power at the
 matched nominal level.
 
@@ -22,8 +22,8 @@ matched nominal level.
 | Knockoff method (R)        | `create.fixed` (fixed-design Gaussian; n>p) |
 | Importance statistic (R)   | `stat.glmnet_coefdiff` (lasso CV coef-diff) |
 | Knockoff+ offset (R)       | 1 (paper eq. 3.10 - knockoff+) |
-| Knockoff method (TorchGWAS)| equicorrelated, per LD-block group knockoffs |
-| LD method (TorchGWAS)      | r2-clumping (window 20, r2 >= 0.3) |
+| Knockoff method (TorchGenomics)| equicorrelated, per LD-block group knockoffs |
+| LD method (TorchGenomics)      | r2-clumping (window 20, r2 >= 0.3) |
 | Importance aggregation     | max_stat (max |Z| within block) |
 | Target FDR                 | 0.20 |
 | Simulation seed            | 42 |
@@ -55,7 +55,7 @@ each n=500 x p=200 with 8 known-causal SNPs).  We measure on each replicate:
   Empirical FDR_r = #{selected_r NOT in causal} / max(1, #selected_r).
   Empirical power_r = #{selected_r IN causal} / k_causal.
 
-- TorchGWAS `KnockoffLMM` -> a SET of selected LD blocks (block-FDR a la
+- TorchGenomics `KnockoffLMM` -> a SET of selected LD blocks (block-FDR a la
   Sesia 2020 sec. 2.2).  A block is a true positive iff it contains any
   causal SNP.  Empirical block-FDR_r = #{sel_blocks NOT containing any
   causal} / max(1, #sel_blocks).  Empirical block-power_r = #{sel_blocks
@@ -68,7 +68,7 @@ plus a finite-sample Monte-Carlo slack.
 
 ## Why two different filters (not the same algorithm twice)
 
-The brief intentionally pairs **R `knockoff` per-SNP filter** with **TorchGWAS
+The brief intentionally pairs **R `knockoff` per-SNP filter** with **TorchGenomics
 `KnockoffLMM` per-block group filter** because that is the operational
 comparison readers care about:
 
@@ -93,7 +93,7 @@ bash validation/specialty/knockoff/run.sh        # ~10-30 min full sweep
 
 # Outputs (gitignored except results/):
 #   data/replicates.npz, data/sim_truth.json, data/replicates.rds (R cache)
-#   outputs/torchgwas_per_replicate.tsv  outputs/torchgwas_summary.json
+#   outputs/torchgenomics_per_replicate.tsv  outputs/torchgenomics_summary.json
 #   outputs/reference_per_replicate.tsv  outputs/reference_summary.json
 #   results/summary.tsv  results/agreement.json  results/manifest.sha256
 ```
@@ -122,7 +122,7 @@ in `docs/validation_findings.md`.
 | `install.sh`         | Install `knockoff` + `glmnet` + `jsonlite` from CRAN; record versions to `.install_marker` |
 | `fetch_data.sh`      | Call `generate.py` to simulate replicate fixtures |
 | `generate.py`        | Block-LD genotype + phenotype simulator (seed 42) |
-| `run_torchgwas.py`   | Run `KnockoffLMM` per replicate; write per-rep TSV + summary JSON |
+| `run_torchgenomics.py`   | Run `KnockoffLMM` per replicate; write per-rep TSV + summary JSON |
 | `run_reference.R`    | Run `knockoff::knockoff.filter` per replicate via the R session |
 | `_npz_to_rds.py`     | One-shot NPZ -> RDS converter (so R does not need `reticulate`) |
 | `run.sh`             | Orchestrator: pre-flight, run both tools, run `compare.py`, write manifest |

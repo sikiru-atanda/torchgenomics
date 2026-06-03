@@ -23,7 +23,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from torchgwas.preprocess import dosage_call as dc_module  # noqa: E402
+from torchgenomics.preprocess import dosage_call as dc_module  # noqa: E402
 
 
 def _updog_available() -> bool:

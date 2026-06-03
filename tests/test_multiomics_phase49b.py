@@ -1,4 +1,4 @@
-"""Tests for Phase 49b extensions to `torchgwas.multiomics`:
+"""Tests for Phase 49b extensions to `torchgenomics.multiomics`:
 
 * GPU-batched ``scan_mediation`` dispatch (CPU-compatible torch, plus one
   CUDA-gated parity test).
@@ -13,16 +13,16 @@ import numpy as np
 import pytest
 import torch
 
-from torchgwas.multiomics import (
+from torchgenomics.multiomics import (
     coloc_prefilter_pairs,
     eigenmt_adjust,
     mediate_gene_set,
     mediate_lmm,
     scan_mediation,
 )
-from torchgwas.multiomics._mediate import fit_mediation_null
-from torchgwas.multiomics._scan_batched import batched_scan_pairs
-from torchgwas.postgwas._sumstats import SumStats
+from torchgenomics.multiomics._mediate import fit_mediation_null
+from torchgenomics.multiomics._scan_batched import batched_scan_pairs
+from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------
 # Shared simulators (mirror test_multiomics.py helpers)

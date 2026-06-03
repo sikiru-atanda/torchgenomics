@@ -1,11 +1,11 @@
 # SoyNAM reference harness (Pillar B / B8)
 
-[SoyNAM](https://cran.r-project.org/package=SoyNAM) (Diers et al. 2018; CRAN) ships the genotype, phenotype, and family tables for the soybean Nested Association Mapping panel — a 40-family multi-RIL design with a common founder (IA3023) crossed against 40 diverse parents. ~5590 RILs × ~4611 SNPs in the raw release. [rrBLUP](https://cran.r-project.org/package=rrBLUP) (Endelman 2011; CRAN) is the canonical agriculture-mixed-model GWAS implementation; provides the reference for TorchGWAS' `SingleTraitLMM` at this scale + ag-trait-noise regime.
+[SoyNAM](https://cran.r-project.org/package=SoyNAM) (Diers et al. 2018; CRAN) ships the genotype, phenotype, and family tables for the soybean Nested Association Mapping panel — a 40-family multi-RIL design with a common founder (IA3023) crossed against 40 diverse parents. ~5590 RILs × ~4611 SNPs in the raw release. [rrBLUP](https://cran.r-project.org/package=rrBLUP) (Endelman 2011; CRAN) is the canonical agriculture-mixed-model GWAS implementation; provides the reference for TorchGenomics' `SingleTraitLMM` at this scale + ag-trait-noise regime.
 
 This harness installs both R packages, extracts a 4-family (F02, F03, F04, F05) yield-BLUP subset of the panel into TSVs, runs `rrBLUP::A.mat` + `rrBLUP::GWAS(P3D=TRUE)` as the reference, and asserts that:
-- TorchGWAS `grm_vanraden` matches the rrBLUP `A.mat` kinship.
-- TorchGWAS `SingleTraitLMM` matches the rrBLUP `GWAS` variance components and per-SNP −log10(p).
-- TorchGWAS `WithinFamilyLMM` (Phase 23, Young et al. 2022) dual-scan runs cleanly across all 4275 SNPs and produces a meaningful attenuation diagnostic.
+- TorchGenomics `grm_vanraden` matches the rrBLUP `A.mat` kinship.
+- TorchGenomics `SingleTraitLMM` matches the rrBLUP `GWAS` variance components and per-SNP −log10(p).
+- TorchGenomics `WithinFamilyLMM` (Phase 23, Young et al. 2022) dual-scan runs cleanly across all 4275 SNPs and produces a meaningful attenuation diagnostic.
 
 The SoyNAM panel is **the only external reference for `WithinFamilyLMM`**. Its multi-family RIL design with a common parent is exactly the regime where family-mean confounding is large on a non-trivial fraction of SNPs.
 
@@ -42,7 +42,7 @@ To re-run on a larger subset, edit `fetch_data.sh` to pass a different `--famili
 bash validation/external/soynam/install.sh        # one-time R install (~5 min wall time first run)
 bash validation/external/soynam/fetch_data.sh     # extract via SoyNAM::BLUP() (~10 s)
 bash validation/external/soynam/run.sh            # run rrBLUP::A.mat + GWAS (~45 s)
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/soynam/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/soynam/compare.py
 
 # Or via pytest (requires -m external; skipped by default):
 pytest -m external tests/test_external_soynam.py -v
@@ -52,9 +52,9 @@ Each shell script sources `validation/external/_lib/preflight.sh` and asserts di
 
 ## Reference outputs (in `outputs/`)
 
-| File | Source method | TorchGWAS counterpart |
+| File | Source method | TorchGenomics counterpart |
 |---|---|---|
-| `A_mat.tsv`                                    | `rrBLUP::A.mat()` (additive kinship)                | `torchgwas.linalg.grm_vanraden` |
+| `A_mat.tsv`                                    | `rrBLUP::A.mat()` (additive kinship)                | `torchgenomics.linalg.grm_vanraden` |
 | `rrblup_results.json` (key `vc_null`)          | `rrBLUP::mixed.solve()` REML on the null model       | `SingleTraitLMM.fit_null` (`sig2_g`, `sig2_e`) |
 | `rrblup_results.json` (key `gwas`)             | `rrBLUP::GWAS(P3D=TRUE, n.PC=0)`                     | `SingleTraitLMM.score_chunk(test="wald")` (-log10p only) |
 
@@ -105,7 +105,7 @@ This is **not** a bit-equivalence test against an external implementation (no ca
 | install (~50 MB R deps) | 8 GB | 6 GB | ~250 MB during package install |
 | fetch (extract via BLUP, 547 × 4275) | 8 GB | 10 GB | ~600 MB R interpreter + working set |
 | run (rrBLUP A.mat + GWAS, 547 × 4275, P3D=TRUE) | 8 GB | 10 GB | **380 MB** R interpreter + working set, 28 s wall time |
-| compare.py (Python 3 + torchgwas + WithinFamilyLMM dual-scan) | n/a | n/a | **830 MB** (torch + scipy + numpy at import), 1.5 s wall time |
+| compare.py (Python 3 + torchgenomics + WithinFamilyLMM dual-scan) | n/a | n/a | **830 MB** (torch + scipy + numpy at import), 1.5 s wall time |
 
 The 1.5 s wall time for `compare.py` is dominated by the torch import; the actual per-SNP scans (STLMM + WithinFamilyLMM dual-scan on 4275 SNPs) run in <300 ms.
 
@@ -128,7 +128,7 @@ validation/external/soynam/
 ├── extract_data.R            # SoyNAM::BLUP() → TSVs (genotype, pheno, family, marker map)
 ├── run.sh                    # bash wrapper around run_soynam.R
 ├── run_soynam.R              # rrBLUP::A.mat + rrBLUP::GWAS, emits JSON + A_mat.tsv
-├── compare.py                # parses JSON, runs torchgwas, asserts tolerances
+├── compare.py                # parses JSON, runs torchgenomics, asserts tolerances
 ├── README.md                 # this file
 ├── .install_marker           # records package versions (gitignored)
 ├── data/                     # extracted SoyNAM TSVs (gitignored)
@@ -145,7 +145,7 @@ pytest tests/test_external_soynam.py            # 4 skipped
 pytest -m external tests/test_external_soynam.py -v
 ```
 
-The pytest module dynamically imports `compare.py` from outside the package tree, so no modification of `torchgwas/` is required to wire this harness.
+The pytest module dynamically imports `compare.py` from outside the package tree, so no modification of `torchgenomics/` is required to wire this harness.
 
 ## Next steps (post-Pillar B)
 

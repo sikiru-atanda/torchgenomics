@@ -12,9 +12,9 @@ import pandas as pd
 import pytest
 import torch
 
-import torchgwas.preprocess.phase_polyorigin as mod
-from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
-from torchgwas.preprocess.phase_polyorigin import (
+import torchgenomics.preprocess.phase_polyorigin as mod
+from torchgenomics.preprocess._polyorigin_runtime import _find_existing_julia, _probe_version
+from torchgenomics.preprocess.phase_polyorigin import (
     PhasingResult,
     _build_polyorigin_genofile,
     _build_polyorigin_pedfile,
@@ -361,16 +361,16 @@ def test_find_existing_julia_via_explicit_path(tmp_path):
 
 def test_find_existing_julia_via_env_var(tmp_path, monkeypatch):
     fj = _make_fake_julia(tmp_path, "1.10.2")
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(fj))
     found = _find_existing_julia(override=None)
     assert Path(found).resolve() == Path(fj).resolve()
 
 
 def test_find_existing_julia_nothing_returns_none(tmp_path, monkeypatch):
-    monkeypatch.delenv("TORCHGWAS_JULIA", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_JULIA", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))
     # Neutralize the common-paths search and juliapkg discovery
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     monkeypatch.setattr(rt, "_common_julia_paths", lambda: [])
     # Patch out juliapkg so its managed install is not found
     import sys
@@ -410,9 +410,9 @@ import types  # noqa: E402 — appended block; already imported at top via sys
 
 
 def test_get_runtime_raises_when_not_found_and_auto_install_false(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
-    monkeypatch.delenv("TORCHGWAS_JULIA", raising=False)
+    monkeypatch.delenv("TORCHGENOMICS_JULIA", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setattr(rt, "_common_julia_paths", lambda: [])
     monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(isatty=lambda: False))
@@ -429,10 +429,10 @@ def test_get_runtime_raises_when_not_found_and_auto_install_false(tmp_path, monk
 
 
 def test_get_runtime_raises_when_found_julia_too_old(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
     fj = _make_fake_julia(tmp_path, "1.8.5")
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(fj))
     rt._jl = None
     rt._polyorigin = None
     rt._version = None
@@ -444,10 +444,10 @@ def test_get_runtime_raises_without_juliacall_installed(tmp_path, monkeypatch):
     """Stub a valid Julia, then force juliacall import to fail."""
     import builtins
 
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
     fj = _make_fake_julia(tmp_path, "1.10.2")
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(fj))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(fj))
     rt._jl = None
     rt._polyorigin = None
     rt._version = None
@@ -465,7 +465,7 @@ def test_get_runtime_raises_without_juliacall_installed(tmp_path, monkeypatch):
 
 
 def test_get_runtime_cached_after_first_success():
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
 
     sentinel_jl = object()
     sentinel_po = object()
@@ -579,8 +579,8 @@ def _stub_runtime(workdir_spy: dict):
 
 
 def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     # Stub the runtime — no Julia touched
     spy: dict = {}
@@ -630,8 +630,8 @@ def test_run_polyorigin_happy_path(tmp_path, monkeypatch):
 def test_run_polyorigin_partial_failure_no_persistent_output(tmp_path, monkeypatch):
     """If the runtime 'succeeds' but emits fewer CSVs than expected, we
     must raise AND leave no <output>.* artifacts."""
-    from torchgwas.preprocess import _polyorigin_runtime as rt
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     def _bad_runtime():
         class FakePO:
@@ -677,8 +677,8 @@ def test_run_polyorigin_partial_failure_no_persistent_output(tmp_path, monkeypat
 
 def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
     """juliacall.JuliaError raised by polyOrigin() → RuntimeError with __cause__."""
-    from torchgwas.preprocess import _polyorigin_runtime as rt
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     class FakeJuliaError(Exception):
         pass
@@ -694,7 +694,7 @@ def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
     monkeypatch.setattr(rt, "get_runtime", lambda **_: (FakeMain, FakePO, "1.0.3-fake"))
     # Also patch juliacall.JuliaError to our fake class so our except clause matches
     monkeypatch.setattr(
-        "torchgwas.preprocess.phase_polyorigin._JULIA_ERROR",
+        "torchgenomics.preprocess.phase_polyorigin._JULIA_ERROR",
         FakeJuliaError,
     )
 
@@ -726,7 +726,7 @@ def test_run_polyorigin_julia_error_bubbles(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_persist_rolls_back_on_partial_write(tmp_path, monkeypatch):
-    from torchgwas.preprocess.phase_polyorigin import _persist_result
+    from torchgenomics.preprocess.phase_polyorigin import _persist_result
 
     prefix = tmp_path / "out" / "phased"
     prefix.parent.mkdir(parents=True, exist_ok=True)
@@ -784,7 +784,7 @@ import subprocess as _sp  # noqa: E402 — appended block
 
 def test_cli_phase_poly_help():
     res = _sp.run(
-        [sys.executable, "-m", "torchgwas", "phase-poly", "--help"],
+        [sys.executable, "-m", "torchgenomics", "phase-poly", "--help"],
         capture_output=True, text=True,
     )
     assert res.returncode == 0
@@ -802,8 +802,8 @@ def test_cli_phase_poly_help():
 # ---------------------------------------------------------------------------
 
 def test_meta_json_hash_matches_inputs(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
@@ -833,8 +833,8 @@ def test_meta_json_hash_matches_inputs(tmp_path, monkeypatch):
 
 
 def test_mixed_ploidy_per_row_honored(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
 
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
@@ -864,14 +864,14 @@ def test_mixed_ploidy_per_row_honored(tmp_path, monkeypatch):
 
 
 def test_env_override_wins_over_path(tmp_path, monkeypatch):
-    from torchgwas.preprocess._polyorigin_runtime import _find_existing_julia
+    from torchgenomics.preprocess._polyorigin_runtime import _find_existing_julia
 
     path_bin = tmp_path / "path_bin"
     env_bin = tmp_path / "env_bin"
     _make_fake_julia(path_bin, "1.10.0")
     env_julia = _make_fake_julia(env_bin, "1.10.2")
     monkeypatch.setenv("PATH", str(path_bin))
-    monkeypatch.setenv("TORCHGWAS_JULIA", str(env_julia))
+    monkeypatch.setenv("TORCHGENOMICS_JULIA", str(env_julia))
     found = _find_existing_julia(override=None)
     assert Path(found).resolve() == Path(env_julia).resolve()
 
@@ -1045,7 +1045,7 @@ def test_validate_fails_on_reorder():
 # ---------------------------------------------------------------------------
 
 def test_run_polyorigin_haplotypes_per_copy_field_populated(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -1058,7 +1058,7 @@ def test_run_polyorigin_haplotypes_per_copy_field_populated(tmp_path, monkeypatc
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
     result = run_polyorigin(
         probs=probs3,
         pedigree_tsv=str(ped), map_tsv=str(mp),
@@ -1074,7 +1074,7 @@ def test_run_polyorigin_haplotypes_per_copy_field_populated(tmp_path, monkeypatc
 
 
 def test_run_polyorigin_state_table_field_populated(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -1087,7 +1087,7 @@ def test_run_polyorigin_state_table_field_populated(tmp_path, monkeypatch):
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
     result = run_polyorigin(
         probs=probs3,
         pedigree_tsv=str(ped), map_tsv=str(mp),
@@ -1107,7 +1107,7 @@ def test_run_polyorigin_state_table_field_populated(tmp_path, monkeypatch):
 
 
 def test_run_polyorigin_mixed_ploidy_rejected(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 
@@ -1125,7 +1125,7 @@ def test_run_polyorigin_mixed_ploidy_rejected(tmp_path, monkeypatch):
     out_prefix = tmp_path / "out" / "phased"
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
     with pytest.raises(ValueError, match="uniform ploidy"):
         run_polyorigin(
             probs=probs4,
@@ -1142,8 +1142,8 @@ def test_run_polyorigin_mixed_ploidy_rejected(tmp_path, monkeypatch):
 
 
 def test_persist_per_copy_artifacts(tmp_path, monkeypatch):
-    from torchgwas.preprocess import _polyorigin_runtime as rt
-    from torchgwas.preprocess.phase_polyorigin import run_polyorigin
+    from torchgenomics.preprocess import _polyorigin_runtime as rt
+    from torchgenomics.preprocess.phase_polyorigin import run_polyorigin
     spy: dict = {}
     monkeypatch.setattr(rt, "get_runtime", lambda **_: _stub_runtime(spy))
 

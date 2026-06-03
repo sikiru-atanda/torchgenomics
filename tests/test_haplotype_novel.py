@@ -2,11 +2,11 @@
 
 import torch
 
-from torchgwas.models.haplotype_gwas import (
+from torchgenomics.models.haplotype_gwas import (
     HaplotypeBlock,
     _enumerate_haplotypes_phased,
 )
-from torchgwas.models.haplotype_novel import (
+from torchgenomics.models.haplotype_novel import (
     BayesHapResult,
     BayesianHaplotypeFineMapping,
     HapGxEResult,
@@ -515,7 +515,7 @@ class TestBayesHap:
 
 def _make_null_fit(n, Y=None, seed=42):
     """Create a minimal NullFit for testing LMM paths."""
-    from torchgwas.models.base import NullFit
+    from torchgenomics.models.base import NullFit
     torch.manual_seed(seed)
     A = torch.randn(n, n, dtype=DTYPE)
     U, _, _ = torch.linalg.svd(A)
@@ -543,7 +543,7 @@ class TestLMMPaths:
 
     def test_pcht_lmm_valid(self):
         """PCHT under LMM produces valid p-value."""
-        from torchgwas.models.haplotype_novel import pcht_score_test_lmm
+        from torchgenomics.models.haplotype_novel import pcht_score_test_lmm
         torch.manual_seed(42)
         n = 200
         G, labels, freqs, dosage, _ = _make_haplotype_data(n=n)
@@ -562,7 +562,7 @@ class TestLMMPaths:
 
     def test_pcht_lmm_detects_signal(self):
         """PCHT under LMM detects a strong signal."""
-        from torchgwas.models.haplotype_novel import pcht_score_test_lmm
+        from torchgenomics.models.haplotype_novel import pcht_score_test_lmm
         torch.manual_seed(42)
         n = 500
         G, labels, freqs, dosage, _ = _make_haplotype_data(n=n)
@@ -579,7 +579,7 @@ class TestLMMPaths:
 
     def test_hapgxe_lmm_valid(self):
         """HapGxE under LMM produces valid p-values."""
-        from torchgwas.models.haplotype_novel import haplotype_gxe_test_lmm
+        from torchgenomics.models.haplotype_novel import haplotype_gxe_test_lmm
         torch.manual_seed(42)
         n = 200
         G, labels, freqs, dosage, _ = _make_haplotype_data(n=n)
@@ -596,7 +596,7 @@ class TestLMMPaths:
 
     def test_hapgxe_lmm_detects_interaction(self):
         """HapGxE LMM detects a true interaction signal."""
-        from torchgwas.models.haplotype_novel import haplotype_gxe_test_lmm
+        from torchgenomics.models.haplotype_novel import haplotype_gxe_test_lmm
         torch.manual_seed(42)
         n = 500
         G, labels, freqs, dosage, _ = _make_haplotype_data(n=n)
@@ -612,7 +612,7 @@ class TestLMMPaths:
 
     def test_hapgxe_lmm_null(self):
         """HapGxE LMM under null: no test is strongly significant."""
-        from torchgwas.models.haplotype_novel import haplotype_gxe_test_lmm
+        from torchgenomics.models.haplotype_novel import haplotype_gxe_test_lmm
         torch.manual_seed(42)
         n = 200
         D = torch.randn(n, 2, dtype=DTYPE)

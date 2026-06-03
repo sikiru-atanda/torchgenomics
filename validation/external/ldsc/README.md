@@ -1,6 +1,6 @@
 # LDSC reference harness (Pillar B / B2)
 
-LDSC (LD Score Regression, Bulik-Sullivan et al. 2015) is the canonical reference for SNP heritability (h²) and genetic correlation (rg) from GWAS summary statistics. This harness installs a pinned LDSC build via bioconda, simulates two correlated GWAS sumstats from real 1000G Phase 3 LD scores under known truth (h² = 0.4, rg = 0.5), runs LDSC's `--h2` + `--rg` modes, and asserts that TorchGWAS' `ldsc_h2` + `ldsc_rg_from_z` agree within calibrated tolerances.
+LDSC (LD Score Regression, Bulik-Sullivan et al. 2015) is the canonical reference for SNP heritability (h²) and genetic correlation (rg) from GWAS summary statistics. This harness installs a pinned LDSC build via bioconda, simulates two correlated GWAS sumstats from real 1000G Phase 3 LD scores under known truth (h² = 0.4, rg = 0.5), runs LDSC's `--h2` + `--rg` modes, and asserts that TorchGenomics' `ldsc_h2` + `ldsc_rg_from_z` agree within calibrated tolerances.
 
 ## Pinned reference
 
@@ -26,7 +26,7 @@ LDSC (LD Score Regression, Bulik-Sullivan et al. 2015) is the canonical referenc
 bash validation/external/ldsc/install.sh        # creates conda env `ldsc_env`
 bash validation/external/ldsc/fetch_data.sh     # downloads ~26 MB, simulates sumstats
 bash validation/external/ldsc/run_ldsc.sh       # runs LDSC --h2 + --rg
-TORCHGWAS_DISABLE_NATIVE=1 python3 validation/external/ldsc/compare.py
+TORCHGENOMICS_DISABLE_NATIVE=1 python3 validation/external/ldsc/compare.py
 
 # Or via pytest (requires -m external; skipped by default):
 pytest -m external tests/test_external_ldsc.py -v
@@ -36,18 +36,18 @@ Each shell script sources `validation/external/_lib/preflight.sh` and asserts di
 
 ## Reference outputs (in `outputs/`)
 
-| File | LDSC mode | TorchGWAS counterpart |
+| File | LDSC mode | TorchGenomics counterpart |
 |---|---|---|
-| `h2_trait1.log` | `--h2 sim_trait1.sumstats.gz --two-step 99999` (single-pass WLS) | `torchgwas.postgwas.ldsc_h2` |
-| `h2_trait2.log` | `--h2 sim_trait2.sumstats.gz --two-step 99999` | `torchgwas.postgwas.ldsc_h2` |
-| `rg.log`        | `--rg sim_trait1.sumstats.gz,sim_trait2.sumstats.gz --two-step 99999` | `torchgwas.postgwas.ldsc_rg_from_z` |
+| `h2_trait1.log` | `--h2 sim_trait1.sumstats.gz --two-step 99999` (single-pass WLS) | `torchgenomics.postgwas.ldsc_h2` |
+| `h2_trait2.log` | `--h2 sim_trait2.sumstats.gz --two-step 99999` | `torchgenomics.postgwas.ldsc_h2` |
+| `rg.log`        | `--rg sim_trait1.sumstats.gz,sim_trait2.sumstats.gz --two-step 99999` | `torchgenomics.postgwas.ldsc_rg_from_z` |
 
 ## Calibrated tolerances
 
 Spec §16 anchors: `|Δ h²| < 0.01`, `|Δ intercept| < 0.005`, `|Δ rg| < 0.02`.
 
 Observed values from the IRWLS-port run (2026-04-30, 17 489 chr22 SNPs;
-TorchGWAS now matches LDSC's IRWLS with both `--ref-ld` and `--w-ld`
+TorchGenomics now matches LDSC's IRWLS with both `--ref-ld` and `--w-ld`
 LD-score inputs):
 
 | Comparison | Metric | Observed | Floor (asserted) | Status |
@@ -79,13 +79,13 @@ where:
   - `w_ld_j` is the **regression** LD score (passed via `--w-ld`; computed only over SNPs in the regression set — distinct file from the reference scores)
   - `intercept`, `h²` are the *current iterate's* parameters; LDSC iterates exactly 2 times (`for i in xrange(2)` in `ldsc/irwls.py`).
 
-TorchGWAS' `ldsc_h2` previously used a single-pass WLS with the simpler heuristic
+TorchGenomics' `ldsc_h2` previously used a single-pass WLS with the simpler heuristic
 ``w = 1.0 / torch.clamp(ld_scores ** 2, min=1.0)`` — no `w_ld` input, no
 iteration. Empirically this preserved h² (slope-driven) but mis-estimated
 the intercept by 0.10–0.28 absolute on inflated mean-χ² regimes.
 
 **Resolution.** The Phase 37 IRWLS port in
-`torchgwas/postgwas/_ldsc.py` adds:
+`torchgenomics/postgwas/_ldsc.py` adds:
 
 1. The full LDSC `Hsq.weights` heteroscedastic weight formula
    (`_hsq_weights`).
@@ -101,7 +101,7 @@ the intercept by 0.10–0.28 absolute on inflated mean-χ² regimes.
 5. Support for a per-SNP `n` tensor (LDSC's per-SNP N column).
 
 The legacy single-pass behavior is reachable via `n_iter=0`. With proper
-`w_ld=...` + `n_iter=2`, TorchGWAS reproduces LDSC's intercept to
+`w_ld=...` + `n_iter=2`, TorchGenomics reproduces LDSC's intercept to
 ~3e-5 absolute (well below the spec §16 anchor of 5e-3) on the
 simulated chr22 fixture.
 
@@ -112,9 +112,9 @@ contract.
 
 ### Why LDSC's two-step is disabled (`--two-step 99999`)
 
-LDSC's default `--h2` mode runs a two-step estimator: step 1 fits both slope and intercept on chi² < 30 SNPs to estimate the intercept; step 2 fixes the intercept and refits the slope on **all** SNPs. TorchGWAS' `ldsc_h2` is structured as: step 1 fits all SNPs (warm-up), step 2 fits both slope and intercept on chi² < 30 SNPs. Different two-step parameterizations diverge meaningfully when many SNPs have chi² > 30 (which is our case: simulated mean chi² ≈ 45).
+LDSC's default `--h2` mode runs a two-step estimator: step 1 fits both slope and intercept on chi² < 30 SNPs to estimate the intercept; step 2 fixes the intercept and refits the slope on **all** SNPs. TorchGenomics' `ldsc_h2` is structured as: step 1 fits all SNPs (warm-up), step 2 fits both slope and intercept on chi² < 30 SNPs. Different two-step parameterizations diverge meaningfully when many SNPs have chi² > 30 (which is our case: simulated mean chi² ≈ 45).
 
-To get an apples-to-apples comparison we run LDSC with `--two-step 99999` (no SNPs filtered out) and TorchGWAS with `two_step_cutoff=99999.0` — both compute single-pass WLS. The TG↔LDSC two-step parameterization mismatch is a separate documented divergence, not exercised by this harness, and would also be a Phase 37 follow-up.
+To get an apples-to-apples comparison we run LDSC with `--two-step 99999` (no SNPs filtered out) and TorchGenomics with `two_step_cutoff=99999.0` — both compute single-pass WLS. The TG↔LDSC two-step parameterization mismatch is a separate documented divergence, not exercised by this harness, and would also be a Phase 37 follow-up.
 
 ## Allele-flip handling
 
@@ -129,7 +129,7 @@ LDSC 1.0.1 on 17 K SNPs (chr22) with 200 jackknife blocks completes in <2 s and 
 | install (~200 MB conda env download) | 4 GB | 6 GB | ~300 MB during conda solve |
 | fetch (~26 MB downloaded, ~150 MB extracted) | 4 GB | 6 GB | <200 MB |
 | run (3 LDSC invocations) | 4 GB | 10 GB | <500 MB total |
-| compare.py (Python 3 + torchgwas) | n/a | n/a | ~600 MB |
+| compare.py (Python 3 + torchgenomics) | n/a | n/a | ~600 MB |
 
 ## Layout
 
@@ -139,7 +139,7 @@ validation/external/ldsc/
 ├── fetch_data.sh           # download 1000G LD scores + weights, simulate sumstats
 ├── simulate_sumstats.py    # helper invoked by fetch_data.sh
 ├── run_ldsc.sh             # produces 3 reference logs into outputs/
-├── compare.py              # asserts tolerances vs TorchGWAS
+├── compare.py              # asserts tolerances vs TorchGenomics
 ├── README.md               # this file
 ├── .env_marker             # records conda env name + LDSC version (gitignored)
 ├── .cache/                 # downloaded archives (gitignored)
@@ -157,10 +157,10 @@ pytest tests/test_external_ldsc.py            # 3 skipped
 pytest -m external tests/test_external_ldsc.py -v
 ```
 
-The pytest module dynamically imports `compare.py` from outside the package tree, so no modification of `torchgwas/` is required to wire this harness.
+The pytest module dynamically imports `compare.py` from outside the package tree, so no modification of `torchgenomics/` is required to wire this harness.
 
 ## Next steps (post-Pillar B)
 
-- ~~IRWLS in `torchgwas.postgwas.ldsc_h2` to close the intercept gap (Phase 37 follow-up; would tighten `TOL_INTERCEPT_ABSDIFF` from 3.5e-1 to ~5e-3).~~ — **DONE (2026-04-30)**: IRWLS port resolved B2; intercept agreement now ~3e-5 absolute, gated at 5e-3.
+- ~~IRWLS in `torchgenomics.postgwas.ldsc_h2` to close the intercept gap (Phase 37 follow-up; would tighten `TOL_INTERCEPT_ABSDIFF` from 3.5e-1 to ~5e-3).~~ — **DONE (2026-04-30)**: IRWLS port resolved B2; intercept agreement now ~3e-5 absolute, gated at 5e-3.
 - Promote `sldsc_h2_partitioned` from single-pass WLS to full IRWLS (mirrors the fix applied to `ldsc_h2`); currently calls `_hsq_weights` once on the aggregate-derived initial weights.
 - Wire `sldsc_h2_partitioned` against an S-LDSC `--h2 --overlap-annot` reference (deferred — needs the partitioned annotation files, ~1 GB, which we judged out-of-scope for B2).

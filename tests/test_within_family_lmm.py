@@ -16,9 +16,9 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import ScanResult, VariantMeta
-from torchgwas.models.within_family_lmm import (
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import ScanResult, VariantMeta
+from torchgenomics.models.within_family_lmm import (
     WithinFamilyLMM,
     WithinFamilyNullFit,
     _demean_within_families,

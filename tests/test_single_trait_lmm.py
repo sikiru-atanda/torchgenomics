@@ -7,14 +7,14 @@ import math
 import pytest
 import torch
 
-from torchgwas.linalg.eigh import eigendecompose, rotate
-from torchgwas.linalg.kinship import grm_vanraden
-from torchgwas.models.base import NullFit, ScanResult, VariantMeta
-from torchgwas.models.single_trait_lmm import SingleTraitLMM
-from torchgwas.optim.ai_reml import ai_reml_single
-from torchgwas.optim.em_warmstart import px_em_warmstart
-from torchgwas.optim.mm_reml import mm_reml
-from torchgwas.optim.reml_math import reml_derivatives, reml_loglikelihood
+from torchgenomics.linalg.eigh import eigendecompose, rotate
+from torchgenomics.linalg.kinship import grm_vanraden
+from torchgenomics.models.base import NullFit, ScanResult, VariantMeta
+from torchgenomics.models.single_trait_lmm import SingleTraitLMM
+from torchgenomics.optim.ai_reml import ai_reml_single
+from torchgenomics.optim.em_warmstart import px_em_warmstart
+from torchgenomics.optim.mm_reml import mm_reml
+from torchgenomics.optim.reml_math import reml_derivatives, reml_loglikelihood
 
 # ---------------------------------------------------------------
 # Fixtures: simulate a simple LMM dataset with known parameters
@@ -224,7 +224,7 @@ class TestMMREML:
 class TestOptimizerController:
     def test_controller_produces_nullfit(self, rotated_data):
         """Controller should produce a complete NullFit."""
-        from torchgwas.optim.controller import OptimizerController
+        from torchgenomics.optim.controller import OptimizerController
 
         Y_rot, X0_rot, evals = rotated_data
         controller = OptimizerController()
@@ -241,7 +241,7 @@ class TestOptimizerController:
 
     def test_controller_trace_has_modes(self, rotated_data):
         """Optimizer trace should show PX-EM followed by AI-REML."""
-        from torchgwas.optim.controller import OptimizerController
+        from torchgenomics.optim.controller import OptimizerController
 
         Y_rot, X0_rot, evals = rotated_data
         controller = OptimizerController()

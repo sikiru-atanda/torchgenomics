@@ -1,6 +1,6 @@
 {
   "kernel": "enumerate_subset_log_bf",
-  "ext": "torchgwas._native._hyprcoloc_native",
+  "ext": "torchgenomics._native._hyprcoloc_native",
   "date": "2026-05-29",
   "host": "linux-x86_64",
   "notes": "2^K subset enumeration via bitmask + per-subset trait-row sum + logsumexp inline. OpenMP across subsets with dynamic scheduling (chunks of 64). Random planted-causal sumstats; first 3 traits share a single causal SNP.",

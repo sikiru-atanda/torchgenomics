@@ -65,7 +65,7 @@ cat(sprintf("[run_mediation] loaded %d rows\n", nrow(df)))
 # --- Fit mediator + outcome models -------------------------------------------
 # Both fits are plain OLS (the standard mediation::mediate input). We expose
 # coefficients separately so compare.py can sanity-check the per-stage
-# estimates against TorchGWAS' a, b, c' returned by mediate_lmm.
+# estimates against TorchGenomics' a, b, c' returned by mediate_lmm.
 model_m <- lm(mediator ~ snp, data = df)
 model_y <- lm(outcome ~ mediator + snp, data = df)
 

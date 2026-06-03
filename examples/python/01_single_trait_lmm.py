@@ -16,10 +16,10 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torchgwas.config import STAT_DTYPE, NumericalConfig
-from torchgwas.models import SingleTraitLMM, VariantMeta
-from torchgwas.stats import benjamini_hochberg
-from torchgwas.viz import manhattan_plot, qq_plot
+from torchgenomics.config import STAT_DTYPE, NumericalConfig
+from torchgenomics.models import SingleTraitLMM, VariantMeta
+from torchgenomics.stats import benjamini_hochberg
+from torchgenomics.viz import manhattan_plot, qq_plot
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 MDP_DATA = REPO_ROOT / "benchmark" / "data"
