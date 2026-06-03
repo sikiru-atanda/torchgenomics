@@ -1,0 +1,100 @@
+---
+title: "How rTorchGenomics talks to Python"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{How rTorchGenomics talks to Python}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, comment = "#>")
+```
+
+# How rTorchGenomics talks to Python
+
+rTorchGenomics doesn't reimplement TorchGenomics -- it wraps the Python
+engine via [reticulate](https://rstudio.github.io/reticulate/). This
+note explains the architecture for advanced users who want to extend
+the package or debug the bridge.
+
+## The setup
+
+`tg_install()` creates a Python virtualenv called `r-rtorchgenomics`
+and installs `torchgenomics[mcp]` pinned to the matching R-package
+version. The venv lives in reticulate's standard location
+(`~/.virtualenvs/r-rtorchgenomics/` on Linux/macOS).
+
+On package load, `.onLoad()` tells reticulate to prefer this venv if
+it exists. Reticulate doesn't actually import Python until the first
+`tg_*()` call -- startup stays fast.
+
+## The first call
+
+The first `tg_*()` call in an R session triggers `tg_py()`, which
+calls `reticulate::import("torchgenomics")`. This spawns Python
+in-process via the Python C API, loads torch, numpy, and torchgenomics.
+Wall-clock cost: ~1-3 seconds, one-time per session.
+
+Subsequent calls re-use the cached module reference -- direct R to Python
+function calls with microsecond overhead for arg conversion.
+
+## Per-call flow
+
+```
+tg_lmm_scan("data.bed", "pheno.tsv")
+    |
+    v  R-side arg validation
+bridge_call("lmm_scan", list(genotype = "data.bed", ...))
+    |
+    v  reticulate
+py$api$lmm_scan(**args)
+    |
+    v  Python: actual compute
+torchgenomics.api.lmm_scan(...) -> ScanRun dataclass
+    |
+    v  result.to_dict() in Python -> JSON-safe dict
+    |
+    v  reticulate::py_to_r() -> R nested list
+    |
+    v  ScanRun$new_from_dict() -> S4 ScanRun
+```
+
+No subprocess. No JSON over stdio. No MCP. Reticulate hosts Python in
+the R process; the bridge is a function call.
+
+## Error handling
+
+Python exceptions surface as R conditions with the Python class
+hierarchy attached. rTorchGenomics maps them to three R classes:
+
+- `tg_no_python` -- venv not configured.
+- `tg_input_error` -- Python ValueError, TypeError, FileNotFoundError.
+- `tg_runtime_error` -- anything else.
+
+You can catch them with `tryCatch`:
+
+```{r}
+tryCatch(
+  tg_lmm_scan("missing.bed", "pheno.tsv"),
+  tg_input_error = function(e) {
+    message("Bad input: ", conditionMessage(e))
+    NULL
+  }
+)
+```
+
+## Going deeper
+
+To inspect or modify the Python module from R:
+
+```{r}
+py <- rTorchGenomics:::tg_py()
+py$api                # the api facade module
+py$models             # low-level models module
+py$`__version__`      # torchgenomics version
+```
+
+You're calling the same Python objects the LLM-side MCP tools call.
+The MCP server (separate Python process for LLM clients) is untouched
+by R -- it's a parallel surface, not the bridge.

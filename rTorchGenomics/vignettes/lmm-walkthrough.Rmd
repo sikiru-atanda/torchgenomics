@@ -1,0 +1,78 @@
+---
+title: "Single-trait LMM walkthrough"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Single-trait LMM walkthrough}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, comment = "#>")
+```
+
+# Single-trait LMM walkthrough
+
+This walkthrough runs an end-to-end GWAS on a tiny PLINK fixture
+shipped with the package: 10 samples x 20 variants. The numbers won't
+be biologically meaningful; the point is to exercise every step.
+
+## Locating the fixture
+
+```{r}
+library(rTorchGenomics)
+bed <- system.file("extdata", "tiny.bed", package = "rTorchGenomics")
+pheno <- system.file("extdata", "tiny_pheno.tsv", package = "rTorchGenomics")
+```
+
+## Pre-flight check
+
+```{r}
+v <- tg_validate(genotype = bed, phenotype = pheno)
+print(v)
+```
+
+Expect `format = bed`, 10 genotype samples, 12 phenotype samples,
+10 aligned (the tiny fixture has 2 extra phenotype rows to test
+alignment).
+
+## LMM scan
+
+```{r}
+r <- tg_lmm_scan(
+  genotype = bed,
+  phenotype = pheno,
+  chunk_size = 10L,       # tiny chunks for the tiny fixture
+  maf_min = 0.0,          # don't filter the small variant count
+  correction = "bh"
+)
+print(r)
+```
+
+## Inspect results
+
+```{r}
+top_hits(r)               # tibble of top variants by p-value
+output_files(r)$tsv       # path to the full result table
+r@lambda_gc               # lambda_GC (genomic inflation)
+```
+
+## Plot
+
+```{r}
+mh <- tg_manhattan(r)
+qq <- tg_qq(r)
+
+# Save to disk.
+ggplot2::ggsave("manhattan.png", mh, width = 8, height = 4)
+ggplot2::ggsave("qq.png", qq, width = 6, height = 6)
+```
+
+## Where to go from here
+
+- Try `tg_glm_scan()` with `family = "binary"` for case/control studies.
+- Use `tg_ld_blocks()` to map haplotype blocks before downstream
+  clumping.
+- Pipe sumstats into `tg_pgs_fit()` for polygenic scoring.
+- For multi-trait or multi-environment designs, see `?tg_mvlmm_scan`,
+  `?tg_mtmet_scan`, etc.

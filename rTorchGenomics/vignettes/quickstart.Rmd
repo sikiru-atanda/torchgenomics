@@ -1,0 +1,63 @@
+---
+title: "Quickstart"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Quickstart}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, comment = "#>")
+```
+
+# Quickstart
+
+rTorchGenomics wraps the Python torchgenomics engine via reticulate.
+One-time setup:
+
+```{r}
+library(rTorchGenomics)
+tg_install()   # creates the r-rtorchgenomics venv and installs
+               # torchgenomics[mcp]==0.4.0
+```
+
+Validate a dataset:
+
+```{r}
+r <- tg_validate(genotype = "data.bed", phenotype = "pheno.tsv")
+print(r)
+stopifnot(r@ok)
+```
+
+Run a single-trait LMM scan:
+
+```{r}
+r <- tg_lmm_scan(genotype = "data.bed", phenotype = "pheno.tsv")
+print(r)
+top_hits(r)            # tibble of top-K hits
+output_files(r)        # paths to the full result table
+
+tg_manhattan(r)        # ggplot Manhattan
+tg_qq(r)               # ggplot Q-Q
+```
+
+Fit a polygenic score:
+
+```{r}
+fit <- tg_pgs_fit(
+  sumstats = output_files(r)[["tsv"]],
+  ld_ref   = "ld.pt",
+  output   = "weights.tsv",
+  method   = "ldpred2-auto"
+)
+scores <- tg_pgs_score(
+  genotype = "target.bed",
+  weights  = "weights.tsv",
+  output   = "scores.tsv"
+)
+print(scores)
+```
+
+For the full list of 44 functions, see `?rTorchGenomics` and the
+pkgdown site.

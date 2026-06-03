@@ -1,0 +1,69 @@
+url: https://sikiru-atanda.github.io/torchgenomics/r/
+
+template:
+  bootstrap: 5
+  bslib:
+    primary: "#1f77b4"
+
+navbar:
+  structure:
+    left: [intro, reference, articles, news]
+    right: [search, github]
+  components:
+    articles:
+      text: Vignettes
+      menu:
+        - text: Quickstart
+          href: articles/quickstart.html
+        - text: LMM walkthrough
+          href: articles/lmm-walkthrough.html
+        - text: Reticulate bridge
+          href: articles/reticulate-bridge.html
+
+reference:
+- title: "Setup"
+  contents:
+    - tg_install
+- title: "Data management"
+  contents:
+    - tg_validate
+    - tg_convert
+    - tg_impute
+- title: "GWAS scans"
+  contents:
+    - tg_lmm_scan
+    - tg_glm_scan
+- title: "LD + post-GWAS"
+  contents:
+    - tg_ld_blocks
+    - tg_clump
+    - tg_meta
+- title: "Polygenic scoring"
+  contents:
+    - tg_pgs_fit
+    - tg_pgs_score
+- title: "Annotation"
+  contents:
+    - tg_annotate_hits
+- title: "Plotting"
+  contents:
+    - tg_manhattan
+    - tg_qq
+- title: "Tier-2 (auto-generated)"
+  contents:
+    - has_keyword("internal")
+- title: "Result classes"
+  contents:
+    - ScanRun-class
+    - ValidateRun-class
+    - LDBlocksRun-class
+    - ClumpRun-class
+    - MetaRun-class
+    - PgsFitRun-class
+    - PgsScoreRun-class
+    - AnnotateRun-class
+    - ConvertRun-class
+    - ImputeRun-class
+    - GwasResult-class
+    - top_hits
+    - output_files
