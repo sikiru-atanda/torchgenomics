@@ -23,11 +23,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
 
-      - name: Build sdist (no native extensions)
+      - name: Build torchgenomics sdist (no native extensions)
         run: |
           python -m build --sdist
+          ls -lh dist/
 
-      - name: Check package
+      - name: Build torchgwas meta-package (universal wheel + sdist)
+        run: |
+          cd packaging/torchgwas-meta
+          python -m build
+          # Stage meta-package artifacts alongside the main package.
+          cp dist/* ../../dist/
+          ls -lh ../../dist/
+
+      - name: Check both distributions
         run: |
           twine check dist/*
 
@@ -51,7 +60,7 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Publish to TestPyPI
+      - name: Publish both packages to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
@@ -70,5 +79,40 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Publish to PyPI
+      - name: Publish both packages to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  verify-shim:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    if: "!github.event.release.prerelease"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Wait for PyPI index propagation
+        run: sleep 60
+
+      - name: Install torchgwas from PyPI (should pull torchgenomics)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "torchgwas==0.4.0"
+          pip list | grep -E "^torch(genomics|gwas)"
+
+      - name: Smoke-test the deprecation shim
+        run: |
+          python -W default -c "
+          import torchgwas
+          print('torchgwas:', torchgwas.__version__)
+          import torchgenomics
+          print('torchgenomics:', torchgenomics.__version__)
+          assert torchgwas.__version__ == torchgenomics.__version__
+          from torchgwas.models import SingleTraitLMM as A
+          from torchgenomics.models import SingleTraitLMM as B
+          assert A is B, 'shim must resolve to torchgenomics module objects'
+          print('Shim verified end-to-end.')
+          "

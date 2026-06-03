@@ -28,12 +28,19 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+TORCHGWAS_META_ROOT = REPO_ROOT / "packaging" / "torchgwas-meta"
 
 
 def _run_in_clean_subprocess(code: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    """Run a snippet of Python in a fresh interpreter that sees the worktree first."""
+    """Run a snippet of Python in a fresh interpreter that sees the worktree first.
+
+    Both the main ``torchgenomics`` package (at REPO_ROOT) and the legacy
+    ``torchgwas`` meta-package (at REPO_ROOT/packaging/torchgwas-meta/) need
+    to be on PYTHONPATH so the shim works without a real ``pip install``.
+    """
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    paths = [str(REPO_ROOT), str(TORCHGWAS_META_ROOT)]
+    env["PYTHONPATH"] = os.pathsep.join(paths + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     if env_extra:
         env.update(env_extra)
     # Make sure deprecation warnings show up in stderr

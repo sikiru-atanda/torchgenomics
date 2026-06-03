@@ -69,7 +69,8 @@ mcp = ["mcp>=1.0", "pydantic>=2.0"]
 [project.scripts]
 torchgenomics = "torchgenomics.cli:main"
 torchgenomics-mcp = "torchgenomics.mcp.server:main"
-torchgwas = "torchgwas._legacy_cli:main"
+# The legacy `torchgwas` CLI is shipped by the separate `torchgwas` PyPI
+# distribution (packaging/torchgwas-meta/) — not bundled into this package.
 
 [project.urls]
 Repository = "https://github.com/sikiru-atanda/torchgenomics"
@@ -77,7 +78,10 @@ Documentation = "https://sikiru-atanda.github.io/torchgenomics/"
 Issues = "https://github.com/sikiru-atanda/torchgenomics/issues"
 
 [tool.setuptools.packages.find]
-include = ["torchgenomics*", "torchgwas*"]
+include = ["torchgenomics*"]
+# Note: the `torchgwas` shim is built and published as a separate
+# PyPI distribution from packaging/torchgwas-meta/. The two distributions
+# share a version (0.4.0) and the meta-package depends on this one.
 
 [tool.setuptools.package-data]
 "torchgenomics._native" = ["*.pyi"]
