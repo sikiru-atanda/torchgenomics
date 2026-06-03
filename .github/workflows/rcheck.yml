@@ -1,0 +1,57 @@
+name: R CMD check
+
+on:
+  push:
+    branches: [master, main, "feat/**"]
+  pull_request:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  rcheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rTorchGenomics
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4'
+
+      - name: Install qpdf (silences R CMD check WARNING)
+        run: sudo apt-get update && sudo apt-get install -y qpdf
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::devtools
+            any::mockery
+            any::pkgdown
+          working-directory: rTorchGenomics
+
+      - name: Install Python (for integration tests; opt-in only)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: R CMD check (no integration)
+        env:
+          _R_CHECK_FORCE_SUGGESTS_: false
+        run: |
+          R CMD build .
+          R CMD check --no-manual --as-cran rTorchGenomics_0.4.0.tar.gz
+
+      - name: Build pkgdown site
+        if: github.ref == 'refs/heads/master'
+        run: |
+          Rscript -e "pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)"
+
+      - name: Upload pkgdown artifact
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: rTorchGenomics/docs
