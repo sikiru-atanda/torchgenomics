@@ -53,4 +53,32 @@ class TestManifestEmitter:
             assert "description" in cmd
             assert "args" in cmd and isinstance(cmd["args"], list)
             for arg in cmd["args"]:
-                assert {"name", "type", "required", "default"}.issubset(arg)
+                assert {"name", "type", "required", "default", "choices", "nargs"}.issubset(arg)
+
+    def test_descriptions_are_populated(self):
+        """Each command must have a non-empty description for downstream codegen."""
+        from torchgenomics._manifest import build_manifest
+
+        manifest = build_manifest()
+        empty = [c["name"] for c in manifest["commands"] if not c["description"]]
+        assert not empty, f"commands with empty description: {empty}"
+
+    def test_no_cli_drift(self):
+        """All non-tier-1 CLI subcommands must be either tier-2 or explicitly excluded."""
+        import argparse
+
+        from torchgenomics._manifest import _TIER_2_CLI_SUBCOMMANDS
+        from torchgenomics.cli import _build_parser
+
+        parser = _build_parser()
+        sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        all_cli = set(sub.choices.keys())
+        tier1_cli = {
+            "validate", "convert", "impute", "lmm-scan", "glm-scan",
+            "ld-blocks", "clump", "meta", "pgs-fit", "pgs-score", "annotate",
+        }
+        unclassified = all_cli - tier1_cli - _TIER_2_CLI_SUBCOMMANDS
+        assert not unclassified, (
+            f"CLI subcommand(s) not classified as tier-1 or tier-2: {unclassified}. "
+            f"Add to _TIER_2_CLI_SUBCOMMANDS or the test's tier1_cli set."
+        )
