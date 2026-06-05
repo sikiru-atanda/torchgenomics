@@ -149,6 +149,8 @@ class TestEnvVarCompat:
     def test_legacy_disable_native_warns(self):
         result = _run_in_clean_subprocess(
             "import warnings, torchgenomics._dispatch as d\n"
+            "d._warned_env_aliases.clear()\n"
+            "if hasattr(d, '__warningregistry__'): d.__warningregistry__.clear()\n"
             "with warnings.catch_warnings(record=True) as w:\n"
             "    warnings.simplefilter('always')\n"
             "    assert d.native_disabled() is True\n"
@@ -165,6 +167,8 @@ class TestEnvVarCompat:
     def test_legacy_env_warns_only_once(self):
         result = _run_in_clean_subprocess(
             "import warnings, torchgenomics._dispatch as d\n"
+            "d._warned_env_aliases.clear()\n"
+            "if hasattr(d, '__warningregistry__'): d.__warningregistry__.clear()\n"
             "with warnings.catch_warnings(record=True) as w:\n"
             "    warnings.simplefilter('always')\n"
             "    for _ in range(5):\n"
@@ -198,6 +202,8 @@ class TestEnvVarCompat:
     def test_disable_gpu_compat(self):
         result = _run_in_clean_subprocess(
             "import warnings, torchgenomics._dispatch as d\n"
+            "d._warned_env_aliases.clear()\n"
+            "if hasattr(d, '__warningregistry__'): d.__warningregistry__.clear()\n"
             "with warnings.catch_warnings(record=True) as w:\n"
             "    warnings.simplefilter('always')\n"
             "    assert d.gpu_disabled() is True\n"
