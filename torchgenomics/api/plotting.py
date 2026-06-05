@@ -15,7 +15,7 @@ from typing import Literal
 import pandas as pd
 
 from ._decorator import tool
-from ._helpers import resolve_output_dir, timed
+from ._helpers import timed
 from ._results import PlotResult
 
 

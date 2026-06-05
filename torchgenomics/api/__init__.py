@@ -24,6 +24,9 @@ File-path inputs accept ``str`` or :class:`pathlib.Path`.
 """
 from __future__ import annotations
 
+# Registry hook for MCP layer
+from ._decorator import registered_tools, tools_by_category
+
 # Result types (re-exported for type hints / isinstance checks)
 from ._results import (
     AnnotateRun,
@@ -38,18 +41,15 @@ from ._results import (
     ScanRun,
     ValidateRun,
 )
-
-# Registry hook for MCP layer
-from ._decorator import registered_tools, tools_by_category
+from .annotate import annotate_hits
 
 # Function imports happen here once the per-tier modules are added.
 from .data import convert, impute, validate
-from .scans import glm_scan, lmm_scan
 from .ld import ld_blocks
-from .postgwas import clump, meta
 from .pgs import pgs_fit, pgs_score
-from .annotate import annotate_hits
 from .plotting import manhattan, qq
+from .postgwas import clump, meta
+from .scans import glm_scan, lmm_scan
 
 __all__ = [
     # Functions (tier-1: 12)

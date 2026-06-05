@@ -202,9 +202,10 @@ def test_bayes_scan_rss_smoke_runs_end_to_end(tmp_path):
     """
     import pandas as pd
     import torch
+
+    from torchgenomics.cli import main
     from torchgenomics.postgwas._ld_ref_loader import save_ld_reference
     from torchgenomics.postgwas._ld_ref_metadata import LDReferenceMetadata
-    from torchgenomics.cli import main
 
     p = 5
     sumstats_path = tmp_path / "sumstats.tsv"

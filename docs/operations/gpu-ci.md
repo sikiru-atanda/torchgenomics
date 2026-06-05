@@ -5,8 +5,8 @@ code paths in TorchGenomics. It covers the security model, the runner architectu
 the runbook for adding/labeling/debugging PRs, capacity planning, and failure
 modes.
 
-For the workflow itself, see [`.github/workflows/gpu.yml`](../../.github/workflows/gpu.yml).
-For runner setup, see [`scripts/setup_gpu_runner.sh`](../../scripts/setup_gpu_runner.sh).
+For the workflow itself, see [`.github/workflows/gpu.yml`](https://github.com/sikiru-atanda/torchgenomics/blob/master/.github/workflows/gpu.yml).
+For runner setup, see [`scripts/setup_gpu_runner.sh`](https://github.com/sikiru-atanda/torchgenomics/blob/master/scripts/setup_gpu_runner.sh).
 
 ---
 

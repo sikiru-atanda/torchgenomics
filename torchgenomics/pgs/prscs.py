@@ -20,14 +20,13 @@ uniforms algorithm — used internally for the ``psi`` updates.
 from __future__ import annotations
 
 import math
-import os
-from .._dispatch import native_disabled
 import sys
 from typing import Any
 
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import HAS_NATIVE_PRSCS, _prscs_native
 from ..postgwas._sumstats import SumStats
 from .base import BasePGSMethod, LDReference, PGSResult

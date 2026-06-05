@@ -18,13 +18,9 @@ JSON files in tmp).
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BENCH_RUNNER = REPO_ROOT / "bench" / "native_speedups.py"

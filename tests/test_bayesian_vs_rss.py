@@ -8,12 +8,10 @@ from __future__ import annotations
 import math
 
 import numpy as np
-import pytest
 import torch
 
 from torchgenomics.models.bayesian_vs_rss import (
     BayesianVSRss,
-    BayesianVSRssResult,
     ser_posterior,
 )
 

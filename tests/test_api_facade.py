@@ -38,7 +38,6 @@ from torchgenomics.api import (
     tools_by_category,
 )
 
-
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 TINY_BED = FIXTURE_DIR / "tiny.bed"
 TINY_PHENO = FIXTURE_DIR / "tiny_pheno.txt"

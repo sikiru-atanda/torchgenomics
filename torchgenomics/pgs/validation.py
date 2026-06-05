@@ -15,8 +15,8 @@ are already incorporated into the PGS during ``score_individuals``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 from math import exp, log, sqrt
 
 import torch

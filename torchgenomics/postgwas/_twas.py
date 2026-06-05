@@ -493,9 +493,8 @@ def twas_observed_expression(
         mode.
     """
     # Lazy imports to avoid circular references.
-    from ..models.glm import GLM
-    from ..models.single_trait_lmm import SingleTraitLMM
     from ..models.base import VariantMeta
+    from ..models.single_trait_lmm import SingleTraitLMM
 
     if expression.ndim != 2:
         raise ValueError(
@@ -805,7 +804,6 @@ def twas_multi_tissue_aggregate(
             )
 
     summaries: list[MultiTissueSummary] = []
-    import math
     from scipy.stats import chi2 as _chi2  # type: ignore[import-untyped]
     for gene_id, entries in per_gene_z.items():
         zs = [e[1] for e in entries]

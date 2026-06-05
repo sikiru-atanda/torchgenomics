@@ -6,16 +6,13 @@ directory, invoke the CLI as a subprocess, and parse the output TSV.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 import torch
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

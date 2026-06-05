@@ -30,6 +30,18 @@ __version__ = "0.4.0"
 # also exist at the top level for convenience).
 
 from .api import (
+    # Result types (for type hints / isinstance)
+    AnnotateRun,
+    ClumpRun,
+    ConvertRun,
+    ImputeRun,
+    LDBlocksRun,
+    MetaRun,
+    PgsFitRun,
+    PgsScoreRun,
+    PlotResult,
+    ScanRun,
+    ValidateRun,
     # 12 tier-1 functions
     annotate_hits,
     clump,
@@ -44,18 +56,6 @@ from .api import (
     pgs_score,
     qq,
     validate,
-    # Result types (for type hints / isinstance)
-    AnnotateRun,
-    ClumpRun,
-    ConvertRun,
-    ImputeRun,
-    LDBlocksRun,
-    MetaRun,
-    PgsFitRun,
-    PgsScoreRun,
-    PlotResult,
-    ScanRun,
-    ValidateRun,
 )
 
 __all__ = [

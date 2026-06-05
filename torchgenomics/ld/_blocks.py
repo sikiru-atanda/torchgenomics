@@ -11,14 +11,13 @@ All methods operate on pre-computed pairwise LD statistics (CPU-side logic).
 
 from __future__ import annotations
 
-import os
-from .._dispatch import native_disabled
 from dataclasses import dataclass
 
 import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import (
     HAS_NATIVE_GABRIEL,
     HAS_NATIVE_SPINE,

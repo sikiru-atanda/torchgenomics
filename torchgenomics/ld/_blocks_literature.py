@@ -7,13 +7,11 @@
 
 from __future__ import annotations
 
-import os
-from .._dispatch import native_disabled
-
 import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import (
     HAS_NATIVE_BIG_LD,
     HAS_NATIVE_CC_GRAPH,

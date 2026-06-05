@@ -31,7 +31,6 @@ from torchgenomics.config import (
 )
 from torchgenomics.models.base import BaseModel, NullFit, VariantMeta
 
-
 pytestmark = pytest.mark.timeout(30)
 
 

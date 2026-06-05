@@ -28,7 +28,6 @@ import pytest
 from torchgenomics.api import registered_tools
 from torchgenomics.mcp import list_tools
 
-
 pytest_plugins: list[str] = []  # purely in-process; no plugin needed
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"

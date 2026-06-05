@@ -13,9 +13,8 @@ section 6 — LD-ref-mismatch is the primary failure mode of SuSiE-RSS.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Mapping
-
 
 SCHEMA_VERSION = 1
 

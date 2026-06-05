@@ -10,7 +10,6 @@ from ._decorator import tool
 from ._helpers import ProgressCallback, emit_progress, resolve_output_dir, timed
 from ._results import LDBlocksRun
 
-
 _LDBlockMethod = Literal[
     "gabriel", "four_gamete", "spine", "r2", "gwas_aligned", "uncertainty",
     "cross_pop", "graphical", "changepoint", "big_ld", "cc_graph",

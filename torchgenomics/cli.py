@@ -1742,8 +1742,7 @@ def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
 
     from .config import TorchGenomicsConfig, resolve_device
     from .linalg.kinship import grm_vanraden_streaming
-    from .models.knockoff_lmm import KnockoffLMM, KnockoffResult
-    from .models.knockoff_lmm import _knockoff_plus_filter
+    from .models.knockoff_lmm import KnockoffLMM, KnockoffResult, _knockoff_plus_filter
 
     device = resolve_device(args.device)
     config = TorchGenomicsConfig(device=device, chunk_size=args.chunk_size)
@@ -6743,7 +6742,9 @@ def _cmd_twas_scan(args: argparse.Namespace) -> int:
     """Observed-expression TWAS entry point."""
     from .postgwas import twas_observed_expression
     from .preprocess import (
-        inverse_normal_transform, peer_residualize, quantile_normalize,
+        inverse_normal_transform,
+        peer_residualize,
+        quantile_normalize,
     )
     from .stats import multipletesting as _mt
 
@@ -6905,6 +6906,7 @@ def _add_combine_gwas_twas_parser(subparsers: argparse._SubParsersAction) -> Non
 def _read_gwas_sumstats_tsv(path: str):
     """Read a GWAS sumstats TSV into a SumStats object."""
     import pandas as pd
+
     from .postgwas import SumStats
     df = pd.read_csv(path, sep="\t")
     required = {"chr", "pos", "snp", "a1", "a2", "beta", "se", "p"}
@@ -6937,6 +6939,7 @@ def _read_twas_results_tsv(path: str):
     """Read a TWAS results TSV (output of `torchgenomics twas-scan`) into a
     TWASResult object."""
     import pandas as pd
+
     from .postgwas import TWASGeneResult, TWASResult
     df = pd.read_csv(path, sep="\t")
     required = {"gene_id", "z_twas", "p_twas"}

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from ._decorator import tool
-from ._helpers import ProgressCallback, emit_progress, resolve_output_dir, timed
+from ._helpers import ProgressCallback, emit_progress, timed
 from ._results import ConvertRun, ImputeRun, ValidateRun
 
 
@@ -275,8 +275,8 @@ def impute(
                 col_offset += G_chunk.shape[1]
 
         elif method == "knn":
-            from ..linalg.kinship import grm_vanraden_streaming
             from ..cli import _impute_chunk_iter
+            from ..linalg.kinship import grm_vanraden_streaming
 
             K, _ = grm_vanraden_streaming(
                 _impute_chunk_iter(reader.iter_chunks(chunk_size)),

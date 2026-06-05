@@ -24,15 +24,14 @@ order because ``models.*`` is loaded first; importing
 
 from __future__ import annotations
 
-import torchgenomics  # noqa: F401  - resolve circular models<->optim import
-import torchgenomics.models  # noqa: F401  - load models *before* optim
-
 from dataclasses import is_dataclass
 
 import numpy as np
 import pytest
 import torch
 
+import torchgenomics  # noqa: F401  - resolve circular models<->optim import
+import torchgenomics.models  # noqa: F401  - load models *before* optim
 from torchgenomics.optim.cox_pql import cox_pql_fit
 from torchgenomics.optim.emma_reml import emma_reml_single, gapit_emma_remle
 from torchgenomics.optim.fa_lbfgs_reml import fa_lbfgs_reml
@@ -54,7 +53,6 @@ from torchgenomics.optim.rr_reml import (
 from torchgenomics.optim.separable_kron_reml import separable_kron_reml
 from torchgenomics.optim.sparse_reml import sparse_reml_fit
 from torchgenomics.optim.triad_reml import triad_reml
-
 
 pytestmark = pytest.mark.timeout(180)
 

@@ -17,15 +17,10 @@ poison the cache).
 """
 from __future__ import annotations
 
-import importlib
 import os
 import subprocess
 import sys
-import warnings
 from pathlib import Path
-
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TORCHGWAS_META_ROOT = REPO_ROOT / "packaging" / "torchgwas-meta"

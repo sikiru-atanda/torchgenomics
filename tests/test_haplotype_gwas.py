@@ -149,7 +149,6 @@ class TestHaplotypeConstruction:
         ``0.4 * 0.6 * 0.4 * 0.6 * 0.4 ≈ 0.023``. With LD-aware ranking, the
         actual frequency wins and ``11111`` survives the prune.
         """
-        from itertools import product as iproduct
 
         torch.manual_seed(42)
         m = 5
@@ -214,8 +213,8 @@ class TestHaplotypeConstruction:
         its marginal-allele-frequency product.
         """
         from torchgenomics.models.haplotype_gwas import (
-            _score_candidates_ld_aware,
             STAT_DTYPE,
+            _score_candidates_ld_aware,
         )
 
         # Two individuals, both homozygous for haplotype ``111``:

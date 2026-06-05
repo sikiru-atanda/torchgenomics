@@ -32,7 +32,6 @@ import json
 import os
 import subprocess
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -782,6 +781,7 @@ def test_cli_matrix_covers_every_subcommand() -> None:
     (with ``skip_reason`` if the subcommand can't run on the tiny fixture).
     """
     import argparse
+
     import torchgenomics.cli as cli_mod
 
     # Build the parser the same way `cli_mod.main` does, then enumerate the
