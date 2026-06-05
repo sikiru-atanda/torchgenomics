@@ -32,8 +32,14 @@ def _run_in_clean_subprocess(code: str, env_extra: dict[str, str] | None = None)
     Both the main ``torchgenomics`` package (at REPO_ROOT) and the legacy
     ``torchgwas`` meta-package (at REPO_ROOT/packaging/torchgwas-meta/) need
     to be on PYTHONPATH so the shim works without a real ``pip install``.
+
+    Strips inherited ``TORCHGENOMICS_*`` / ``TORCHGWAS_*`` env vars so the
+    subprocess starts from a known-clean state; CI sets some of these globally
+    and they would otherwise mask the legacy-fallback paths under test.
     """
     env = os.environ.copy()
+    for key in [k for k in env if k.startswith(("TORCHGENOMICS_", "TORCHGWAS_"))]:
+        del env[key]
     paths = [str(REPO_ROOT), str(TORCHGWAS_META_ROOT)]
     env["PYTHONPATH"] = os.pathsep.join(paths + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     if env_extra:
