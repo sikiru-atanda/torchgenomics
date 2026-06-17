@@ -34,6 +34,7 @@ from ._results import (
     ConvertRun,
     ImputeRun,
     LDBlocksRun,
+    LGEBVResult,
     MetaRun,
     PgsFitRun,
     PgsScoreRun,
@@ -46,13 +47,14 @@ from .annotate import annotate_hits
 # Function imports happen here once the per-tier modules are added.
 from .data import convert, impute, validate
 from .ld import ld_blocks
+from .lgebv import lgebv
 from .pgs import pgs_fit, pgs_score
 from .plotting import manhattan, qq
 from .postgwas import clump, meta
 from .scans import glm_scan, lmm_scan
 
 __all__ = [
-    # Functions (tier-1: 12)
+    # Functions (tier-1: 12 + lgebv)
     "validate",
     "convert",
     "impute",
@@ -63,6 +65,7 @@ __all__ = [
     "meta",
     "pgs_fit",
     "pgs_score",
+    "lgebv",
     "annotate_hits",
     "manhattan",
     "qq",
@@ -76,6 +79,7 @@ __all__ = [
     "MetaRun",
     "PgsFitRun",
     "PgsScoreRun",
+    "LGEBVResult",
     "AnnotateRun",
     "PlotResult",
     # MCP registry hooks
