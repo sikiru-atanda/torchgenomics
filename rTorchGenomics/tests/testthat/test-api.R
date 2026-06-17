@@ -6,13 +6,14 @@
 # sentinel below tracks only the 11 names defined here; extend it
 # when Task 7 adds the plotting helpers.
 
-test_that("all 11 tier-1 functions are exported", {
+test_that("all 13 tier-1 functions are exported", {
   expected <- c(
     "tg_validate", "tg_convert", "tg_impute",
     "tg_lmm_scan", "tg_glm_scan",
     "tg_ld_blocks", "tg_clump", "tg_meta",
     "tg_pgs_fit", "tg_pgs_score",
-    "tg_annotate_hits"
+    "tg_annotate_hits",
+    "tg_lgebv", "tg_iclass"
   )
   ns <- getNamespace("rTorchGenomics")
   for (fn in expected) {
@@ -61,6 +62,48 @@ test_that("tg_lmm_scan passes typed defaults through to bridge_call", {
   r <- tg_lmm_scan(genotype = "g.bed", phenotype = "p.tsv")
   expect_s4_class(r, "ScanRun")
   expect_equal(r@model, "SingleTraitLMM")
+})
+
+test_that("tg_ld_blocks passes tolerance through to the bridge", {
+  captured <- new.env()
+  mockery::stub(tg_ld_blocks, "bridge_call", function(fn, args) {
+    captured$fn <- fn
+    captured$args <- args
+    list(
+      runtime_s = 0.2, output_files = list(), log_excerpt = list(),
+      method = "r2", n_blocks = 4L, n_variants_in_blocks = 30L,
+      median_block_size_bp = 1000, median_block_n_snps = 7,
+      blocks = list()
+    )
+  })
+  r <- tg_ld_blocks(genotype = "g.bed", method = "r2",
+                    r2_threshold = 0.7, tolerance = 2)
+  expect_s4_class(r, "LDBlocksRun")
+  expect_equal(captured$fn, "ld_blocks")
+  expect_equal(captured$args$method, "r2")
+  expect_equal(captured$args$tolerance, 2L)
+})
+
+test_that("tg_ld_blocks tolerance default is 0L", {
+  captured <- new.env()
+  mockery::stub(tg_ld_blocks, "bridge_call", function(fn, args) {
+    captured$args <- args
+    list(
+      runtime_s = 0.2, output_files = list(), log_excerpt = list(),
+      method = "r2", n_blocks = 1L, n_variants_in_blocks = 5L,
+      median_block_size_bp = 500, median_block_n_snps = 5,
+      blocks = list()
+    )
+  })
+  r <- tg_ld_blocks(genotype = "g.bed", method = "r2")
+  expect_equal(captured$args$tolerance, 0L)
+})
+
+test_that("tg_ld_blocks rejects negative tolerance", {
+  expect_error(
+    tg_ld_blocks(genotype = "g.bed", method = "r2", tolerance = -1L),
+    "non-negative integer"
+  )
 })
 
 test_that("tg_pgs_fit forwards method + n_iter", {

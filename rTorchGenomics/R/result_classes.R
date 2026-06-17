@@ -281,6 +281,70 @@ setClass("GwasResult",
   )
 )
 
+#' Local Genomic Estimated Breeding Values per haplo-block.
+#'
+#' Returned by [tg_lgebv()]. Holds per-block summed rrBLUP marker
+#' effects, the empirical block-explained variance, and a sign-based
+#' favorable / unfavorable classification.
+#'
+#' @slot block_id Per-block identifier (character).
+#' @slot chrom Per-block chromosome (character).
+#' @slot start Per-block start coordinate (integer; bp).
+#' @slot end Per-block end coordinate (integer; bp).
+#' @slot n_variants Per-block marker count (integer).
+#' @slot lgebv Per-block sum of marker effects (numeric).
+#' @slot block_variance Per-block empirical variance Var(Z_b u_b) (numeric).
+#' @slot favorable Per-block favorable/unfavorable flag (logical).
+#' @slot marker_effects Optional (m,) marker effects vector (numeric or NULL).
+#' @slot h2_used Heritability value used for shrinkage (numeric).
+#' @slot method `"rrblup"` or `"gblup"` (character).
+#' @export
+setClass("LGEBVResult",
+  contains = "_BaseRun",
+  representation(
+    block_id = "character",
+    chrom = "character",
+    start = "integer",
+    end = "integer",
+    n_variants = "integer",
+    lgebv = "numeric",
+    block_variance = "numeric",
+    favorable = "logical",
+    marker_effects = "ANY",
+    h2_used = "numeric",
+    method = "character"
+  )
+)
+
+#' iClass G x E classification on factor-analytic loadings.
+#'
+#' Returned by [tg_iclass()]. Classifies multi-environment-trial
+#' environments by the polarity pattern of their FA loadings
+#' (Smith et al. 2015 / 2021).
+#'
+#' @slot cluster_labels Per-environment polarity word (e.g. "PNN").
+#' @slot cluster_membership Named list (label -> environment IDs).
+#' @slot loadings The `E x k` rotated FA loading matrix.
+#' @slot polarity_matrix `E x k` character matrix of `"P"`/`"N"`/`"Z"`.
+#' @slot n_factors Number of factors k (integer).
+#' @slot n_envs Number of environments E (integer).
+#' @slot env_ids Resolved environment IDs (character).
+#' @slot threshold Magnitude threshold used (numeric).
+#' @export
+setClass("IClassResult",
+  contains = "_BaseRun",
+  representation(
+    cluster_labels = "character",
+    cluster_membership = "list",
+    loadings = "matrix",
+    polarity_matrix = "matrix",
+    n_factors = "integer",
+    n_envs = "integer",
+    env_ids = "character",
+    threshold = "numeric"
+  )
+)
+
 # --- Helpers -----------------------------------------------------------
 
 .empty_tibble <- function() tibble::tibble()
@@ -739,3 +803,161 @@ setGeneric("output_files", function(x) standardGeneric("output_files"))
 
 #' @rdname output_files
 setMethod("output_files", "_BaseRun", function(x) x@output_files)
+
+# --- LGEBVResult + IClassResult constructors --------------------------
+
+#' Constructor for the LGEBVResult S4 class.
+#'
+#' Wrapper list exposing `$LGEBVResult$new_from_dict(d)` for building an
+#' instance from a JSON-shaped list (the dict returned by
+#' `py_to_r(to_dict())`).
+#' @name LGEBVResult
+#' @keywords internal
+#' @export
+LGEBVResult <- list(
+  new_from_dict = function(d) {
+    me <- d$marker_effects
+    if (!is.null(me)) {
+      me <- as.numeric(unlist(me, use.names = FALSE))
+    }
+    new("LGEBVResult",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      block_id = .as_chr_vec(d$block_id),
+      chrom = .as_chr_vec(d$chrom),
+      start = if (is.null(d$start)) integer(0) else as.integer(unlist(d$start, use.names = FALSE)),
+      end = if (is.null(d$end)) integer(0) else as.integer(unlist(d$end, use.names = FALSE)),
+      n_variants = if (is.null(d$n_variants)) integer(0) else as.integer(unlist(d$n_variants, use.names = FALSE)),
+      lgebv = if (is.null(d$lgebv)) numeric(0) else as.numeric(unlist(d$lgebv, use.names = FALSE)),
+      block_variance = if (is.null(d$block_variance)) numeric(0) else as.numeric(unlist(d$block_variance, use.names = FALSE)),
+      favorable = if (is.null(d$favorable)) logical(0) else as.logical(unlist(d$favorable, use.names = FALSE)),
+      marker_effects = me,
+      h2_used = .as_num(d$h2_used),
+      method = .as_chr(d$method)
+    )
+  }
+)
+
+#' Constructor for the IClassResult S4 class.
+#'
+#' Wrapper list exposing `$IClassResult$new_from_dict(d)` for building
+#' an instance from a list of py_to_r'd attributes from the Python
+#' `IClassResult` dataclass.
+#' @name IClassResult
+#' @keywords internal
+#' @export
+IClassResult <- list(
+  new_from_dict = function(d) {
+    loadings <- d$loadings
+    if (is.null(loadings)) {
+      loadings <- matrix(numeric(0), 0L, 0L)
+    } else if (!is.matrix(loadings)) {
+      loadings <- as.matrix(loadings)
+    }
+    storage.mode(loadings) <- "double"
+
+    pm <- d$polarity_matrix
+    if (is.null(pm)) {
+      pm <- matrix(character(0), 0L, 0L)
+    } else if (!is.matrix(pm)) {
+      pm <- as.matrix(pm)
+    }
+    storage.mode(pm) <- "character"
+
+    cm <- if (is.null(d$cluster_membership)) list() else as.list(d$cluster_membership)
+    # Make sure each cluster-membership entry is a character vector.
+    cm <- lapply(cm, function(v) {
+      if (is.null(v)) character(0) else as.character(unlist(v, use.names = FALSE))
+    })
+
+    new("IClassResult",
+      runtime_s = 0.0,
+      output_files = list(),
+      log_excerpt = character(0),
+      cluster_labels = .as_chr_vec(d$cluster_labels),
+      cluster_membership = cm,
+      loadings = loadings,
+      polarity_matrix = pm,
+      n_factors = .as_int(d$n_factors),
+      n_envs = .as_int(d$n_envs),
+      env_ids = .as_chr_vec(d$env_ids),
+      threshold = .as_num(d$threshold)
+    )
+  }
+)
+
+# --- show methods for the two new classes -----------------------------
+
+setMethod("show", "LGEBVResult", function(object) {
+  n_blocks <- length(object@block_id)
+  n_fav <- sum(object@favorable, na.rm = TRUE)
+  cat(sprintf("LGEBVResult (method=%s, n_blocks=%d, n_favorable=%d, h\u00b2=%.3f, runtime=%.1fs)\n",
+              object@method, n_blocks, n_fav,
+              object@h2_used, object@runtime_s))
+  if (n_blocks > 0L) {
+    show_n <- min(10L, n_blocks)
+    cat(sprintf("  Top %d blocks:\n", show_n))
+    df <- data.frame(
+      block_id = object@block_id,
+      chrom = object@chrom,
+      start = object@start,
+      end = object@end,
+      n_variants = object@n_variants,
+      lgebv = object@lgebv,
+      block_variance = object@block_variance,
+      favorable = object@favorable,
+      stringsAsFactors = FALSE
+    )
+    ord <- order(-df$block_variance)
+    print(utils::head(df[ord, , drop = FALSE], show_n))
+  }
+  invisible(object)
+})
+
+setMethod("show", "IClassResult", function(object) {
+  cat(sprintf("IClassResult (n_envs=%d, n_factors=%d, n_clusters=%d, threshold=%.3f)\n",
+              object@n_envs, object@n_factors,
+              length(object@cluster_membership),
+              object@threshold))
+  if (length(object@cluster_membership) > 0L) {
+    cat("  Cluster membership:\n")
+    for (label in names(object@cluster_membership)) {
+      members <- object@cluster_membership[[label]]
+      cat(sprintf("    %-8s -> %s\n", label, paste(members, collapse = ", ")))
+    }
+  }
+  invisible(object)
+})
+
+# --- to_dataframe accessor -------------------------------------------
+
+#' Convert a result object to a per-row tibble / data.frame.
+#'
+#' @param x A result object (e.g., `LGEBVResult`, `IClassResult`).
+#' @return A tibble.
+#' @export
+#' @rdname to_dataframe
+setGeneric("to_dataframe", function(x) standardGeneric("to_dataframe"))
+
+#' @rdname to_dataframe
+setMethod("to_dataframe", "LGEBVResult", function(x) {
+  tibble::tibble(
+    block_id = x@block_id,
+    chrom = x@chrom,
+    start = x@start,
+    end = x@end,
+    n_variants = x@n_variants,
+    lgebv = x@lgebv,
+    block_variance = x@block_variance,
+    favorable = x@favorable
+  )
+})
+
+#' @rdname to_dataframe
+setMethod("to_dataframe", "IClassResult", function(x) {
+  tibble::tibble(
+    env_id = x@env_ids,
+    cluster_label = x@cluster_labels
+  )
+})

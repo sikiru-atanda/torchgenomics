@@ -6,7 +6,7 @@
 \alias{rTorchGenomics-package}
 \title{rTorchGenomics: GPU-Accelerated Statistical and Quantitative Genomics on PyTorch}
 \description{
-R interface to the TorchGenomics Python engine, covering GWAS, post-GWAS, polygenic scoring, LD analysis, imputation, multi-omics integration, and visualization. Provides 44 R functions (12 hand-crafted with polished S4 result objects + 31 auto-generated stubs + 1 plot helper) wrapping the full TorchGenomics CLI surface. Uses reticulate for in-process Python integration. The Python package torchgenomics (>= 0.4.0) is installed automatically via tg_install().
+R interface to the TorchGenomics Python engine, covering GWAS, post-GWAS, polygenic scoring, LD analysis, imputation, multi-omics integration, and visualization. Provides 51 R functions (13 hand-crafted tier-1 wrappers with polished S4 result objects + 32 auto-generated tier-2 stubs + 2 plot helpers + 4 install / bridge / codegen utilities) wrapping the full TorchGenomics CLI + post-GWAS surface, including the breeding-program haplotype workflow (tg_iclass + tg_lgebv + tg_ld_blocks(tolerance=) added in 0.4.1). Uses reticulate for in-process Python integration. The Python package torchgenomics (>= 0.4.0) is installed automatically via tg_install().
 }
 \seealso{
 Useful links:

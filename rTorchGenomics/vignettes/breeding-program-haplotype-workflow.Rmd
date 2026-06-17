@@ -1,0 +1,162 @@
+---
+title: "Breeding-program haplotype workflow (iClass + LGEBV)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Breeding-program haplotype workflow (iClass + LGEBV)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, comment = "#>")
+```
+
+# Barley-style end-to-end workflow
+
+This vignette walks through a compact breeding-program haplotype
+analysis modeled on the Pandit et al. (2026, *Theoretical and Applied
+Genetics*) barley leaf-rust pipeline. It chains three R wrappers
+introduced in `rTorchGenomics` 0.4.1:
+
+1. **`tg_iclass()`** — clusters environments by FA-loading polarity
+   (Smith et al. 2015 / 2021).
+2. **`tg_ld_blocks(method = "r2", tolerance = ...)`** — sliding-window
+   haplo-block partition with the new SelectionTools-style `tolerance`
+   knob (Wittenburg et al. 2024).
+3. **`tg_lgebv()`** — per-block sum of rrBLUP marker effects with a
+   sign-based favorable / unfavorable label (Endelman 2011).
+
+```{r}
+library(rTorchGenomics)
+
+# One-time setup if you haven't already done it. Idempotent.
+tg_install()
+
+bed   <- system.file("extdata", "tiny.bed", package = "rTorchGenomics")
+pheno <- system.file("extdata", "tiny_pheno.tsv", package = "rTorchGenomics")
+```
+
+## 1. iClass: cluster environments by FA-loading polarity
+
+In a real workflow, you would first fit a multi-environment LMM with
+`tg_met_scan(... vg_structure = "fa(k)")` and recover the rotated
+factor-analytic loading matrix via the Python side's
+`MultiEnvLMM.fa_loadings(null_fit)`. For this vignette we simulate the
+output: a 5-environment, 2-factor loading matrix.
+
+```{r}
+Lambda <- matrix(
+  c( 0.9,  0.4,    # E1 -> "PP"
+     0.8,  0.3,    # E2 -> "PP"
+     0.7, -0.2,    # E3 -> "PN"
+    -0.6,  0.5,    # E4 -> "NP"
+    -0.5,  0.4),   # E5 -> "NP"
+  nrow = 5, ncol = 2, byrow = TRUE,
+  dimnames = list(paste0("E", 1:5), c("F1", "F2"))
+)
+
+iclass_result <- tg_iclass(Lambda)
+print(iclass_result)
+#> IClassResult (n_envs=5, n_factors=2, n_clusters=3, threshold=0.000)
+#>   Cluster membership:
+#>     PP       -> E1, E2
+#>     PN       -> E3
+#>     NP       -> E4, E5
+```
+
+Environments inside one iClass cluster are expected to be highly
+positively genetically correlated; you would now subset your downstream
+analyses (BLUE computation, haplo-block scoring) per cluster.
+
+## 2. Haplo-blocks with the new `tolerance` parameter
+
+Run `tg_ld_blocks()` with `method = "r2"` and `tolerance = 2`. With
+`tolerance > 0`, up to 2 consecutive weakly linked markers are
+permitted inside an otherwise tight block, which often produces
+larger, more biologically meaningful blocks than the strict `r2`-greedy
+default.
+
+```{r}
+blocks_run <- tg_ld_blocks(
+  genotype     = bed,
+  method       = "r2",
+  r2_threshold = 0.7,
+  tolerance    = 2,
+  output       = tempfile("ldb_")
+)
+print(blocks_run)
+#> LDBlocksRun (method=r2, n_blocks=..., median_size=...kb, runtime=...s)
+```
+
+## 3. LGEBV per haplo-block
+
+The LGEBV wrapper consumes the haplo-block partition from step 2 and a
+pre-computed BLUE vector (one trait value per genotype). For the
+vignette we use the tiny phenotype table directly, but in production
+BLUEs would come from an upstream ASReml-R or `tg_met_scan` fit per
+iClass cluster.
+
+```{r}
+y <- read.table(pheno, header = TRUE, sep = "\t")$y
+
+lgebv_result <- tg_lgebv(
+  y                    = y,
+  genotype             = bed,
+  blocks               = blocks_run,
+  h2                   = NULL,         # REML-estimate
+  favorable_direction  = "negative",   # resistance trait
+  standardize_G        = TRUE
+)
+print(lgebv_result)
+```
+
+## 4. Inspect favorable haplo-blocks
+
+```{r}
+to_dataframe(lgebv_result)
+#> # A tibble: ... x 8
+#>   block_id chrom  start    end n_variants    lgebv block_variance favorable
+#>   <chr>    <chr>  <int>  <int>      <int>    <dbl>          <dbl> <lgl>
+#> 1 block_0  1        100    300          5    -0.42           0.21 TRUE
+#> 2 block_1  1        500    900          6     0.31           0.15 FALSE
+#> 3 block_2  2        100    400          4    -0.18           0.08 TRUE
+```
+
+The `favorable` column flips when you switch `favorable_direction`:
+- `"negative"` (default) — resistance / disease-severity traits where
+  lower trait value is better.
+- `"positive"` — yield-style traits where higher is better.
+
+## Composing the three wrappers
+
+The full breeding-program workflow is:
+
+```r
+# 1. Group environments by FA-loading polarity:
+iclass_result <- tg_iclass(Lambda)
+
+# 2. For each iClass cluster, compute BLUEs (upstream) and partition
+#    the genome into haplo-blocks:
+blocks_run <- tg_ld_blocks(
+  genotype = bed, method = "r2",
+  r2_threshold = 0.7, tolerance = 2
+)
+
+# 3. Score each block within the cluster:
+lgebv_result <- tg_lgebv(
+  y = blue_vector,
+  genotype = bed,
+  blocks = blocks_run,
+  favorable_direction = "negative"
+)
+```
+
+## References
+
+- Smith AB *et al.* (2015) *Theoretical and Applied Genetics* 128:55-72.
+- Smith AB & Cullis BR (2018) *Euphytica* 214:143.
+- Smith AB *et al.* (2021) *Frontiers in Plant Science* 12:737462.
+- Endelman JB (2011) *The Plant Genome* 4(3):250-255.
+- Bernardo R (2014) *Crop Science* 54(1):68-75.
+- Wittenburg D *et al.* (2024) *Theoretical and Applied Genetics* (SelectionTools tolerance).
+- Pandit *et al.* (2026) *Theoretical and Applied Genetics* — barley leaf rust LGEBV application.
