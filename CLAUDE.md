@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TorchGenomics** (renamed from `torchgwas` in v0.4.0) is a GPU-accelerated PyTorch engine for statistical and quantitative genomics. It covers GWAS, post-GWAS, polygenic scoring, LD analysis, imputation, multi-omics integration, visualization, and annotation — a single `pip install`. It replicates GEMMA / GAPIT / GWASpoly to the 4th decimal on shared benchmarks. Diploid and polyploid.
 
-**Status**: Active development. Version 0.4.0 (Alpha). 3,071 tests pass, 417 skipped. V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions through Phase 56.
+**Status**: Active development. Version 0.4.0 (Alpha). 3,396 tests pass, 289 skipped (TORCHGENOMICS_DISABLE_NATIVE=1; 3,685 collected). V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions through Phase 56.
 
-**v0.4.0 (current branch — 2026-06-02):** Rename `torchgwas` → `torchgenomics`. New `torchgenomics.api` one-call facade (12 tier-1 workflows: `tg.lmm_scan`, `tg.glm_scan`, `tg.pgs_fit`, `tg.ld_blocks`, ...). New `torchgenomics-mcp` MCP server publishing 13 tools over stdio (`pip install torchgenomics[mcp]`). Legacy `torchgwas` package, CLI binary, and `TORCHGWAS_*` env vars stay live as a deprecation shim through the v0.x series.
+**v0.4.0 (current branch — 2026-06-02):** Rename `torchgwas` → `torchgenomics`. New `torchgenomics.api` one-call facade (13 tier-1 workflows = 13 MCP tools, plus 11 result classes: `tg.lmm_scan`, `tg.glm_scan`, `tg.pgs_fit`, `tg.ld_blocks`, ...). New `torchgenomics-mcp` MCP server publishing 13 tools over stdio (`pip install torchgenomics[mcp]`). Legacy `torchgwas` package, CLI binary, and `TORCHGWAS_*` env vars stay live as a deprecation shim through the v0.x series.
 
-**Post-V1 maturation (v0.3.0–v0.3.10, 2026-04-30 to 2026-06-01):** Multi-pillar validation campaign + streaming/efficiency campaign + native C++ accelerator campaign. 15 V1 production fixes shipped from validation work. 36 of 40 CLI scan subcommands now stream chunks at biobank scale (40 TB → 1-4 GB peak). Reference equivalence validated against 11 external tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, R `mediation`). Five CI workflows wire all four pillars' regression nets + native-kernel wall-time gate. See `docs/superpowers/SESSION_HANDOFF.md` for the full state.
+**Post-V1 maturation (v0.3.0–v0.3.10, 2026-04-30 to 2026-06-01) + surface audit (2026-06-17):** Multi-pillar validation campaign + streaming/efficiency campaign + native C++ accelerator campaign. **16 V1 production fixes** shipped from validation work (13 original + 3 from the 2026-06-17 surface audit: tetraploid LD block detection, `api.pgs_fit` device-mismatch, `cc_graph` tag-SNP polyploid MAF). 36 of 40 CLI scan subcommands stream chunks at biobank scale (40 TB → 1-4 GB peak). Reference equivalence validated against 11 external tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, R `mediation`). 5 pillar CI workflows (`ci` / `cli-matrix` / `external` / `reproducibility` / `perf`) wire all four pillars' regression nets + native-kernel wall-time gate; 6 additional workflows handle infra/packaging (11 `.yml` total). See `docs/superpowers/SESSION_HANDOFF.md` for the full state.
 
 ### Three audiences, one engine
 
@@ -43,7 +43,7 @@ Data flow: **format detection → imputation/phasing → QC/preprocessing → ge
 - **`torchgenomics.multiomics`** — GRM-corrected causal mediation (`mediate_lmm`, `scan_mediation`, `mediate_gene_set`), multi-kernel heritability (`mkernel_h2`), eigenMT FDR, coloc prefilter. GPU-batched scan.
 - **`torchgenomics.viz`** — Manhattan (linear + Circos), QQ, Miami, Haploview LD triangle, trumpet plot. Matplotlib-only.
 - **`torchgenomics.annotate`** — NCBI gene annotation (Datasets v2 + E-utilities); crop name or assembly accession → genes in ±window with GO terms and optional orthologs. Network-required.
-- **`torchgenomics._native`** — 24 pybind11 C++ extensions (optional build) + device-aware dispatcher `_dispatch.select_path`. Dedicated torch-GPU kernels for imputation. OpenMP parallelization where it pays off. See `csrc/`, `tests/test_native_*.py`, `bench/native_speedups.md`.
+- **`torchgenomics._native`** — 31 pybind11 C++ extensions (optional build; all `optional=True` in `setup.py`) + device-aware dispatcher `_dispatch.select_path`. Dedicated torch-GPU kernels for imputation. OpenMP parallelization where it pays off. See `csrc/`, `tests/test_native_*.py`, `bench/native_speedups.md`.
 
 ## Key Design Decisions
 
@@ -65,7 +65,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 40 as of 2026-05-26 (adds `combine-gwas-twas` for gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods; preceded by 39 with `twas-scan`. See CLI Commands section, plus `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan` which are wired but may not appear in the examples below).
+- **CLI subcommand count**: 43 as of 2026-06-17 (verified via `python -m torchgenomics --help`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
 
 ## Phase Index
 
@@ -92,7 +92,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Phase 38** — Random Regression LMM (Legendre / B-spline); SpatioTemporalRR; `rr-scan` CLI
 - **Phase 39** — Random Regression × Multi-Environment LMM; 9 RR-aware contrast tests; `rr-met-scan` CLI
 - **Phase 40** — Polygenic Score construction (C+T, LDpred2-Inf/Grid/Auto, PRS-CS); `pgs-fit` / `pgs-score` CLI
-- **Phases 41a–41af** — Native C++ accelerators (24 pybind11 extensions, OpenMP, dedicated torch-GPU kernels, device-aware dispatcher, realistic-size benchmark suite). Speedups range from 1.5× to >12000×. Sources in `csrc/`, tests in `tests/test_native_*.py`, numbers in `bench/native_speedups.md`. Full per-sub-phase detail: `git log --grep="Phase 41"`.
+- **Phases 41a–41af** — Native C++ accelerators (31 pybind11 extensions as of 2026-06-17, OpenMP, dedicated torch-GPU kernels, device-aware dispatcher, realistic-size benchmark suite). Speedups range from 1.5× to >12000×. Sources in `csrc/`, tests in `tests/test_native_*.py`, numbers in `bench/native_speedups.md`. Full per-sub-phase detail: `git log --grep="Phase 41"`.
 - **Phase 42** — S-LDSC (partitioned; Finucane 2015), hyprcoloc (Foley 2021), classical two-trait coloc (Giambartolomei 2014)
 - **Phase 43** — GWAS visualization (`torchgenomics.viz`: Manhattan / Circos / Miami / QQ / Haploview); per-marker PVE
 - **Phase 44** — Mendelian Randomization (IVW / Egger / weighted median / MR-PRESSO); gene-set enrichment (MAGMA-style); fine-mapping utilities; PGS validation; multi-ancestry meta-analysis (MR-MEGA / MANTRA)
@@ -169,7 +169,7 @@ python3 validation/external/plink2/compare.py
 
 Every external-tool harness shell script sources `validation/external/_lib/preflight.sh` and asserts disk + RAM headroom before any download / install / run. This is the user's hard rule (spec §5.3) — no partial executions on insufficient resources.
 
-### Cumulative campaign findings: 13 V1 fix-now production fixes
+### Cumulative campaign findings: 16 V1 fix-now production fixes
 
 **Pillar A (8):** 3 unimplemented model stubs (`models.lmm_single`, `lmm_multi`, `lmm_multi_fit`), 1 unimplemented stats helper (`stats.calibrate.compare_pvalues`), 1 unimplemented optim solver (`optim.fisher_scoring.fisher_scoring_reml`), 1 zarr v3 API compat (`io.convert._write_zarr`), 2 silent shape-truncation guards in postgwas (`_ld_scores.compute_ld_scores`, `_clump.ld_clump`).
 
@@ -177,7 +177,9 @@ Every external-tool harness shell script sources `validation/external/_lib/prefl
 
 **Pillar C (4):** `cli.glmm-scan` / `me-glmm-scan` / `survival-scan` crashed on a non-existent `linalg.grm` import (now `linalg.kinship.grm_vanraden`); `_apply_correction_and_save` couldn't handle multi-output result schemas (gxe / mvlmm / me-glmm); `cli.impute` crashed on reader-chunk tuple unpacking; `cli.lmm-scan --device cuda` left Y/X0 on CPU when K was on CUDA.
 
-All 13 findings have separate fix commits + regression tests + ledger rows.
+**Surface audit (2026-06-17) (3):** (i) `ld.compute_pairwise_ld` MAF filter hardcoded diploid `/ 2.0` — tetraploid block detection silently returned 0 blocks on 28/50 random seeds. Fix plumbs `ploidy` through `detect_blocks` (commit `43756ec`). (ii) `ld._blocks_literature.detect_blocks_cc_graph` hardcoded the same `/ 2.0` for tag-SNP MAF — polyploid users got nonsensical reported `tag_snp_maf`. Fix at commit `53e3249`. (iii) `api.pgs_fit` (every PGS method's `.fit()`) crashed with `RuntimeError: indices should be either on cpu or on the same device as the indexed tensor` when `idx` (built CPU-side in `_harmonize`) was used to index `ld_ref.block_index` (moved to CUDA via `load_ld_reference`). Fix normalizes `idx` to `ld_ref.af.device` at function entry (commit `76a8883`).
+
+All 16 findings have separate fix commits + regression tests + ledger rows.
 
 ## CLI Commands
 
