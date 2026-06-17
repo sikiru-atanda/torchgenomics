@@ -384,3 +384,110 @@ class TestIntegration:
             method="four_gamete", haplotypes=H,
         )
         assert isinstance(blocks, list)
+
+
+# ── Polyploid MAF-filter regression ─────────────────────────────────
+
+class TestPloidyAwareMAFFilter:
+    """Regression for the diploid-hardcoded MAF filter in
+    ``compute_pairwise_ld`` (formerly ``af = G.mean / 2.0``).
+
+    For tetraploid+ dosages in ``[0, ploidy]`` the legacy formula gave
+    ``af`` values outside ``[0, 1]``, so ``min(af, 1-af)`` produced
+    nonsense and most common polyploid SNPs were silently dropped by
+    the ``maf_min=0.05`` filter — which collapsed downstream r²/Gabriel
+    block detection to zero blocks despite real LD structure.
+    """
+
+    def _make_tetraploid_block(self, n_samples=150, n_snps=8, noise=0.05,
+                               seed=0):
+        torch.manual_seed(seed)
+        founder = torch.randint(0, 5, (n_samples,), dtype=torch.float64)
+        cols = []
+        for _ in range(n_snps):
+            snp = founder.clone()
+            flip = torch.rand(n_samples) < noise
+            snp[flip] = torch.randint(
+                0, 5, (flip.sum().item(),), dtype=torch.float64
+            )
+            cols.append(snp)
+        G = torch.stack(cols, dim=1)
+        pos = list(range(1000, 1000 + 500 * n_snps, 500))
+        chrs = ["1"] * n_snps
+        ids = [f"snp{j}" for j in range(n_snps)]
+        return G, pos, chrs, ids
+
+    def test_tetraploid_pairwise_ld_keeps_common_snps(self):
+        """With ploidy=4, common tetraploid SNPs (mean dosage ≈ 2) are
+        kept by the MAF filter, not dropped."""
+        G, pos, chrs, _ = self._make_tetraploid_block(seed=0)
+
+        # ploidy=2 (the broken default): af = mean/2 can exceed 1, so
+        # many SNPs get a nonsensical "maf" below the cutoff and are
+        # dropped — typically yielding zero or very few pairs.
+        pld_broken = compute_pairwise_ld(
+            G, pos, chrs, max_kb=10.0, maf_min=0.05, ploidy=2,
+        )
+        # ploidy=4 (correct): all common SNPs survive.
+        pld_correct = compute_pairwise_ld(
+            G, pos, chrs, max_kb=10.0, maf_min=0.05, ploidy=4,
+        )
+        n_pairs_max = G.shape[1] * (G.shape[1] - 1) // 2
+
+        # Sanity: the correct filter keeps every adjacent pair (max_kb
+        # spans the whole block) and r² is high across the block.
+        assert len(pld_correct.idx_i) == n_pairs_max, (
+            "ploidy=4 should not drop common tetraploid SNPs"
+        )
+        assert pld_correct.r2.mean().item() > 0.5, (
+            "founder-copied tetraploid SNPs should be highly correlated"
+        )
+        # The broken default should keep strictly fewer pairs.
+        assert len(pld_broken.idx_i) < len(pld_correct.idx_i), (
+            "diploid MAF filter must drop some common tetraploid SNPs "
+            f"(broken kept {len(pld_broken.idx_i)}, "
+            f"correct kept {len(pld_correct.idx_i)})"
+        )
+
+    def test_tetraploid_r2_blocks_recovered_with_ploidy(self):
+        """detect_blocks(..., method='r2', ploidy=4) finds the synthetic
+        block; without ploidy it under-counts."""
+        G, pos, chrs, ids = self._make_tetraploid_block(
+            n_samples=200, n_snps=10, noise=0.03, seed=1
+        )
+        blocks_correct = detect_blocks(
+            G, pos, chrs, ids, method="r2",
+            r2_threshold=0.2, max_kb=10.0, ploidy=4,
+        )
+        # The whole synthetic block of 10 SNPs should be recovered.
+        assert len(blocks_correct) >= 1
+        assert max(b.n_variants for b in blocks_correct) >= 5, (
+            "Expected to recover a multi-SNP tetraploid block, got "
+            f"{[b.n_variants for b in blocks_correct]}"
+        )
+
+    def test_ploidy_zero_rejected(self):
+        """Sanity: nonsensical ploidy values raise."""
+        G = torch.randint(0, 3, (10, 5), dtype=torch.float64)
+        pos = list(range(1000, 6000, 1000))
+        chrs = ["1"] * 5
+        with pytest.raises(ValueError, match="ploidy must be"):
+            compute_pairwise_ld(G, pos, chrs, ploidy=0)
+
+    def test_diploid_default_unchanged(self):
+        """Passing ploidy=2 (the default) reproduces the legacy diploid
+        MAF behavior exactly — no behavior change for diploid users."""
+        torch.manual_seed(7)
+        n, m = 100, 10
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        pos = list(range(1000, 1000 + 500 * m, 500))
+        chrs = ["1"] * m
+
+        pld_default = compute_pairwise_ld(
+            G, pos, chrs, max_kb=10.0, maf_min=0.05,
+        )
+        pld_explicit = compute_pairwise_ld(
+            G, pos, chrs, max_kb=10.0, maf_min=0.05, ploidy=2,
+        )
+        assert len(pld_default.idx_i) == len(pld_explicit.idx_i)
+        assert torch.allclose(pld_default.r2, pld_explicit.r2)
