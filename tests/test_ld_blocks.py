@@ -491,3 +491,72 @@ class TestPloidyAwareMAFFilter:
         )
         assert len(pld_default.idx_i) == len(pld_explicit.idx_i)
         assert torch.allclose(pld_default.r2, pld_explicit.r2)
+
+
+class TestCcGraphPloidyAwareTagMAF:
+    """Regression: cc_graph reported wrong tag_snp_maf on polyploid data
+    because ``freq = G.mean / 2.0`` was hard-coded.  With ``ploidy=K``
+    the tag-SNP MAF should reflect the true polyploid allele frequency.
+    """
+
+    def test_tetraploid_tag_snp_maf_in_valid_range(self):
+        """All tetraploid tag-SNP MAFs must lie in [0, 0.5]."""
+        import numpy as np
+        import torch
+        from torchgenomics.ld import detect_blocks
+
+        rng = np.random.default_rng(2026)
+        n, m = 80, 24
+        G = np.zeros((n, m), dtype=np.float64)
+        # 3 LD blocks of 8 SNPs each, tetraploid dosage in [0, 4]
+        for b in range(3):
+            founder = rng.binomial(1, rng.uniform(0.3, 0.7), size=(n, 4))
+            for j in range(b * 8, (b + 1) * 8):
+                flip = rng.binomial(1, 0.05, size=(n, 4))
+                G[:, j] = (founder * (1 - flip) + (1 - founder) * flip).sum(axis=1)
+        G_t = torch.tensor(G)
+        vpos = list(range(0, m * 1000, 1000))
+        vchr = ["1"] * m
+
+        blocks = detect_blocks(
+            G_t, vpos, vchr, method="cc_graph",
+            r2_threshold=0.3, max_kb=200.0, ploidy=4,
+        )
+        # Tag-SNP MAFs must all be in [0, 0.5]
+        for b in blocks:
+            if "tag_snp_maf" in b.metadata:
+                m_maf = b.metadata["tag_snp_maf"]
+                assert 0.0 <= m_maf <= 0.5, (
+                    f"tag_snp_maf={m_maf} out of [0, 0.5] for tetraploid block"
+                )
+
+    def test_diploid_default_unchanged(self):
+        """Diploid path (default ploidy=2) is bit-identical to legacy."""
+        import numpy as np
+        import torch
+        from torchgenomics.ld import detect_blocks
+
+        rng = np.random.default_rng(2027)
+        n, m = 80, 24
+        G = torch.tensor(rng.binomial(2, 0.3, size=(n, m)).astype(np.float64))
+        vpos = list(range(0, m * 1000, 1000))
+        vchr = ["1"] * m
+        blocks_default = detect_blocks(G, vpos, vchr, method="cc_graph", max_kb=200.0)
+        blocks_explicit = detect_blocks(G, vpos, vchr, method="cc_graph", max_kb=200.0, ploidy=2)
+        # Same block partitioning
+        assert len(blocks_default) == len(blocks_explicit)
+        for a, b in zip(blocks_default, blocks_explicit):
+            assert a.variant_indices == b.variant_indices
+
+    def test_cc_graph_polyploid_invalid_ploidy_raises(self):
+        """ploidy < 1 must raise ValueError."""
+        import numpy as np
+        import torch
+        from torchgenomics.ld import detect_blocks
+
+        G = torch.tensor(np.zeros((10, 5), dtype=np.float64))
+        vpos = [0, 1000, 2000, 3000, 4000]
+        vchr = ["1"] * 5
+        import pytest as _pt
+        with _pt.raises(ValueError, match="ploidy must be >= 1"):
+            detect_blocks(G, vpos, vchr, method="cc_graph", ploidy=0)

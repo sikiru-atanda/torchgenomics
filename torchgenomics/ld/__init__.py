@@ -294,7 +294,7 @@ def detect_blocks(
     if method == "cc_graph":
         return detect_blocks_cc_graph(
             G, variant_pos, variant_chr, variant_ids,
-            max_kb=max_kb, device=device, **filtered_kwargs,
+            max_kb=max_kb, device=device, ploidy=ploidy, **filtered_kwargs,
         )
 
     if method == "dp_optimize":
