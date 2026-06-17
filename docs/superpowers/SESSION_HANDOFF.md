@@ -1,8 +1,100 @@
 # Validation + Efficiency Campaign — Session Handoff
 
-**Date this handoff was last refreshed:** 2026-05-05 (post v0.3.8, post README + memory refresh)
-**Worktree:** `/home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/validation-pillar-A-coverage`
-**Active branch:** `efficiency/streaming-scan-audit` (all earlier branches merged into it via the cleanup-and-ldsc-irwls → efficiency progression)
+**Date this handoff was last refreshed:** 2026-06-17 (post v0.4.0 + post surface audit + post literature-gap closure)
+**Active worktree:** `/home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/torchgenomics-v0.4.0`
+**Active branch:** `fix/v040-ci-cleanup` at `70265d3` — 8 commits ahead of `origin/master` (PR #19 open)
+
+---
+
+## 2026-06-17 update — read this first
+
+The validation + streaming campaigns described in the rest of this file are **closed and merged**. v0.4.0 (rebrand + api facade + MCP server + rTorchGenomics R wrapper) is on `origin/master` at `e94187c`. The post-2026-06-01 work has been:
+
+1. **CI cleanup** for PR #18 — ruff + mkdocs --strict + test_smoke + compat-shim env-strip fixes (5 commits: `879902b`–`387319a`).
+2. **Surface audit** — empirically verifying every claim in CLAUDE.md against actual running code.
+3. **Literature-gap closure** — three feature additions motivated by the Pandit et al. 2026 *Theoretical and Applied Genetics* barley leaf rust paper (the user's reference for breeding-program multi-environment haplotype workflows).
+
+### Current branch state
+
+| Remote | Branch | Tip | Contains |
+|---|---|---|---|
+| origin | `master` | `e94187c` | v0.4.0 rebrand + rTorchGenomics (PR #18 merged 2026-06-03) |
+| origin | `fix/v040-ci-cleanup` (PR #19) | `70265d3` | 8 commits: r2 tolerance, iclass, polyploid LD fix ×2, pgs device fix, lgebv, CLAUDE.md + MCP test refresh |
+| origin | `feat/na1-susie-streaming` | — | NA1 research scaffold (still pending) |
+| origin | `feat/na2-gpu-ci` | — | NA2 GPU CI scaffold (still pending) |
+| origin | `feat/na3-ukb-harness` | — | NA3 UKB validation scaffold (still pending) |
+| origin | `modernization/specs` (PR #1) | — | X-chrom + Phases 57/58/59 design specs |
+| pulsesmartlab | `feat/torchgenomics-v0.4.0` (PR #18) | `d1e94b6` | 6 commits cherry-picked (lgebv + the MCP-count fix still pending on this branch) |
+
+### Surface audit (2026-06-17) — what it found and fixed
+
+Five parallel agents verified every claim from CLAUDE.md against actual running code:
+
+| Verified ✓ | Drift caught |
+|---|---|
+| 13/13 LD-block methods run empirically on a synthetic fixture | Tests: 3,071 → **3,406** pass / 417 → 289 skip (`TORCHGENOMICS_DISABLE_NATIVE=1`) |
+| 9/9 haplotype-GWAS surfaces (4 main + 5 novel) | Native extensions: 24 → **31** in setup.py |
+| 43/43 CLI subcommands have `--help`; 11/11 smoke-runs PASS | CLI subcommands: 40 → **43** |
+| 14/14 MCP tools register with valid JSON schemas | api tier-1: 12 → **14** = MCP tool count |
+| 11/11 external-tool harnesses complete (install / fetch / run / compare) | V1 fix-now production fixes: 13 → **16** |
+| All 4 audit reports landed in `/tmp/tg_audit_*_REPORT.md` | CI workflows: 11 `.yml` total = 5 pillar + 6 infra |
+
+CLAUDE.md refreshed in `f77c962` + `70265d3`.
+
+### 3 V1 fix-now findings from the audit (all fixed, tested, pushed)
+
+1. **`ld.compute_pairwise_ld` MAF filter assumed diploid** — commit `43756ec`. Hardcoded `af = G.mean / 2.0` made tetraploid common SNPs land with AF > 1, dropping them in the MAF filter. Tetraploid r2/gabriel/spine returned 0 blocks on 28/50 random seeds. Fix plumbs `ploidy` through `detect_blocks → compute_pairwise_ld`. Regression: `TestPloidyAwareMAFFilter` (4 tests).
+
+2. **`ld._blocks_literature.detect_blocks_cc_graph` had the same hardcode for tag-SNP MAF** — commit `53e3249`. Used for `metadata["tag_snp_maf"]`, so polyploid users got nonsensical tag-SNP MAFs (often > 0.5 or negative). Fix at the same shape. Regression: `TestCcGraphPloidyAwareTagMAF` (3 tests).
+
+3. **`api.pgs_fit` device-mismatch crash on CUDA** — commit `76a8883`. PyTorch indexing asymmetry: CPU `idx` from `_harmonize` indexed CUDA `new_in_block` derived from `ld_ref.block_index` (moved to CUDA by `load_ld_reference(device="cuda")`). Fix normalizes `idx` to `ld_ref.af.device` at function entry. Affects ALL PGS methods (LDpred2-Inf/Grid/Auto, PRS-CS, C+T) via `.fit() → _harmonize → _ld_reference_subset`. Regression: `tests/test_pgs_score_device_routing.py` (6 tests).
+
+### 3 literature-driven feature additions (motivated by Pandit et al. 2026)
+
+The paper uses a barley breeding pipeline (ASReml-R MET FA(3) → iClass G×E clustering → SelectionTools haplo-blocks → LGEBV per block → favorable-haplotype stacking) that exposed three gaps between TorchGenomics and the breeding-program workflow:
+
+1. **`detect_blocks_r2(..., tolerance=N)`** — SelectionTools-style tolerance parameter (commit `5811da3`). Adjacent r²-pair walker now tolerates up to `N` consecutive below-threshold pairs before closing a block, instead of splitting on the first failure. CLI: `ld-blocks --method r2 --r2-threshold 0.7 --tolerance 2` matches the breeding-community standard. Default `tolerance=0` preserves legacy behavior. Regression: `tests/test_ld_blocks_r2.py` (6 tests).
+
+2. **`torchgenomics.postgwas.iclass()`** — G×E classification on FA loadings (Smith et al. 2015/2021; commit `b040fbf`). Consumes the rotated FA loading matrix from `met-scan --vg-structure "fa(k)"` (via `MultiEnvLMM.fa_loadings(null_fit)`) and clusters environments by polarity pattern (PNN, PNP, PPN, etc.). Returns `IClassResult` with cluster labels, membership dict, polarity matrix, and an optional `within_cluster_correlation()` helper. Regression: `tests/test_postgwas_iclass.py` (8 tests).
+
+3. **`torchgenomics.api.lgebv()`** — Local GEBV per haplo-block (Endelman 2011 rrBLUP; commit `fb4b957`). Consumes pre-computed BLUEs (user's external phenotypic-analysis output — TG doesn't compute them), fits rrBLUP via the existing `SingleTraitLMM.fit_null`, sums per-marker effects within each haplo-block, returns `LGEBVResult` with per-block effect, variance, and favorable/unfavorable sign (default `favorable_direction="negative"` = resistance-trait convention). Composes with both `LDBlock` and `HaplotypeBlock` inputs via duck-typing on `.variant_indices`. Registered as the 14th MCP tool `tg_lgebv` (category `pgs`). Regression: `tests/test_api_lgebv.py` (10 tests).
+
+**Gap NOT closed (out of scope per user 2026-06-17):** BLUE mode for `met-scan` (genotype-as-fixed extraction). The user runs MET phenotypic analysis externally (ASReml-R / sommer); TG consumes pre-computed BLUEs. Future agents: do not re-open this gap without explicit user request.
+
+### Audit gap documented but NOT changed
+
+**8 hardcoded `/ 2.0` divisors in scan-model modules** (`farmcpu.py` ×2, `blink.py` ×2, `single_trait_lmm.py`, `multi_trait_lmm.py`, `multi_kernel_lmm.py`, `rr_lmm.py`, `threshold_linear.py`). Each annotated `# diploid convention`. These are likely intentional — the polyploid-supporting scan path is `poly-scan` (GWASpoly-equivalent gene-action models), not these diploid LMM scans. If diploid scans are ever wired to accept polyploid input, those will need the same `ploidy` plumbing. Logged in `53e3249`'s commit body.
+
+### CI billing status (both remotes — as of 2026-06-17)
+
+Both `origin` (sikiru-atanda user account) and `pulsesmartlab-innovations` (org) have **GitHub Actions billing paused since 2026-06-05**. Every hosted-runner job dies in 2-5 seconds with:
+
+> "The job was not started because recent account payments have failed or your spending limit needs to be increased."
+
+Self-hosted GPU runners still work — confirmed by GPU tests run 2026-06-10 and 2026-06-16. PR #18 (pulsesmartlab), #19 (origin), and #1 (modernization/specs, both remotes) all blocked at the billing layer. Fix paths: resolve payment method, raise spending limit above $0, or flip repos public (free unlimited Actions for OSS).
+
+### NA1 / NA2 / NA3 status (assigned 2026-05-06 — STILL PENDING)
+
+Unchanged since 2026-06-01. Branches are on origin awaiting user-led work.
+
+### How to pick up where this leaves off
+
+```bash
+cd /home/sikiru.atanda/Documents/GWAS_Expert/.claude/worktrees/torchgenomics-v0.4.0
+git status                         # clean; 2 untracked audit artifacts safe to delete
+git log --oneline -10              # see the 8-commit PR #19 stack
+cat CLAUDE.md                      # numbers current as of 2026-06-17
+```
+
+Natural next steps:
+- **(a)** Resolve CI billing → PR #19 validates via Actions
+- **(b)** Brainstorm NA1 SuSiE streaming (research-grade; needs user alignment)
+- **(c)** Document the 6 CLI subs missing example lines in CLAUDE.md: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`
+- **(d)** Mirror PR #19 commits to pulsesmartlab — `4f827db`+`d1e94b6` carry the first 6 commits but `fb4b957` (lgebv) and `70265d3` (MCP test fix) are origin-only as of this writing
+
+---
+
+## 2026-05-05 snapshot (historical — campaigns closed)
 
 > **CAMPAIGN COMPLETE — validation + efficiency saturated (2026-05-05).**
 >
