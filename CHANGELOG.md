@@ -2,6 +2,72 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+Surface audit + literature-gap closure (2026-06-17). Empirical re-verification
+of every claim in the project documentation, plus three feature additions
+motivated by the Pandit et al. 2026 *Theoretical and Applied Genetics* paper
+on barley leaf rust resistance (breeding-program multi-environment haplotype
+workflow). 8 commits on `fix/v040-ci-cleanup` (origin PR #19 / pulsesmartlab PR #18).
+
+### Added
+
+- **`torchgenomics.api.lgebv()` + `LGEBVResult`** — Local GEBV per haplo-block via
+  Endelman 2011 rrBLUP. Consumes pre-computed BLUEs (the function does NOT
+  compute them); pairs naturally with externally produced phenotypic-analysis
+  output (ASReml-R, `sommer`, etc.). Returns per-block effect, variance, and
+  favorable/unfavorable sign. Composes with both `LDBlock` (from `detect_blocks`)
+  and `HaplotypeBlock` (from `HaplotypeGWAS.construct_haplotypes`) inputs via
+  duck-typing on `.variant_indices`. Also registered as the 14th MCP tool
+  `tg_lgebv` (category `pgs`). 10 regression tests.
+- **`torchgenomics.postgwas.iclass()` + `IClassResult`** — G×E classification on
+  factor-analytic loadings (Smith et al. 2015 / 2021). Takes the rotated FA
+  loading matrix from `met-scan --vg-structure "fa(k)"` (via
+  `MultiEnvLMM.fa_loadings(null_fit)`) and clusters environments by polarity
+  pattern ("PNN", "PNP", "PPN", etc.). Optional `within_cluster_correlation()`
+  helper. 8 regression tests.
+- **`detect_blocks_r2(..., tolerance=N)` + CLI `--tolerance` flag** —
+  SelectionTools-style tolerance parameter. With `tolerance > 0`, the adjacent
+  r²-pair walker now allows up to `N` consecutive below-threshold pairs before
+  closing a block (the convention used in plant-breeding software). Default
+  `tolerance=0` keeps legacy behaviour bit-identical. 6 regression tests.
+
+### Fixed
+
+- **`ld.compute_pairwise_ld` polyploid MAF filter** — hardcoded `af = G.mean / 2.0`
+  assumed diploid. For tetraploid+ data with dosage in `[0, ploidy]`, common
+  SNPs landed with AF > 1 and got silently dropped by the MAF filter,
+  collapsing block detection (`r2`, `gabriel`, `spine`) to zero blocks on
+  28 of 50 random seeds. Fix plumbs `ploidy` through `detect_blocks →
+  compute_pairwise_ld`. 4 regression tests (`TestPloidyAwareMAFFilter`).
+- **`ld._blocks_literature.detect_blocks_cc_graph` polyploid tag-SNP MAF** — same
+  hardcode for the tag-SNP selection inside `cc_graph`. Polyploid users got
+  nonsensical reported `metadata["tag_snp_maf"]` (often > 0.5 or negative).
+  Fix at the same shape — `ploidy` argument, threaded through dispatcher.
+  3 regression tests.
+- **`api.pgs_fit` device-mismatch crash on CUDA** — `_harmonize` built `idx` on CPU
+  via `torch.tensor(...)`, but `_ld_reference_subset` used it to index
+  `ld_ref.block_index` after `load_ld_reference(device="cuda")` moved that
+  tensor onto the GPU. PyTorch indexing is asymmetric (CUDA-indexed-by-CPU
+  works; CPU-indexed-by-CUDA raises `RuntimeError: indices should be either
+  on cpu or on the same device`). The crash affected every PGS method
+  (LDpred2-Inf/Grid/Auto, PRS-CS, C+T) through `.fit() → _harmonize →
+  _ld_reference_subset`. Fix normalizes `idx` to `ld_ref.af.device` at
+  function entry. 6 regression tests in
+  `tests/test_pgs_score_device_routing.py`.
+
+### Audit notes (not changed in this release)
+
+- 8 hardcoded `/ 2.0` divisors in scan-model modules (`farmcpu.py`, `blink.py`,
+  `single_trait_lmm.py`, `multi_trait_lmm.py`, `multi_kernel_lmm.py`,
+  `rr_lmm.py`, `threshold_linear.py`) are annotated `# diploid convention`
+  and intentional — polyploid input goes through the dedicated `poly-scan`
+  CLI (GWASpoly-equivalent gene-action models), not these diploid LMM scans.
+- CI hosted-runner billing has been paused on both `origin` (sikiru-atanda
+  user account) and `pulsesmartlab-innovations` (org) since 2026-06-05.
+  This release's fixes are verified locally and via the self-hosted GPU
+  runner; full hosted-runner validation will happen when billing is resolved.
+
 ## [0.4.0] — 2026-06-02
 
 Rebrand and surface-expansion release. The package is renamed from
