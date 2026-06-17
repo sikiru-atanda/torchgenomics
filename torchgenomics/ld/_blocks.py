@@ -445,16 +445,61 @@ def detect_blocks_r2(
     r2_threshold: float = 0.2,
     min_block_snps: int = 2,
     n_snps: int = 0,
+    tolerance: int = 0,
 ) -> list[LDBlock]:
     """Detect blocks using an r-squared threshold on adjacent pairs.
 
-    A block boundary is placed where the average r-squared between
-    adjacent SNPs drops below the threshold.
+    A block boundary is placed when the adjacent-pair r² between
+    successive SNPs drops below ``r2_threshold``. By default
+    (``tolerance=0``) the block closes on the very first below-threshold
+    pair (legacy behavior). When ``tolerance>0`` the walker tolerates up
+    to ``tolerance`` consecutive below-threshold adjacent pairs before
+    closing the block, and the block is closed only after
+    ``tolerance + 1`` consecutive failures. A subsequent pair that meets
+    or exceeds ``r2_threshold`` resets the failure counter.
+
+    This matches the SelectionTools R package
+    (https://github.com/PBGLMichaelHall/SelectionTools) ``hbd.bfile``
+    haplo-block detector, which the plant-breeding community uses with
+    ``r2=0.7`` and ``t=2`` (e.g., Pandit et al., *Theoretical and
+    Applied Genetics* 2026, barley leaf rust). The tolerance is the
+    parameter that lets adjacent low-r² gaps inside an otherwise
+    high-LD region — common with imputed dosages or genotyping artifacts
+    — be absorbed into the surrounding block rather than splitting it.
+
+    Parameters
+    ----------
+    pld : PairwiseLD
+        Pre-computed pairwise LD statistics.
+    variant_pos : list[int]
+        Base-pair positions (genome-wide, per chromosome).
+    variant_chr : list[str]
+        Chromosome label per variant.
+    variant_ids : list[str], optional
+        Variant IDs for block naming.
+    r2_threshold : float
+        Minimum r² for adjacent SNPs to stay in the same block.
+    min_block_snps : int
+        Minimum block size in SNPs to emit a block.
+    n_snps : int
+        Number of variants (0 = infer from ``variant_pos``).
+    tolerance : int, default 0
+        Number of consecutive below-threshold adjacent pairs to absorb
+        before closing a block. ``tolerance=0`` reproduces the strict
+        legacy behavior. ``tolerance=2`` is the SelectionTools default.
+
+    Returns
+    -------
+    list[LDBlock]
     """
     if n_snps == 0:
         n_snps = len(variant_pos)
     if n_snps < 2:
         return []
+    if tolerance < 0:
+        raise ValueError(
+            f"tolerance must be non-negative; got {tolerance}."
+        )
 
     # Build r2 lookup for adjacent pairs
     idx_i = pld.idx_i.cpu().tolist()
@@ -469,25 +514,55 @@ def detect_blocks_r2(
         r2_map[key] = r2_vals[k]
         dp_map[key] = dp_vals[k]
 
-    # Find breakpoints: adjacent pairs with r2 below threshold
+    # Find breakpoints: adjacent pairs with r2 below threshold.
+    # ``consec_fail`` is the running count of consecutive below-threshold
+    # adjacent pairs; the block closes only when this count exceeds
+    # ``tolerance`` (i.e. after tolerance + 1 consecutive failures).
     blocks = []
     block_start = 0
+    consec_fail = 0
 
     for i in range(n_snps - 1):
         key = (i, i + 1)
         adj_r2 = r2_map.get(key, 0.0)
         if adj_r2 < r2_threshold:
-            if i - block_start + 1 >= min_block_snps:
-                blocks.append(_make_block(
-                    block_start, i, variant_pos, variant_chr, variant_ids,
-                    method="r2", dp_map=dp_map, r2_map=r2_map,
-                ))
-            block_start = i + 1
+            consec_fail += 1
+            if consec_fail > tolerance:
+                # The terminating failure run spans adjacent pairs
+                # ``[i - consec_fail + 1, ..., i]``. The block ends at
+                # the LEFT endpoint of the first failing pair, which is
+                # SNP index ``i - consec_fail + 1``. The new block
+                # starts at the RIGHT endpoint of the last failing pair,
+                # which is SNP ``i + 1``. SNPs strictly between
+                # ``i - consec_fail + 2`` and ``i`` are interior to the
+                # gap and belong to neither block. For ``tolerance=0``
+                # (``consec_fail = 1``) this reduces to the legacy
+                # behavior: ``block_end = i`` and ``block_start = i+1``.
+                block_end = i - consec_fail + 1
+                if block_end >= block_start and (
+                    block_end - block_start + 1 >= min_block_snps
+                ):
+                    blocks.append(_make_block(
+                        block_start, block_end,
+                        variant_pos, variant_chr, variant_ids,
+                        method="r2", dp_map=dp_map, r2_map=r2_map,
+                    ))
+                block_start = i + 1
+                consec_fail = 0
+        else:
+            # A passing pair resets the failure counter — the absorbed
+            # gap is now bridged on both sides by ≥ threshold pairs.
+            consec_fail = 0
 
-    # Last segment
-    if n_snps - 1 - block_start + 1 >= min_block_snps:
+    # Last segment. If the chromosome ended mid-failure-run, trim those
+    # trailing failures off the block before emitting.
+    last_end = n_snps - 1 - consec_fail
+    if last_end >= block_start and (
+        last_end - block_start + 1 >= min_block_snps
+    ):
         blocks.append(_make_block(
-            block_start, n_snps - 1, variant_pos, variant_chr, variant_ids,
+            block_start, last_end,
+            variant_pos, variant_chr, variant_ids,
             method="r2", dp_map=dp_map, r2_map=r2_map,
         ))
 

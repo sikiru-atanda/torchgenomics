@@ -176,7 +176,7 @@ def detect_blocks(
         "four_gamete": {"freq_threshold", "min_block_snps"},
         "gabriel": {"ci_low", "ci_high", "rec_high", "strong_pct", "rec_max_pct", "min_block_snps"},
         "spine": {"d_prime_threshold", "min_block_snps"},
-        "r2": {"r2_threshold", "min_block_snps"},
+        "r2": {"r2_threshold", "min_block_snps", "tolerance"},
         # Novel
         "gwas_aligned": {"max_block_snps", "condition_penalty", "min_block_snps"},
         "uncertainty": {"base_method", "min_dosage_rsq", "min_block_snps",
