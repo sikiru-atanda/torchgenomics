@@ -50,6 +50,7 @@ from ._hyprcoloc import (  # noqa: F401
     coloc_pairwise,
     hyprcoloc,
 )
+from .iclass import IClassResult, iclass  # noqa: F401
 from ._ld_scores import (  # noqa: F401
     compute_cross_ld_scores,
     compute_ld_scores,
