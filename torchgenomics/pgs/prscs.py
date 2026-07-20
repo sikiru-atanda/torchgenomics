@@ -181,7 +181,12 @@ def _prscs_gibbs_block(
         # Sigma^{-1} = n * R_reg / sigma2 + diag(1 / (sigma2 * psi))
         # mu = Sigma * (n * beta_std / sigma2)
         inv_psi = 1.0 / psi.clamp(min=1e-12)
-        prec = (n_t / float(sigma2)) * R_reg + torch.diag(inv_psi / float(sigma2))
+        # Posterior precision = (n/sigma2)(R + diag(1/psi)) (Ge et al. 2019,
+        # PRS-CS: beta_j ~ N(0, sigma2 * psi_j / n), so the prior precision is
+        # n/(sigma2*psi), NOT 1/(sigma2*psi)). The missing n under-shrinks --
+        # severely so in the small-n / strong-shrinkage regime PRS-CS-auto
+        # normally runs in.
+        prec = (n_t / float(sigma2)) * (R_reg + torch.diag(inv_psi))
         # Cholesky solve
         try:
             L = torch.linalg.cholesky(prec)
@@ -198,7 +203,9 @@ def _prscs_gibbs_block(
         # -------- psi update --------
         # Full conditional: psi_j ~ GIG(lam = a - 0.5, chi = beta_j^2 / sigma2, psi = 2 * delta_j)
         lam = a - 0.5
-        chi_vec = (beta * beta) / float(sigma2) + 1e-12
+        # psi_j ~ GIG(a-0.5, 2*delta_j, n*beta_j^2/sigma2) (Ge et al. 2019).
+        # The chi parameter carries the same factor n as the prior precision.
+        chi_vec = n_t * (beta * beta) / float(sigma2) + 1e-12
         psi_param = 2.0 * delta + 1e-12
         psi = sample_gig(lam, chi_vec, psi_param, rng=rng)
         psi = psi.clamp(min=1e-12, max=1e6)
@@ -290,7 +297,8 @@ def _prscs_gibbs_block_hybrid(
     for it in range(n_iter):
         # -------- beta update (torch / MKL) --------
         inv_psi = 1.0 / psi.clamp(min=1e-12)
-        prec = (n_t / sigma2) * R_reg + torch.diag(inv_psi / sigma2)
+        # See _prscs_gibbs_block: precision is (n/sigma2)(R + diag(1/psi)).
+        prec = (n_t / sigma2) * (R_reg + torch.diag(inv_psi))
         try:
             L = torch.linalg.cholesky(prec)
         except RuntimeError:
@@ -305,7 +313,12 @@ def _prscs_gibbs_block_hybrid(
         beta = mu + v
 
         # -------- (psi, delta) update via one C++ call per iteration --------
-        beta_np = beta.detach().cpu().numpy()
+        # The native sampler computes the GIG chi parameter as beta^2/sigma2,
+        # but PRS-CS requires n*beta^2/sigma2. Since sigma2 is held at 1.0 here,
+        # pass sqrt(n)*beta so the C++ chi = (sqrt(n)*beta)^2 = n*beta^2 matches
+        # the corrected pure-Python reference. (beta only enters the sampler via
+        # this chi term.) The C++ kernel itself should be regenerated to take n.
+        beta_np = (beta * (n_t ** 0.5)).detach().cpu().numpy()
         delta_np = delta.detach().cpu().numpy()
         psi_new_np, delta_new_np = _prscs_native.prscs_sample_psi_delta(
             beta_np, delta_np,
