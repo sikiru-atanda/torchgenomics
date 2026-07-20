@@ -113,13 +113,14 @@ def storey_qvalue(p: Tensor, lambda_: float = 0.5) -> Tensor:
     """
     m = p.shape[0]
 
-    # Estimate pi0
+    # Estimate pi0, bounded to (0, 1]. Storey's qvalue package never lets pi0
+    # collapse to 0; when no p-value exceeds lambda (e.g. an all-signal block)
+    # the raw estimate is 0, and the previous code then returned q=0 for EVERY
+    # test — silently declaring everything maximally significant (anti-
+    # conservative). Floor pi0 at 1/m (>= one expected null) instead.
     n_above = (p > lambda_).sum().item()
     pi0 = n_above / (m * (1.0 - lambda_))
-    pi0 = min(pi0, 1.0)
-
-    if pi0 <= 0:
-        return torch.zeros_like(p)
+    pi0 = min(max(pi0, 1.0 / m), 1.0)
 
     sorted_p, sort_idx = p.sort()
     ranks = torch.arange(1, m + 1, dtype=p.dtype, device=p.device)

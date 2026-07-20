@@ -150,11 +150,18 @@ def nystrom_approximate(
     norms = torch.clamp(norms, min=1e-10)
     U = U / norms
 
+    # Nystrom eigenvalue scaling (Williams & Seeger 2001): the eigenvalues of
+    # the full n x n kernel are ~ (n / l) times the landmark eigenvalues. The
+    # previous code returned the raw landmark eigenvalues, so every eigenvalue
+    # was ~n/l too small and any downstream V = evals * sigma_g^2 + sigma_e^2
+    # (heritability, LMM p-values) was biased.
+    evals_nystrom = evals_w * (float(n_samples) / float(n_landmarks))
+
     logger.info(
         "Nystrom: n=%d, landmarks=%d, kept=%d, total_snps=%d, "
         "top eigenvalue=%.4e, smallest kept=%.4e",
         n_samples, n_landmarks, n_keep, total_snps,
-        evals_w[0].item(), evals_w[-1].item(),
+        evals_nystrom[0].item(), evals_nystrom[-1].item(),
     )
 
-    return EigenDecomp(eigenvalues=evals_w, eigenvectors=U), float(normalizer)
+    return EigenDecomp(eigenvalues=evals_nystrom, eigenvectors=U), float(normalizer)

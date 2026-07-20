@@ -210,12 +210,15 @@ def test_bench_egger_intercept_se_matches_statsmodels():
 
 
 def test_bench_weighted_median_matches_manual():
-    exposure, outcome, bx, by, _, sy = _make_benchmark_data()
+    exposure, outcome, bx, by, sx, sy = _make_benchmark_data()
     result = mr_weighted_median(exposure, outcome, n_boot=100, seed=42)
 
-    # Manual weighted median via np.interp
+    # Manual weighted median via np.interp. Weights are the inverse delta-method
+    # variance of the Wald ratio (Bowden 2016; TwoSampleMR): 1/VBj with
+    # VBj = sy^2/bx^2 + by^2*sx^2/bx^4.
     ratios = by / bx
-    weights = bx**2 / sy**2
+    vbj = sy**2 / bx**2 + by**2 * sx**2 / bx**4
+    weights = 1.0 / np.maximum(vbj, 1e-30)
     weights = np.maximum(weights, 1e-30)
 
     order = np.argsort(ratios)

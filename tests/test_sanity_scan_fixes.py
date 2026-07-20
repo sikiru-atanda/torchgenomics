@@ -248,3 +248,95 @@ def test_ldpred2_prior_uses_genomewide_m_not_block_size():
     # non-systematic; the block-size prior is systematically monotone in b.
     assert spread_fixed < spread_buggy
     assert spread_fixed < 5e-4
+
+
+# ---------------------------------------------------------------------------
+# 12. Storey q-value: pi0 floored, never returns all-zero q (anti-conservative).
+#     torchgenomics/stats/multipletesting.py
+# ---------------------------------------------------------------------------
+def test_storey_qvalue_no_all_zero_when_pi0_estimate_is_zero():
+    from torchgenomics.stats.multipletesting import storey_qvalue
+
+    # All p-values below lambda=0.5 -> raw pi0 estimate is 0.
+    p = torch.linspace(1e-6, 0.4, 60, dtype=STAT)
+    q = storey_qvalue(p)
+    assert not bool((q == 0).all()), "q collapsed to all-zero (pi0 not floored)"
+    assert torch.all(q >= 0) and torch.all(q <= 1)
+
+
+# ---------------------------------------------------------------------------
+# 13. FIQT is the FDR Inverse Quantile Transformation (Bigdeli 2016), not KDE
+#     local-fdr. torchgenomics/postgwas/_winners_curse.py
+# ---------------------------------------------------------------------------
+def test_fiqt_matches_reference_inverse_quantile_transform():
+    import scipy.stats as st
+    from torchgenomics.postgwas._winners_curse import fiqt
+
+    z = torch.tensor([6.0, 4.5, 3.0, 2.0, 0.5], dtype=STAT)
+    se = torch.ones(5, dtype=STAT)
+    z_adj = (fiqt(z, se).beta_adjusted / se).numpy()
+
+    # Independent reference: BH-adjust two-sided p, back-transform.
+    pv = np.clip(2 * st.norm.sf(np.abs(z.numpy())), 1e-300, 1.0)
+    m = pv.size
+    o = np.argsort(pv)
+    s = pv[o] * m / np.arange(1, m + 1)
+    s = np.minimum.accumulate(s[::-1])[::-1]
+    adj = np.empty_like(pv)
+    adj[o] = np.clip(s, None, 1.0)
+    ref = np.sign(z.numpy()) * st.norm.isf(adj / 2)
+    assert np.allclose(z_adj, ref, atol=1e-6)
+    # shrinkage is toward zero and monotone with significance
+    assert abs(z_adj[0]) < 6.0 and z_adj[-1] == pytest.approx(0.5, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# 14. MR weighted-median uses a PARAMETRIC bootstrap (Bowden 2016): the SE
+#     responds to exposure error se_x. torchgenomics/postgwas/_mr.py
+# ---------------------------------------------------------------------------
+def test_mr_weighted_median_parametric_bootstrap_uses_exposure_error():
+    from torchgenomics.postgwas._sumstats import SumStats
+    from torchgenomics.postgwas._mr import mr_weighted_median
+
+    rng = np.random.default_rng(0)
+    K = 30
+    snp = [f"rs{i}" for i in range(K)]
+    bx = np.abs(rng.standard_normal(K)) * 0.2 + 0.3
+    by = 0.5 * bx + rng.standard_normal(K) * 0.02
+    se_y = np.ones(K) * 0.03
+
+    def mk(beta, se):
+        return SumStats(chr=["1"] * K, pos=list(range(K)), snp=snp, a1=["A"] * K,
+                        a2=["G"] * K, beta=torch.tensor(beta), se=torch.tensor(se),
+                        p=torch.ones(K) * 0.01, n=torch.ones(K) * 1000, af=torch.ones(K) * 0.3)
+
+    r_small = mr_weighted_median(mk(bx, np.ones(K) * 0.001), mk(by, se_y), n_boot=2000, seed=1)
+    r_large = mr_weighted_median(mk(bx, np.ones(K) * 0.05), mk(by, se_y), n_boot=2000, seed=1)
+    assert r_small.beta_hat == pytest.approx(0.5, abs=0.1)
+    # Parametric bootstrap draws bx* ~ N(bx, se_x^2): larger se_x -> larger SE.
+    # A nonparametric index bootstrap would be invariant to se_x.
+    assert r_large.se > r_small.se * 1.1
+
+
+# ---------------------------------------------------------------------------
+# 15. Nystrom eigenvalues carry the (n/l) scaling (Williams & Seeger 2001), so
+#     the approximation reconstructs the GRM diagonal. torchgenomics/linalg/nystrom.py
+# ---------------------------------------------------------------------------
+def test_nystrom_eigenvalues_have_nl_scaling():
+    from torchgenomics.linalg.kinship import grm_vanraden
+    from torchgenomics.linalg.nystrom import nystrom_approximate
+
+    rng = np.random.default_rng(0)
+    n, msnp = 300, 900
+    G = torch.tensor(rng.binomial(2, rng.uniform(0.1, 0.5, (n, msnp))), dtype=STAT)
+    K, _ = grm_vanraden(G, ploidy=2)
+    true_diag = float(K.diag().mean())
+
+    def chunks():
+        for s in range(0, msnp, 300):
+            yield (G[:, s:s + 300], None)
+
+    ed, _ = nystrom_approximate(chunks(), n_samples=n, n_landmarks=100, seed=1)
+    recon_diag = float((ed.eigenvectors ** 2 @ ed.eigenvalues).mean())
+    # Without the n/l factor this ratio would be ~l/n = 1/3.
+    assert recon_diag / true_diag == pytest.approx(1.0, abs=0.1)

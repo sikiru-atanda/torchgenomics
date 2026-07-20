@@ -206,11 +206,14 @@ class TestStoreyQvalue:
         assert torch.all(q >= 0) and torch.all(q <= 1)
 
     def test_all_significant(self):
-        """When all p-values are tiny, pi0 should be near 0."""
+        """When all p-values are tiny, the raw pi0 estimate is 0, but it is
+        floored to 1/m so the q-values stay small-and-positive rather than
+        collapsing to an anti-conservative all-zero vector."""
         p = torch.rand(50, dtype=torch.float64) * 0.01
         q = storey_qvalue(p, lambda_=0.5)
-        # All p < 0.5, so pi0 estimate = 0 => q-values all 0
-        assert torch.all(q == 0)
+        assert not torch.all(q == 0)          # not the old all-zero bug
+        assert torch.all(q >= 0) and torch.all(q <= 1)
+        assert float(q.max()) < 0.05          # still highly significant
 
 
 # ---------------------------------------------------------------
