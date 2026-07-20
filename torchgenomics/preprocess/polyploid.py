@@ -85,8 +85,19 @@ def recode_gene_action(G: Tensor, model: str, ploidy: int) -> Tensor:
         return result
 
     elif model == "diplo-additive":
+        # Diploidize the polyploid dosage (GWASpoly; Rosyara et al. 2016):
+        # nulliplex (dosage 0) -> 0, full homozygous-alt (dosage k) -> 2, and
+        # every heterozygous class (0 < dosage < k) -> 1. This is monotone in
+        # dosage. The previous torch.min(G, k-G) produced a *folded* coding
+        # ([0,1,2,1,0] for tetraploid) that mapped homozygous-alt onto
+        # homozygous-ref and is non-monotonic -- corrupting both the design
+        # matrix and the polyploid GRM built from it.
         G_safe = torch.where(nan_mask, torch.zeros_like(G), G)
-        result = torch.min(G_safe, ploidy - G_safe)
+        result = torch.where(
+            G_safe >= ploidy,
+            torch.full_like(G_safe, 2.0),
+            (G_safe > 0).to(G.dtype),  # any heterozygote -> 1, nulliplex -> 0
+        )
         result[nan_mask] = float("nan")
         return result
 

@@ -66,9 +66,15 @@ class TestPolyploidEncoding:
         torch.testing.assert_close(result, expected)
 
     def test_recode_diplo_additive(self, G_tetra):
-        """Diplo-additive: min(dosage, k - dosage) for k=4."""
+        """Diplo-additive diploidizes (GWASpoly; Rosyara et al. 2016):
+        nulliplex (0) -> 0, any heterozygote (0<dosage<k) -> 1, and full
+        homozygous-alt (dosage k) -> 2 — monotone in dosage."""
         result = recode_gene_action(G_tetra, "diplo-additive", ploidy=4)
-        expected = torch.min(G_tetra, 4 - G_tetra)
+        expected = torch.where(
+            G_tetra >= 4,
+            torch.full_like(G_tetra, 2.0),
+            (G_tetra > 0).to(torch.float64),
+        )
         torch.testing.assert_close(result, expected)
 
     def test_recode_overdominant(self, G_tetra):
