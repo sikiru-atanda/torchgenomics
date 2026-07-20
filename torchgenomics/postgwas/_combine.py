@@ -146,13 +146,15 @@ def _validate_pvals(p: Tensor) -> Tensor:
 
 
 def _normal_inv_cdf(u: Tensor) -> Tensor:
-    """Inverse standard normal CDF via the erfinv identity.
+    """Inverse standard normal CDF Φ⁻¹(u), stable in both tails.
 
-    Φ⁻¹(u) = √2 · erfinv(2u − 1). Defined for u ∈ (0, 1); inputs are
-    clamped to a small neighbourhood of 0 / 1 to keep the result finite.
+    Uses ``torch.special.ndtri`` rather than the ``√2·erfinv(2u−1)`` identity,
+    which loses all precision once ``2u−1`` rounds to ±1 (i.e. u within ~1e-16
+    of 0 or 1). Note: callers wanting Φ⁻¹(1−p) for small p should pass p and
+    negate — ``-ndtri(p)`` — to avoid forming ``1−p`` and destroying the tail.
     """
-    u = u.clamp(min=1e-300, max=1.0 - 1e-16)
-    return math.sqrt(2.0) * torch.erfinv(2.0 * u - 1.0)
+    u = u.clamp(min=1e-300, max=1.0 - 1e-300)
+    return torch.special.ndtri(u)
 
 
 def _chi2_sf(x: float | Tensor, df: int | float) -> float:
@@ -236,7 +238,7 @@ def brown_combined(
     underlying −2 log p statistics:
 
         E[T] = 2k
-        Var[T] = 4k + 2 Σ_{i≠j} cov_ij
+        Var[T] = 4k + Σ_{i≠j} cov_ij
         c   = Var[T] / (2 E[T])
         df' = 2 E[T]² / Var[T]
         T'  = T / c
@@ -280,8 +282,12 @@ def brown_combined(
 
     expected = 2.0 * k
     # Var[T] = 4k + 2 Σ_{i≠j} cov_ij  (off-diagonal sum)
+    # Var[T] = Σ_ij cov_ij = 4k + Σ_{i≠j} cov_ij (Brown 1975; Kost & McDermott
+    # 2002). ``off_diag_sum`` already sums BOTH (i,j) and (j,i), i.e. it equals
+    # 2·Σ_{i<j} cov_ij, so it must be added once — the previous ×2 double-counted
+    # the covariance and inflated the variance (making p conservative).
     off_diag_sum = float((cov_t.sum() - cov_t.diag().sum()).item())
-    var = 4.0 * k + 2.0 * off_diag_sum
+    var = 4.0 * k + off_diag_sum
     if var <= 0.0:
         # Degenerate; fall back to independent Fisher.
         return (stat, _chi2_sf(stat, df=2 * k))
@@ -624,7 +630,9 @@ def stouffer_combined(
     if k == 0:
         return (0.0, 1.0)
 
-    z = _normal_inv_cdf(1.0 - p_t)
+    # z = Φ⁻¹(1 − p) = −Φ⁻¹(p); computed from p directly so the tail survives
+    # (forming 1 − p first would round to 1.0 for p <~ 1e-16 → inf).
+    z = -torch.special.ndtri(p_t)
     if direction is not None:
         d = _to_tensor(direction, "direction").reshape(-1)
         if d.shape[0] != k:

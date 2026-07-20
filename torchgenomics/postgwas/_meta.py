@@ -192,11 +192,14 @@ def meta_sample_size(
     if direction is not None:
         z = z * direction.to(torch.float64)
 
-    # Weights proportional to sqrt(n)
+    # Sample-size-weighted Stouffer's Z (Whitlock 2005; Stouffer 1949):
+    #   z_meta = sum_k w_k z_k / sqrt(sum_k w_k^2),  w_k = sqrt(n_k)
+    # so that z_meta ~ N(0,1) under the null. The previous code normalized the
+    # weights to sum to 1 and divided by sum(w) instead of sqrt(sum(w^2)),
+    # which deflates z by ~sqrt(K) and makes the null non-uniform (badly
+    # under-powered).
     w = n.sqrt()  # (K,)
-    w = w / w.sum()  # normalize
-
-    z_meta = (z * w.unsqueeze(0)).sum(dim=1)  # (m,)
+    z_meta = (z * w.unsqueeze(0)).sum(dim=1) / torch.sqrt((w**2).sum())  # (m,)
     p_meta = _z_to_p(z_meta)
 
     # No meaningful beta/se for sample-size method
@@ -298,8 +301,11 @@ def _z_to_p(z: Tensor) -> Tensor:
 
 def _p_to_z(p: Tensor) -> Tensor:
     """Convert two-sided p-value to |z|-score (unsigned)."""
-    # z = Phi^{-1}(1 - p/2) = sqrt(2) * erfinv(1 - p)
-    # Clamp p to avoid infinities
-    p_c = p.clamp(min=1e-300, max=1.0 - 1e-10)
-    z = (2.0**0.5) * torch.erfinv(1.0 - p_c)
+    # |z| = Phi^{-1}(1 - p/2) = -Phi^{-1}(p/2). Computing it as
+    # sqrt(2)*erfinv(1 - p) collapses in the tail because 1 - p rounds to 1.0
+    # for p <~ 1e-16, returning +inf. Working from p/2 through the inverse
+    # normal CDF (ndtri) is stable to p ~ 1e-300 (routine at genome-wide-
+    # significant lead SNPs).
+    p_c = p.clamp(min=1e-300, max=1.0)
+    z = -torch.special.ndtri(p_c / 2.0)
     return z.clamp(min=0.0)
