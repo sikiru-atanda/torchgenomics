@@ -5,7 +5,14 @@ import math
 
 import torch
 
-from torchgenomics.postgwas._mr import MRResult, mr_all, mr_egger, mr_ivw, mr_presso, mr_weighted_median
+from torchgenomics.postgwas._mr import (
+    MRResult,
+    mr_all,
+    mr_egger,
+    mr_ivw,
+    mr_presso,
+    mr_weighted_median,
+)
 from torchgenomics.postgwas._sumstats import SumStats
 
 # ---------------------------------------------------------------------------

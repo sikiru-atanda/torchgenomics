@@ -7,14 +7,13 @@ and assign each retained index SNP its marginal effect from sumstats.
 
 from __future__ import annotations
 
-import os
-from .._dispatch import native_disabled
 from typing import Any
 
 import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import HAS_NATIVE_CT, _ct_native
 from ..postgwas._sumstats import SumStats
 from .base import BasePGSMethod, LDReference, PGSResult

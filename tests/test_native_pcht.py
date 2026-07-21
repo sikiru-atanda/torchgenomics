@@ -188,7 +188,8 @@ class TestPCHTF2InvariantPreserved(unittest.TestCase):
         # message. We invoke pytest on the specific node to avoid
         # coupling to internal class names; if it passes, the F2
         # invariant holds end-to-end with the native PCHT path.
-        import subprocess, sys
+        import subprocess
+        import sys
         result = subprocess.run(
             [
                 sys.executable, "-m", "pytest",

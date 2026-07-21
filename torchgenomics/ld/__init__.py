@@ -176,7 +176,7 @@ def detect_blocks(
         "four_gamete": {"freq_threshold", "min_block_snps"},
         "gabriel": {"ci_low", "ci_high", "rec_high", "strong_pct", "rec_max_pct", "min_block_snps"},
         "spine": {"d_prime_threshold", "min_block_snps"},
-        "r2": {"r2_threshold", "min_block_snps"},
+        "r2": {"r2_threshold", "min_block_snps", "tolerance"},
         # Novel
         "gwas_aligned": {"max_block_snps", "condition_penalty", "min_block_snps"},
         "uncertainty": {"base_method", "min_dosage_rsq", "min_block_snps",
@@ -223,6 +223,7 @@ def detect_blocks(
             maf_min=maf_min,
             compute_ci=compute_ci,
             device=device,
+            ploidy=ploidy,
         )
         n_snps = len(variant_pos)
 
@@ -293,7 +294,7 @@ def detect_blocks(
     if method == "cc_graph":
         return detect_blocks_cc_graph(
             G, variant_pos, variant_chr, variant_ids,
-            max_kb=max_kb, device=device, **filtered_kwargs,
+            max_kb=max_kb, device=device, ploidy=ploidy, **filtered_kwargs,
         )
 
     if method == "dp_optimize":
@@ -310,6 +311,7 @@ def detect_blocks(
         haplotypes=haplotypes,
         max_kb=max_kb, maf_min=maf_min,
         compute_ci=False, device=device,
+        ploidy=ploidy,
     )
     return compute_wall_pritchard_diagnostics(
         pld, variant_pos, variant_chr, variant_ids,
@@ -327,6 +329,7 @@ def compute_pairwise_ld(
     maf_min: float = 0.05,
     compute_ci: bool = True,
     device: torch.device | None = None,
+    ploidy: int = 2,
 ) -> PairwiseLD:
     """Compute pairwise LD statistics within a distance window.
 
@@ -345,6 +348,11 @@ def compute_pairwise_ld(
     compute_ci : bool
         Whether to compute D' confidence intervals (needed for Gabriel).
     device : torch.device, optional
+    ploidy : int, default 2
+        Ploidy level. Dosages are expected in ``[0, ploidy]``; the MAF
+        filter uses ``af = G.mean / ploidy``. Setting ``ploidy=2``
+        reproduces the legacy diploid behavior; use ``ploidy=4`` for
+        tetraploids, ``6`` for hexaploids, etc.
 
     Returns
     -------
@@ -353,12 +361,17 @@ def compute_pairwise_ld(
     if device is None:
         device = G.device
     G = G.to(device=device, dtype=torch.float64)
+    if ploidy < 1:
+        raise ValueError(f"ploidy must be >= 1; got {ploidy}.")
 
     n, m = G.shape
     max_bp = max_kb * 1000.0
 
-    # MAF filter
-    af = G.mean(dim=0) / 2.0  # assume diploid dosage [0, 2]
+    # MAF filter. Dosages are in [0, ploidy], so allele frequency is
+    # ``mean(G) / ploidy``. The legacy ``/ 2.0`` was diploid-only and
+    # silently wiped tetraploid SNPs whose mean dosage exceeded 2
+    # (i.e. anything common on a 0..4 scale).
+    af = G.mean(dim=0) / float(ploidy)
     maf = torch.min(af, 1.0 - af)
     maf_ok = maf >= maf_min  # (m,)
 

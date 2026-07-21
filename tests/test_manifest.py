@@ -6,9 +6,6 @@ import json
 import subprocess
 import sys
 
-import pytest
-
-
 TIER_2_NAMES = {
     "mvlmm_scan", "poly_scan", "mklmm_scan", "gxe_scan", "set_scan",
     "bayes_scan", "bayes_scan_rss", "met_scan", "farmcpu_scan", "blink_scan",

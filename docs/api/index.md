@@ -12,10 +12,10 @@ generated from the module-level and function-level docstrings via
 | `torchgenomics.models`        | All GWAS models (BaseModel protocol)                        |
 | `torchgenomics.scan`          | `UnifiedScanner` streaming chunks through any model         |
 | `torchgenomics.stats`         | Multiple testing, SPA, PVE                                  |
-| `torchgenomics.ld`            | LD block detection (13 methods), pairwise LD                |
+| `torchgenomics.ld`            | LD block detection (13 methods; `r2` accepts SelectionTools-style `tolerance` from 2026-06-17), pairwise LD |
 | `torchgenomics.optim`         | 6-mode optimizer stack                                      |
-| `torchgenomics.pgs`           | Polygenic score construction + validation                   |
-| `torchgenomics.postgwas`      | LDSC, meta-analysis, coloc, MR, TWAS, enrichment            |
+| `torchgenomics.pgs`           | Polygenic score construction + validation + `api.lgebv` (Local GEBV per haplo-block; consumes pre-computed BLUEs) |
+| `torchgenomics.postgwas`      | LDSC, meta-analysis, coloc, MR, TWAS, enrichment, `iclass` G×E clustering on FA loadings (Smith 2015/2021) |
 | `torchgenomics.multiomics`    | GRM-corrected causal mediation + multi-kernel h²            |
 | `torchgenomics.viz`           | Manhattan / QQ / Miami / Circos / Haploview / trumpet       |
 | `torchgenomics.annotate`      | NCBI gene annotation                                        |

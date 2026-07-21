@@ -18,6 +18,11 @@ import torch
 from scipy.stats import chi2 as _chi2
 
 from torchgenomics.postgwas import (
+    CombinedGeneResult,
+    CombinedResult,
+    SumStats,
+    TWASGeneResult,
+    TWASResult,
     brown_combined,
     brown_ld_aware,
     cauchy_combined,
@@ -33,13 +38,7 @@ from torchgenomics.postgwas import (
     stouffer_combined,
     stouffer_r2_weighted,
     truncated_product,
-    SumStats,
-    TWASGeneResult,
-    TWASResult,
-    CombinedGeneResult,
-    CombinedResult,
 )
-
 
 # ===========================================================================
 # Fisher's combined test (closed-form gates)

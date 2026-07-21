@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import math
 import os
-from .._dispatch import native_disabled
 
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import (
     HAS_NATIVE_LD_DECAY_SIGNAL,
     HAS_NATIVE_PELT,

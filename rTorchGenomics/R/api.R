@@ -211,12 +211,23 @@ tg_glm_scan <- function(genotype, phenotype,
 #' @param max_kb Maximum block size in kb. Default 200.
 #' @param r2_threshold r-squared threshold (used by `r2`, `big_ld`, `cc_graph`).
 #' @param ci_low,ci_high CI bounds (used by `gabriel`).
+#' @param tolerance Integer >= 0. For \code{method = "r2"} only:
+#'   number of consecutive low-LD markers tolerated within a sliding
+#'   block before terminating it (SelectionTools-style; Wittenburg et al.
+#'   2024). \code{tolerance = 0} (the default) reproduces the original
+#'   strict r^2-greedy partition; \code{tolerance >= 1} permits
+#'   short "gaps" of weakly linked markers inside an otherwise tight
+#'   block, which often yields larger, more biologically meaningful
+#'   haplo-blocks for breeding programs.
 #' @param ... Additional method-specific knobs.
 #'
 #' @return An `LDBlocksRun` S4 object.
 #' @examples
 #' \dontrun{
 #' r <- tg_ld_blocks("data.bed", method = "gabriel")
+#' # Sliding-window r^2 with tolerance for short low-LD gaps:
+#' r2 <- tg_ld_blocks("data.bed", method = "r2",
+#'                    r2_threshold = 0.7, tolerance = 2)
 #' }
 #' @export
 tg_ld_blocks <- function(genotype, output = NULL,
@@ -227,8 +238,15 @@ tg_ld_blocks <- function(genotype, output = NULL,
                          max_kb = 200L,
                          r2_threshold = 0.5,
                          ci_low = 0.7, ci_high = 0.98,
+                         tolerance = 0L,
                          ...) {
   method <- match.arg(method)
+  if (!is.null(tolerance)) {
+    tolerance <- as.integer(tolerance)
+    if (length(tolerance) != 1L || is.na(tolerance) || tolerance < 0L) {
+      stop("tolerance must be a non-negative integer scalar.")
+    }
+  }
   extras <- list(...)
   d <- bridge_call("ld_blocks", .compact(c(list(
     genotype = .as_path(genotype),
@@ -236,7 +254,8 @@ tg_ld_blocks <- function(genotype, output = NULL,
     method = method,
     max_kb = as.integer(max_kb),
     r2_threshold = r2_threshold,
-    ci_low = ci_low, ci_high = ci_high
+    ci_low = ci_low, ci_high = ci_high,
+    tolerance = tolerance
   ), extras)))
   LDBlocksRun$new_from_dict(d)
 }
@@ -420,4 +439,259 @@ tg_annotate_hits <- function(sumstats,
     api_key = api_key
   )))
   AnnotateRun$new_from_dict(d)
+}
+
+#' Local Genomic Estimated Breeding Values per haplo-block.
+#'
+#' Fits ridge-regression BLUP (rrBLUP; Endelman 2011 *Plant Genome*) on
+#' a pre-computed BLUE vector, sums per-marker effects within each
+#' haplo-block, and classifies blocks as favorable / unfavorable based
+#' on effect sign. Applied to breeding-program multi-environment
+#' workflows (Pandit et al. 2026, *Theoretical and Applied Genetics*).
+#'
+#' BLUEs are produced upstream (e.g. ASReml-R's FA(k) MET fit with
+#' genotype as fixed). This wrapper does NOT compute them.
+#'
+#' @param y Numeric vector of BLUEs (length n_genotypes).
+#' @param genotype Path to genotype file OR an n_genotypes x n_SNPs
+#'   numeric matrix.
+#' @param blocks A list of haplo-block specifications (each with
+#'   `variant_indices`) OR an `LDBlocksRun` returned by
+#'   `tg_ld_blocks()` (in which case its on-disk TSV path is used).
+#' @param h2 Heritability prior (0 < h2 < 1); if NULL, REML-estimated.
+#' @param favorable_direction One of `"negative"` (resistance traits;
+#'   default) or `"positive"` (yield-style traits).
+#' @param standardize_G If TRUE, center and ploidy-aware-scale G before fitting.
+#' @param method One of `"rrblup"` (default) or `"gblup"`.
+#' @param device `"cpu"`, `"cuda"`, or `"auto"`.
+#' @param return_marker_effects If TRUE, also return per-marker effects.
+#'
+#' @return An `LGEBVResult` S4 object with slots `block_id`, `chrom`,
+#'   `start`, `end`, `n_variants`, `lgebv`, `block_variance`,
+#'   `favorable`, `marker_effects`, `h2_used`, `method`.
+#'
+#' @examples
+#' \dontrun{
+#' blocks <- tg_ld_blocks("data.bed", method = "r2",
+#'                        r2_threshold = 0.7, tolerance = 2)
+#' result <- tg_lgebv(y = blues, genotype = "data.bed",
+#'                    blocks = blocks, h2 = NULL)
+#' result@favorable
+#' }
+#' @export
+tg_lgebv <- function(y, genotype, blocks,
+                     h2 = NULL,
+                     favorable_direction = c("negative", "positive"),
+                     standardize_G = TRUE,
+                     method = c("rrblup", "gblup"),
+                     device = NULL,
+                     return_marker_effects = FALSE) {
+  favorable_direction <- match.arg(favorable_direction)
+  method <- match.arg(method)
+
+  py <- tryCatch(tg_py(), tg_no_python = function(e) stop(e))
+  py_api <- py$api
+  py_fn <- py_api$lgebv
+  if (is.null(py_fn)) {
+    stop(structure(
+      class = c("tg_runtime_error", "error", "condition"),
+      list(message = "torchgenomics.api has no function 'lgebv'")
+    ))
+  }
+
+  # Coerce inputs. Reticulate auto-converts numeric vectors to numpy 1-D
+  # and matrices to numpy 2-D. Strings stay as paths for the Python side
+  # to resolve via torchgenomics.io.
+  y_py <- as.numeric(y)
+  if (is.character(genotype)) {
+    G_py <- .as_path(genotype)
+  } else if (is.matrix(genotype)) {
+    storage.mode(genotype) <- "double"
+    G_py <- genotype
+  } else if (is.data.frame(genotype)) {
+    G_py <- as.matrix(genotype)
+    storage.mode(G_py) <- "double"
+  } else {
+    G_py <- genotype  # let reticulate handle (e.g. torch tensor)
+  }
+
+  # blocks: either a path (string), an LDBlocksRun S4, or a list-of-blocks.
+  if (is.character(blocks)) {
+    blocks_py <- .as_path(blocks)
+  } else if (methods::is(blocks, "LDBlocksRun")) {
+    bp <- blocks@output_files[["tsv"]]
+    if (is.null(bp)) bp <- blocks@output_files[["blocks"]]
+    if (is.null(bp)) {
+      stop("LDBlocksRun has no `output_files$tsv` or $blocks path; ",
+           "rerun tg_ld_blocks() with an `output =` argument.")
+    }
+    blocks_py <- .as_path(bp)
+  } else {
+    blocks_py <- blocks
+  }
+
+  device_py <- if (is.null(device) || identical(device, "auto")) NULL else as.character(device)
+
+  py_args <- list(
+    y = y_py, G = G_py, haplo_blocks = blocks_py,
+    h2 = if (is.null(h2)) NULL else as.numeric(h2),
+    favorable_direction = favorable_direction,
+    standardize_G = as.logical(standardize_G),
+    method = method,
+    device = device_py,
+    return_marker_effects = as.logical(return_marker_effects)
+  )
+  py_args <- .compact(py_args)
+
+  d <- tryCatch(
+    {
+      py_result <- do.call(py_fn, py_args)
+      if (inherits(py_result, "python.builtin.object") &&
+          reticulate::py_has_attr(py_result, "to_dict")) {
+        reticulate::py_to_r(py_result$to_dict())
+      } else {
+        reticulate::py_to_r(py_result)
+      }
+    },
+    python.builtin.ValueError = function(e) stop(structure(
+      class = c("tg_input_error", "error", "condition"),
+      list(message = paste0("lgebv(): ", conditionMessage(e)))
+    )),
+    python.builtin.TypeError = function(e) stop(structure(
+      class = c("tg_input_error", "error", "condition"),
+      list(message = paste0("lgebv(): ", conditionMessage(e)))
+    )),
+    python.builtin.Exception = function(e) {
+      tb <- tryCatch(reticulate::py_last_error()$traceback, error = function(...) "")
+      if (is.null(tb)) tb <- ""
+      tb_str <- paste(as.character(tb), collapse = "\n")
+      stop(structure(
+        class = c("tg_runtime_error", "error", "condition"),
+        list(message = paste0(
+          "lgebv(): ", conditionMessage(e),
+          if (nzchar(tb_str)) paste0("\n", tb_str) else ""
+        ))
+      ))
+    }
+  )
+
+  LGEBVResult$new_from_dict(d)
+}
+
+#' G x E classification on factor-analytic loadings (Smith et al. 2015 / 2021).
+#'
+#' Classifies multi-environment-trial environments by the polarity pattern
+#' of their factor loadings. Each environment gets a length-k polarity
+#' label (e.g. `"PNN"` for 3 factors with positive/negative/negative
+#' loadings); environments sharing the same label form one iClass.
+#'
+#' @param loadings Numeric `E x k` matrix of rotated FA loadings (E
+#'   environments x k factors). Typically obtained from a `met-scan` run
+#'   with `vg_structure = "fa(k)"` via the Python side's
+#'   `MultiEnvLMM.fa_loadings(null_fit)`.
+#' @param env_ids Optional character vector of length E giving
+#'   environment IDs. If NULL, uses rownames of `loadings` or generic
+#'   `"env_0"`-`"env_{E-1}"`.
+#' @param threshold Absolute-loading threshold below which an entry is
+#'   classified as `"Z"` (zero); default 0 = strict sign.
+#'
+#' @return An `IClassResult` S4 object with slots `cluster_labels`,
+#'   `cluster_membership`, `loadings`, `polarity_matrix`, `n_factors`,
+#'   `n_envs`, `env_ids`, `threshold`.
+#'
+#' @examples
+#' \dontrun{
+#' lambda <- matrix(c(0.6, -0.2, 0.5, -0.3, 0.7, 0.1), ncol = 2)
+#' iclass_result <- tg_iclass(lambda, env_ids = c("Env1", "Env2", "Env3"))
+#' iclass_result@cluster_labels
+#' }
+#' @export
+tg_iclass <- function(loadings, env_ids = NULL, threshold = 0.0) {
+  if (!is.numeric(threshold) || length(threshold) != 1L || is.na(threshold) ||
+      threshold < 0) {
+    stop("threshold must be a non-negative numeric scalar.")
+  }
+  if (is.data.frame(loadings)) {
+    loadings <- as.matrix(loadings)
+  }
+  if (!is.matrix(loadings) || !is.numeric(loadings)) {
+    stop("loadings must be a numeric matrix (E x k).")
+  }
+  # Recover env_ids from rownames if user didn't pass them.
+  if (is.null(env_ids) && !is.null(rownames(loadings))) {
+    env_ids <- rownames(loadings)
+  }
+  if (!is.null(env_ids)) {
+    env_ids <- as.character(env_ids)
+    if (length(env_ids) != nrow(loadings)) {
+      stop(sprintf(
+        "env_ids has length %d; expected %d to match nrow(loadings).",
+        length(env_ids), nrow(loadings)
+      ))
+    }
+  }
+
+  tryCatch(tg_py(), tg_no_python = function(e) stop(e))
+  py_postgwas <- tryCatch(
+    reticulate::import("torchgenomics.postgwas"),
+    error = function(e) stop(structure(
+      class = c("tg_no_python", "error", "condition"),
+      list(message = paste0(
+        "torchgenomics.postgwas not importable: ",
+        conditionMessage(e), ". Try tg_install(force = TRUE)."
+      ))
+    ))
+  )
+  py_fn <- py_postgwas$iclass
+  if (is.null(py_fn)) {
+    stop(structure(
+      class = c("tg_runtime_error", "error", "condition"),
+      list(message = "torchgenomics.postgwas has no function 'iclass'")
+    ))
+  }
+
+  storage.mode(loadings) <- "double"
+  py_args <- .compact(list(
+    loadings = loadings,
+    env_ids = if (is.null(env_ids)) NULL else as.list(env_ids),
+    threshold = as.numeric(threshold)
+  ))
+
+  py_result <- tryCatch(
+    do.call(py_fn, py_args),
+    python.builtin.ValueError = function(e) stop(structure(
+      class = c("tg_input_error", "error", "condition"),
+      list(message = paste0("iclass(): ", conditionMessage(e)))
+    )),
+    python.builtin.TypeError = function(e) stop(structure(
+      class = c("tg_input_error", "error", "condition"),
+      list(message = paste0("iclass(): ", conditionMessage(e)))
+    )),
+    python.builtin.Exception = function(e) {
+      tb <- tryCatch(reticulate::py_last_error()$traceback, error = function(...) "")
+      if (is.null(tb)) tb <- ""
+      tb_str <- paste(as.character(tb), collapse = "\n")
+      stop(structure(
+        class = c("tg_runtime_error", "error", "condition"),
+        list(message = paste0(
+          "iclass(): ", conditionMessage(e),
+          if (nzchar(tb_str)) paste0("\n", tb_str) else ""
+        ))
+      ))
+    }
+  )
+
+  # IClassResult is a plain @dataclass without to_dict(); reticulate
+  # exposes its attributes via $.
+  d <- list(
+    cluster_labels = reticulate::py_to_r(py_result$cluster_labels),
+    cluster_membership = reticulate::py_to_r(py_result$cluster_membership),
+    loadings = reticulate::py_to_r(py_result$loadings),
+    polarity_matrix = reticulate::py_to_r(py_result$polarity_matrix),
+    n_factors = reticulate::py_to_r(py_result$n_factors),
+    n_envs = reticulate::py_to_r(py_result$n_envs),
+    env_ids = reticulate::py_to_r(py_result$env_ids),
+    threshold = reticulate::py_to_r(py_result$threshold)
+  )
+  IClassResult$new_from_dict(d)
 }

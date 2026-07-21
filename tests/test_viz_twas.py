@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 import matplotlib
+
 matplotlib.use("Agg")  # headless backend before pyplot is imported
 
 import numpy as np

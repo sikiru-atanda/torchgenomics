@@ -527,6 +527,16 @@ def _ld_reference_subset(ld_ref: LDReference, idx: Tensor) -> LDReference:
     For block mode, blocks are re-indexed contiguously and each retained
     block is sub-selected to the kept SNPs within it.
     """
+    # Root-cause device routing: callers (e.g. ``_harmonize``) construct
+    # ``idx`` on CPU via ``torch.tensor(keep_ref, ...)``, but ``ld_ref``
+    # may live on a non-CPU device when the api facade resolves
+    # ``device="auto"`` to ``"cuda"``. Normalize ``idx`` once here so the
+    # whole function operates on ``ld_ref``'s device — in particular,
+    # ``idx[new_in_block]`` below (where ``new_in_block`` is derived from
+    # the LD reference and therefore lives on ``ld_ref``'s device).
+    ref_device = ld_ref.af.device
+    if idx.device != ref_device:
+        idx = idx.to(ref_device)
     idx_list = idx.tolist()
     new_snp = [ld_ref.snp[i] for i in idx_list]
     new_chr = [ld_ref.chr[i] for i in idx_list]

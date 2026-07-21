@@ -418,3 +418,136 @@ class PlotResult(_BaseRun):
         d = super().to_dict()
         d.pop("figure", None)
         return d
+
+
+# --- LGEBV (Local Genomic Estimated Breeding Values) ------------------------
+
+
+@dataclass
+class LGEBVResult(_BaseRun):
+    """Result of :func:`torchgenomics.api.lgebv`.
+
+    Holds per-haplo-block summed marker effects (the "local" GEBV) and
+    a sign-based favorable/unfavorable classification.
+
+    Attributes
+    ----------
+    block_id, chrom, start, end, n_variants
+        Per-block bookkeeping (lists of length ``n_blocks``).
+    lgebv : torch.Tensor
+        ``(n_blocks,)`` sum of per-marker effects within each block.
+        This is the breeding-value contribution from that block in the
+        (centered, ploidy-aware standardized) space.
+    block_variance : torch.Tensor
+        ``(n_blocks,)`` ``Var(Z[:, block] @ u_hat[block])`` across
+        genotypes, i.e. the empirical variance explained by the block.
+    favorable : list[bool]
+        Sign-based classification (see ``favorable_direction`` in the
+        function signature).
+    marker_effects : torch.Tensor | None
+        ``(m,)`` per-marker BLUP effect ``u_hat``; populated only when
+        ``return_marker_effects=True``.
+    h2_used : float
+        Heritability value used for the rrBLUP shrinkage. If the caller
+        passed ``h2=None`` this is the REML-estimated value.
+    method : str
+        ``"rrblup"`` or ``"gblup"``.
+    """
+
+    block_id: list[str] = field(default_factory=list)
+    chrom: list[str] = field(default_factory=list)
+    start: list[int] = field(default_factory=list)
+    end: list[int] = field(default_factory=list)
+    n_variants: list[int] = field(default_factory=list)
+    lgebv: Any = None              # torch.Tensor (n_blocks,)
+    block_variance: Any = None     # torch.Tensor (n_blocks,)
+    favorable: list[bool] = field(default_factory=list)
+    marker_effects: Any = None     # torch.Tensor (m,) | None
+    h2_used: float = 0.0
+    method: str = "rrblup"
+
+    _kind: ClassVar[str] = "lgebv"
+
+    # ------------------------------------------------------------------
+    # Conversion helpers
+    # ------------------------------------------------------------------
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Return a per-block table.
+
+        Columns: ``block_id``, ``chrom``, ``start``, ``end``, ``n_variants``,
+        ``lgebv``, ``block_variance``, ``favorable``.
+        """
+        lgebv_list = self.lgebv.detach().cpu().tolist() if self.lgebv is not None else []
+        var_list = (
+            self.block_variance.detach().cpu().tolist()
+            if self.block_variance is not None
+            else []
+        )
+        return pd.DataFrame(
+            {
+                "block_id": list(self.block_id),
+                "chrom": list(self.chrom),
+                "start": list(self.start),
+                "end": list(self.end),
+                "n_variants": list(self.n_variants),
+                "lgebv": lgebv_list,
+                "block_variance": var_list,
+                "favorable": list(self.favorable),
+            }
+        )
+
+    def top_blocks(
+        self,
+        k: int = 10,
+        by: str = "variance",
+    ) -> pd.DataFrame:
+        """Return the top-``k`` blocks sorted by ``block_variance`` or ``|lgebv|``.
+
+        Parameters
+        ----------
+        k : int
+            Number of blocks to return.
+        by : {"variance", "abs_lgebv"}
+            Sort key.
+        """
+        df = self.to_dataframe()
+        if df.empty:
+            return df
+        if by == "variance":
+            df = df.sort_values("block_variance", ascending=False)
+        elif by == "abs_lgebv":
+            df = df.reindex(df["lgebv"].abs().sort_values(ascending=False).index)
+        else:
+            raise ValueError(f"Unknown sort key '{by}'. Use 'variance' or 'abs_lgebv'.")
+        return df.head(k).reset_index(drop=True)
+
+    def summary(self) -> str:
+        n_blocks = len(self.block_id)
+        n_fav = sum(1 for b in self.favorable if b)
+        lines = [
+            f"LGEBV ({self.method}): {n_blocks} haplo-blocks scored",
+            f"h² used: {self.h2_used:.4f}",
+            f"Favorable blocks: {n_fav}/{n_blocks}",
+        ]
+        if n_blocks > 0 and self.lgebv is not None:
+            l = self.lgebv.detach().cpu()
+            v = (
+                self.block_variance.detach().cpu()
+                if self.block_variance is not None
+                else None
+            )
+            lines.append(
+                f"LGEBV range: [{float(l.min()):.4f}, {float(l.max()):.4f}], "
+                f"mean={float(l.mean()):.4f}"
+            )
+            if v is not None and len(v) > 0:
+                lines.append(
+                    f"Block variance: max={float(v.max()):.4f}, "
+                    f"median={float(v.median()):.4f}"
+                )
+            head_df = self.top_blocks(k=min(5, n_blocks), by="variance")
+            lines.append("Top blocks by variance:")
+            lines.append(head_df.to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)

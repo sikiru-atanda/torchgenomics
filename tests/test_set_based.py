@@ -7,7 +7,12 @@ import pytest
 import torch
 from scipy.stats import kstest
 
-from torchgenomics.io.regions import Region, compute_skat_weights, load_regions, map_regions_to_variants
+from torchgenomics.io.regions import (
+    Region,
+    compute_skat_weights,
+    load_regions,
+    map_regions_to_variants,
+)
 from torchgenomics.linalg.kinship import grm_vanraden
 from torchgenomics.models.set_based import SetBasedResult, SetBasedScanner
 from torchgenomics.models.single_trait_lmm import SingleTraitLMM

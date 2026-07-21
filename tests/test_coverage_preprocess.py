@@ -38,17 +38,15 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchgenomics.preprocess.impute import (
-    impute_knn_gpu,
-    impute_ld_gpu,
-    impute_mode_gpu,
-)
 from torchgenomics.preprocess.dosage_uncertainty import dosage_rsq
 from torchgenomics.preprocess.impute import (
     HAS_NATIVE_IMPUTE_KNN,
     HAS_NATIVE_IMPUTE_LD,
     HAS_NATIVE_IMPUTE_MODE,
+    impute_knn_gpu,
+    impute_ld_gpu,
     impute_mean,
+    impute_mode_gpu,
 )
 from torchgenomics.preprocess.impute_external import (
     ImputationResult,
@@ -58,7 +56,6 @@ from torchgenomics.preprocess.impute_external import (
 )
 from torchgenomics.preprocess.phase import load_haplotypes, phase_beagle
 from torchgenomics.preprocess.polyrad_wrapper import DosageProbabilities, run_polyrad
-
 
 pytestmark = pytest.mark.timeout(60)
 

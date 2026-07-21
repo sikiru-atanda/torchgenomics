@@ -547,11 +547,18 @@ class TestPolyploidAllMethods:
         assert isinstance(blocks, list)
 
     def test_tetraploid_finds_blocks(self, polyploid_data):
-        """Tetraploid data with known LD should produce multi-SNP blocks."""
+        """Tetraploid data with known LD should produce multi-SNP blocks.
+
+        Regression for the diploid-hardcoded MAF filter in
+        ``compute_pairwise_ld`` (formerly ``af = G.mean / 2.0``). Without
+        passing ``ploidy=4``, common tetraploid SNPs whose mean dosage
+        exceeds 2 are silently dropped by the MAF filter and blocks
+        collapse.
+        """
         G, pos, chrs, ids = polyploid_data
         blocks = detect_blocks(
             G, pos, chrs, ids, method="r2",
-            r2_threshold=0.2, max_kb=200.0,
+            r2_threshold=0.2, max_kb=200.0, ploidy=4,
         )
         multi_blocks = [b for b in blocks if b.n_variants >= 3]
         assert len(multi_blocks) >= 1, "Expected multi-SNP blocks in tetraploid data"

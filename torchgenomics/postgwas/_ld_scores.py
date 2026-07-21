@@ -10,7 +10,7 @@ This includes r^2(j, j) = 1, so independent SNPs have l_j = 1.
 
 from __future__ import annotations
 
-from typing import Iterable, Iterator
+from typing import Iterable
 
 import torch
 from torch import Tensor

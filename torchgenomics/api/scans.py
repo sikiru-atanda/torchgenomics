@@ -39,8 +39,8 @@ def _genomic_inflation(p: pd.Series | list[float] | None) -> float | None:
     if p is None:
         return None
     try:
-        from scipy.stats import chi2  # type: ignore[import-untyped]
         import numpy as np
+        from scipy.stats import chi2  # type: ignore[import-untyped]
 
         arr = pd.Series(p).dropna().astype(float).values
         if len(arr) == 0:

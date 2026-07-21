@@ -66,7 +66,6 @@ from torchgenomics.linalg.truncated_mvn import (
     truncated_normal_moments,
 )
 
-
 pytestmark = pytest.mark.timeout(30)
 
 

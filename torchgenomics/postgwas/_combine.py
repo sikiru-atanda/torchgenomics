@@ -47,8 +47,7 @@ import torch
 from torch import Tensor
 
 from ._sumstats import SumStats
-from ._twas import TWASResult, TWASGeneResult
-
+from ._twas import TWASResult
 
 # ===========================================================================
 # Result dataclasses
@@ -508,7 +507,6 @@ def truncated_product(
     #                      (w / τ^m) ]
     # For w ≤ τ^m the integral collapses to τ^m; for w > τ^m there's an
     # incomplete-gamma-style series. Use scipy's gammainc for stability.
-    import scipy.special as _sps
     log_tau = math.log(tau)
     log_W = math.log(W)
     total = 0.0
@@ -761,7 +759,7 @@ def brown_ld_aware(
     -------
     (stat, p_combined) : tuple of floats
     """
-    from ..stats.simplem import effective_test_count, ld_correlation_eigenvalues
+    from ..stats.simplem import effective_test_count
 
     p_t = _validate_pvals(_to_tensor(p_per_snp, "p_per_snp"))
     k = int(p_t.numel())

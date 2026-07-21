@@ -237,7 +237,18 @@ torchgenomics ld-blocks --genotype data.bed --method big_ld --r2-threshold 0.5
 torchgenomics ld-blocks --genotype data.bed --method cc_graph
 torchgenomics ld-blocks --genotype data.bed --method changepoint
 torchgenomics ld-blocks --genotype data.bed --method graphical --l1-penalty 0.1
+
+# SelectionTools-style r² block detection with tolerance (Pandit et al. 2026 / barley)
+# tolerance=N allows up to N consecutive below-threshold adjacent pairs
+# before closing a block. Default 0 = legacy behaviour (split on first failure).
+torchgenomics ld-blocks --genotype data.bed --method r2 \
+                        --r2-threshold 0.7 --tolerance 2 --output blocks
 ```
+
+> **Polyploid note**: For tetraploid+ input, use the Python API directly with
+> `torchgenomics.ld.detect_blocks(G, ..., ploidy=4)` — the CLI does not yet
+> surface `--ploidy` for `ld-blocks` (CLI defaults to diploid). Without `ploidy`
+> set correctly, the MAF filter under-counts polyploid common SNPs.
 
 ## Random regression (longitudinal)
 

@@ -25,7 +25,6 @@ from torchgenomics.models.base import NullFit, VariantMeta
 from torchgenomics.scan.prefetch import PrefetchIterator, move_nullfit_to_device
 from torchgenomics.scan.strategies import FixedNullStrategy, PerSNPRefitStrategy
 
-
 pytestmark = pytest.mark.timeout(30)
 
 
