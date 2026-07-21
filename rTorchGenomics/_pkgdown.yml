@@ -29,19 +29,54 @@ reference:
     - tg_validate
     - tg_convert
     - tg_impute
+    - tg_dosage_call
+    - tg_phase_poly
 - title: "GWAS scans"
   contents:
     - tg_lmm_scan
     - tg_glm_scan
+    - tg_mvlmm_scan
+    - tg_poly_scan
+    - tg_mklmm_scan
+    - tg_gxe_scan
+    - tg_set_scan
+    - tg_bayes_scan
+    - tg_bayes_scan_rss
+    - tg_farmcpu_scan
+    - tg_blink_scan
+    - tg_met_scan
+    - tg_mtmet_scan
+    - tg_threshold_scan
+    - tg_family_scan
+    - tg_conditional_scan
+    - tg_ocf_scan
+    - tg_knockoff_scan
+    - tg_gu_scan
+    - tg_lro_scan
+    - tg_glmm_scan
+    - tg_me_glmm_scan
+    - tg_survival_scan
+    - tg_rr_scan
+    - tg_rr_met_scan
 - title: "LD + post-GWAS"
   contents:
     - tg_ld_blocks
     - tg_clump
     - tg_meta
+    - tg_ldsc
+    - tg_ldsc_rg
+    - tg_iclass
+    - tg_combine_gwas_twas
+    - tg_twas_scan
+- title: "Causal mediation"
+  contents:
+    - tg_mediate
+    - tg_mediate_scan
 - title: "Polygenic scoring"
   contents:
     - tg_pgs_fit
     - tg_pgs_score
+    - tg_lgebv
 - title: "Annotation"
   contents:
     - tg_annotate_hits
@@ -49,8 +84,13 @@ reference:
   contents:
     - tg_manhattan
     - tg_qq
-- title: "Tier-2 (auto-generated)"
+- title: "Pipeline"
   contents:
+    - tg_pipeline
+- title: "Utilities"
+  contents:
+    - to_dataframe
+    - generate_api_auto
     - has_keyword("internal")
 - title: "Result classes"
   contents:
@@ -65,5 +105,8 @@ reference:
     - ConvertRun-class
     - ImputeRun-class
     - GwasResult-class
+    - IClassResult-class
+    - LGEBVResult-class
+    - PlotResult-class
     - top_hits
     - output_files
