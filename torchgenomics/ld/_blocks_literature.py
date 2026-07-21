@@ -7,13 +7,11 @@
 
 from __future__ import annotations
 
-import os
-from .._dispatch import native_disabled
-
 import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import (
     HAS_NATIVE_BIG_LD,
     HAS_NATIVE_CC_GRAPH,
@@ -421,6 +419,7 @@ def detect_blocks_cc_graph(
     max_kb: float = 200.0,
     include_singletons: bool = True,
     device: torch.device | None = None,
+    ploidy: int = 2,
 ) -> list[LDBlock]:
     """Detect blocks via connected components on an r²-thresholded graph.
 
@@ -465,8 +464,11 @@ def detect_blocks_cc_graph(
     all_blocks: list[LDBlock] = []
     max_bp = max_kb * 1000.0
 
-    # Precompute MAF for tag-SNP selection
-    freq = G.mean(dim=0) / 2.0
+    # Precompute MAF for tag-SNP selection. ``af = mean(G) / ploidy``;
+    # diploid default keeps existing callers bit-identical.
+    if ploidy < 1:
+        raise ValueError(f"ploidy must be >= 1, got {ploidy}")
+    freq = G.mean(dim=0) / float(ploidy)
     maf = torch.min(freq, 1.0 - freq)
 
     for chrom in chr_set:

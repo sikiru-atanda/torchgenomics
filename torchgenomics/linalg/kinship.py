@@ -158,7 +158,14 @@ def grm_zhang(G: Tensor) -> tuple[Tensor, GRMMetadata]:
 
     if abs(DU - floor_val) < 1e-20:
         logger.warning("Zhang kinship: degenerate diagonal range.")
-        return torch.eye(n, dtype=torch.float64, device=G.device)
+        meta = GRMMetadata(
+            method="zhang",
+            n_samples=n,
+            n_snps_used=m,
+            ploidy=2,
+            standardization="center_only",
+        )
+        return torch.eye(n, dtype=torch.float64, device=G.device), meta
 
     K = top * (K - floor_val) / (DU - floor_val)
     Dmin = top * (DL - floor_val) / (DU - floor_val)

@@ -181,20 +181,22 @@ class TestGWASPolyTetraploid:
         assert n > 8000, f"Too few common markers: {n}"
         assert r > 0.999, f"3-dom r(-log10p) = {r:.6f}, expected > 0.999"
 
-    def test_diplo_additive_differs(self, potato_data):
-        """Diplo-additive encoding differs from GWASpoly — correlation expected < 0.6.
+    def test_diplo_additive_matches_gwaspoly(self, potato_data):
+        """Diplo-additive matches GWASpoly's diploidized encoding.
 
-        GWASpoly: {0->0, 1,2,3->1, 4->2} (diploidized)
-        TorchGenomics: min(dose, ploidy-dose) = {0->0, 1->1, 2->2, 3->1, 4->0}
+        GWASpoly diplo-additive: {0->0, 1,2,3->1, 4->2} (diploidized). TorchGenomics
+        now uses the same monotone coding, so the -log10 p-values track the
+        GWASpoly reference near-perfectly. (Previously it used a folded
+        min(dose, k-dose) = {0->0,1->1,2->2,3->1,4->0} coding, which only
+        partially agreed with the reference — the bug this test now guards.)
         """
         Y, X0, G_obs, G_geno, Z, vmeta, snp_names = potato_data
         p = _run_p3d(Y, X0, G_obs, G_geno, Z, vmeta, "diplo-additive")
         ref = _load_gwaspoly_ref("diplo_additive")
         r, n = _compute_logp_corr(p, snp_names, ref)
         assert n > 9000, f"Too few common markers: {n}"
-        # Different encoding — moderate correlation only
-        assert r > 0.3, f"diplo-additive r = {r:.4f}, expected > 0.3"
-        assert r < 0.7, f"diplo-additive r = {r:.4f}, unexpectedly high for different encoding"
+        # Reference equivalence with GWASpoly's diplo-additive.
+        assert r > 0.9, f"diplo-additive r = {r:.4f}, expected reference-level agreement"
 
     def test_gene_action_encoding(self):
         """Verify gene-action encoding matches GWASpoly conventions."""
@@ -215,7 +217,7 @@ class TestGWASPolyTetraploid:
         expected = torch.tensor([[0, 0, 0, 1, 1]], dtype=STAT_DTYPE)
         assert torch.equal(enc, expected)
 
-        # diplo-additive: min(d, k-d)
+        # diplo-additive: diploidize -> {0->0, 1,2,3->1, 4->2} (GWASpoly)
         enc = recode_gene_action(doses, "diplo-additive", 4)
-        expected = torch.tensor([[0, 1, 2, 1, 0]], dtype=STAT_DTYPE)
+        expected = torch.tensor([[0, 1, 1, 1, 2]], dtype=STAT_DTYPE)
         assert torch.equal(enc, expected)

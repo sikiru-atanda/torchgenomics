@@ -11,6 +11,18 @@ Same engine as the Python [`torchgenomics`](https://pypi.org/project/torchgenomi
 package (v0.4.0), with R-idiomatic ergonomics: S4 result classes, tibble
 top-hits tables, and native [ggplot2](https://ggplot2.tidyverse.org/) plots.
 
+## What's new in 0.4.1
+
+- `tg_lgebv()` — Local Genomic Estimated Breeding Values per haplo-block
+  (Endelman 2011 rrBLUP; Pandit et al. 2026 breeding-program workflow).
+- `tg_iclass()` — G x E classification on factor-analytic loadings
+  (Smith et al. 2015 / 2021); environments are clustered by polarity
+  pattern.
+- `tg_ld_blocks(..., tolerance = N)` — new `tolerance` parameter on
+  `method = "r2"` (SelectionTools-style; Wittenburg et al. 2024).
+- `vignette("breeding-program-haplotype-workflow")` — barley-style
+  end-to-end workflow that chains the three additions.
+
 ## Install
 
 ```r
@@ -57,15 +69,16 @@ All scan wrappers return an S4 `ScanRun` (or `LDBlocksResult`, `PGSFit`,
 
 ## What's available
 
-**45 wrappers total: 11 hand-crafted polished + 32 auto-generated tier-2 + 2 plots.**
+**51 functions total: 13 hand-crafted polished + 32 auto-generated tier-2 + 2 plots + 4 install / bridge / codegen utilities.**
 
-**11 hand-crafted polished wrappers** (rich docs, defaults, validation):
+**13 hand-crafted polished wrappers** (rich docs, defaults, validation):
 
 - Data: `tg_validate`, `tg_convert`, `tg_impute`
 - Scans: `tg_lmm_scan`, `tg_glm_scan`
 - LD + post-GWAS: `tg_ld_blocks`, `tg_clump`, `tg_meta`
 - PGS: `tg_pgs_fit`, `tg_pgs_score`
 - Annotation: `tg_annotate_hits`
+- Breeding-program haplotype workflow (new in 0.4.1): `tg_lgebv`, `tg_iclass`
 
 **32 auto-generated tier-2 wrappers** (codegen from Python manifest):
 
@@ -119,7 +132,8 @@ See `vignette("reticulate-bridge")` for the full implementation details.
 
 | rTorchGenomics | Python torchgenomics | Status |
 | -------------- | -------------------- | ------ |
-| 0.4.0          | 0.4.0                | current |
+| 0.4.1          | 0.4.0+ (incl. iclass / lgebv) | current |
+| 0.4.0          | 0.4.0                | previous |
 
 `tg_install()` pins `torchgenomics[mcp]==0.4.0` to keep the two sides in
 lock-step. Bumping the R package version also bumps the pinned Python

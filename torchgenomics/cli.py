@@ -1742,8 +1742,7 @@ def _cmd_knockoff_scan(args: argparse.Namespace) -> int:
 
     from .config import TorchGenomicsConfig, resolve_device
     from .linalg.kinship import grm_vanraden_streaming
-    from .models.knockoff_lmm import KnockoffLMM, KnockoffResult
-    from .models.knockoff_lmm import _knockoff_plus_filter
+    from .models.knockoff_lmm import KnockoffLMM, KnockoffResult, _knockoff_plus_filter
 
     device = resolve_device(args.device)
     config = TorchGenomicsConfig(device=device, chunk_size=args.chunk_size)
@@ -3606,6 +3605,7 @@ def _run_ld_blocks(
     freq_threshold: float = 0.01,
     dprime_threshold: float = 0.7,
     r2_threshold: float = 0.5,
+    tolerance: int = 0,
     condition_penalty: float = 0.0,
     max_block_snps: int = 1_000,
     l1_penalty: float = 0.1,
@@ -3644,6 +3644,7 @@ def _run_ld_blocks(
         method_kwargs["d_prime_threshold"] = dprime_threshold
     elif method == "r2":
         method_kwargs["r2_threshold"] = r2_threshold
+        method_kwargs["tolerance"] = tolerance
     elif method == "gwas_aligned":
         method_kwargs["condition_penalty"] = condition_penalty
         method_kwargs["max_block_snps"] = max_block_snps
@@ -3821,6 +3822,7 @@ def _cmd_ld_blocks(args: argparse.Namespace) -> int:
         freq_threshold=getattr(args, "freq_threshold", 0.01),
         dprime_threshold=getattr(args, "dprime_threshold", 0.7),
         r2_threshold=getattr(args, "r2_threshold", 0.5),
+        tolerance=getattr(args, "tolerance", 0),
         condition_penalty=getattr(args, "condition_penalty", 0.0),
         max_block_snps=getattr(args, "max_block_snps", 1000),
         l1_penalty=getattr(args, "l1_penalty", 0.1),
@@ -5288,6 +5290,8 @@ def _add_ld_blocks_parser(subparsers: argparse._SubParsersAction) -> None:
     # r2-specific
     p.add_argument("--r2-threshold", type=float, default=0.2,
                    help="r² block threshold (default: 0.2)")
+    p.add_argument("--tolerance", type=int, default=0,
+                   help="Consecutive below-threshold adjacent pairs to absorb before closing an r² block (SelectionTools convention; default: 0 = strict legacy behavior; SelectionTools-style is 2)")
     # GWAS-aligned
     p.add_argument("--condition-penalty", type=float, default=0.1,
                    help="Condition number penalty (gwas_aligned, default: 0.1)")
@@ -6743,7 +6747,9 @@ def _cmd_twas_scan(args: argparse.Namespace) -> int:
     """Observed-expression TWAS entry point."""
     from .postgwas import twas_observed_expression
     from .preprocess import (
-        inverse_normal_transform, peer_residualize, quantile_normalize,
+        inverse_normal_transform,
+        peer_residualize,
+        quantile_normalize,
     )
     from .stats import multipletesting as _mt
 
@@ -6905,6 +6911,7 @@ def _add_combine_gwas_twas_parser(subparsers: argparse._SubParsersAction) -> Non
 def _read_gwas_sumstats_tsv(path: str):
     """Read a GWAS sumstats TSV into a SumStats object."""
     import pandas as pd
+
     from .postgwas import SumStats
     df = pd.read_csv(path, sep="\t")
     required = {"chr", "pos", "snp", "a1", "a2", "beta", "se", "p"}
@@ -6937,6 +6944,7 @@ def _read_twas_results_tsv(path: str):
     """Read a TWAS results TSV (output of `torchgenomics twas-scan`) into a
     TWASResult object."""
     import pandas as pd
+
     from .postgwas import TWASGeneResult, TWASResult
     df = pd.read_csv(path, sep="\t")
     required = {"gene_id", "z_twas", "p_twas"}

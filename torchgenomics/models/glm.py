@@ -121,15 +121,25 @@ class GLM:
 
         gtg_safe = torch.clamp(gtg, min=1e-20)
         beta = gty / gtg_safe  # (m,)
-        var_beta = sig2_e / gtg_safe  # (m,)
+
+        # Full-model residual variance per SNP. Because g_resid is orthogonal to
+        # X0, adding g to the null model reduces the residual sum of squares by
+        # exactly gty^2 / gtg, so RSS_full = RSS_null - gty^2/gtg with df n-c-1.
+        # Using the null-model sig2_e here (the previous behaviour) inflates SE
+        # and biases every p-value; the correct full-model variance matches
+        # PLINK --linear / GAPIT GLM and the internal FarmCPU/BLINK _glm_scan.
+        c = X0.shape[1]
+        df2 = n - c - 1
+        rss_null = (y_resid * y_resid).sum()  # scalar (= sig2_e * (n-c))
+        rss_full = torch.clamp(rss_null - gty ** 2 / gtg_safe, min=0.0)  # (m,)
+        sig2_full = rss_full / df2  # (m,)
+        var_beta = sig2_full / gtg_safe  # (m,)
         se = torch.sqrt(var_beta)  # (m,)
 
         # F-statistic: F = beta^2 / var_beta ~ F(1, n-c-1)
-        stat = beta ** 2 / var_beta  # (m,)
+        stat = beta ** 2 / torch.clamp(var_beta, min=1e-300)  # (m,)
 
         # P-values from F(1, n-c-1) distribution (matches GAPIT/PLINK)
-        c = X0.shape[1]
-        df2 = n - c - 1
         p = _f_sf(stat, df1=1, df2=df2)
 
         # Allele frequencies

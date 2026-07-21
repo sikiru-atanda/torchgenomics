@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from ._decorator import tool
-from ._helpers import ProgressCallback, emit_progress, resolve_output_dir, select_device, timed
+from ._helpers import ProgressCallback, emit_progress, select_device, timed
 from ._results import PgsFitRun, PgsScoreRun
 
 

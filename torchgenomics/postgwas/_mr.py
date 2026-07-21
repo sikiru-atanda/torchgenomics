@@ -405,25 +405,32 @@ def mr_weighted_median(
 
     bx = exposure.beta.to(torch.float64)
     by = outcome.beta.to(torch.float64)
+    se_x = exposure.se.to(torch.float64)
     se_y = outcome.se.to(torch.float64)
     K = bx.shape[0]
 
-    # Wald ratios and inverse-variance weights of the Wald ratio
+    # Wald ratios and their inverse delta-method variance weights (Bowden et
+    # al. 2016; TwoSampleMR): VBj = se_y^2/bx^2 + by^2 * se_x^2 / bx^4, so
+    # w = 1/VBj. The previous weights bx^2/se_y^2 dropped the exposure-error
+    # (se_x) term.
     ratios = by / bx  # (K,)
-    # Var(Wald) ~ se_y^2 / bx^2  =>  w = bx^2 / se_y^2
-    weights = (bx**2) / (se_y**2)
-    weights = weights.clamp(min=1e-30)
+    vbj = (se_y**2) / (bx**2) + (by**2) * (se_x**2) / (bx**4)
+    weights = (1.0 / vbj.clamp(min=1e-30)).clamp(min=1e-30)
 
     beta_hat = _weighted_median(ratios, weights)
 
-    # Bootstrap SE
+    # Parametric bootstrap SE (Bowden 2016): resample bx* ~ N(bx, se_x^2),
+    # by* ~ N(by, se_y^2) and recompute the weighted median with the ORIGINAL
+    # weights. The previous nonparametric index resampling does not match the
+    # reference (TwoSampleMR::weighted_median_bootstrap) SE / p-value.
     gen = torch.Generator(device=bx.device)
     gen.manual_seed(seed)
 
     boot_estimates = torch.empty(n_boot, dtype=torch.float64, device=bx.device)
     for b in range(n_boot):
-        idx = torch.randint(0, K, (K,), generator=gen, device=bx.device)
-        boot_estimates[b] = _weighted_median(ratios[idx], weights[idx])
+        bx_star = bx + se_x * torch.randn(K, generator=gen, device=bx.device, dtype=torch.float64)
+        by_star = by + se_y * torch.randn(K, generator=gen, device=bx.device, dtype=torch.float64)
+        boot_estimates[b] = _weighted_median(by_star / bx_star, weights)
 
     se_hat = boot_estimates.std().item()
     p_value = _two_sided_p_scalar(beta_hat / se_hat) if se_hat > 0 else 1.0

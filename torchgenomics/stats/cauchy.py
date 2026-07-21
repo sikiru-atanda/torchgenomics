@@ -61,14 +61,26 @@ def cauchy_combination(
     # Clamp p-values away from exact 0 and 1 to avoid infinite tan values
     p_clamped = torch.clamp(p_matrix, min=1e-300, max=1.0 - 1e-15)
 
-    # Transform to Cauchy: T = tan((0.5 - p) * pi)
-    T = torch.tan((0.5 - p_clamped) * math.pi)  # (m, k)
+    # Transform to Cauchy: T = tan((0.5 - p) * pi). For very small p, the naive
+    # tan loses all precision because (0.5 - p) rounds to 0.5 in float64, so
+    # tan(pi/2 - pi*p) = cot(pi*p) ~ 1/(pi*p) is used instead (Liu & Xie 2020,
+    # ACAT; matches their reference implementation). Without this branch the
+    # combined p-value saturates at ~5.5e-17 regardless of how small the input.
+    is_small = p_clamped < 1e-15
+    T_tan = torch.tan((0.5 - p_clamped) * math.pi)  # (m, k)
+    T_small = 1.0 / (p_clamped * math.pi)  # (m, k)
+    T = torch.where(is_small, T_small, T_tan)
 
     # Weighted sum across methods/traits
     T_combined = (T * weights.unsqueeze(0)).sum(dim=1)  # (m,)
 
-    # Back-transform to p-value
-    p_combined = 0.5 - torch.arctan(T_combined) / math.pi
+    # Back-transform to p-value. For a large combined statistic (tiny p) the
+    # survival function 0.5 - arctan(T)/pi saturates because arctan(T) -> pi/2;
+    # use the tail approximation p = 1/(pi*T) there instead.
+    is_large = T_combined > 1e15
+    p_normal = 0.5 - torch.arctan(T_combined) / math.pi
+    p_tail = 1.0 / (math.pi * torch.clamp(T_combined, min=1e-300))
+    p_combined = torch.where(is_large, p_tail, p_normal)
 
     # Clamp to [0, 1]
     p_combined = torch.clamp(p_combined, min=0.0, max=1.0)

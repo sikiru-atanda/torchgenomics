@@ -7,7 +7,7 @@ Covers, in order of increasing dependency:
   2. **Wrapper hygiene**: ``progress_callback`` is stripped, ``Path`` is
      coerced to ``str``, ``Literal`` enums survive intact.
   3. **Server boot**: :func:`build_server` constructs a FastMCP with the
-     13 tier-1 tools registered and emits valid JSON Schemas.
+     14 tier-1 tools registered and emits valid JSON Schemas.
   4. **End-to-end MCP call**: in-process ``tg_validate`` returns a
      JSON-safe dict (decoded from the MCP TextContent payload).
 
@@ -28,7 +28,6 @@ import pytest
 from torchgenomics.api import registered_tools
 from torchgenomics.mcp import list_tools
 
-
 pytest_plugins: list[str] = []  # purely in-process; no plugin needed
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -40,9 +39,10 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures"
 class TestListTools:
     """Pure-Python list_tools() does not require the mcp SDK."""
 
-    def test_returns_thirteen_entries(self):
+    def test_returns_fourteen_entries(self):
+        # 13 original tier-1 tools + tg_lgebv added 2026-06-17
         tools = list_tools()
-        assert len(tools) == 13
+        assert len(tools) == 14
 
     def test_entry_fields(self):
         tools = list_tools()
@@ -150,7 +150,8 @@ class TestServerBoot:
         assert "tg_validate" in names
         assert "tg_lmm_scan" in names
         assert "tg_pgs_fit" in names
-        assert len(tools) == 13
+        assert "tg_lgebv" in names  # added 2026-06-17 (Pandit 2026 / Endelman rrBLUP)
+        assert len(tools) == 14
 
     def test_input_schemas_are_valid_json_schema(self):
         from torchgenomics.mcp import build_server

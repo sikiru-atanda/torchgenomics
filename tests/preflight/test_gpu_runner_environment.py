@@ -143,6 +143,8 @@ def test_setup_script_exists() -> None:
 
 
 def test_setup_script_is_executable() -> None:
+    if os.name == "nt":
+        pytest.skip("git on Windows does not preserve the Unix exec bit")
     mode = SCRIPT.stat().st_mode
     assert mode & stat.S_IXUSR, (
         f"{SCRIPT} is not executable. Run: chmod +x {SCRIPT}"

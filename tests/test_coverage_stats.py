@@ -20,6 +20,7 @@ import scipy.stats as sp_stats
 import torch
 from statsmodels.stats.multitest import multipletests
 
+from torchgenomics.models.base import ScanResult
 from torchgenomics.stats import (
     AdaPTResult,
     BestModelResult,
@@ -58,12 +59,10 @@ from torchgenomics.stats import (
     wald_test,
     weighted_bh,
 )
-from torchgenomics.models.base import ScanResult
 from torchgenomics.stats.calibrate import compare_pvalues
 from torchgenomics.stats.genomic_control import CHI2_1_MEDIAN
 from torchgenomics.stats.multipletesting import eigenmt_adjust
 from torchgenomics.stats.tests import apply_contrast
-
 
 pytestmark = pytest.mark.timeout(30)
 

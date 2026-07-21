@@ -536,6 +536,7 @@ class TestMultiTissueStack:
     def test_aggregate_chi2_and_p_multixcan(self):
         """S-MultiXcan-style approx: chi² = sum_t z_t² ~ χ²(n_tissues)."""
         from scipy.stats import chi2 as _chi2
+
         from torchgenomics.postgwas import twas_multi_tissue_aggregate
         per_t = self._build_per_tissue()
         summaries = twas_multi_tissue_aggregate(per_t)

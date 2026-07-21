@@ -17,15 +17,10 @@ poison the cache).
 """
 from __future__ import annotations
 
-import importlib
 import os
 import subprocess
 import sys
-import warnings
 from pathlib import Path
-
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TORCHGWAS_META_ROOT = REPO_ROOT / "packaging" / "torchgwas-meta"
@@ -37,8 +32,14 @@ def _run_in_clean_subprocess(code: str, env_extra: dict[str, str] | None = None)
     Both the main ``torchgenomics`` package (at REPO_ROOT) and the legacy
     ``torchgwas`` meta-package (at REPO_ROOT/packaging/torchgwas-meta/) need
     to be on PYTHONPATH so the shim works without a real ``pip install``.
+
+    Strips inherited ``TORCHGENOMICS_*`` / ``TORCHGWAS_*`` env vars so the
+    subprocess starts from a known-clean state; CI sets some of these globally
+    and they would otherwise mask the legacy-fallback paths under test.
     """
     env = os.environ.copy()
+    for key in [k for k in env if k.startswith(("TORCHGENOMICS_", "TORCHGWAS_"))]:
+        del env[key]
     paths = [str(REPO_ROOT), str(TORCHGWAS_META_ROOT)]
     env["PYTHONPATH"] = os.pathsep.join(paths + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     if env_extra:
@@ -154,6 +155,8 @@ class TestEnvVarCompat:
     def test_legacy_disable_native_warns(self):
         result = _run_in_clean_subprocess(
             "import warnings, torchgenomics._dispatch as d\n"
+            "d._warned_env_aliases.clear()\n"
+            "if hasattr(d, '__warningregistry__'): d.__warningregistry__.clear()\n"
             "with warnings.catch_warnings(record=True) as w:\n"
             "    warnings.simplefilter('always')\n"
             "    assert d.native_disabled() is True\n"
@@ -170,6 +173,8 @@ class TestEnvVarCompat:
     def test_legacy_env_warns_only_once(self):
         result = _run_in_clean_subprocess(
             "import warnings, torchgenomics._dispatch as d\n"
+            "d._warned_env_aliases.clear()\n"
+            "if hasattr(d, '__warningregistry__'): d.__warningregistry__.clear()\n"
             "with warnings.catch_warnings(record=True) as w:\n"
             "    warnings.simplefilter('always')\n"
             "    for _ in range(5):\n"
@@ -203,6 +208,8 @@ class TestEnvVarCompat:
     def test_disable_gpu_compat(self):
         result = _run_in_clean_subprocess(
             "import warnings, torchgenomics._dispatch as d\n"
+            "d._warned_env_aliases.clear()\n"
+            "if hasattr(d, '__warningregistry__'): d.__warningregistry__.clear()\n"
             "with warnings.catch_warnings(record=True) as w:\n"
             "    warnings.simplefilter('always')\n"
             "    assert d.gpu_disabled() is True\n"

@@ -16,6 +16,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import (
     HAS_NATIVE_GWAS_ALIGNED,
     HAS_NATIVE_UNCERTAINTY_BLOCKS,
@@ -530,7 +531,6 @@ def detect_blocks_cross_pop(
         # ``r2[..].item()`` round-trips into a single C++ pass. The Python
         # body below remains as the algorithmic spec; both paths are
         # exercised in the test suite.
-        from .._dispatch import native_disabled
         from .._native import HAS_NATIVE_CROSS_POP, _cross_pop_native
         cluster_stabilities: list[float] | None = None
         if (

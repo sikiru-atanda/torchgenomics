@@ -39,7 +39,6 @@ from torchgenomics.pgs.prscs import HAS_NATIVE_PRSCS
 from torchgenomics.pgs.scoring import ScoringResult
 from torchgenomics.pgs.validation import PGSValidation
 
-
 pytestmark = pytest.mark.timeout(60)
 
 

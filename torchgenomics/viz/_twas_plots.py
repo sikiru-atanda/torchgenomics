@@ -17,13 +17,11 @@ iterable of objects with ``gene_id``, ``p_twas``, ``z_twas``,
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
 
 from ._common import chrom_to_int, neglog10_p
-
 
 # ---------------------------------------------------------------------------
 # Helpers

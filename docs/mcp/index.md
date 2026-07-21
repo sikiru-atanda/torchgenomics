@@ -59,7 +59,7 @@ If `torchgenomics-mcp` isn't on `PATH` in the launched Python environment,
 give the absolute path: `"command": "/path/to/venv/bin/torchgenomics-mcp"`.
 
 Restart Claude Desktop. The server should appear in the "Tools" panel with
-13 tools listed.
+14 tools listed.
 
 ### Claude Code
 
@@ -72,7 +72,7 @@ Any client that speaks MCP stdio works. See
 [modelcontextprotocol.io](https://modelcontextprotocol.io) for the
 protocol spec.
 
-## The 13 tools
+## The 14 tools
 
 | Category | Tool | Wraps |
 |---|---|---|
@@ -86,6 +86,7 @@ protocol spec.
 | Post-GWAS | `tg_meta` | `torchgenomics.api.meta` |
 | PGS | `tg_pgs_fit` | `torchgenomics.api.pgs_fit` |
 | PGS | `tg_pgs_score` | `torchgenomics.api.pgs_score` |
+| PGS | `tg_lgebv` | `torchgenomics.api.lgebv` (Local GEBV per haplo-block; consumes pre-computed BLUEs) |
 | Annotate | `tg_annotate` | `torchgenomics.api.annotate_hits` |
 | Plot | `tg_manhattan` | `torchgenomics.api.manhattan` |
 | Plot | `tg_qq` | `torchgenomics.api.qq` |

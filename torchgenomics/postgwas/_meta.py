@@ -16,8 +16,6 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from ..stats.tests import chi2_sf
-
 
 @dataclass
 class MetaResult:
@@ -192,11 +190,14 @@ def meta_sample_size(
     if direction is not None:
         z = z * direction.to(torch.float64)
 
-    # Weights proportional to sqrt(n)
+    # Sample-size-weighted Stouffer's Z (Whitlock 2005; Stouffer 1949):
+    #   z_meta = sum_k w_k z_k / sqrt(sum_k w_k^2),  w_k = sqrt(n_k)
+    # so that z_meta ~ N(0,1) under the null. The previous code normalized the
+    # weights to sum to 1 and divided by sum(w) instead of sqrt(sum(w^2)),
+    # which deflates z by ~sqrt(K) and makes the null non-uniform (badly
+    # under-powered).
     w = n.sqrt()  # (K,)
-    w = w / w.sum()  # normalize
-
-    z_meta = (z * w.unsqueeze(0)).sum(dim=1)  # (m,)
+    z_meta = (z * w.unsqueeze(0)).sum(dim=1) / torch.sqrt((w**2).sum())  # (m,)
     p_meta = _z_to_p(z_meta)
 
     # No meaningful beta/se for sample-size method
@@ -222,11 +223,17 @@ def meta_han_eskin(
     """Han-Eskin RE2 meta-analysis (Han & Eskin, 2011).
 
     Modified random-effects test that is more powerful than DerSimonian-Laird
-    under effect heterogeneity. Uses a modified likelihood ratio statistic
-    that tests H0: all beta_k = 0 vs H1: beta_k ~ N(mu, tau^2).
+    under effect heterogeneity. Tests H0: mu = 0 and tau^2 = 0 against
+    H1: beta_k ~ N(mu, tau^2) via the likelihood-ratio statistic
 
-    The RE2 statistic is: T_RE2 = T_FE^2 * Q_tilde / (K-1+Q_tilde)
-    where T_FE is the fixed-effect z-score and Q_tilde is a modified Q.
+        S_RE2 = 2 [ l(mu_hat, tau2_hat) - l(0, 0) ],
+
+    where (mu_hat, tau2_hat) is the ML fit under beta_hat_k ~ N(mu, sigma_k^2 +
+    tau^2). Because tau^2 is constrained to the boundary [0, inf), the
+    asymptotic null of S_RE2 is the 0.5:0.5 mixture 0.5 chi^2_1 + 0.5 chi^2_2
+    (Han & Eskin 2011, Am J Hum Genet 88:586), NOT chi^2(1). The previous code
+    used a heuristic z_FE^2 * Q/(K-1) statistic referred to chi^2(1), which is
+    anti-conservative under the null.
 
     Parameters
     ----------
@@ -240,43 +247,55 @@ def meta_han_eskin(
     beta = beta.to(torch.float64)
     se = se.to(torch.float64)
     K = beta.shape[1]
+    sigma2 = se**2  # (m, K)
 
-    # Fixed-effect
-    w = 1.0 / (se**2)
-    w_sum = w.sum(dim=1)
-    beta_fe = (w * beta).sum(dim=1) / w_sum
-    se_fe = 1.0 / w_sum.sqrt()
-    z_fe = beta_fe / se_fe
+    # Null log-likelihood at (mu = 0, tau^2 = 0).
+    l0 = -0.5 * (torch.log(sigma2) + beta**2 / sigma2).sum(dim=1)  # (m,)
 
-    # Cochran's Q
-    resid = beta - beta_fe.unsqueeze(1)
-    q_stat = (w * resid**2).sum(dim=1)
-
-    # RE2 statistic: modified LRT
-    # T_RE2 = z_FE^2 when Q <= K-1 (no heterogeneity detected)
-    # T_RE2 = z_FE^2 * Q / (K-1) when Q > K-1
+    # Fixed-effect summary + Cochran's Q (also the DerSimonian-Laird tau^2 init).
+    w0 = 1.0 / sigma2
+    w0_sum = w0.sum(dim=1)
+    beta_fe = (w0 * beta).sum(dim=1) / w0_sum
+    se_fe = 1.0 / w0_sum.sqrt()
+    resid0 = beta - beta_fe.unsqueeze(1)
+    q_stat = (w0 * resid0**2).sum(dim=1)
     df = K - 1
-    q_ratio = torch.where(
-        q_stat > df,
-        q_stat / df,
-        torch.ones_like(q_stat),
-    )
-    t_re2 = z_fe**2 * q_ratio
+    c = w0_sum - (w0**2).sum(dim=1) / w0_sum
+    tau2 = torch.clamp((q_stat - df) / c.clamp(min=1e-30), min=0.0)  # (m,)
 
-    # P-value from chi2(1)
-    p_meta = chi2_sf(t_re2, df=1)
+    # ML fit of (mu, tau^2) by fixed-point iteration; tau^2 clamped to >= 0
+    # (the boundary that produces the mixture null).
+    mu = beta_fe
+    for _ in range(100):
+        w = 1.0 / (sigma2 + tau2.unsqueeze(1))
+        w_sum = w.sum(dim=1)
+        mu = (w * beta).sum(dim=1) / w_sum
+        resid = beta - mu.unsqueeze(1)
+        num = (w**2 * (resid**2 - sigma2)).sum(dim=1)
+        den = (w**2).sum(dim=1).clamp(min=1e-30)
+        tau2 = torch.clamp(num / den, min=0.0)
 
-    # Heterogeneity metrics
-    i2 = torch.clamp((q_stat - df) / q_stat, min=0.0)
-    i2 = torch.where(q_stat > 0, i2, torch.zeros_like(i2))
-    w_sq_sum = (w**2).sum(dim=1)
-    c = w_sum - w_sq_sum / w_sum
-    tau2 = torch.clamp((q_stat - df) / c, min=0.0)
+    w = 1.0 / (sigma2 + tau2.unsqueeze(1))
+    resid = beta - mu.unsqueeze(1)
+    l1 = -0.5 * (torch.log(sigma2 + tau2.unsqueeze(1)) + w * resid**2).sum(dim=1)
 
-    z_meta = torch.sign(z_fe) * t_re2.sqrt()
+    s_re2 = torch.clamp(2.0 * (l1 - l0), min=0.0)  # (m,)
+
+    # Asymptotic null: p = 0.5 * P(chi^2_1 > S) + 0.5 * P(chi^2_2 > S).
+    # chi^2.sf(S, k) = Q(k/2, S/2) via the regularized upper incomplete gamma.
+    half = torch.full_like(s_re2, 0.5)
+    one = torch.ones_like(s_re2)
+    sf1 = torch.special.gammaincc(half, s_re2 / 2.0)
+    sf2 = torch.special.gammaincc(one, s_re2 / 2.0)
+    p_meta = (0.5 * sf1 + 0.5 * sf2).clamp(min=1e-300, max=1.0)
+
+    # Heterogeneity metrics.
+    i2 = torch.where(q_stat > 0, torch.clamp((q_stat - df) / q_stat, min=0.0),
+                     torch.zeros_like(q_stat))
+    z_meta = torch.sign(mu) * s_re2.sqrt()
 
     return MetaResult(
-        beta_meta=beta_fe,
+        beta_meta=mu,
         se_meta=se_fe,
         p_meta=p_meta,
         z_meta=z_meta,
@@ -298,8 +317,11 @@ def _z_to_p(z: Tensor) -> Tensor:
 
 def _p_to_z(p: Tensor) -> Tensor:
     """Convert two-sided p-value to |z|-score (unsigned)."""
-    # z = Phi^{-1}(1 - p/2) = sqrt(2) * erfinv(1 - p)
-    # Clamp p to avoid infinities
-    p_c = p.clamp(min=1e-300, max=1.0 - 1e-10)
-    z = (2.0**0.5) * torch.erfinv(1.0 - p_c)
+    # |z| = Phi^{-1}(1 - p/2) = -Phi^{-1}(p/2). Computing it as
+    # sqrt(2)*erfinv(1 - p) collapses in the tail because 1 - p rounds to 1.0
+    # for p <~ 1e-16, returning +inf. Working from p/2 through the inverse
+    # normal CDF (ndtri) is stable to p ~ 1e-300 (routine at genome-wide-
+    # significant lead SNPs).
+    p_c = p.clamp(min=1e-300, max=1.0)
+    z = -torch.special.ndtri(p_c / 2.0)
     return z.clamp(min=0.0)

@@ -106,7 +106,7 @@ def compute_wall_pritchard_diagnostics(
         # missing or TORCHGENOMICS_DISABLE_NATIVE=1 is set. The C++ path uses
         # std::mt19937_64 instead of torch.randperm so it is statistically
         # equivalent rather than bit-for-bit identical to the Python path.
-        if _wall_pritchard_native_enabled():
+        if _wall_pritchard_native_enabled() and dp.device.type == "cpu":
             seed = int(torch.randint(0, 2**62 - 1, (1,)).item())
             dp_np = dp.detach().to(torch.float64).cpu().numpy()
             r2_np = r2.detach().to(torch.float64).cpu().numpy()

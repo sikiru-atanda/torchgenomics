@@ -735,8 +735,8 @@ class TestMrPresso:
         #     se_x = 0.02, se_y = 0.03, pleio_sigma = 0.15, seed = 42
         # We use the bundled fixture rather than re-simulating to keep the
         # test independent of any RNG impl differences between R and torch.
-        from pathlib import Path
         import csv as _csv
+        from pathlib import Path
         repo_root = Path(__file__).resolve().parents[1]
         sumstats_path = (
             repo_root / "validation" / "external" / "twosamplemr"

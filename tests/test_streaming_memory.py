@@ -41,7 +41,6 @@ from torchgenomics.models.base import VariantMeta
 from torchgenomics.models.set_based import SetBasedScanner
 from torchgenomics.models.single_trait_lmm import SingleTraitLMM
 
-
 # ---------------------------------------------------------------------------
 # Tiny in-memory reader used as a streaming source. By yielding chunks
 # without ever holding a single large tensor of its own (its only field
@@ -888,8 +887,8 @@ class TestRrScanStreamingMemory:
         reader = _ChunkedTensorReader(G, ["1"] * m, list(range(m)), chunk_size=64)
 
         def _imputed_iter():
-            for G_chunk, vm in reader.iter_chunks(64):
-                yield G_chunk, vm  # synthetic G has no NaNs
+            # synthetic G has no NaNs
+            yield from reader.iter_chunks(64)
 
         K_streamed, _ = grm_vanraden_streaming(
             _imputed_iter(),
@@ -1076,7 +1075,6 @@ class TestPolyScanStreamingMemory:
     def test_streaming_poly_scan_under_explicit_budget(self, poly_inputs):
         """Hard absolute budget: <16 MiB at n=100/m=400, ploidy=4."""
         from torchgenomics.config import TorchGenomicsConfig
-        from torchgenomics.linalg.kinship import grm_vanraden_streaming
         from torchgenomics.models.single_trait_lmm import SingleTraitLMM
         from torchgenomics.preprocess.polyploid import recode_gene_action
         from torchgenomics.scan.unified import UnifiedScanner

@@ -6,14 +6,14 @@ import pytest
 import torch
 
 from torchgenomics.postgwas._ld_ref_loader import (
+    LDReferenceUnsupportedFormatError,
     load_ld_reference,
     save_ld_reference,
-    LDReferenceUnsupportedFormatError,
 )
 from torchgenomics.postgwas._ld_ref_metadata import (
     LDReferenceMetadata,
-    check_metadata_compatibility,
     MetadataMismatchError,
+    check_metadata_compatibility,
 )
 
 
@@ -181,8 +181,8 @@ def test_in_sample_ld_symmetric():
 
 
 from torchgenomics.postgwas._ld_ref_loader import (
-    decompose_into_blocks,
     BlockSpec,
+    decompose_into_blocks,
 )
 
 

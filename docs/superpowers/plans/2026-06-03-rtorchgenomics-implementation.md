@@ -3360,7 +3360,7 @@ r <- tg_lmm_scan("data.bed", "pheno.tsv")
 print(r); tg_manhattan(r)
 ```
 
-See [`rTorchGenomics/README.md`](rTorchGenomics/README.md) for the full
+See [`rTorchGenomics/README.md`](https://github.com/sikiru-atanda/torchgenomics/blob/master/rTorchGenomics/README.md) for the full
 R interface.
 ```
 

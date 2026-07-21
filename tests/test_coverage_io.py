@@ -41,7 +41,6 @@ from torchgenomics.io.phenotype import AlignmentManifest, load_phenotype
 from torchgenomics.io.plink2 import Plink2PgenReader
 from torchgenomics.io.vcf import VCFReader
 
-
 pytestmark = pytest.mark.timeout(60)
 
 FIXTURES = Path(__file__).parent / "fixtures"

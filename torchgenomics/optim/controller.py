@@ -264,6 +264,29 @@ class OptimizerController:
                     converged = True  # EMMA always finds a solution
                 # else: keep AI-REML's best
 
+        # --- Unconditional EMMA validation ---
+        # The AI-REML convergence test above is an LL-plateau heuristic. On a
+        # flat profile restricted-likelihood (routine near the optimum) the
+        # damped AI step makes the LL change fall below tol while lambda is
+        # still several percent from the root — and because that reports
+        # converged=True, the MM/EMMA fallback is skipped and a sub-optimal
+        # lambda ships, breaking the 4th-decimal GEMMA parity target on the
+        # default single-trait path. EMMA's grid + Brent-on-score root find is
+        # exact for a single variance component (Kang et al. 2008), so always
+        # run it and keep whichever estimate has the higher REML log-likelihood.
+        try:
+            sig2_g_val, sig2_e_val, ll_val, val_trace = emma_reml_single(
+                Y_rot, X0_rot, eigenvalues, tol=tol,
+            )
+            full_trace.extend(val_trace)
+            if ll_val > best_ll:
+                best_sig2_g, best_sig2_e, best_ll = sig2_g_val, sig2_e_val, ll_val
+                converged = True
+        except (RuntimeError, ValueError) as exc:
+            logger.warning(
+                "EMMA validation failed (%s); keeping optimizer-stack best.", exc
+            )
+
         sig2_g, sig2_e, ll = best_sig2_g, best_sig2_e, best_ll
 
         # Compute weights for scan

@@ -866,8 +866,9 @@ class TestMetaRandomEffect:
 
 
 class TestMetaSampleSize:
-    """Sample-size weighted Stouffer's Z combines z-scores using sqrt(n_k)
-    weights normalized to sum to 1 over studies."""
+    """Sample-size weighted Stouffer's Z combines z-scores as
+    sum_k w_k z_k / sqrt(sum_k w_k^2) with w_k = sqrt(n_k), so the statistic
+    is N(0,1) under the null (Whitlock 2005; Stouffer 1949)."""
 
     def test_stouffer_closed_form_signed(self):
         # 1 SNP, 3 studies: build z, p directly, with explicit direction.
@@ -877,13 +878,15 @@ class TestMetaSampleSize:
         n = torch.tensor([1000.0, 2000.0, 1500.0], dtype=torch.float64)
         direction = torch.ones_like(z_per_study)
 
-        # Reference: |z| from p using meta's inverse, then sign by direction.
-        # Meta uses |z| = sqrt(2) * erfinv(1 - p), then multiplies by direction.
-        p_c = p.clamp(min=1e-300, max=1.0 - 1e-10)
-        z_abs_ref = (2.0**0.5) * torch.erfinv(1.0 - p_c)
+        # Reference: |z| from p via the stable inverse-normal (matches meta's
+        # -ndtri(p/2)), sign by direction, then the *correct* Stouffer weighted
+        # Z: divide by sqrt(sum w^2), NOT by sum(w).
+        z_abs_ref = -torch.special.ndtri(p.clamp(min=1e-300, max=1.0) / 2.0)
         z_signed_ref = z_abs_ref * direction
-        w = n.sqrt() / n.sqrt().sum()
-        z_meta_ref = (z_signed_ref * w.unsqueeze(0)).sum(dim=1)
+        w = n.sqrt()
+        z_meta_ref = (z_signed_ref * w.unsqueeze(0)).sum(dim=1) / torch.sqrt(
+            (w**2).sum()
+        )
 
         res = meta_sample_size(p, n, direction=direction)
         assert isinstance(res, MetaResult)
@@ -920,8 +923,8 @@ class TestMetaSampleSize:
 
 
 class TestMetaHanEskin:
-    """Han-Eskin RE2 modified LRT: returns chi^2(1) p-value combining
-    fixed-effect z and Cochran's Q-derived heterogeneity inflation."""
+    """Han-Eskin RE2 likelihood-ratio test: S = 2[l(mu_hat, tau2_hat) - l(0,0)]
+    with p from the 0.5:0.5 chi^2_1/chi^2_2 mixture null (boundary tau^2>=0)."""
 
     def test_smoke(self):
         torch.manual_seed(0)

@@ -14,7 +14,6 @@ from typing import Any
 from .. import __version__
 from ..cli import _build_parser
 
-
 _TIER_2_CLI_SUBCOMMANDS: set[str] = {
     "mvlmm-scan", "poly-scan", "mklmm-scan", "gxe-scan", "set-scan",
     "bayes-scan", "bayes-scan-rss", "met-scan", "farmcpu-scan",

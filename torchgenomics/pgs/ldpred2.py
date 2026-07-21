@@ -17,14 +17,13 @@ and standardized marginal effect estimates ``beta_hat = z / sqrt(n)``
 from __future__ import annotations
 
 import math
-import os
-from .._dispatch import native_disabled
 import sys
 from typing import Any
 
 import torch
 from torch import Tensor
 
+from .._dispatch import native_disabled
 from .._native import HAS_NATIVE_LDPRED2, _ldpred2_native
 from ..postgwas._sumstats import SumStats
 from .base import BasePGSMethod, LDReference, PGSResult
@@ -155,6 +154,7 @@ def _ldpred2_gibbs_block(
     sparse: bool,
     rng: torch.Generator,
     update_hyperparams: bool = False,
+    m_total: int | None = None,
 ) -> tuple[Tensor, Tensor, dict[str, list[float]]]:
     """One block-level LDpred2 Gibbs sampler.
 
@@ -171,6 +171,12 @@ def _ldpred2_gibbs_block(
     b = R_b.shape[0]
     device = R_b.device
     dtype = R_b.dtype
+    # Genome-wide SNP count M drives the spike-and-slab prior variance
+    # h2/(M*p) (Privé et al. 2020). Falling back to the block size b (the
+    # previous behaviour) made the shrinkage depend on how variants are
+    # partitioned into LD blocks — weights for the same independent SNPs
+    # changed with the block layout. m_total restores partition-invariance.
+    M = int(m_total) if m_total is not None else b
 
     # Initialize from beta_std (cheap warm start)
     beta_curr = beta_std.clone()
@@ -196,8 +202,8 @@ def _ldpred2_gibbs_block(
         Rb_beta = R_b @ beta_curr  # (b,)
         for j in range(b):
             r_j = beta_std[j] - (Rb_beta[j] - R_b[j, j] * beta_curr[j])
-            # prior var for causal SNP
-            prior_var = h / max(b * p, 1e-12)
+            # prior var for causal SNP (genome-wide M, not block size)
+            prior_var = h / max(M * p, 1e-12)
             # posterior precision
             post_prec = R_b[j, j] * n_eff + 1.0 / prior_var
             post_var = 1.0 / post_prec
@@ -245,11 +251,15 @@ def _ldpred2_gibbs_block(
             # h2 ~ scaled-inv-chi2; here use a simple moment estimator with prior IG(0.5, 0.5)
             n_causal = float(causal_curr.sum().item())
             sum_sq = float((beta_curr * beta_curr * causal_curr).sum().item())
-            # mean(beta^2 | causal) ~ h2 / (b * p)
-            # so h2 ~ sum_sq * b * p / max(n_causal, 1)
+            # mean(beta^2 | causal) ~ h2 / (M * p)  =>  h2 ~ mean_sq * M * p.
+            # p is estimated from this block's causal fraction (a per-block
+            # estimate of the genome-wide sparsity); h2 uses genome-wide M so
+            # its scale is consistent with the prior variance above. NOTE:
+            # full genome-wide pooling of the sufficient statistics across
+            # blocks (true LDpred2-auto) remains a follow-up.
             new_p = max(min((n_causal + 1.0) / (b + 2.0), 1.0 - 1e-6), 1e-6)
             if n_causal > 0:
-                new_h = max(sum_sq * b * new_p / n_causal, 1e-6)
+                new_h = max(sum_sq * M * new_p / n_causal, 1e-6)
             else:
                 new_h = h
             p = new_p
@@ -281,6 +291,7 @@ def _ldpred2_gibbs_block_dispatch(
     sparse: bool,
     rng: torch.Generator,
     update_hyperparams: bool = False,
+    m_total: int | None = None,
 ) -> tuple[Tensor, Tensor, dict[str, list[float]]]:
     """Dispatcher: prefer the native C++ LDpred2 Gibbs sampler when available
     and the inputs are CPU float64; otherwise fall through to the pure-Python
@@ -290,8 +301,15 @@ def _ldpred2_gibbs_block_dispatch(
     bit identical (different RNGs). The pure-Python path remains the canonical
     algorithmic spec.
     """
+    # The native kernel derives the spike-and-slab prior variance from the
+    # block size internally; it cannot honour a genome-wide m_total without a
+    # rebuild. When m_total is supplied and differs from the block size, use the
+    # pure-Python reference (which is correct) rather than the block-scaled
+    # native path. Native remains available for the m_total==block or unset case.
+    _native_ok = m_total is None or int(m_total) == int(R_b.shape[0])
     if (
-        _native_enabled()
+        _native_ok
+        and _native_enabled()
         and beta_std.device.type == "cpu"
         and beta_std.dtype == torch.float64
         and R_b.device.type == "cpu"
@@ -321,6 +339,7 @@ def _ldpred2_gibbs_block_dispatch(
         beta_std, R_b, p_causal, h2, n_eff,
         n_iter, n_burnin, sparse, rng,
         update_hyperparams=update_hyperparams,
+        m_total=m_total,
     )
 
 
@@ -374,6 +393,7 @@ class LDpred2Grid(BasePGSMethod):
                         p_causal=p_c, h2=h_c, n_eff=n_avg,
                         n_iter=n_iter, n_burnin=n_burnin,
                         sparse=sparse, rng=rng,
+                        m_total=m,
                     )
                     weight_total[idx] += bm
                     causal_total[idx] += cm
@@ -459,6 +479,7 @@ class LDpred2Auto(BasePGSMethod):
                     n_iter=n_iter, n_burnin=n_burnin,
                     sparse=False, rng=rng,
                     update_hyperparams=True,
+                    m_total=m,
                 )
                 beta_chain[idx] = bm
                 if traces["p"]:

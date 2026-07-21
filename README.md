@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/torchgenomics.svg)](https://pypi.org/project/torchgenomics/)
 [![Python](https://img.shields.io/pypi/pyversions/torchgenomics.svg)](https://pypi.org/project/torchgenomics/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/sikiru-atanda/torchgenomics/blob/master/LICENSE)
-[![Tests](https://img.shields.io/badge/tests-3071%20passing-brightgreen.svg)](https://github.com/sikiru-atanda/torchgenomics/tree/master/tests)
+[![Tests](https://img.shields.io/badge/tests-3406%20passing-brightgreen.svg)](https://github.com/sikiru-atanda/torchgenomics/tree/master/tests)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
 **GPU-accelerated statistical and quantitative genomics on PyTorch — a single
@@ -28,14 +28,14 @@ that now extends well beyond Genome-Wide Association Studies. Existing
 |---|---|---|
 | **Novice / notebook** | One-call `torchgenomics.api` facade with smart defaults | `result = tg.lmm_scan(genotype="data.bed", phenotype="pheno.tsv"); result.manhattan()` |
 | **Advanced / research** | Composable low-level modules: `models`, `scan`, `linalg`, `ld`, `pgs`, `postgwas`, `multiomics`, ... | `SingleTraitLMM().fit_null(Y, X0, K)` → `UnifiedScanner(reader, model).scan(null_fit)` |
-| **LLM / MCP tools** | 13 tier-1 functions published as MCP tools over stdio (`pip install torchgenomics[mcp]`) | Add `torchgenomics-mcp` to your Claude Desktop / Claude Code MCP config |
+| **LLM / MCP tools** | 14 tier-1 functions published as MCP tools over stdio (`pip install torchgenomics[mcp]`) | Add `torchgenomics-mcp` to your Claude Desktop / Claude Code MCP config |
 
 See [`docs/api/quickstart.md`](docs/api/quickstart.md) for the novice walkthrough
 and [`docs/mcp/index.md`](docs/mcp/index.md) for the MCP server setup.
 
 ## Status
 
-**v0.4.0 · Alpha · 3071 tests passing · Python 3.10 – 3.13 · Linux + macOS + Windows**
+**v0.4.0 · Alpha · 3406 tests passing · Python 3.10 – 3.13 · Linux + macOS + Windows**
 
 V1 core (Phases 0 – 13) delivers GEMMA / GAPIT reference equivalence for
 Gaussian single- and multi-trait GWAS. Post-V1 extensions implemented through
@@ -291,7 +291,7 @@ fdr = benjamini_hochberg(result.p.cpu())
 - Multi-kernel heritability; eigenMT FDR; colocalisation prefilter
 
 ### Performance
-- 24 native C++ extension modules via pybind11 (up to ~12 000× speedup on hot kernels)
+- 31 native C++ extension modules via pybind11 (up to ~12 000× speedup on hot kernels)
 - OpenMP parallelization where measured beneficial
 - GPU kernels for imputation (mode, KNN, LD-based)
 - Three-tier dispatch: GPU > native C++ > Python (automatic fallback)
@@ -319,8 +319,8 @@ torchgenomics/
   multiomics/  GRM-corrected mediation + multi-kernel heritability
   annotate/    NCBI Datasets v2 + E-utilities gene annotation
   viz/         Manhattan, QQ, Miami, Circos, Haploview, trumpet plots
-  _native/     24 C++ pybind11 extension modules + GPU kernels + select_path dispatcher
-  cli.py       40 CLI subcommands
+  _native/     31 C++ pybind11 extension modules + GPU kernels + select_path dispatcher
+  cli.py       43 CLI subcommands
 ```
 
 Data flow: **Format detection → Imputation / phasing → QC → Genotype encoding
@@ -357,7 +357,7 @@ default suite skips them) and run on cron schedules in CI:
 |---|---|---|
 | `.github/workflows/ci.yml` | every PR + master push | default suite + golden + native + no-openmp + type-check |
 | `.github/workflows/perf.yml` | every PR + master push | native-kernel wall-time regression gate (> 10% slower = fail) |
-| `.github/workflows/cli-matrix.yml` | nightly | 122-cell CLI smoke (40 subcommands × formats × CPU + GPU) |
+| `.github/workflows/cli-matrix.yml` | nightly | 122-cell CLI smoke (43 subcommands × formats × CPU + GPU) |
 | `.github/workflows/external.yml` | weekly (Sunday) | Pillar B reference-tool comparisons (PLINK / LDSC / TwoSampleMR / regenie / SAIGE / BOLT / GEMMA / GAPIT / GWASpoly / SoyNAM) |
 | `.github/workflows/reproducibility.yml` | monthly (1st) | fixture-drift audit |
 

@@ -7,6 +7,11 @@ Imputation methods:
 
 from .dosage_call import DosageCallResult, run_updog  # noqa: F401
 from .dosage_uncertainty import dosage_rsq, dosage_variance, expected_dosage  # noqa: F401
+from .expression import (  # noqa: F401
+    inverse_normal_transform,
+    peer_residualize,
+    quantile_normalize,
+)
 from .impute import impute_knn, impute_ld, impute_mean, impute_mode  # noqa: F401
 from .impute_gpu import impute_deep_learning, impute_li_stephens  # noqa: F401
 from .phase_polyorigin import PhasingResult, run_polyorigin  # noqa: F401  # Phase 56
@@ -22,9 +27,4 @@ from .standardize import (  # noqa: F401
     center_genotypes,
     compute_allele_frequencies,
     scale_genotypes,
-)
-from .expression import (  # noqa: F401
-    inverse_normal_transform,
-    peer_residualize,
-    quantile_normalize,
 )

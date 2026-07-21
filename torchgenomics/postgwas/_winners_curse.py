@@ -193,48 +193,40 @@ def fiqt(
     z = z.to(torch.float64)
     se = se.to(torch.float64)
     m = z.shape[0]
+    if m == 0:
+        raise ValueError("fiqt requires at least one z-score")
 
-    # Estimate pi0 if not provided (median p-value method)
-    if pi0 is None:
-        p_vals = 2.0 * _normal_sf(torch.abs(z))
-        pi0 = float(torch.clamp(2.0 * torch.median(p_vals), max=1.0).item())
+    # FDR Inverse Quantile Transformation (Bigdeli et al. 2016, Bioinformatics):
+    #   1. two-sided p-values from the z-scores,
+    #   2. Benjamini-Hochberg adjust them,
+    #   3. back-transform each adjusted p to a shrunken z via
+    #      mu_z = sign(z) * qnorm(1 - p_adj/2) = sign(z) * -Phi^{-1}(p_adj/2).
+    # The previous body did Gaussian-KDE local-fdr shrinkage instead — a
+    # different (valid) estimator, but NOT FIQT, so it did not match the
+    # reference FIQT implementation. pi0/bandwidth are unused by FIQT and kept
+    # only for signature compatibility.
+    del pi0, bandwidth
 
-    # Gaussian KDE for marginal density f(z)
-    if bandwidth is None:
-        # Silverman's rule
-        std_z = float(torch.std(z).item())
-        h = 1.06 * std_z * m ** (-0.2)
-    else:
-        h = bandwidth
-    h = max(h, 1e-10)
+    p_vals = (2.0 * _normal_sf(torch.abs(z))).clamp(min=1e-300, max=1.0)
 
-    # f(z_i) = (1/m) * sum_j phi((z_i - z_j) / h) / h
-    # Vectorized: (m, m) could be large; do chunked for safety
-    chunk_size = min(m, 2000)
-    f_z = torch.zeros(m, dtype=torch.float64, device=z.device)
-    for start in range(0, m, chunk_size):
-        end = min(start + chunk_size, m)
-        diff = (z[start:end].unsqueeze(1) - z.unsqueeze(0)) / h  # (chunk, m)
-        f_z[start:end] = _normal_pdf(diff).mean(dim=1) / h
+    # Benjamini-Hochberg adjusted p-values (step-up, reverse cumulative min).
+    sorted_p, sort_idx = p_vals.sort()
+    ranks = torch.arange(1, m + 1, dtype=torch.float64, device=z.device)
+    adj_sorted = (sorted_p * m / ranks).flip(0).cummin(0).values.flip(0)
+    adj_sorted = adj_sorted.clamp(max=1.0)
+    p_adj = torch.empty_like(p_vals)
+    p_adj[sort_idx] = adj_sorted
 
-    f_z = torch.clamp(f_z, min=1e-300)
+    # Back-transform. For p_adj == 1 the shrunken z is 0; ndtri(0.5)=0 handles it.
+    z_adj = torch.sign(z) * (-torch.special.ndtri((p_adj / 2.0).clamp(min=1e-300, max=0.5)))
 
-    # Local FDR: lfdr = pi0 * phi(z) / f(z)
-    lfdr = pi0 * _normal_pdf(z) / f_z
-    lfdr = torch.clamp(lfdr, max=1.0)
-
-    # Corrected z-scores
-    z_adj = z * (1.0 - lfdr)
-
-    # Convert back to beta
     beta_adj = z_adj * se
     beta_orig = z * se
-
     safe_orig = beta_orig.clone()
     safe_orig[safe_orig.abs() < 1e-300] = 1e-300
     shrinkage = beta_adj / safe_orig
 
-    n_corrected = int((lfdr > 0.01).sum().item())
+    n_corrected = int((p_adj > 0.01).sum().item())
 
     return WinnersCurseResult(
         method="fiqt",

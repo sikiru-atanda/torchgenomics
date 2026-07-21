@@ -47,7 +47,6 @@ from torchgenomics.models.lmm_multi_fit import (
 from torchgenomics.models.ocf_lmm import FoldResult
 from torchgenomics.models.threshold_linear import ThresholdConfig, ThresholdNullFit
 
-
 pytestmark = pytest.mark.timeout(60)
 
 

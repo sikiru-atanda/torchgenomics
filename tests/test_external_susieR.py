@@ -4,9 +4,10 @@ Per NA1 design spec section 5.2. Marked external + golden so CI can
 selectively run / skip. Requires R + susieR installed via
 validation/external/susieR/install.sh.
 """
-import pytest
 import subprocess
 from pathlib import Path
+
+import pytest
 
 pytestmark = [pytest.mark.external, pytest.mark.golden]
 

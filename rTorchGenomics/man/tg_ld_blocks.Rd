@@ -14,6 +14,7 @@ tg_ld_blocks(
   r2_threshold = 0.5,
   ci_low = 0.7,
   ci_high = 0.98,
+  tolerance = 0L,
   ...
 )
 }
@@ -30,6 +31,15 @@ tg_ld_blocks(
 
 \item{ci_low, ci_high}{CI bounds (used by \code{gabriel}).}
 
+\item{tolerance}{Integer >= 0. For \code{method = "r2"} only:
+number of consecutive low-LD markers tolerated within a sliding
+block before terminating it (SelectionTools-style; Wittenburg et al.
+2024). \code{tolerance = 0} (the default) reproduces the original
+strict r^2-greedy partition; \code{tolerance >= 1} permits
+short "gaps" of weakly linked markers inside an otherwise tight
+block, which often yields larger, more biologically meaningful
+haplo-blocks for breeding programs.}
+
 \item{...}{Additional method-specific knobs.}
 }
 \value{
@@ -41,5 +51,8 @@ Detect LD haplotype blocks.
 \examples{
 \dontrun{
 r <- tg_ld_blocks("data.bed", method = "gabriel")
+# Sliding-window r^2 with tolerance for short low-LD gaps:
+r2 <- tg_ld_blocks("data.bed", method = "r2",
+                   r2_threshold = 0.7, tolerance = 2)
 }
 }
