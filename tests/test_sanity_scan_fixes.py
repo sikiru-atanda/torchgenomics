@@ -340,3 +340,102 @@ def test_nystrom_eigenvalues_have_nl_scaling():
     recon_diag = float((ed.eigenvectors ** 2 @ ed.eigenvalues).mean())
     # Without the n/l factor this ratio would be ~l/n = 1/3.
     assert recon_diag / true_diag == pytest.approx(1.0, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# 16. Han-Eskin RE2 is a likelihood-ratio test with the 0.5:0.5 chi2_1/chi2_2
+#     mixture null — valid (never anti-conservative), unlike the old
+#     chi2(1)-referenced heuristic. torchgenomics/postgwas/_meta.py
+# ---------------------------------------------------------------------------
+def test_re2_null_not_anticonservative_and_powered():
+    import scipy.stats as st
+    from torchgenomics.postgwas._meta import meta_han_eskin
+
+    rng = np.random.default_rng(0)
+    m, K = 40000, 6
+    se = torch.tensor(rng.uniform(0.02, 0.08, (m, K)), dtype=STAT)
+
+    # NULL: beta_hat ~ N(0, se^2). p must NOT be anti-conservative (old code
+    # gave frac<0.05 ~ 0.084). The asymptotic is conservative for small K.
+    beta0 = torch.tensor(rng.standard_normal((m, K)), dtype=STAT) * se
+    p0 = meta_han_eskin(beta0, se).p_meta.numpy()
+    assert (p0 < 0.05).mean() <= 0.055
+    assert (p0 < 0.01).mean() <= 0.012
+
+    # POWER under a heterogeneous positive effect.
+    rng2 = np.random.default_rng(1)
+    beta_t = 0.15 + rng2.standard_normal((m, K)) * 0.10
+    beta1 = torch.tensor(beta_t, dtype=STAT) + torch.tensor(rng2.standard_normal((m, K)), dtype=STAT) * se
+    p1 = meta_han_eskin(beta1, se).p_meta.numpy()
+    assert (p1 < 0.05).mean() > 0.9
+
+    # The mixture survival function matches scipy exactly.
+    S = torch.tensor([1.0, 4.0, 9.0], dtype=STAT)
+    torch_sf = (0.5 * torch.special.gammaincc(torch.full_like(S, 0.5), S / 2)
+                + 0.5 * torch.special.gammaincc(torch.ones_like(S), S / 2)).numpy()
+    scipy_sf = 0.5 * st.chi2.sf(S.numpy(), 1) + 0.5 * st.chi2.sf(S.numpy(), 2)
+    assert np.allclose(torch_sf, scipy_sf, atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# 17. Harmonic-mean-p uses the Wilson (2019) Landau asymptotic, so the null is
+#     calibrated (old linear form gave P(p<0.05)~0.14 at K=20) and the far tail
+#     does not underflow. torchgenomics/postgwas/_combine.py
+# ---------------------------------------------------------------------------
+def test_harmonic_mean_p_landau_null_calibrated_and_tail():
+    from torchgenomics.postgwas._combine import harmonic_mean_p
+
+    rng = np.random.default_rng(3)
+    pv = np.array([harmonic_mean_p(torch.tensor(rng.uniform(0, 1, 20), dtype=STAT))[1]
+                   for _ in range(1500)])
+    # Calibrated null (not the old ~0.14 over-rejection).
+    assert (pv < 0.05).mean() == pytest.approx(0.05, abs=0.015)
+    assert 0.45 < (pv < 0.5).mean() < 0.55
+
+    # Far tail must not underflow to 0 for a highly significant combination.
+    _, p_sig = harmonic_mean_p(torch.tensor([1e-100] + [0.5] * 9, dtype=STAT))
+    assert 0 < p_sig < 1e-90
+    # HMP is sensitive to the minimum: combined ~ O(k) * min-p, not floored.
+    assert p_sig > 1e-100
+
+
+# ---------------------------------------------------------------------------
+# 18. General polyploid model is full-rank: k dummies (one reference class), so
+#     the two homozygotes are distinguishable. torchgenomics/preprocess/polyploid.py
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("ploidy", [2, 4, 6])
+def test_general_model_full_rank_distinguishes_homozygotes(ploidy):
+    from torchgenomics.preprocess.polyploid import recode_gene_action
+    from torchgenomics.stats.best_model import _n_params
+
+    doses = torch.arange(ploidy + 1, dtype=STAT).unsqueeze(0)  # [0..k], shape (1, k+1)
+    enc = recode_gene_action(doses, "general", ploidy)  # (1, k+1, k)
+    assert enc.shape == (1, ploidy + 1, ploidy)
+    # nulliplex (dosage 0) is the all-zeros reference.
+    assert torch.all(enc[0, 0] == 0)
+    # the two homozygotes (dosage 0 and dosage k) must NOT be identical.
+    assert not torch.equal(enc[0, 0], enc[0, ploidy])
+    # each non-reference class activates exactly one distinct dummy.
+    for d in range(1, ploidy + 1):
+        assert enc[0, d].sum() == 1.0
+    assert _n_params("general", ploidy) == ploidy
+
+
+# ---------------------------------------------------------------------------
+# 19. LD-module native paths gate on device: a CUDA tensor runs the torch body
+#     instead of being force-copied to host for the C++ path (and pelt's
+#     x.numpy() no longer crashes on CUDA). torchgenomics/ld/*.py
+# ---------------------------------------------------------------------------
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_ld_native_paths_device_gated():
+    from torchgenomics.ld._changepoint import dp_changepoint
+    from torchgenomics.ld._graph_utils import connected_components
+
+    g = torch.Generator().manual_seed(0)
+    sig = torch.rand(40, generator=g, dtype=STAT)
+    # pelt: CUDA must not crash (previously x.numpy() on CUDA raised) and must
+    # match the CPU result.
+    assert dp_changepoint(sig, penalty=1.0) == dp_changepoint(sig.cuda(), penalty=1.0)
+
+    A = torch.tensor([[0, 1, 1], [1, 0, 0], [1, 0, 0]], dtype=STAT)
+    assert connected_components(A) == connected_components(A.cuda())

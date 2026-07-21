@@ -923,8 +923,8 @@ class TestMetaSampleSize:
 
 
 class TestMetaHanEskin:
-    """Han-Eskin RE2 modified LRT: returns chi^2(1) p-value combining
-    fixed-effect z and Cochran's Q-derived heterogeneity inflation."""
+    """Han-Eskin RE2 likelihood-ratio test: S = 2[l(mu_hat, tau2_hat) - l(0,0)]
+    with p from the 0.5:0.5 chi^2_1/chi^2_2 mixture null (boundary tau^2>=0)."""
 
     def test_smoke(self):
         torch.manual_seed(0)

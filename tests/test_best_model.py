@@ -41,12 +41,12 @@ class TestSelectBestModel:
 
     def test_bic_penalizes_multicolumn(self):
         """BIC penalty should favor single-param models when p-values are similar."""
-        # general model (k-1=3 params for ploidy=4) gets penalized
-        # penalty = 0.5 * (3-1) * log10(100) = 0.5 * 2 * 2 = 2.0
-        # So general needs -log10(p) > additive -log10(p) + 2.0 to win
+        # general model (full-rank genotypic: k=4 params for ploidy=4) gets
+        # penalized: penalty = 0.5 * (4-1) * log10(100) = 0.5 * 3 * 2 = 3.0
+        # So general needs -log10(p) > additive -log10(p) + 3.0 to win.
         results = {
             "additive": _make_scan_result([0.001]),  # -log10p = 3.0
-            "general": _make_scan_result([0.0005]),  # -log10p = 3.3 < 3.0 + 2.0
+            "general": _make_scan_result([0.0005]),  # -log10p = 3.3 < 3.0 + 3.0
         }
         bm = select_best_model(results, n_samples=100, bic_penalty=True, ploidy=4)
         # additive should win because general's penalized score < additive
@@ -56,7 +56,7 @@ class TestSelectBestModel:
         """General model wins despite BIC when it's much more significant."""
         results = {
             "additive": _make_scan_result([0.01]),  # -log10p = 2.0
-            "general": _make_scan_result([1e-8]),  # -log10p = 8.0, penalized = 6.0
+            "general": _make_scan_result([1e-8]),  # -log10p = 8.0, penalized = 5.0
         }
         bm = select_best_model(results, n_samples=100, bic_penalty=True, ploidy=4)
         assert bm.best_model[0] == "general"

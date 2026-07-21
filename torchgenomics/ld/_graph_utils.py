@@ -221,7 +221,10 @@ def connected_components(
     # Native C++ shortcut. The pure-Python BFS body below remains the
     # canonical algorithmic reference and is exercised when the extension
     # is missing or TORCHGENOMICS_DISABLE_NATIVE=1 is set.
-    if _native_enabled() and m > 0:
+    # Device discipline: only take the C++ path for CPU tensors; a CUDA input
+    # runs the torch/Python body instead of being force-copied to host for the
+    # native path (CLAUDE.md invariant; this algorithm has no GPU kernel).
+    if _native_enabled() and m > 0 and A.device.type == "cpu":
         A_np = A.detach().to(torch.float64).cpu().numpy()
         return [list(c) for c in _graph_native.connected_components(A_np, float(threshold))]
 

@@ -44,7 +44,9 @@ def _n_params(model: str, ploidy: int = 4) -> int:
     if model in _MODEL_PARAMS and _MODEL_PARAMS[model] is not None:
         return _MODEL_PARAMS[model]
     if model == "general":
-        return ploidy - 1
+        # Full-rank genotypic model: k dummies for dosage classes 1..k (class 0
+        # is the reference). See recode_gene_action("general").
+        return ploidy
     if model == "diplo-general":
         return 2  # diploidized then one-hot: 3 classes - 1
     # j-dom models: always 1 parameter

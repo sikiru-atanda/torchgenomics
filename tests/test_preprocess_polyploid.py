@@ -84,9 +84,18 @@ class TestPolyploidEncoding:
         torch.testing.assert_close(result, expected)
 
     def test_recode_general(self, G_diploid):
-        """General model returns (n, m, k-1) one-hot tensor."""
+        """General model returns a full-rank (n, m, k) genotypic design: one
+        dummy per non-reference dosage class 1..k (class 0 is the reference).
+        For diploid k=2 that is dummies for dosage 1 (het) and dosage 2
+        (hom-alt), which distinguishes both homozygotes."""
         result = recode_gene_action(G_diploid, "general", ploidy=2)
-        assert result.shape == (3, 4, 1)  # k-1 = 1 class (dosage=1)
+        assert result.shape == (3, 4, 2)  # k = 2 dummies (dosage 1 and 2)
+        # dosage 0 -> all-zeros reference; dosage 2 -> only the second dummy set
+        doses = torch.tensor([[0.0, 1.0, 2.0, 2.0]])
+        enc = recode_gene_action(doses, "general", ploidy=2)
+        torch.testing.assert_close(enc[0, 0], torch.tensor([0.0, 0.0]))  # dose 0
+        torch.testing.assert_close(enc[0, 1], torch.tensor([1.0, 0.0]))  # dose 1
+        torch.testing.assert_close(enc[0, 2], torch.tensor([0.0, 1.0]))  # dose 2
 
     def test_gene_action_all_lists(self):
         """list_gene_action_models returns correct models for ploidy 4."""

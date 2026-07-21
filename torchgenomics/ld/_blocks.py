@@ -107,7 +107,7 @@ def detect_blocks_gabriel(
     # Native C++ shortcut. The pure-Python body below remains the
     # canonical algorithmic reference and is exercised when the
     # extension is missing or TORCHGENOMICS_DISABLE_NATIVE=1 is set.
-    if _gabriel_native_enabled():
+    if _gabriel_native_enabled() and pld.idx_i.device.type == "cpu":
         idx_i_np = pld.idx_i.detach().cpu().numpy().astype(np.int64, copy=False)
         idx_j_np = pld.idx_j.detach().cpu().numpy().astype(np.int64, copy=False)
         sld_np = strong_ld.detach().cpu().numpy().astype(np.uint8, copy=False)
@@ -349,7 +349,7 @@ def detect_blocks_spine(
 
     blocks = []
 
-    if _spine_native_enabled():
+    if _spine_native_enabled() and pld.idx_i.device.type == "cpu":
         # Native path: build dense |D'|, r², and presence matrices directly
         # from the sparse pair tensors via vectorized numpy scatter. This
         # skips the Python dict intermediate that dominated wall time at

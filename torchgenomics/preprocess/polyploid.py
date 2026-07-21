@@ -118,17 +118,26 @@ def recode_gene_action(G: Tensor, model: str, ploidy: int) -> Tensor:
         return result
 
     elif model == "general":
-        # One-hot-like: (n, m, k) where dim 2 indexes dosage classes 1..k-1
-        # Excludes dosage 0 and k to avoid multicollinearity
+        # Full-rank genotypic ("general") model: one dummy per non-reference
+        # dosage class. There are k+1 classes {0,1,...,k}; with dosage 0 as the
+        # reference we emit k dummies for classes 1..k -> (n, m, k). The
+        # previous code used k-1 dummies (excluding BOTH dosage 0 and dosage k),
+        # which collapsed the two homozygous classes (0 and k) to the same
+        # all-zeros encoding, making them indistinguishable and dropping a
+        # degree of freedom. NOTE: this encoding is a latent path -- the poly
+        # scan feeds raw additive dosages and grm_polyploid_gene_action falls
+        # back to the additive GRM for "general" -- so fixing it here does not
+        # change current GWAS outputs, but any consumer of the encoding now
+        # gets the correct full-rank genotypic design.
         n, m = G.shape
-        n_classes = ploidy - 1  # 1, 2, ..., k-1
+        n_classes = ploidy  # dummies for dosage classes 1, 2, ..., k
         result = torch.zeros(n, m, n_classes, dtype=G.dtype)
 
         G_safe = torch.where(nan_mask, torch.full_like(G, -1), G)
         G_rounded = torch.round(G_safe).long()
 
         for c in range(n_classes):
-            dosage_class = c + 1
+            dosage_class = c + 1  # 1, 2, ..., k
             indicator = (G_rounded == dosage_class).to(G.dtype)
             indicator[nan_mask] = float("nan")
             result[:, :, c] = indicator
