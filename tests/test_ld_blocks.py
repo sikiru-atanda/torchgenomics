@@ -503,6 +503,7 @@ class TestCcGraphPloidyAwareTagMAF:
         """All tetraploid tag-SNP MAFs must lie in [0, 0.5]."""
         import numpy as np
         import torch
+
         from torchgenomics.ld import detect_blocks
 
         rng = np.random.default_rng(2026)
@@ -534,6 +535,7 @@ class TestCcGraphPloidyAwareTagMAF:
         """Diploid path (default ploidy=2) is bit-identical to legacy."""
         import numpy as np
         import torch
+
         from torchgenomics.ld import detect_blocks
 
         rng = np.random.default_rng(2027)
@@ -552,6 +554,7 @@ class TestCcGraphPloidyAwareTagMAF:
         """ploidy < 1 must raise ValueError."""
         import numpy as np
         import torch
+
         from torchgenomics.ld import detect_blocks
 
         G = torch.tensor(np.zeros((10, 5), dtype=np.float64))

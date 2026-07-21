@@ -13,14 +13,12 @@ Coverage:
 from __future__ import annotations
 
 import numpy as np
-import pytest
 import torch
 
 import torchgenomics as tg
 from torchgenomics.api import LGEBVResult, lgebv
-from torchgenomics.ld import LDBlock, detect_blocks
 from torchgenomics.io.regions import Region
-
+from torchgenomics.ld import LDBlock, detect_blocks
 
 # ---------------------------------------------------------------------------
 # helpers

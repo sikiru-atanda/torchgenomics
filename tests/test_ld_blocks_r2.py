@@ -23,7 +23,6 @@ import torch
 from torchgenomics.ld import detect_blocks
 from torchgenomics.ld._blocks import PairwiseLD, detect_blocks_r2
 
-
 # ── Helpers ────────────────────────────────────────────────────────────
 
 

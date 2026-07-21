@@ -16,8 +16,6 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from ..stats.tests import chi2_sf
-
 
 @dataclass
 class MetaResult:

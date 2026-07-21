@@ -104,9 +104,10 @@ def test_grm_zhang_degenerate_returns_tuple():
 #    optimum, i.e. does not stop early. torchgenomics/optim/controller.py
 # ---------------------------------------------------------------------------
 def test_default_reml_hits_exact_profile_optimum():
+    from scipy.optimize import minimize_scalar
+
     from torchgenomics.linalg.kinship import grm_vanraden
     from torchgenomics.models.single_trait_lmm import SingleTraitLMM
-    from scipy.optimize import minimize_scalar
 
     def reml_ll(lam, y, X, K):
         n, c = X.shape
@@ -168,8 +169,8 @@ def test_stouffer_sample_size_meta_null_calibrated():
 # 7. Inverse-normal tail is stable (no inf) in _meta and _combine.
 # ---------------------------------------------------------------------------
 def test_inverse_normal_tail_finite():
-    from torchgenomics.postgwas._meta import _p_to_z
     from torchgenomics.postgwas._combine import stouffer_combined
+    from torchgenomics.postgwas._meta import _p_to_z
 
     q = torch.tensor([1e-8, 1e-20, 1e-50, 1e-200], dtype=STAT)
     z = _p_to_z(q)
@@ -188,6 +189,7 @@ def test_inverse_normal_tail_finite():
 # ---------------------------------------------------------------------------
 def test_brown_reduces_to_fisher_under_independence():
     import scipy.stats as st
+
     from torchgenomics.postgwas._combine import brown_combined
 
     p = torch.tensor([0.01, 0.2, 0.5, 0.7], dtype=STAT)
@@ -270,6 +272,7 @@ def test_storey_qvalue_no_all_zero_when_pi0_estimate_is_zero():
 # ---------------------------------------------------------------------------
 def test_fiqt_matches_reference_inverse_quantile_transform():
     import scipy.stats as st
+
     from torchgenomics.postgwas._winners_curse import fiqt
 
     z = torch.tensor([6.0, 4.5, 3.0, 2.0, 0.5], dtype=STAT)
@@ -295,8 +298,8 @@ def test_fiqt_matches_reference_inverse_quantile_transform():
 #     responds to exposure error se_x. torchgenomics/postgwas/_mr.py
 # ---------------------------------------------------------------------------
 def test_mr_weighted_median_parametric_bootstrap_uses_exposure_error():
-    from torchgenomics.postgwas._sumstats import SumStats
     from torchgenomics.postgwas._mr import mr_weighted_median
+    from torchgenomics.postgwas._sumstats import SumStats
 
     rng = np.random.default_rng(0)
     K = 30
@@ -349,6 +352,7 @@ def test_nystrom_eigenvalues_have_nl_scaling():
 # ---------------------------------------------------------------------------
 def test_re2_null_not_anticonservative_and_powered():
     import scipy.stats as st
+
     from torchgenomics.postgwas._meta import meta_han_eskin
 
     rng = np.random.default_rng(0)

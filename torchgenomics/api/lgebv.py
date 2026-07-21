@@ -34,7 +34,6 @@ from ._decorator import tool
 from ._helpers import timed
 from ._results import LGEBVResult
 
-
 # --- block duck-typing -------------------------------------------------------
 
 def _block_field(blk: Any, *names: str, default: Any = "") -> Any:

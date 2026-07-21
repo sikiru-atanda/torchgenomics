@@ -10,7 +10,6 @@ import pytest
 
 from torchgenomics.postgwas import IClassResult, iclass
 
-
 # ---------------------------------------------------------------------------
 # 1. Basic three-class partition from a 5x2 loading matrix
 # ---------------------------------------------------------------------------
