@@ -226,7 +226,7 @@ classification.
 
 | # | Claim | Method | Provability |
 |---|---|---|---|
-| 1 | **Association-step equivalence** (headline) | Paper's PSD-admixture + gene-dropping-pedigree sim (primary-source recipe) → known ancestry dosages. Identical inputs (G, X, Phi, y) to R Tractor-Mix and our port → beta_a, SE_a, joint p match to N sig figs. | Strong (same class as GEMMA gate) |
+| 1 | **Association-step equivalence** (headline) | Paper's PSD-admixture + gene-dropping-pedigree sim (primary-source recipe) → known ancestry dosages. Identical inputs (G, X, Phi, y) to R Tractor-Mix and our port → beta_a, SE_a, joint p match to N sig figs. **Uses a single FIXED shared GRM** (GENESIS-computed or the known synthetic true Phi) so the test isolates the association math and is not confounded by Unit A GRM differences (which Claim 3 validates separately). | Strong (same class as GEMMA gate) |
 | 2 | **Calibration** | Null sims: lambda_GC + empirical type-I at alpha = 5e-2, 5e-4 (5e-6 with true GRM), continuous + dichotomous, admixture 50/70/90% AFR. Reproduce their Fig 1 controlled lambda_GC. | Strong |
 | 3 | **Unit A vs GENESIS** (separate gate) | Shared dataset (1000G AFR-EUR admixed subset or sim): PC-AiR PCs match GENESIS (Procrustes / abs-corr); PC-Relate kinship matches to tolerance. | Strong |
 | 4 | **Real-data concordance** (secondary) | Public Zenodo sumstats — recover known hits (APOE rs7412 cholesterol, HBB rs334 sickle cell, ZNF646P1 BMI) + ancestry-specific sign/magnitude. Not bitwise (stochastic LAI) → rank/sign/correlation concordance. | Moderate (honest caveat) |
@@ -265,6 +265,13 @@ no paper-number extrapolation.
   inputs). Real data is secondary concordance only.
 - **Wald full-model fit** cost per variant; keep it opt-in, score is the default
   scan path.
+- **Exact score residualization.** This spec states the standard GMMAT
+  `Var(T) = G^T P G` (P already residualizes G against X). The paper's Methods
+  write a covariate-projected `Gbar = X(X^T W X)^-1 X^T W G` form; these should be
+  algebraically equivalent, but the exact residualization + weighting must be
+  verified line-by-line against the GMMAT source and the Tractor-Mix R code
+  during implementation, since a mismatch would silently break the equivalence
+  gate. Pin it with a unit test against a hand-computed small example.
 - **K > 2 ancestries.** Model generalizes; validate on 2-way and 3-way. Paper
   advises limiting to ancestries with >= ~10% global contribution.
 
