@@ -27,29 +27,38 @@ def make_synth(n: int = 200, m: int = 50, K: int = 2, seed: int = 0) -> dict:
     adm = np_rng.dirichlet(alpha_dir, size=n)  # (n, K)
     adm = torch.from_numpy(adm).to(dtype)
     
-    # For each individual, sample 2 ancestry assignments from admixture proportions
-    all_ancestry_idx = torch.multinomial(adm, num_samples=2, replacement=True, generator=g)  # (n, 2)
-    
-    # Count copies from each ancestry for each individual
-    ancestry_copies = torch.zeros(n, K, dtype=dtype)
-    for i in range(n):
-        for k in range(K):
-            ancestry_copies[i, k] = (all_ancestry_idx[i] == k).sum().to(dtype)
-    
-    # Now sample alleles for each ancestry, SNP, and individual
+    # Per-locus (per-variant) local-ancestry-of-origin draws: independent at
+    # EACH locus, not one genome-wide draw shared across the whole panel.
+    # Real local ancestry is broken into independently-segregating tracts by
+    # recombination (Atkinson et al. 2021, Tractor, Fig. 1) -- that per-locus
+    # independence is exactly what makes a *local*-ancestry-partitioned score
+    # test locus-specific. A single genome-wide draw (shared across all m
+    # variants) would instead make ancestry-partitioned dosage at ANY locus a
+    # proxy for the individual's global ancestry membership, so a causal
+    # signal at one locus would spuriously "leak" into the score test at
+    # every other locus via their shared ancestry-copy count -- inflating the
+    # null distribution of the joint test genome-wide, not just at causal
+    # variants. (Confirmed empirically: with a single shared genome-wide draw,
+    # AFR dosage at non-causal loci correlated with y_cont at ~0.4, nearly as
+    # strongly as at the truly causal loci, because both derived from the
+    # same per-individual ancestry-copy count.)
+    adm_rep = adm.unsqueeze(1).expand(n, m, K).reshape(n * m, K)
+    all_ancestry_idx = torch.multinomial(
+        adm_rep, num_samples=2, replacement=True, generator=g
+    ).reshape(n, m, 2)  # (n, m, 2)
+
+    # Count copies from each ancestry for each individual, at each locus
+    ancestry_copies = torch.zeros(n, m, K, dtype=dtype)
+    for k in range(K):
+        ancestry_copies[:, :, k] = (all_ancestry_idx == k).sum(dim=-1).to(dtype)
+
+    # Sample alleles for each ancestry/SNP/individual given its local
+    # ancestry-copy count at that locus (vectorized over n and m at once).
     dosages = torch.zeros(K, n, m, dtype=dtype)
     for k in range(K):
-        for j in range(m):
-            p = af[k, j]
-            for i in range(n):
-                n_c = int(ancestry_copies[i, k].item())
-                if n_c > 0:
-                    sampled = torch.binomial(
-                        torch.tensor(float(n_c), dtype=dtype),
-                        p,
-                        generator=g
-                    )
-                    dosages[k, i, j] = sampled
+        p = af[k].unsqueeze(0).expand(n, m)   # (n, m)
+        n_c = ancestry_copies[:, :, k]          # (n, m)
+        dosages[k] = torch.binomial(n_c, p, generator=g)
     
     # relatedness: build a block pedigree -> true GRM as 2*kinship
     n_fam = max(1, n // 4)
