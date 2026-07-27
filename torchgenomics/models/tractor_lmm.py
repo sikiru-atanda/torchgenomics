@@ -9,8 +9,9 @@ GMMAT mixed-model score-test framework of Chen et al., "Control for
 population structure and relatedness for binary traits in genetic
 association studies via logistic mixed models", Am. J. Hum. Genet. 2016.
 
-This module implements the continuous (Gaussian) null-model fit and the
-reusable GMMAT-style projection operator
+This module implements the continuous (Gaussian) null-model fit, the
+binary (logistic GLMM, PQL null; delegating to ``BinaryGLMM``) null-model
+fit, and the reusable GMMAT-style projection operator
 
     V = sigma^2 I + tau^2 K
     P = V^{-1} - V^{-1} X0 (X0^T V^{-1} X0)^{-1} X0^T V^{-1}
@@ -66,6 +67,18 @@ class TractorNullFit:
     _XtVi: Tensor        # (c, n) = X0^T V^{-1}
     _XtViX_inv: Tensor   # (c, c) = (X0^T V^{-1} X0)^{-1}
 
+    # --- family dispatch + binary (logistic GLMM, PQL null) fields ---------
+    # "gaussian" (default) uses the GMMAT projection P below; "binary" uses
+    # the SAIGE/GMMAT logistic score-test working covariance built from the
+    # PQL-fitted mean ``mu`` and working weights ``W = mu(1-mu)`` (Chen et al.
+    # 2016, GMMAT eq. 4; Zhou et al. 2018, SAIGE). The binary path never
+    # forms P and leaves the eigendecomposition fields (U/d/_XtVi/...) as
+    # empty placeholders.
+    family: str = "gaussian"
+    _W: Tensor | None = None       # (n,) PQL working weights mu(1-mu)  [binary]
+    _M00: Tensor | None = None     # (c, c) = (X0^T W X0)^{-1}          [binary]
+    _binary_nf: object = None      # cached BinaryGLMM NullFit          [binary]
+
     def _Vi(self, M: Tensor) -> Tensor:
         """Apply V^{-1} to ``M`` via the eigendecomposition of K.
 
@@ -90,6 +103,45 @@ class TractorNullFit:
     def PX(self, M: Tensor) -> Tensor:
         """Alias of :meth:`Py` — apply P to an arbitrary (n, k) matrix."""
         return self.Py(M)
+
+    def score_moments(self, Gv: Tensor) -> tuple[Tensor, Tensor]:
+        """Efficient score ``T`` and its covariance ``Var`` for one variant.
+
+        Shared entry point for both trait families so the downstream
+        allele-count filter / rank-df / pseudo-inverse-effect logic in
+        :meth:`TractorLMM.score_chunk` is written once (DRY). ``Gv`` is the
+        ``(n, K)`` matrix of ancestry-specific dosage columns for a single
+        variant, used **raw** (unrotated) in both families — matching the
+        basis in which the null quantities were fitted.
+
+        Gaussian (GMMAT continuous score test; Chen et al. 2016 §2.2)::
+
+            T   = Gv^T (P y)            # self.resid == P y
+            Var = Gv^T (P Gv)
+
+        Binary (logistic GLMM PQL score test — BinaryGLMM's single-SNP test
+        generalized from a scalar SNP to a K-column dosage matrix; Chen et
+        al. 2016 GMMAT eq. 4-7, Zhou et al. 2018 SAIGE)::
+
+            resid = y - mu                          # self.resid
+            T     = Gv^T resid
+            Var   = Gv^T W Gv - (X0^T W Gv)^T M00 (X0^T W Gv)
+
+        where ``W = diag(mu(1-mu))`` are the PQL working weights and
+        ``M00 = (X0^T W X0)^{-1}`` residualizes the score against the
+        fixed-effect design (both cached on this null fit). For ``K = 1``
+        this reduces exactly to ``BinaryGLMM.score_chunk``'s 1-df test
+        (``U^2 / V``).
+        """
+        T = Gv.T @ self.resid                      # (K,)
+        if self.family == "binary":
+            WG = self._W.unsqueeze(1) * Gv          # (n, K)
+            gWg = Gv.T @ WG                          # (K, K)
+            X0tWG = self.X0.T @ WG                   # (c, K)
+            Var = gWg - X0tWG.T @ (self._M00 @ X0tWG)
+        else:
+            Var = Gv.T @ self.Py(Gv)                # (K, K) == Gv^T P Gv
+        return T, Var
 
 
 @dataclass
@@ -160,9 +212,11 @@ class TractorLMM:
     Parameters
     ----------
     family : {"gaussian", "binary"}
-        Trait family. Only "gaussian" is implemented by :meth:`fit_null`
-        in this module; "binary" (PQL null, GMMAT-style) is deferred to
-        a follow-up unit.
+        Trait family. "gaussian" uses the GMMAT continuous score test;
+        "binary" fits a logistic GLMM null via PQL (delegating to the
+        validated :class:`~torchgenomics.models.binary_glmm.BinaryGLMM`)
+        and runs the SAIGE/GMMAT logistic score test, generalized from a
+        scalar SNP to K ancestry-specific dosage columns.
     test : {"score", "wald"}
         Association test to use in the (not-yet-implemented) scan step.
     min_allele_count : int
@@ -223,16 +277,13 @@ class TractorLMM:
         -------
         TractorNullFit
         """
-        if self.family != "gaussian":
-            raise NotImplementedError(
-                "TractorLMM.fit_null currently implements only the "
-                "continuous (gaussian) null fit; binary PQL null is a "
-                "follow-up unit."
-            )
         Y = Y.to(torch.float64).reshape(-1)
         X0 = X0.to(torch.float64)
         K = K.to(torch.float64)
         n, c = X0.shape
+
+        if self.family == "binary":
+            return self._fit_null_binary(Y, X0, K, n, c)
 
         # Variance components via the existing GAPIT-exact EMMA REML
         # solver (same estimator SingleTraitLMM.fit_null already uses).
@@ -265,6 +316,61 @@ class TractorLMM:
         nf.resid = nf.Py(Y.unsqueeze(1)).squeeze(1)
         return nf
 
+    def _fit_null_binary(
+        self, Y: Tensor, X0: Tensor, K: Tensor, n: int, c: int
+    ) -> TractorNullFit:
+        """Fit the binary (logistic GLMM) null via PQL, GMMAT/SAIGE-style.
+
+        Delegates the penalized quasi-likelihood null fit to the existing,
+        validated :class:`torchgenomics.models.binary_glmm.BinaryGLMM`
+        (Python-as-spec / DRY: the PQL solver is the single source of truth
+        for the logistic-mixed-model null across the codebase), then caches
+        exactly the quantities BinaryGLMM's own score test consumes:
+
+        - ``mu`` — PQL-fitted null mean (``NullFit._glm_mu``);
+        - ``W = diag(mu(1-mu))`` — working weights (``NullFit._glm_W``);
+        - ``M00 = (X0^T W X0)^{-1}`` — covariate-adjustment matrix
+          (``NullFit.M00``);
+
+        so that :meth:`TractorNullFit.score_moments` reproduces
+        ``BinaryGLMM.score_chunk``'s score ``U = g^T (y - mu)`` and variance
+        ``V = g^T W g - (X0^T W g)^T M00 (X0^T W g)`` per ancestry column,
+        in the same raw (unrotated) sample basis (``BinaryGLMM`` stores
+        ``Y_rot = Y`` and ``X0_rot = X0`` and scores ``G`` raw). See Chen et
+        al. 2016 (GMMAT, eq. 4-7) and Zhou et al. 2018 (SAIGE).
+
+        The score residual is stored as ``resid = y - mu`` so the shared
+        downstream (filter / rank-df / effect) logic in :meth:`score_chunk`
+        is reused unchanged.
+        """
+        from .binary_glmm import BinaryGLMM
+
+        # PQL null (SPA irrelevant here: only mu / W / M00 are consumed).
+        binary_nf = BinaryGLMM(use_spa=False).fit_null(Y, X0, K)
+        mu = binary_nf._glm_mu.to(torch.float64).reshape(-1)   # (n,)
+        W = binary_nf._glm_W.to(torch.float64).reshape(-1)      # (n,)
+        M00 = binary_nf.M00.to(torch.float64)                   # (c, c)
+        resid = Y - mu                                          # y - mu, (n,)
+
+        empty = torch.empty(0, dtype=torch.float64, device=Y.device)
+        nf = TractorNullFit(
+            U=empty,
+            d=empty,
+            sigma2=float(binary_nf.sig2_e),
+            tau2=float(binary_nf.sig2_g),
+            X0=X0,
+            resid=resid,
+            n=n,
+            c=c,
+            _XtVi=empty,
+            _XtViX_inv=empty,
+            family="binary",
+            _W=W,
+            _M00=M00,
+            _binary_nf=binary_nf,
+        )
+        return nf
+
     def _score_stats(
         self, null: TractorNullFit, Gv: Tensor
     ) -> tuple[Tensor, Tensor, Tensor, float]:
@@ -286,9 +392,7 @@ class TractorLMM:
             null (Chen et al. 2016, GMMAT eq. 7; Atkinson et al. 2021,
             Tractor, joint test extension in Tan et al. 2026, Tractor-Mix)
         """
-        PGv = null.Py(Gv)                 # (n, K) == P Gv
-        T = Gv.T @ null.resid              # (K,)   == Gv^T P y
-        Var = Gv.T @ PGv                   # (K, K) == Gv^T P Gv
+        T, Var = null.score_moments(Gv)   # family-dispatched (gaussian|binary)
         Vinv = torch.linalg.pinv(Var)
         joint = float(T @ Vinv @ T)
         return T, Var, Vinv, joint

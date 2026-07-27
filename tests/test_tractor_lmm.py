@@ -196,6 +196,76 @@ def test_allele_count_threshold_all_dropped_gives_nan_joint_p():
     assert df["se_AFR"].isna()[0] and df["se_EUR"].isna()[0]
 
 
+def test_binary_null_calibrated_under_null():
+    """Binary (logistic GLMM, PQL null) Tractor-Mix score test must be
+    well-calibrated when genotype is independent of phenotype.
+
+    Permuting samples in the ancestry dosages breaks any genotype-phenotype
+    association, so the joint score p-values should follow Uniform(0,1): the
+    fraction below 0.05 must sit near the nominal 5% (slack for finite m).
+    A miscalibrated variance construction (e.g. the wrong working-covariance
+    sketch) fails this gate.
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=500, m=200, K=2, seed=9)
+    # NULL: permute samples in the dosages so genotype _|_ phenotype.
+    perm = torch.randperm(500, generator=torch.Generator().manual_seed(1))
+    Gnull = d["dosages"][:, perm, :]
+    mdl = TractorLMM(family="binary", ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_bin"], d["X0"], d["K_grm"])
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(200)],
+        chr=["1"] * 200,
+        pos=list(range(200)),
+        a1=["A"] * 200,
+        a2=["G"] * 200,
+    )
+    res = mdl.score_chunk(nf, Gnull, meta)
+    jp = res.to_dataframe()["joint_p"].to_numpy()
+    jp = jp[~torch.isnan(torch.as_tensor(jp)).numpy()]
+    frac = (jp < 0.05).mean()
+    assert 0.01 < frac < 0.15, f"joint_p not calibrated under null: frac={frac}"
+
+
+def test_binary_reduces_to_binary_glmm_single_ancestry():
+    """A single-ancestry (K=1) Tractor-Mix binary test must reproduce the
+    validated 1-df BinaryGLMM score test exactly (same U, V, chi2_1 p-value),
+    since the K-column construction is BinaryGLMM's score test generalized
+    from a scalar SNP to an ancestry-dosage matrix.
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.binary_glmm import BinaryGLMM
+    from torchgenomics.models.base import VariantMeta
+    from scipy.stats import chi2 as chi2_dist
+
+    d = make_synth(n=300, m=6, K=2, seed=4)
+    Y, X0, Kg = d["y_bin"], d["X0"], d["K_grm"]
+    # collapse the two ancestry tracks to a single total-dosage track so the
+    # Tractor test has K=1 (one ancestry column == the ordinary SNP dosage).
+    G1 = d["dosages"].sum(dim=0, keepdim=True)  # (1, n, m)
+
+    mdl = TractorLMM(family="binary", min_allele_count=0, ancestry_names=["A0"])
+    nf = mdl.fit_null(Y, X0, Kg)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(6)], chr=["1"] * 6, pos=list(range(6)),
+        a1=["A"] * 6, a2=["G"] * 6,
+    )
+    res = mdl.score_chunk(nf, G1, meta)
+
+    # reference: BinaryGLMM 1-df score test (SPA off for a bare chi2_1 tail)
+    bg = BinaryGLMM(use_spa=False)
+    bnf = bg.fit_null(Y, X0, Kg)
+    G2d = G1[0]  # (n, m)
+    ref = bg.score_chunk(G2d, bnf, meta)
+    # joint chi2_1 p (rank 1) must match BinaryGLMM's chi2_1 p to high precision
+    assert torch.allclose(res.joint_p, ref.p, atol=1e-9, rtol=0)
+    _ = chi2_dist  # referenced for intent
+
+
 def test_rank_deficient_surviving_var_uses_reduced_df():
     """Two surviving ancestry dosage columns that are exactly collinear make
     Var = Gv^T P Gv rank-deficient (rank 1, not rank 2). The chi2 tail must
