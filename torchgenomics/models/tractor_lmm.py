@@ -18,8 +18,9 @@ reusable GMMAT-style projection operator
 which residualizes any vector or matrix against the fixed-effect design
 X0 under the estimated null covariance V. The per-variant efficient score
 test itself (T = g^T P y, Var = g^T P g, one score per ancestry-specific
-dosage column) is implemented in a follow-up unit; this module only
-produces the ``TractorNullFit`` that the score test consumes.
+dosage column) is implemented by :meth:`TractorLMM.score_chunk` /
+:meth:`TractorLMM._score_stats` in this same module, which consume the
+``TractorNullFit`` produced by :meth:`TractorLMM.fit_null`.
 
 Variance components (tau2 = additive genetic variance multiplying the
 GRM K, sigma2 = residual variance multiplying the identity) are obtained
@@ -153,7 +154,7 @@ class TractorLMM:
     """Ancestry-specific mixed-model association test (Tractor-Mix).
 
     Continuous (Gaussian) null fit + reusable GMMAT projection P. The
-    per-variant local-ancestry-specific score test (Task 4 of this unit)
+    per-variant local-ancestry-specific score test (:meth:`score_chunk`)
     consumes the ``TractorNullFit`` produced by :meth:`fit_null`.
 
     Parameters
@@ -305,19 +306,57 @@ class TractorLMM:
         (n, K), computes the efficient score ``T = Gv^T P y``, its covariance
         ``Var = Gv^T P Gv`` under the fitted null model, and:
 
-        - the joint test ``stat = T^T Var^-1 T ~ chi2_K`` (Rao score test
-          against the null that *all* ancestry-specific effects are zero;
-          Chen et al. 2016, GMMAT §2.2; Atkinson et al. 2021, Tractor §Methods;
-          Tan et al. 2026, Tractor-Mix, joint local-ancestry test), with
-          p-value from the chi2_K survival function;
+        - the joint test ``stat = T^T Var^-1 T ~ chi2_df`` (Rao score test
+          against the null that *all* surviving ancestry-specific effects
+          are zero; Chen et al. 2016, GMMAT §2.2; Atkinson et al. 2021,
+          Tractor §Methods; Tan et al. 2026, Tractor-Mix, joint
+          local-ancestry test), with p-value from the chi2_df survival
+          function;
         - per-ancestry effect estimates ``beta = Var^-1 T``, standard errors
           ``se = sqrt(diag(Var^-1))``, and two-sided normal p-values
           ``p_a = 2 * (1 - Phi(|beta_a / se_a|))``.
+
+        **Allele-count threshold (Tractor convention).** Before building
+        ``Gv``, each ancestry ``a`` is tested for minimum evidence at this
+        locus: its summed dosage (``Gv[:, a].sum()``, the ancestry-specific
+        allele count) must be ``>= self.min_allele_count`` (default 50,
+        Atkinson et al. 2021, Tractor §Methods — ancestry tracks with too
+        few copies of the ancestry-of-origin at a locus give unstable
+        effect estimates and are excluded rather than reported). Dropped
+        ancestries receive ``se = nan`` / ``p_anc = nan`` in the returned
+        result; the joint test is computed over the *surviving* ancestries
+        only. If every ancestry is dropped at a variant, no test can be
+        formed and ``joint_stat`` / ``joint_p`` are ``nan``.
+
+        **Degrees of freedom = rank, not ancestry count.** Even after the
+        allele-count filter, the surviving ``Var = Gv_keep^T P Gv_keep``
+        can still be rank-deficient — e.g. two surviving ancestry dosage
+        columns that are collinear at this locus, or a column effectively
+        annihilated by the projection P (zero variance after removing the
+        fixed-effect design). Using ``df = (number of surviving
+        ancestries)`` in that case assumes full rank and understates
+        significance (the chi2 tail with too many df is stochastically
+        larger than the correct one). This implementation instead uses
+        ``df = torch.linalg.matrix_rank(Var)`` — the true number of
+        identifiable degrees of freedom in the surviving score statistic
+        — for the chi2 survival-function p-value; if ``df == 0`` (the
+        surviving Var is exactly singular with no identifiable direction),
+        ``joint_p = nan``.
 
         ``Var^-1`` is computed via Moore-Penrose pseudo-inverse rather than
         a plain inverse so that ancestry tracks with (near-)zero local
         dosage variance at a given locus (e.g. an ancestry not observed in
         the cohort at that position) degrade gracefully instead of raising.
+
+        Where both ``beta_a`` and ``se_a`` are (numerically) zero for a
+        surviving ancestry — the pinv-degenerate case where that ancestry's
+        column contributes nothing identifiable to the score, distinct from
+        being dropped outright by the allele-count filter — the raw ratio
+        ``beta_a / se_a`` is the indeterminate form 0/0 (``nan`` in IEEE
+        arithmetic). This is guarded so the division is well-defined
+        (``p_a = 1.0``, i.e. "no signal" — the same conclusion a defined
+        z-statistic of 0 would give) rather than silently propagating
+        ``nan`` for a case that is not actually a dropped ancestry.
 
         Parameters
         ----------
@@ -337,27 +376,62 @@ class TractorLMM:
         names = self._ancestry_names or [f"anc{k}" for k in range(n_anc)]
         device = G_chunk.device
 
-        joint_stat = torch.zeros(c, dtype=torch.float64, device=device)
-        joint_p = torch.zeros(c, dtype=torch.float64, device=device)
+        joint_stat = torch.full((c,), float("nan"), dtype=torch.float64, device=device)
+        joint_p = torch.full((c,), float("nan"), dtype=torch.float64, device=device)
         beta = torch.zeros(c, n_anc, dtype=torch.float64, device=device)
         se = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
-        p_anc = torch.ones(c, n_anc, dtype=torch.float64, device=device)
+        p_anc = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
 
+        zero_tol = 1e-12
         for j in range(c):
-            Gv = G_chunk[:, :, j].T.to(torch.float64)  # (n, K)
-            T, _Var, Vinv, joint = self._score_stats(null, Gv)
-            joint_stat[j] = joint
-            joint_p[j] = float(chi2.sf(joint, df=n_anc))
+            full = G_chunk[:, :, j].to(torch.float64)   # (K, n)
+            ac = full.sum(dim=1)                          # (K,) ancestry allele count
+            keep = (ac >= self.min_allele_count).nonzero(as_tuple=True)[0]
+            if keep.numel() == 0:
+                # Every ancestry below the allele-count threshold at this
+                # locus: no joint test can be formed and no per-ancestry
+                # effect is estimable. All outputs stay at their nan/zero
+                # init (joint_stat/joint_p/se/p_anc already nan; beta 0).
+                continue
+
+            Gv = full[keep].T  # (n, K_keep)
+            T, Var, Vinv, joint = self._score_stats(null, Gv)
+            rank = int(torch.linalg.matrix_rank(Var))
+            if rank == 0:
+                # Surviving Var is exactly singular with no identifiable
+                # direction -- no valid chi2 df for a joint test.
+                joint_p[j] = float("nan")
+            else:
+                joint_stat[j] = joint
+                joint_p[j] = float(chi2.sf(joint, df=rank))
+
             b = Vinv @ T
             s = torch.sqrt(torch.clamp(torch.diag(Vinv), min=0.0))
-            beta[j] = b
-            se[j] = s
-            z = b / s
-            p_anc[j] = torch.as_tensor(
+
+            # 0/0 guard: when both beta and se are numerically zero for a
+            # surviving ancestry, beta/se is the indeterminate 0/0 rather
+            # than a genuine large |z|; report p=1.0 ("no signal") instead
+            # of letting it fall through as nan.
+            zero_mask = (s.abs() < zero_tol) & (b.abs() < zero_tol)
+            s_safe = torch.where(zero_mask, torch.ones_like(s), s)
+            z = b / s_safe
+            p_kept = torch.as_tensor(
                 2.0 * norm.sf(torch.abs(z).detach().cpu().numpy()),
                 dtype=torch.float64,
                 device=device,
             )
+            p_kept = torch.where(zero_mask, torch.ones_like(p_kept), p_kept)
+
+            for slot, k in enumerate(keep.tolist()):
+                beta[j, k] = b[slot]
+                se[j, k] = s[slot]
+                p_anc[j, k] = p_kept[slot]
+            # Dropped ancestries stay nan (already the init default; set
+            # explicitly for robustness against future default changes).
+            dropped = set(range(n_anc)) - set(keep.tolist())
+            for k in dropped:
+                se[j, k] = float("nan")
+                p_anc[j, k] = float("nan")
 
         return TractorScanResult(
             snp=list(meta.snp),

@@ -149,3 +149,97 @@ def test_joint_score_recovers_causal_ancestry():
     # ancestry-0 effect sign is positive at the top causal variant
     top = min(causal, key=lambda i: jp[i])
     assert df["beta_AFR"].to_numpy()[top] > 0
+
+def test_allele_count_threshold_drops_rare_ancestry():
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+    d = make_synth(n=300, m=5, K=2, seed=5)
+    # force ancestry-1 (EUR) dosages to zero at variant 0 -> allele count 0 < 50
+    d["dosages"][1, :, 0] = 0.0
+    mdl = TractorLMM(family="gaussian", min_allele_count=50, ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(5)],
+        chr=["1"] * 5,
+        pos=list(range(5)),
+        a1=["A"] * 5,
+        a2=["G"] * 5,
+    )
+    res = mdl.score_chunk(nf, d["dosages"], meta)
+    df = res.to_dataframe()
+    # ancestry-1 (EUR) effect at variant 0 is NaN (dropped); ancestry-0 still tested
+    assert df["p_EUR"].isna()[0] or df["se_EUR"].isna()[0]
+    assert not df["joint_p"].isna()[0]  # AFR survived -> marginal joint p present
+
+
+def test_allele_count_threshold_all_dropped_gives_nan_joint_p():
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+    d = make_synth(n=300, m=5, K=2, seed=5)
+    # force BOTH ancestries below threshold at variant 0
+    d["dosages"][0, :, 0] = 0.0
+    d["dosages"][1, :, 0] = 0.0
+    mdl = TractorLMM(family="gaussian", min_allele_count=50, ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(5)],
+        chr=["1"] * 5,
+        pos=list(range(5)),
+        a1=["A"] * 5,
+        a2=["G"] * 5,
+    )
+    res = mdl.score_chunk(nf, d["dosages"], meta)
+    df = res.to_dataframe()
+    assert df["joint_p"].isna()[0]
+    assert df["se_AFR"].isna()[0] and df["se_EUR"].isna()[0]
+
+
+def test_rank_deficient_surviving_var_uses_reduced_df():
+    """Two surviving ancestry dosage columns that are exactly collinear make
+    Var = Gv^T P Gv rank-deficient (rank 1, not rank 2). The chi2 tail must
+    use df = matrix_rank(Var), not the raw surviving-ancestry count, or the
+    p-value is miscalibrated (too conservative -- using df=2 on a stat that
+    is effectively 1-df understates significance).
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+    from scipy.stats import chi2 as chi2_dist
+
+    d = make_synth(n=300, m=3, K=2, seed=9)
+    # Make ancestry-1 dosage at variant 0 an exact copy of ancestry-0's
+    # dosage at variant 0 -> Gv columns collinear -> Var singular (rank 1).
+    d["dosages"][1, :, 0] = d["dosages"][0, :, 0].clone()
+    # Ensure both columns clear the allele-count threshold so neither is
+    # dropped by the min_allele_count filter -- the rank deficiency must be
+    # caught independently of that filter.
+    assert d["dosages"][0, :, 0].sum() >= 50
+    assert d["dosages"][1, :, 0].sum() >= 50
+
+    mdl = TractorLMM(family="gaussian", min_allele_count=50, ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(3)],
+        chr=["1"] * 3,
+        pos=list(range(3)),
+        a1=["A"] * 3,
+        a2=["G"] * 3,
+    )
+    res = mdl.score_chunk(nf, d["dosages"], meta)
+
+    stat0 = float(res.joint_stat[0])
+    p0 = float(res.joint_p[0])
+    # rank of the (singular) 2x2 Var at variant 0 must be 1, not 2
+    Gv0 = d["dosages"][:, :, 0].T.to(__import__("torch").float64)
+    PGv0 = nf.Py(Gv0)
+    Var0 = Gv0.T @ PGv0
+    rank0 = int(__import__("torch").linalg.matrix_rank(Var0))
+    assert rank0 == 1
+    # the p-value actually used must match the reduced-df tail, not df=2
+    expected_reduced = float(chi2_dist.sf(stat0, df=rank0))
+    expected_full = float(chi2_dist.sf(stat0, df=2))
+    assert abs(p0 - expected_reduced) < 1e-9
+    assert p0 != expected_full
+    assert 0.0 <= p0 <= 1.0
