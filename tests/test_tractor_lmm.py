@@ -313,3 +313,49 @@ def test_rank_deficient_surviving_var_uses_reduced_df():
     assert abs(p0 - expected_reduced) < 1e-9
     assert p0 != expected_full
     assert 0.0 <= p0 <= 1.0
+
+
+def test_wald_matches_score_at_moderate_signal():
+    """Wald full-model test (Task 7) must closely track the Rao score test
+    at moderate effect size, since both estimate the same GLS ancestry
+    effect at the fixed null variance components (FWL theorem: the score
+    estimate Vinv @ T and the Wald GLS block estimate are algebraically
+    equivalent when V is held fixed rather than re-estimated per variant).
+    """
+    import numpy as np
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=400, m=20, K=2, seed=21)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(20)],
+        chr=["1"] * 20,
+        pos=list(range(20)),
+        a1=["A"] * 20,
+        a2=["G"] * 20,
+    )
+    sc = TractorLMM(test="score", ancestry_names=["AFR", "EUR"])
+    wd = TractorLMM(test="wald", ancestry_names=["AFR", "EUR"])
+    nfs = sc.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    nfw = wd.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    res_s = sc.score_chunk(nfs, d["dosages"], meta)
+    res_w = wd.score_chunk(nfw, d["dosages"], meta)
+    assert res_s.test == "score"
+    assert res_w.test == "wald"
+    ds = res_s.to_dataframe()
+    dw = res_w.to_dataframe()
+    assert dw["joint_p"].to_numpy().shape == (20,)
+    assert np.corrcoef(ds["beta_AFR"], dw["beta_AFR"])[0, 1] > 0.98
+
+
+def test_wald_binary_not_implemented():
+    """Wald is gaussian-only for now (Task 7 scope); binary + wald must
+    raise a clear NotImplementedError rather than silently doing something
+    wrong or crashing deep in the score-test machinery.
+    """
+    import pytest
+    from torchgenomics.models.tractor_lmm import TractorLMM
+
+    with pytest.raises(NotImplementedError):
+        TractorLMM(family="binary", test="wald")

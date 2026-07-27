@@ -79,6 +79,13 @@ class TractorNullFit:
     _M00: Tensor | None = None     # (c, c) = (X0^T W X0)^{-1}          [binary]
     _binary_nf: object = None      # cached BinaryGLMM NullFit          [binary]
 
+    # --- Wald full-model test (Task 7, gaussian only) ----------------------
+    # ``fit_null`` stashes the raw phenotype here so ``score_chunk``'s Wald
+    # branch can form the per-variant full-model GLS fit ``[X0 | Gv]`` at the
+    # fixed null variance components without threading Y through the scan
+    # adapter separately (Gv/meta are all a scan adapter otherwise passes).
+    _y: Tensor | None = None       # (n,) raw phenotype                 [wald]
+
     def _Vi(self, M: Tensor) -> Tensor:
         """Apply V^{-1} to ``M`` via the eigendecomposition of K.
 
@@ -164,7 +171,8 @@ class TractorScanResult:
     beta : (m, K) — per-ancestry effect estimate (Var^{-1} T)
     se : (m, K) — per-ancestry standard error (sqrt of diag(Var^{-1}))
     p_anc : (m, K) — per-ancestry two-sided normal p-value
-    test : str — always "score" for this model
+    test : str — "score" (default) or "wald" (gaussian only), matching the
+        ``TractorLMM.test`` setting that produced this result
     """
 
     snp: list[str]
@@ -218,7 +226,11 @@ class TractorLMM:
         and runs the SAIGE/GMMAT logistic score test, generalized from a
         scalar SNP to K ancestry-specific dosage columns.
     test : {"score", "wald"}
-        Association test to use in the (not-yet-implemented) scan step.
+        Association test used in :meth:`score_chunk`. "score" (default) is
+        the Rao efficient score test (both families). "wald" fits the full
+        model ``[X0 | Gv]`` by GLS at the fixed null variance components
+        (gaussian only; ``family="binary"`` + ``test="wald"`` raises
+        ``NotImplementedError`` here at construction time).
     min_allele_count : int
         Minimum ancestry-specific allele count for a variant to be tested
         (Tractor convention, Atkinson et al. 2021).
@@ -247,6 +259,10 @@ class TractorLMM:
             raise ValueError(f"family must be gaussian|binary, got {family}")
         if test not in ("score", "wald"):
             raise ValueError(f"test must be score|wald, got {test}")
+        if family == "binary" and test == "wald":
+            raise NotImplementedError(
+                "Wald test not yet implemented for binary family; use test='score'."
+            )
         self.family = family
         self.test = test
         self.min_allele_count = min_allele_count
@@ -312,6 +328,7 @@ class TractorLMM:
             c=c,
             _XtVi=XtVi,
             _XtViX_inv=XtViX_inv,
+            _y=Y,
         )
         nf.resid = nf.Py(Y.unsqueeze(1)).squeeze(1)
         return nf
@@ -397,6 +414,53 @@ class TractorLMM:
         joint = float(T @ Vinv @ T)
         return T, Var, Vinv, joint
 
+    def _wald_stats(
+        self, null: TractorNullFit, Gv: Tensor
+    ) -> tuple[Tensor, Tensor, float]:
+        """Per-variant full-model Wald statistic against K ancestry dosages.
+
+        Fits the full model ``Xf = [X0 | Gv]`` (n, c+K) by GLS at the fixed
+        null variance components (``V`` cached on ``null`` via
+        :meth:`TractorNullFit._Vi`; variance components are *not*
+        re-estimated per variant — same convention as the score test).
+        Gaussian family only (see :meth:`TractorLMM.__init__`).
+
+        By the Frisch-Waugh-Lovell theorem for weighted least squares, the
+        resulting ancestry-block estimate is algebraically identical to the
+        score test's ``beta = Vinv @ T`` (T, Vinv from
+        :meth:`TractorLMM._score_stats`) when V is held fixed rather than
+        re-estimated — the two branches diverge only through numerical
+        conditioning (a joint ``(c+K) x (c+K)`` pseudo-inverse here vs. an
+        FWL-reduced ``K x K`` one for the score test).
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model fit (gaussian; requires
+            ``null._y``, the raw phenotype stashed by :meth:`fit_null`)
+        Gv : (n, K) — ancestry-specific dosage columns for one variant
+
+        Returns
+        -------
+        bG : (K,) — GLS ancestry-block coefficient estimate
+        Cov : (K, K) — G-G block of ``(Xf^T V^{-1} Xf)^{-1}``, the
+            covariance of ``bG`` (Moore-Penrose pseudo-inverse of the full
+            ``(c+K) x (c+K)`` information matrix, robust to collinear
+            ancestry dosage columns / rank-deficient designs)
+        joint : float — joint statistic ``bG^T pinv(Cov) bG ~ chi2_K`` under
+            the null
+        """
+        Xf = torch.cat([null.X0, Gv], dim=1)               # (n, c+K)
+        ViXf = null._Vi(Xf)
+        A = Xf.T @ ViXf                                      # (c+K, c+K)
+        Ainv = torch.linalg.pinv(A)
+        y = null._y.reshape(-1, 1)
+        beta_f = (Ainv @ (Xf.T @ null._Vi(y))).squeeze(1)   # (c+K,)
+        Kk = Gv.shape[1]
+        bG = beta_f[-Kk:]
+        Cov = Ainv[-Kk:, -Kk:]
+        joint = float(bG @ torch.linalg.pinv(Cov) @ bG)
+        return bG, Cov, joint
+
     def score_chunk(
         self,
         null: TractorNullFit,
@@ -404,11 +468,21 @@ class TractorLMM:
         meta: VariantMeta,
         L_chunk: Tensor | None = None,
     ) -> TractorScanResult:
-        """Joint K-df Rao score test + ancestry-specific effects, per variant.
+        """Joint K-df test + ancestry-specific effects, per variant.
+
+        Dispatches on ``self.test``: ``"score"`` (default) runs the Rao
+        efficient score test (:meth:`_score_stats`); ``"wald"`` (gaussian
+        only — see :meth:`__init__`) instead fits the full model
+        ``[X0 | Gv]`` by GLS at the fixed null variance components
+        (:meth:`_wald_stats`). Both branches converge on a per-ancestry
+        effect estimate ``b`` and its covariance ``cov`` so the downstream
+        allele-count filter, rank/df logic, joint statistic, and
+        per-ancestry SE/p-value computation below are written once and
+        shared by both tests.
 
         For each variant ``j`` with ancestry-dosage matrix ``Gv = G_chunk[:, :, j].T``
-        (n, K), computes the efficient score ``T = Gv^T P y``, its covariance
-        ``Var = Gv^T P Gv`` under the fitted null model, and:
+        (n, K), the score branch computes the efficient score ``T = Gv^T P y``, its
+        covariance ``Var = Gv^T P Gv`` under the fitted null model, and:
 
         - the joint test ``stat = T^T Var^-1 T ~ chi2_df`` (Rao score test
           against the null that *all* surviving ancestry-specific effects
@@ -499,18 +573,30 @@ class TractorLMM:
                 continue
 
             Gv = full[keep].T  # (n, K_keep)
-            T, Var, Vinv, joint = self._score_stats(null, Gv)
-            rank = int(torch.linalg.matrix_rank(Var))
+            # Dispatch on self.test: both branches produce a per-ancestry
+            # effect estimate ``b`` and its covariance ``cov`` so the
+            # downstream rank / joint-p / se / per-ancestry-p / dropped-
+            # ancestry logic below is written once and shared by both tests
+            # (DRY). For the score test ``cov`` is ``Vinv`` (pinv of the
+            # score covariance Gv^T P Gv); for Wald it is the ancestry-block
+            # of the full-model information-matrix pseudo-inverse. ``joint``
+            # is always ``b^T pinv(cov) b`` under the null.
+            if self.test == "wald":
+                b, cov, joint = self._wald_stats(null, Gv)
+            else:
+                T, _Var, Vinv, joint = self._score_stats(null, Gv)
+                b = Vinv @ T
+                cov = Vinv
+            rank = int(torch.linalg.matrix_rank(cov))
             if rank == 0:
-                # Surviving Var is exactly singular with no identifiable
+                # Surviving cov is exactly singular with no identifiable
                 # direction -- no valid chi2 df for a joint test.
                 joint_p[j] = float("nan")
             else:
                 joint_stat[j] = joint
                 joint_p[j] = float(chi2.sf(joint, df=rank))
 
-            b = Vinv @ T
-            s = torch.sqrt(torch.clamp(torch.diag(Vinv), min=0.0))
+            s = torch.sqrt(torch.clamp(torch.diag(cov), min=0.0))
 
             # 0/0 guard: when both beta and se are numerically zero for a
             # surviving ancestry, beta/se is the indeterminate 0/0 rather
@@ -547,4 +633,5 @@ class TractorLMM:
             beta=beta,
             se=se,
             p_anc=p_anc,
+            test=self.test,
         )
