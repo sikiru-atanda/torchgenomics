@@ -108,3 +108,17 @@ def test_iter_chunks_variant_meta_none_stays_none():
     chunks = list(ad.iter_chunks(chunk_size=2))
     for chunk, _sl in chunks:
         assert chunk.variant_meta is None
+
+def test_tractor_null_projection_matches_bruteforce():
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    d = make_synth(n=120, m=30, K=2, seed=3)
+    Y, X0, Kg = d["y_cont"], d["X0"], d["K_grm"]
+    nf = TractorLMM(family="gaussian").fit_null(Y, X0, Kg)
+    # brute-force P y from the fitted variance components
+    V = nf.sigma2 * torch.eye(len(Y), dtype=torch.float64) + nf.tau2 * Kg
+    Vi = torch.linalg.inv(V)
+    P = Vi - Vi @ X0 @ torch.linalg.inv(X0.T @ Vi @ X0) @ X0.T @ Vi
+    assert torch.allclose(nf.resid, P @ Y, atol=1e-8)
+    g = d["dosages"][0, :, 0]
+    assert torch.allclose(nf.Py(g.unsqueeze(1)).squeeze(), P @ g, atol=1e-8)
