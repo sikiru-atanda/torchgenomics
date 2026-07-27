@@ -122,3 +122,30 @@ def test_tractor_null_projection_matches_bruteforce():
     assert torch.allclose(nf.resid, P @ Y, atol=1e-8)
     g = d["dosages"][0, :, 0]
     assert torch.allclose(nf.Py(g.unsqueeze(1)).squeeze(), P @ g, atol=1e-8)
+
+def test_joint_score_recovers_causal_ancestry():
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+    d = make_synth(n=400, m=40, K=2, seed=11)
+    m = TractorLMM(family="gaussian", test="score", ancestry_names=["AFR", "EUR"])
+    nf = m.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(40)],
+        chr=["1"] * 40,
+        pos=list(range(40)),
+        a1=["A"] * 40,
+        a2=["G"] * 40,
+    )
+    res = m.score_chunk(nf, d["dosages"], meta)
+    df = res.to_dataframe()
+    # causal variants (ancestry-0 effect) reach smaller joint p than non-causal
+    causal = set(d["causal_idx"])
+    jp = df["joint_p"].to_numpy()
+    causal_p = [jp[i] for i in range(40) if i in causal]
+    null_p = [jp[i] for i in range(40) if i not in causal]
+    assert min(causal_p) < 1e-3
+    assert sum(p < 1e-3 for p in null_p) <= 1        # few/no null hits
+    # ancestry-0 effect sign is positive at the top causal variant
+    top = min(causal, key=lambda i: jp[i])
+    assert df["beta_AFR"].to_numpy()[top] > 0

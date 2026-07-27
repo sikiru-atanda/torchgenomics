@@ -39,6 +39,7 @@ import torch
 from torch import Tensor
 
 from ..optim.emma_reml import gapit_emma_remle
+from .base import VariantMeta
 
 
 @dataclass
@@ -88,6 +89,64 @@ class TractorNullFit:
     def PX(self, M: Tensor) -> Tensor:
         """Alias of :meth:`Py` — apply P to an arbitrary (n, k) matrix."""
         return self.Py(M)
+
+
+@dataclass
+class TractorScanResult:
+    """Per-variant joint K-df score test + ancestry-specific effects.
+
+    Distinct from the shared :class:`torchgenomics.models.base.ScanResult`
+    schema because the Tractor-Mix association test produces *per-ancestry*
+    effect estimates (one ``beta`` / ``se`` / ``p`` triple per local-ancestry
+    dosage track) in addition to a single joint statistic per variant —
+    a shape the shared schema (one ``beta``/``se`` column per variant) cannot
+    represent (Atkinson et al. 2021, Tractor; Tan et al. 2026, Tractor-Mix).
+
+    Attributes
+    ----------
+    snp, chr, pos : list — variant identifiers (length m)
+    ancestry_names : list[str] — labels for the K ancestry dosage tracks
+    joint_stat : (m,) — Rao score joint chi2_K statistic per variant
+    joint_p : (m,) — chi2_K survival-function p-value per variant
+    beta : (m, K) — per-ancestry effect estimate (Var^{-1} T)
+    se : (m, K) — per-ancestry standard error (sqrt of diag(Var^{-1}))
+    p_anc : (m, K) — per-ancestry two-sided normal p-value
+    test : str — always "score" for this model
+    """
+
+    snp: list[str]
+    chr: list[str]
+    pos: list[int]
+    ancestry_names: list[str]
+    joint_stat: Tensor       # (m,)
+    joint_p: Tensor          # (m,)
+    beta: Tensor             # (m, K)
+    se: Tensor               # (m, K)
+    p_anc: Tensor            # (m, K)
+    test: str = "score"
+
+    def __len__(self) -> int:
+        return len(self.snp)
+
+    def to_dataframe(self):
+        """Flatten to a long-form DataFrame with one row per variant.
+
+        Per-ancestry columns are suffixed with the ancestry name, e.g.
+        ``beta_AFR``, ``se_AFR``, ``p_AFR``.
+        """
+        import pandas as pd
+
+        d = {
+            "snp": self.snp,
+            "chr": self.chr,
+            "pos": self.pos,
+            "joint_p": self.joint_p.detach().cpu().numpy(),
+        }
+        for k, nm in enumerate(self.ancestry_names):
+            d[f"beta_{nm}"] = self.beta[:, k].detach().cpu().numpy()
+            d[f"se_{nm}"] = self.se[:, k].detach().cpu().numpy()
+            d[f"p_{nm}"] = self.p_anc[:, k].detach().cpu().numpy()
+        return pd.DataFrame(d)
 
 
 class TractorLMM:
@@ -204,3 +263,110 @@ class TractorLMM:
         )
         nf.resid = nf.Py(Y.unsqueeze(1)).squeeze(1)
         return nf
+
+    def _score_stats(
+        self, null: TractorNullFit, Gv: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor, float]:
+        """Per-variant joint Rao score statistic against K ancestry dosages.
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model projection P
+        Gv : (n, K) — ancestry-specific dosage columns for one variant
+
+        Returns
+        -------
+        T : (K,) — efficient score ``Gv^T P y``
+        Var : (K, K) — score covariance ``Gv^T P Gv``
+        Vinv : (K, K) — Moore-Penrose pseudo-inverse of Var (robust to
+            rank-deficient ancestry tracks, e.g. an ancestry absent from
+            the local cohort at this locus)
+        joint : float — joint statistic ``T^T Vinv T ~ chi2_K`` under the
+            null (Chen et al. 2016, GMMAT eq. 7; Atkinson et al. 2021,
+            Tractor, joint test extension in Tan et al. 2026, Tractor-Mix)
+        """
+        PGv = null.Py(Gv)                 # (n, K) == P Gv
+        T = Gv.T @ null.resid              # (K,)   == Gv^T P y
+        Var = Gv.T @ PGv                   # (K, K) == Gv^T P Gv
+        Vinv = torch.linalg.pinv(Var)
+        joint = float(T @ Vinv @ T)
+        return T, Var, Vinv, joint
+
+    def score_chunk(
+        self,
+        null: TractorNullFit,
+        G_chunk: Tensor,
+        meta: VariantMeta,
+        L_chunk: Tensor | None = None,
+    ) -> TractorScanResult:
+        """Joint K-df Rao score test + ancestry-specific effects, per variant.
+
+        For each variant ``j`` with ancestry-dosage matrix ``Gv = G_chunk[:, :, j].T``
+        (n, K), computes the efficient score ``T = Gv^T P y``, its covariance
+        ``Var = Gv^T P Gv`` under the fitted null model, and:
+
+        - the joint test ``stat = T^T Var^-1 T ~ chi2_K`` (Rao score test
+          against the null that *all* ancestry-specific effects are zero;
+          Chen et al. 2016, GMMAT §2.2; Atkinson et al. 2021, Tractor §Methods;
+          Tan et al. 2026, Tractor-Mix, joint local-ancestry test), with
+          p-value from the chi2_K survival function;
+        - per-ancestry effect estimates ``beta = Var^-1 T``, standard errors
+          ``se = sqrt(diag(Var^-1))``, and two-sided normal p-values
+          ``p_a = 2 * (1 - Phi(|beta_a / se_a|))``.
+
+        ``Var^-1`` is computed via Moore-Penrose pseudo-inverse rather than
+        a plain inverse so that ancestry tracks with (near-)zero local
+        dosage variance at a given locus (e.g. an ancestry not observed in
+        the cohort at that position) degrade gracefully instead of raising.
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model fit from :meth:`fit_null`
+        G_chunk : (K, n, c) — ancestry-specific dosage tensor for c variants
+        meta : VariantMeta — variant identifiers (snp/chr/pos), length c
+        L_chunk : optional — reserved for a future local-ancestry-probability
+            weighted variant of the test; unused by the continuous model
+
+        Returns
+        -------
+        TractorScanResult
+        """
+        from scipy.stats import chi2, norm
+
+        n_anc, n, c = G_chunk.shape
+        names = self._ancestry_names or [f"anc{k}" for k in range(n_anc)]
+        device = G_chunk.device
+
+        joint_stat = torch.zeros(c, dtype=torch.float64, device=device)
+        joint_p = torch.zeros(c, dtype=torch.float64, device=device)
+        beta = torch.zeros(c, n_anc, dtype=torch.float64, device=device)
+        se = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
+        p_anc = torch.ones(c, n_anc, dtype=torch.float64, device=device)
+
+        for j in range(c):
+            Gv = G_chunk[:, :, j].T.to(torch.float64)  # (n, K)
+            T, _Var, Vinv, joint = self._score_stats(null, Gv)
+            joint_stat[j] = joint
+            joint_p[j] = float(chi2.sf(joint, df=n_anc))
+            b = Vinv @ T
+            s = torch.sqrt(torch.clamp(torch.diag(Vinv), min=0.0))
+            beta[j] = b
+            se[j] = s
+            z = b / s
+            p_anc[j] = torch.as_tensor(
+                2.0 * norm.sf(torch.abs(z).detach().cpu().numpy()),
+                dtype=torch.float64,
+                device=device,
+            )
+
+        return TractorScanResult(
+            snp=list(meta.snp),
+            chr=list(meta.chr),
+            pos=list(meta.pos),
+            ancestry_names=list(names),
+            joint_stat=joint_stat,
+            joint_p=joint_p,
+            beta=beta,
+            se=se,
+            p_anc=p_anc,
+        )
