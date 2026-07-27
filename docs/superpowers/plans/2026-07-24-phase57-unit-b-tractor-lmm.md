@@ -47,7 +47,8 @@ def read_ancestry_dosages(prefix: str, ancestry_names: list[str] | None = None,
 class TractorLMM:   # conforms to models.base.BaseModel
     def __init__(self, family: str = "gaussian", test: str = "score",
                  min_allele_count: int = 50, use_spa: bool = False,
-                 spa_threshold: float = 2.0) -> None: ...
+                 spa_threshold: float = 2.0,
+                 ancestry_names: list[str] | None = None) -> None: ...
     def fit_null(self, Y: Tensor, X0: Tensor, K: Tensor) -> TractorNullFit: ...
     def score_chunk(self, null: "TractorNullFit", G_chunk: Tensor,
                     meta: VariantMeta, L_chunk: Tensor | None = None) -> ScanResult: ...
@@ -353,7 +354,8 @@ class TractorNullFit:
 class TractorLMM:
     def __init__(self, family: str = "gaussian", test: str = "score",
                  min_allele_count: int = 50, use_spa: bool = False,
-                 spa_threshold: float = 2.0) -> None:
+                 spa_threshold: float = 2.0,
+                 ancestry_names: list[str] | None = None) -> None:
         if family not in ("gaussian", "binary"):
             raise ValueError(f"family must be gaussian|binary, got {family}")
         if test not in ("score", "wald"):
@@ -363,6 +365,7 @@ class TractorLMM:
         self.min_allele_count = min_allele_count
         self.use_spa = use_spa
         self.spa_threshold = spa_threshold
+        self._ancestry_names = ancestry_names   # None -> anc0/anc1 defaults; scan adapter may set
 
     def fit_null(self, Y: Tensor, X0: Tensor, K: Tensor) -> TractorNullFit:
         Y = Y.to(torch.float64); X0 = X0.to(torch.float64); K = K.to(torch.float64)
@@ -421,7 +424,7 @@ def test_joint_score_recovers_causal_ancestry():
     from torchgenomics.models.tractor_lmm import TractorLMM
     from torchgenomics.models.base import VariantMeta
     d = make_synth(n=400, m=40, K=2, seed=11)
-    m = TractorLMM(family="gaussian", test="score")
+    m = TractorLMM(family="gaussian", test="score", ancestry_names=["AFR", "EUR"])
     nf = m.fit_null(d["y_cont"], d["X0"], d["K_grm"])
     meta = VariantMeta(ids=[f"v{i}" for i in range(40)],
                        chrom=["1"] * 40, pos=list(range(40)))
@@ -461,7 +464,7 @@ Expected: FAIL — `score_chunk` not implemented.
                     meta: VariantMeta, L_chunk: Tensor | None = None) -> ScanResult:
         from scipy.stats import chi2, norm
         Kanc, n, c = G_chunk.shape
-        names = getattr(self, "_ancestry_names", None) or [f"anc{k}" for k in range(Kanc)]
+        names = self._ancestry_names or [f"anc{k}" for k in range(Kanc)]
         joint_p = torch.zeros(c, dtype=torch.float64)
         betas = torch.zeros(c, Kanc, dtype=torch.float64)
         ses = torch.full((c, Kanc), float("nan"), dtype=torch.float64)
@@ -519,7 +522,7 @@ def test_allele_count_threshold_drops_rare_ancestry():
     d = make_synth(n=300, m=5, K=2, seed=5)
     # force ancestry-1 dosages near zero (allele count < 50) at variant 0
     d["dosages"][1, :, 0] = 0.0
-    m = TractorLMM(family="gaussian", min_allele_count=50)
+    m = TractorLMM(family="gaussian", min_allele_count=50, ancestry_names=["AFR", "EUR"])
     nf = m.fit_null(d["y_cont"], d["X0"], d["K_grm"])
     meta = VariantMeta(ids=[f"v{i}" for i in range(5)], chrom=["1"]*5, pos=list(range(5)))
     res = m.score_chunk(nf, d["dosages"], meta)
@@ -685,7 +688,8 @@ def test_wald_matches_score_at_moderate_signal():
     from torchgenomics.models.base import VariantMeta
     d = make_synth(n=400, m=20, K=2, seed=21)
     meta = VariantMeta(ids=[f"v{i}" for i in range(20)], chrom=["1"]*20, pos=list(range(20)))
-    sc = TractorLMM(test="score"); wd = TractorLMM(test="wald")
+    sc = TractorLMM(test="score", ancestry_names=["AFR", "EUR"])
+    wd = TractorLMM(test="wald", ancestry_names=["AFR", "EUR"])
     nfs = sc.fit_null(d["y_cont"], d["X0"], d["K_grm"])
     nfw = wd.fit_null(d["y_cont"], d["X0"], d["K_grm"])
     ds = sc.score_chunk(nfs, d["dosages"], meta).to_dataframe()
@@ -753,14 +757,22 @@ def test_spa_off_is_identical_and_on_changes_tail():
     from torchgenomics.models.base import VariantMeta
     d = make_synth(n=600, m=10, K=2, seed=31)
     meta = VariantMeta(ids=[f"v{i}" for i in range(10)], chrom=["1"]*10, pos=list(range(10)))
-    off = TractorLMM(family="binary", use_spa=False)
-    on = TractorLMM(family="binary", use_spa=True, spa_threshold=1.0)
+    names = ["AFR", "EUR"]
+    off = TractorLMM(family="binary", use_spa=False, ancestry_names=names)
+    on = TractorLMM(family="binary", use_spa=True, spa_threshold=1.0, ancestry_names=names)
+    # default-off must be INERT to SPA settings (proves the faithful path is pure
+    # normal-approx): flipping spa_threshold with use_spa=False changes nothing.
+    off_lowthr = TractorLMM(family="binary", use_spa=False, spa_threshold=0.0,
+                            ancestry_names=names)
     nf1 = off.fit_null(d["y_bin"], d["X0"], d["K_grm"])
     nf2 = on.fit_null(d["y_bin"], d["X0"], d["K_grm"])
+    nf3 = off_lowthr.fit_null(d["y_bin"], d["X0"], d["K_grm"])
     a = off.score_chunk(nf1, d["dosages"], meta).to_dataframe()
     b = on.score_chunk(nf2, d["dosages"], meta).to_dataframe()
-    # default-off equals the pre-SPA behavior (regression guard handled elsewhere);
-    # here just assert SPA changes at least one tail p-value
+    c = off_lowthr.score_chunk(nf3, d["dosages"], meta).to_dataframe()
+    # (1) SPA-off identity guard: default path unaffected by SPA settings
+    assert (a["p_AFR"].to_numpy() == c["p_AFR"].to_numpy()).all()
+    # (2) SPA-on changes at least one tail p-value
     assert not (a["p_AFR"].to_numpy() == b["p_AFR"].to_numpy()).all()
 ```
 
