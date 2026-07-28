@@ -636,3 +636,57 @@ def test_tractor_scan_result_concat_preserves_order_and_fields():
         merged.conditional_joint_p, full.conditional_joint_p,
         atol=1e-10, equal_nan=True,
     )
+
+
+def test_conforms_to_base_model():
+    """TractorLMM's relationship to the ``BaseModel`` protocol (Task 10 /
+    Requirement A).
+
+    ``torchgenomics.models.base.BaseModel`` is a ``@runtime_checkable``
+    ``Protocol`` with ``fit_null(Y, X0, K, **kwargs) -> NullFit`` and
+    ``score_chunk(G_chunk, null_fit, variant_meta, test="wald") ->
+    ScanResult``. ``runtime_checkable`` Protocol ``isinstance`` checks are
+    *structural and name-based only* -- they verify that the named
+    methods exist and are callable, not that their signatures or return
+    types match. So ``isinstance(TractorLMM(), BaseModel)`` is expected
+    to (and does) pass even though ``TractorLMM.score_chunk`` has a
+    deliberately different signature: ``score_chunk(null, G_chunk, meta,
+    L_chunk=None)`` taking a 3-D ``(K, n, m)`` ancestry-partitioned
+    genotype tensor plus an optional parallel local-ancestry tensor,
+    versus the protocol's 2-D ``(n, m)`` ``G_chunk``. That divergence is
+    intentional (see :mod:`torchgenomics.models.tractor_lmm` module
+    docstring and :meth:`TractorLMM.score_chunk` docstring): a
+    (K, n, m) ancestry-partitioned dosage panel cannot be expressed as a
+    generic 2-D scanner chunk, so ``TractorLMM`` is driven end-to-end by
+    its own dedicated streaming driver, :meth:`TractorLMM.scan`, rather
+    than by ``torchgenomics.scan.UnifiedScanner`` (which only ever calls
+    ``fit_null``/``score_chunk`` with 2-D chunks -- see
+    ``torchgenomics/models/base.py`` docstring: "The UnifiedScanner
+    calls these two methods -- nothing else.").
+
+    Given that ``isinstance`` cannot detect this divergence (by design of
+    ``runtime_checkable`` Protocols), the honest conformance check is
+    structural: assert the three methods TractorLMM actually promises
+    (``fit_null``, ``score_chunk``, and its own ``scan``) exist and are
+    callable, rather than forcing ``score_chunk`` to match the generic
+    2-D signature (which would break the Task 4-9 ancestry-partitioned
+    API this whole model exists to provide).
+    """
+    from torchgenomics.models.base import BaseModel
+    from torchgenomics.models.tractor_lmm import TractorLMM
+
+    m = TractorLMM()
+
+    # Light isinstance check: documents that runtime_checkable Protocol
+    # isinstance is name-based only (methods present + callable), not a
+    # signature match -- it is expected to pass despite the 3-D
+    # score_chunk signature described above.
+    assert isinstance(m, BaseModel)
+
+    # The robust, honest conformance assertion: TractorLMM exposes
+    # callable fit_null / score_chunk (the two BaseModel method names)
+    # AND its own dedicated scan() streaming driver, which is what
+    # actually replaces UnifiedScanner for this model.
+    assert hasattr(m, "fit_null") and callable(m.fit_null)
+    assert hasattr(m, "score_chunk") and callable(m.score_chunk)
+    assert hasattr(m, "scan") and callable(m.scan)
