@@ -238,11 +238,10 @@ class TractorScanResult:
 
         ``ancestry_names`` and ``test`` are taken from the first result
         (they are constant across chunks of one scan — same model, same
-        ancestry labels). Optional fields (``allele_count`` if some future
-        caller attaches it, ``conditional_joint_p``) are concatenated only
-        when present on *every* chunk result; otherwise the merged field
-        is left ``None``/absent rather than silently dropping data from
-        chunks that had it.
+        ancestry labels). The optional ``conditional_joint_p`` field is
+        concatenated only when present on *every* chunk result; otherwise
+        the merged field is left ``None`` rather than silently dropping
+        data from chunks that had it.
 
         Parameters
         ----------
@@ -271,10 +270,6 @@ class TractorScanResult:
         se = torch.cat([r.se for r in results], dim=0)
         p_anc = torch.cat([r.p_anc for r in results], dim=0)
 
-        allele_count = None
-        if all(getattr(r, "allele_count", None) is not None for r in results):
-            allele_count = torch.cat([r.allele_count for r in results], dim=0)
-
         conditional_joint_p = None
         if all(r.conditional_joint_p is not None for r in results):
             conditional_joint_p = torch.cat(
@@ -294,11 +289,6 @@ class TractorScanResult:
             test=first.test,
             conditional_joint_p=conditional_joint_p,
         )
-        if allele_count is not None:
-            # Not a declared dataclass field today; attach dynamically so a
-            # future caller that already sets ``allele_count`` per-chunk
-            # round-trips through concat without a schema change here.
-            merged.allele_count = allele_count
         return merged
 
 
@@ -898,13 +888,18 @@ class TractorLMM:
         null : TractorNullFit — cached null-model fit from :meth:`fit_null`
         dosages : AncestryDosages | Tensor
             Either an :class:`~torchgenomics.io.ancestry_dosage.AncestryDosages`
-            container (chunked via its own ``iter_chunks``) or a raw
-            ``(K, n, m)`` tensor (chunked here along the variant axis,
-            dim -1). When ``dosages`` is an ``AncestryDosages`` and this
-            model was constructed without explicit ``ancestry_names``,
-            its ``ancestry_names`` are adopted so per-ancestry output
-            columns are labeled instead of falling back to ``anc0``,
-            ``anc1``, ....
+            container or a raw ``(K, n, m)`` tensor -- a raw tensor is
+            wrapped in an ``AncestryDosages`` internally so both inputs are
+            chunked along the variant axis by the exact same
+            ``AncestryDosages.iter_chunks`` code path (no separate chunk
+            loop is re-implemented here). When ``dosages`` is an
+            ``AncestryDosages`` and this model was constructed without
+            explicit ``ancestry_names``, its ``ancestry_names`` are adopted
+            so per-ancestry output columns are labeled instead of falling
+            back to ``anc0``, ``anc1``, .... Note: this mutates
+            ``self._ancestry_names`` in place the first time such a source
+            is seen; the ``is None`` guard makes it a one-shot side effect
+            (it does not fire again, or rebind, on subsequent calls).
         meta : VariantMeta — variant identifiers for the FULL scan
             (length m); sliced per-chunk (matching each chunk's variant
             range) before being passed to :meth:`score_chunk`.
@@ -935,23 +930,28 @@ class TractorLMM:
             else local_ancestry
         )
 
+        # DRY (Task 9 review, Issue 3): a raw (K, n, m) tensor is wrapped in
+        # an AncestryDosages so both call shapes (already-an-AncestryDosages
+        # vs. raw tensor) share the exact same chunk loop below instead of
+        # re-implementing ``for start in range(0, m, chunk_size)`` here.
+        # ``local_ancestry`` (if a raw tensor) is chunked consistently with
+        # ``dosages`` because both use the SAME ``sl`` slice objects, drawn
+        # from ``ad.iter_chunks`` regardless of which branch produced ``ad``.
+        ad = (
+            dosages
+            if isinstance(dosages, AncestryDosages)
+            else AncestryDosages(
+                dosages,
+                self._ancestry_names or [f"anc{k}" for k in range(dosages.shape[0])],
+            )
+        )
+
         results: list[TractorScanResult] = []
-        if isinstance(dosages, AncestryDosages):
-            for chunk, sl in dosages.iter_chunks(chunk_size):
-                chunk_meta = _slice_variant_meta(meta, sl)
-                L_chunk = la_tensor[:, :, sl] if la_tensor is not None else None
-                results.append(
-                    self.score_chunk(null, chunk.dosages, chunk_meta, L_chunk=L_chunk)
-                )
-        else:
-            m = dosages.shape[2]
-            for start in range(0, m, chunk_size):
-                sl = slice(start, min(start + chunk_size, m))
-                chunk_meta = _slice_variant_meta(meta, sl)
-                G_chunk = dosages[:, :, sl]
-                L_chunk = la_tensor[:, :, sl] if la_tensor is not None else None
-                results.append(
-                    self.score_chunk(null, G_chunk, chunk_meta, L_chunk=L_chunk)
-                )
+        for chunk, sl in ad.iter_chunks(chunk_size):
+            chunk_meta = _slice_variant_meta(meta, sl)
+            L_chunk = la_tensor[:, :, sl] if la_tensor is not None else None
+            results.append(
+                self.score_chunk(null, chunk.dosages, chunk_meta, L_chunk=L_chunk)
+            )
 
         return TractorScanResult.concat(results)

@@ -2566,19 +2566,39 @@ def tractor_inputs():
 class TestTractorScanStreamingMemory:
     """TractorLMM.scan() must not materialize the full ``(K, n, m)`` panel.
 
-    Two guards, mirroring the other streaming-memory classes in this file:
+    Guards:
 
     1. Behavioral equivalence — streaming ``joint_p`` matches a single
        non-chunked ``score_chunk`` call (streaming invariance;
        ``score_chunk`` already scores variants independently).
-    2. Peak-scales-with-chunk-size-not-m — construct two scenarios with
-       the same ``chunk_size`` but very different total ``m``; the peak
-       streaming allocation should be roughly the same. This is the
-       biobank-relevant guard: at UKB-admixed-cohort scale, the
-       difference between ``K * n * chunk_size * 8 B`` (MB scale) and
-       ``K * n * m * 8 B`` (TB scale for genome-wide ancestry-dosage
-       panels) is the difference between fits-on-a-laptop and
-       doesn't-fit-on-cluster.
+    2. Behavioral streaming enforcement — ``scan`` must never invoke
+       ``score_chunk`` with more than ``chunk_size`` variants in a single
+       call.
+
+       An earlier version of this guard instead asserted a ``tracemalloc``
+       peak-allocation budget (mirroring the other classes in this file).
+       That proxy is UNSOUND for this model: ``tracemalloc`` only tracks
+       Python/CPython-managed allocations, never PyTorch tensor storage
+       (which is allocated by libtorch's own C++ allocator and is
+       invisible to ``tracemalloc``). A reviewer confirmed empirically
+       that a deliberately fully-materializing ``scan()`` replacement —
+       one that gathers every chunk, ``torch.cat``s them back into the
+       full ``(K, n, m)`` tensor, and calls ``score_chunk`` exactly once
+       on the whole thing — passed the old tracemalloc-budget assertions
+       unchanged, because the large intermediate tensor never touches the
+       allocator tracemalloc watches. That means the old test enforced
+       nothing about streaming at all.
+
+       The guard below instead directly counts, via a thin wrapper around
+       ``TractorLMM.score_chunk``, how many variants are ever handed to a
+       single ``score_chunk`` call. This is a property of ``scan``'s
+       actual behavior (not of any particular memory allocator), and a
+       fully-materializing implementation cannot satisfy it — see
+       ``test_scan_never_scores_more_than_chunk_size_variants_at_once``
+       below, whose docstring records the acceptance-criterion evidence
+       (a throwaway materializing variant was confirmed to FAIL this
+       exact assertion; the real ``TractorLMM.scan`` was confirmed to
+       PASS it).
     """
 
     def test_streaming_matches_materialized(self, tractor_inputs):
@@ -2612,73 +2632,44 @@ class TestTractorScanStreamingMemory:
             streamed.beta, ref.beta, atol=1e-10, rtol=1e-10, equal_nan=True,
         )
 
-    def test_streaming_peak_scales_with_chunk_size_not_m(self):
-        """Streaming peak should scale with ``chunk_size``, not total ``m``.
+    def test_scan_never_scores_more_than_chunk_size_variants_at_once(
+        self, tractor_inputs, monkeypatch
+    ):
+        """Behavioral streaming gate: no ``score_chunk`` call spans > chunk_size variants.
 
-        Construct two scenarios with the same ``chunk_size`` (100) but
-        very different ``m`` (500 vs 2500, a 5x difference). If
-        ``TractorLMM.scan`` accidentally materialized the full
-        ``(K, n, m)`` result (or accumulated all per-chunk results in a
-        way that scales with m beyond the small final concat), the peak
-        would grow roughly proportionally with m. A truly streaming
-        driver's peak is dominated by the per-chunk score_chunk
-        intermediates (sized ``K x n x chunk_size``), which do not grow
-        with m.
-        """
-        from tests.fixtures.tractor.make_synth import make_synth
-        from torchgenomics.io.ancestry_dosage import AncestryDosages
-        from torchgenomics.models.tractor_lmm import TractorLMM
+        This instruments ``TractorLMM.score_chunk`` itself (recording
+        ``G_chunk.shape[-1]`` on every call) rather than any one
+        dosage-source implementation detail, so the guard holds regardless
+        of how ``scan`` assembles each ``G_chunk`` internally. In
+        particular it catches both (a) a naive materialize-then-slice
+        regression, and (b) the "gather every chunk via ``iter_chunks``,
+        ``torch.cat`` them back together, then call ``score_chunk`` once"
+        pattern called out in review — that pattern still requests
+        bounded-size pieces from the data source, but hands ``score_chunk``
+        a ``(K, n, m)``-wide tensor in its single call, which this
+        assertion catches directly.
 
-        def _run(m):
-            d = make_synth(n=200, m=m, K=2, seed=97)
-            vmeta = VariantMeta(
-                snp=[f"rs{i}" for i in range(m)],
-                chr=["1"] * m,
-                pos=list(range(m)),
-                a1=["A"] * m,
-                a2=["G"] * m,
-            )
-            model = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
-            nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
-            ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=vmeta)
+        n=200, m=2000, chunk_size=100 (20x reduction) — large enough that
+        a materializing regression is unambiguous (`m` vs `chunk_size`
+        differ by 20x, not by rounding/off-by-one noise).
 
-            def _inner():
-                return model.scan(nf, ad, vmeta, chunk_size=100)
-
-            _, peak = _peak_kib(_inner)
-            return peak
-
-        peak_small = _run(m=500)
-        peak_large = _run(m=2500)
-
-        # Allow generous headroom for the final concat's O(m) list/tensor
-        # allocation (unavoidable — the full result has to exist once at
-        # the end) and Python-object overhead; a genuine re-materialization
-        # of a (K, n, m) intermediate during the *scan loop itself* would
-        # blow well past a modest constant multiple of the m ratio (5x)
-        # once compounded with score_chunk's own per-chunk intermediates.
-        assert peak_large <= 5.0 * peak_small + 512, (
-            f"TractorLMM.scan streaming peak grew from {peak_small:.0f} KiB "
-            f"(m=500) to {peak_large:.0f} KiB (m=2500) at fixed "
-            "chunk_size=100 — should scale with chunk_size, not m. The "
-            "streaming driver likely regressed to materializing (K, n, m)."
-        )
-
-    def test_streaming_peak_under_explicit_budget(self, tractor_inputs):
-        """Hard absolute budget: <16 MiB at n=200/m=2000/K=2, chunk_size=100.
-
-        At this fixture, a materialized (K, n, m) float64 dosage tensor
-        alone costs 2*200*2000*8 B = ~6.1 MiB; a re-materializing
-        regression plus per-chunk score-test intermediates would push
-        comfortably past 16 MiB. The streaming driver's peak is bounded
-        by O(K * n * chunk_size) intermediates, which is tiny by
-        comparison (chunk_size=100 vs m=2000, a 20x reduction).
+        Acceptance-criterion evidence (verified manually, not part of this
+        commit): a throwaway ``materializing_scan(model, null, dosages,
+        meta)`` was written that calls ``AncestryDosages.iter_chunks``,
+        ``torch.cat``s every ``chunk.dosages`` back into one ``(K, n, m)``
+        tensor, and calls ``model.score_chunk`` exactly once on the
+        concatenated whole. Running the exact width-tracking assertion
+        below against that throwaway FAILED
+        (``max(widths_seen) == 2000 > chunk_size == 100``), while running
+        it against the real ``TractorLMM.scan`` PASSED
+        (``max(widths_seen) == 100``). The throwaway was not committed.
         """
         from torchgenomics.io.ancestry_dosage import AncestryDosages
         from torchgenomics.models.tractor_lmm import TractorLMM
 
         d = tractor_inputs
         m = d["dosages"].shape[2]
+        chunk_size = 100
         vmeta = VariantMeta(
             snp=[f"rs{i}" for i in range(m)],
             chr=["1"] * m,
@@ -2690,13 +2681,26 @@ class TestTractorScanStreamingMemory:
         nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
         ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=vmeta)
 
-        def _run_streaming():
-            return model.scan(nf, ad, vmeta, chunk_size=100)
+        widths_seen: list[int] = []
+        original_score_chunk = TractorLMM.score_chunk
 
-        _, peak_stream = _peak_kib(_run_streaming)
-        budget_kib = 16 * 1024  # 16 MiB
-        assert peak_stream < budget_kib, (
-            f"Streaming Tractor-Mix scan peak ({peak_stream:.0f} KiB) "
-            f"exceeds the 16 MiB budget. At biobank-admixed-cohort scale "
-            "this would translate to a multi-TB regression."
+        def _tracking_score_chunk(self, null, G_chunk, meta, L_chunk=None):
+            widths_seen.append(G_chunk.shape[-1])
+            return original_score_chunk(self, null, G_chunk, meta, L_chunk=L_chunk)
+
+        monkeypatch.setattr(TractorLMM, "score_chunk", _tracking_score_chunk)
+
+        model.scan(nf, ad, vmeta, chunk_size=chunk_size)
+
+        assert widths_seen, "scan() never called score_chunk at all"
+        assert max(widths_seen) <= chunk_size, (
+            f"TractorLMM.scan called score_chunk with up to "
+            f"{max(widths_seen)} variants in a single call "
+            f"(chunk_size={chunk_size}, total m={m}) -- a streaming scan "
+            "must never hand score_chunk more than one chunk's worth of "
+            "variants at once."
+        )
+        assert max(widths_seen) < m, (
+            "score_chunk was called with the FULL variant panel at once "
+            "-- scan() materialized (K, n, m) instead of streaming."
         )
