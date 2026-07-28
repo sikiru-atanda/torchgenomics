@@ -173,6 +173,13 @@ class TractorScanResult:
     p_anc : (m, K) — per-ancestry two-sided normal p-value
     test : str — "score" (default) or "wald" (gaussian only), matching the
         ``TractorLMM.test`` setting that produced this result
+    conditional_joint_p : (m,) or None — local-ancestry-conditional joint
+        chi2 p-value (Task 9 / Requirement A), computed only when
+        :meth:`TractorLMM.score_chunk` is called with ``L_chunk`` (gaussian
+        family only; see Tan et al. 2026, Tractor-Mix, and the analogous
+        conditional-analysis construction in Zhou et al. 2020, SAIGE-GENE,
+        Sec. "Conditional analysis"). ``None`` (no column in
+        :meth:`to_dataframe`) when no local ancestry was supplied.
     """
 
     snp: list[str]
@@ -185,6 +192,7 @@ class TractorScanResult:
     se: Tensor               # (m, K)
     p_anc: Tensor            # (m, K)
     test: str = "score"
+    conditional_joint_p: Tensor | None = None   # (m,) or None
 
     def __len__(self) -> int:
         return len(self.snp)
@@ -193,7 +201,10 @@ class TractorScanResult:
         """Flatten to a long-form DataFrame with one row per variant.
 
         Per-ancestry columns are suffixed with the ancestry name, e.g.
-        ``beta_AFR``, ``se_AFR``, ``p_AFR``.
+        ``beta_AFR``, ``se_AFR``, ``p_AFR``. ``conditional_joint_p`` is
+        included only when this result was produced from a ``score_chunk``
+        call that passed a local-ancestry ``L_chunk`` (Requirement A);
+        otherwise the schema is identical to a run without local ancestry.
         """
         import pandas as pd
 
@@ -203,11 +214,92 @@ class TractorScanResult:
             "pos": self.pos,
             "joint_p": self.joint_p.detach().cpu().numpy(),
         }
+        if self.conditional_joint_p is not None:
+            d["conditional_joint_p"] = self.conditional_joint_p.detach().cpu().numpy()
         for k, nm in enumerate(self.ancestry_names):
             d[f"beta_{nm}"] = self.beta[:, k].detach().cpu().numpy()
             d[f"se_{nm}"] = self.se[:, k].detach().cpu().numpy()
             d[f"p_{nm}"] = self.p_anc[:, k].detach().cpu().numpy()
         return pd.DataFrame(d)
+
+    @staticmethod
+    def concat(results: list["TractorScanResult"]) -> "TractorScanResult":
+        """Concatenate per-chunk results from a streaming scan (Task 9).
+
+        :meth:`TractorLMM.scan` calls :meth:`TractorLMM.score_chunk`
+        independently on each variant-chunk (never materializing a full
+        ``(K, n, m)`` tensor) and stitches the resulting small per-chunk
+        :class:`TractorScanResult` objects back together with this method.
+        Every tensor field is concatenated along the variant axis (dim 0);
+        every list field (``snp``/``chr``/``pos``) is concatenated by
+        simple list extension — both preserve chunk order, so the output
+        is identical in row order to a single non-chunked
+        ``score_chunk`` call over the full panel (streaming invariance).
+
+        ``ancestry_names`` and ``test`` are taken from the first result
+        (they are constant across chunks of one scan — same model, same
+        ancestry labels). Optional fields (``allele_count`` if some future
+        caller attaches it, ``conditional_joint_p``) are concatenated only
+        when present on *every* chunk result; otherwise the merged field
+        is left ``None``/absent rather than silently dropping data from
+        chunks that had it.
+
+        Parameters
+        ----------
+        results : list[TractorScanResult] — one result per variant-chunk,
+            in chunk order.
+
+        Returns
+        -------
+        TractorScanResult — the full-panel result.
+        """
+        if not results:
+            raise ValueError("TractorScanResult.concat() requires at least one result")
+
+        first = results[0]
+        snp: list[str] = []
+        chr_: list[str] = []
+        pos: list[int] = []
+        for r in results:
+            snp.extend(r.snp)
+            chr_.extend(r.chr)
+            pos.extend(r.pos)
+
+        joint_stat = torch.cat([r.joint_stat for r in results], dim=0)
+        joint_p = torch.cat([r.joint_p for r in results], dim=0)
+        beta = torch.cat([r.beta for r in results], dim=0)
+        se = torch.cat([r.se for r in results], dim=0)
+        p_anc = torch.cat([r.p_anc for r in results], dim=0)
+
+        allele_count = None
+        if all(getattr(r, "allele_count", None) is not None for r in results):
+            allele_count = torch.cat([r.allele_count for r in results], dim=0)
+
+        conditional_joint_p = None
+        if all(r.conditional_joint_p is not None for r in results):
+            conditional_joint_p = torch.cat(
+                [r.conditional_joint_p for r in results], dim=0
+            )
+
+        merged = TractorScanResult(
+            snp=snp,
+            chr=chr_,
+            pos=pos,
+            ancestry_names=list(first.ancestry_names),
+            joint_stat=joint_stat,
+            joint_p=joint_p,
+            beta=beta,
+            se=se,
+            p_anc=p_anc,
+            test=first.test,
+            conditional_joint_p=conditional_joint_p,
+        )
+        if allele_count is not None:
+            # Not a declared dataclass field today; attach dynamically so a
+            # future caller that already sets ``allele_count`` per-chunk
+            # round-trips through concat without a schema change here.
+            merged.allele_count = allele_count
+        return merged
 
 
 class TractorLMM:
@@ -558,14 +650,37 @@ class TractorLMM:
         null : TractorNullFit — cached null-model fit from :meth:`fit_null`
         G_chunk : (K, n, c) — ancestry-specific dosage tensor for c variants
         meta : VariantMeta — variant identifiers (snp/chr/pos), length c
-        L_chunk : optional — reserved for a future local-ancestry-probability
-            weighted variant of the test; unused by the continuous model
+        L_chunk : optional (K, n, c) — local-ancestry dosage tensor for the
+            SAME c variants, same ancestry ordering as ``G_chunk``. When
+            given, :meth:`score_chunk` additionally computes a per-variant
+            **local-ancestry-conditional joint test**
+            (``conditional_joint_p``, Requirement A / Task 9): a
+            SAIGE-GENE-style (Zhou et al. 2020, "Efficiently controlling
+            for case-control imbalance...", Sec. "Conditional analysis")
+            conditional score test that asks whether the surviving
+            ancestry-specific dosage effect at this variant remains
+            significant *after* projecting out its ``K-1`` local-ancestry
+            dosage tracks (``L_chunk[:-1]`` — the top ancestry is dropped
+            as the reference level, since the K ancestry proportions sum
+            to 1 and are otherwise collinear). Gaussian family only (uses
+            ``null.Py`` / ``null.resid``, the GMMAT projection quantities
+            that only the continuous null fit populates); ``family="binary"``
+            with ``L_chunk`` given raises ``NotImplementedError``. ``None``
+            (the default) leaves ``conditional_joint_p`` absent from the
+            returned result and its ``to_dataframe()`` output — byte-for-
+            byte unchanged behavior from before this feature existed.
 
         Returns
         -------
         TractorScanResult
         """
         from scipy.stats import chi2, norm
+
+        if L_chunk is not None and self.family == "binary":
+            raise NotImplementedError(
+                "Local-ancestry conditional analysis is implemented for "
+                "gaussian only."
+            )
 
         n_anc, n, c = G_chunk.shape
         names = self._ancestry_names or [f"anc{k}" for k in range(n_anc)]
@@ -576,6 +691,10 @@ class TractorLMM:
         beta = torch.zeros(c, n_anc, dtype=torch.float64, device=device)
         se = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
         p_anc = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
+        conditional_joint_p = (
+            torch.full((c,), float("nan"), dtype=torch.float64, device=device)
+            if L_chunk is not None else None
+        )
 
         zero_tol = 1e-12
         for j in range(c):
@@ -614,6 +733,48 @@ class TractorLMM:
             else:
                 joint_stat[j] = joint
                 joint_p[j] = float(chi2.sf(joint, df=rank))
+
+            # --- Local-ancestry conditional joint test (Task 9 / Req A) ---
+            # Gaussian-only (guarded at function entry above). Conditions
+            # the surviving ancestry-specific score (T, Var -- the RAW
+            # GMMAT score and its covariance, not the Wald quantities) on
+            # the K-1 local-ancestry dosage tracks, SAIGE-GENE-style: the
+            # local-ancestry tracks are themselves regressed out of both
+            # the score and its covariance via the same GMMAT projection
+            # P (``null.Py``), and the residual joint statistic is tested
+            # against chi2_{rank(cond_var)}. When ``self.test == "wald"``,
+            # T/Var were never computed above (the wald branch only forms
+            # bG/Cov/joint), so they are computed here on demand from the
+            # shared ``score_moments`` entry point -- this conditional
+            # test is defined in terms of the score decomposition
+            # regardless of which primary test produced ``joint_p``.
+            if L_chunk is not None:
+                if T is not None and Var is not None:
+                    T_score, Var_score = T, Var
+                else:
+                    T_score, Var_score = null.score_moments(Gv)
+                Lv = L_chunk[:-1, :, j].T.to(torch.float64)     # (n, K-1)
+                if Lv.shape[1] == 0:
+                    # K == 1: no local-ancestry track to condition on --
+                    # the conditional test degenerates to the plain joint
+                    # score test on the surviving ancestries.
+                    cond_var = Var_score
+                    dvec = T_score
+                else:
+                    PLv = null.Py(Lv)
+                    TL = Lv.T @ null.resid
+                    LtPL = Lv.T @ PLv
+                    LtPL_inv = torch.linalg.pinv(LtPL)
+                    GtPL = Gv.T @ PLv                                # (K_keep, K-1)
+                    cond_mean = GtPL @ (LtPL_inv @ TL)
+                    cond_var = Var_score - GtPL @ LtPL_inv @ GtPL.T
+                    dvec = T_score - cond_mean
+                cond_rank = int(torch.linalg.matrix_rank(cond_var))
+                if cond_rank > 0:
+                    cond_stat = float(dvec @ torch.linalg.pinv(cond_var) @ dvec)
+                    conditional_joint_p[j] = float(chi2.sf(cond_stat, df=cond_rank))
+                # else: cond_var exactly singular with no identifiable
+                # direction -- conditional_joint_p stays nan (init default).
 
             s = torch.sqrt(torch.clamp(torch.diag(cov), min=0.0))
 
@@ -705,4 +866,92 @@ class TractorLMM:
             se=se,
             p_anc=p_anc,
             test=self.test,
+            conditional_joint_p=conditional_joint_p,
         )
+
+    def scan(
+        self,
+        null: TractorNullFit,
+        dosages,
+        meta: VariantMeta,
+        chunk_size: int = 1000,
+        local_ancestry=None,
+    ) -> TractorScanResult:
+        """Streaming scan driver over ancestry-dosage variant-chunks (Task 9 / Requirement B).
+
+        ``UnifiedScanner`` cannot drive :class:`TractorLMM`: it hands every
+        model 2-D ``(n, c)`` genotype chunks, but Tractor-Mix's per-variant
+        tensor is 3-D — ``(K, n, c)`` ancestry-specific dosage tracks, plus
+        an optional parallel 3-D local-ancestry tensor for the conditional
+        test (Requirement A). This method is the dedicated streaming driver
+        for that 3-D shape: it iterates variant-chunks and calls
+        :meth:`score_chunk` once per chunk, never materializing a full
+        ``(K, n, m)`` result at any point -- only the small per-chunk
+        :class:`TractorScanResult` objects are held, which are then
+        stitched together with :meth:`TractorScanResult.concat`. Peak
+        memory is therefore ``O(K * n * chunk_size)``, not
+        ``O(K * n * m)`` (the streaming-first hard rule; see
+        ``tests/test_streaming_memory.py``).
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model fit from :meth:`fit_null`
+        dosages : AncestryDosages | Tensor
+            Either an :class:`~torchgenomics.io.ancestry_dosage.AncestryDosages`
+            container (chunked via its own ``iter_chunks``) or a raw
+            ``(K, n, m)`` tensor (chunked here along the variant axis,
+            dim -1). When ``dosages`` is an ``AncestryDosages`` and this
+            model was constructed without explicit ``ancestry_names``,
+            its ``ancestry_names`` are adopted so per-ancestry output
+            columns are labeled instead of falling back to ``anc0``,
+            ``anc1``, ....
+        meta : VariantMeta — variant identifiers for the FULL scan
+            (length m); sliced per-chunk (matching each chunk's variant
+            range) before being passed to :meth:`score_chunk`.
+        chunk_size : int — variants per chunk (default 1000).
+        local_ancestry : AncestryDosages | Tensor | None
+            Optional local-ancestry-dosage data of the SAME ``(K, n, m)``
+            shape as ``dosages``, sliced in lockstep with it and passed
+            to :meth:`score_chunk` as ``L_chunk`` (Requirement A). If an
+            ``AncestryDosages`` is passed here, only its ``.dosages``
+            tensor is used -- it is sliced by the exact same chunk
+            boundaries ``dosages`` uses, so its own ``iter_chunks`` /
+            ``variant_meta`` are not separately consulted.
+
+        Returns
+        -------
+        TractorScanResult — the full-panel result (see
+        :meth:`TractorScanResult.concat` for exactly what is
+        concatenated and how).
+        """
+        from ..io.ancestry_dosage import AncestryDosages, _slice_variant_meta
+
+        if isinstance(dosages, AncestryDosages) and self._ancestry_names is None:
+            self._ancestry_names = list(dosages.ancestry_names)
+
+        la_tensor = (
+            local_ancestry.dosages
+            if isinstance(local_ancestry, AncestryDosages)
+            else local_ancestry
+        )
+
+        results: list[TractorScanResult] = []
+        if isinstance(dosages, AncestryDosages):
+            for chunk, sl in dosages.iter_chunks(chunk_size):
+                chunk_meta = _slice_variant_meta(meta, sl)
+                L_chunk = la_tensor[:, :, sl] if la_tensor is not None else None
+                results.append(
+                    self.score_chunk(null, chunk.dosages, chunk_meta, L_chunk=L_chunk)
+                )
+        else:
+            m = dosages.shape[2]
+            for start in range(0, m, chunk_size):
+                sl = slice(start, min(start + chunk_size, m))
+                chunk_meta = _slice_variant_meta(meta, sl)
+                G_chunk = dosages[:, :, sl]
+                L_chunk = la_tensor[:, :, sl] if la_tensor is not None else None
+                results.append(
+                    self.score_chunk(null, G_chunk, chunk_meta, L_chunk=L_chunk)
+                )
+
+        return TractorScanResult.concat(results)

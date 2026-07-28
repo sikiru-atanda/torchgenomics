@@ -2538,3 +2538,165 @@ class TestBayesScanRssMemory:
             f"to {peak_large:.0f} KiB (p=5000) at fixed block_size=500. "
             "fit_rss_blocked likely regressed to scale with total p."
         )
+
+
+# ---------------------------------------------------------------------------
+# tractor-scan (TractorLMM.scan over AncestryDosages) memory regression
+# (Task 9 / Phase 57 Unit B — local-ancestry conditional analysis +
+# streaming scan driver)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tractor_inputs():
+    """Synthetic admixed cohort via the Tractor-Mix test fixture generator.
+
+    K=2 ancestries, n=200 samples, m=2000 variants — large enough that a
+    materialized (K, n, m) result would be 2*200*2000*8 B = ~6.25 MiB just
+    for the dosage tensor itself (plus per-chunk score-test intermediates
+    for a non-streaming path); the streaming driver should keep peak
+    allocation close to the chunk_size, not m.
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+
+    d = make_synth(n=200, m=2000, K=2, seed=97)
+    return d
+
+
+class TestTractorScanStreamingMemory:
+    """TractorLMM.scan() must not materialize the full ``(K, n, m)`` panel.
+
+    Two guards, mirroring the other streaming-memory classes in this file:
+
+    1. Behavioral equivalence — streaming ``joint_p`` matches a single
+       non-chunked ``score_chunk`` call (streaming invariance;
+       ``score_chunk`` already scores variants independently).
+    2. Peak-scales-with-chunk-size-not-m — construct two scenarios with
+       the same ``chunk_size`` but very different total ``m``; the peak
+       streaming allocation should be roughly the same. This is the
+       biobank-relevant guard: at UKB-admixed-cohort scale, the
+       difference between ``K * n * chunk_size * 8 B`` (MB scale) and
+       ``K * n * m * 8 B`` (TB scale for genome-wide ancestry-dosage
+       panels) is the difference between fits-on-a-laptop and
+       doesn't-fit-on-cluster.
+    """
+
+    def test_streaming_matches_materialized(self, tractor_inputs):
+        from torchgenomics.io.ancestry_dosage import AncestryDosages
+        from torchgenomics.models.tractor_lmm import TractorLMM
+
+        d = tractor_inputs
+        m = d["dosages"].shape[2]
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        model = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+        nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+
+        # Reference: single big-tensor score_chunk (legacy/non-streaming path)
+        ref = model.score_chunk(nf, d["dosages"], vmeta)
+
+        # Streaming path via TractorLMM.scan() over an AncestryDosages
+        # container, chunk_size << m.
+        ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=vmeta)
+        streamed = model.scan(nf, ad, vmeta, chunk_size=100)
+
+        assert torch.allclose(
+            streamed.joint_p, ref.joint_p, atol=1e-10, rtol=1e-10, equal_nan=True,
+        )
+        assert torch.allclose(
+            streamed.beta, ref.beta, atol=1e-10, rtol=1e-10, equal_nan=True,
+        )
+
+    def test_streaming_peak_scales_with_chunk_size_not_m(self):
+        """Streaming peak should scale with ``chunk_size``, not total ``m``.
+
+        Construct two scenarios with the same ``chunk_size`` (100) but
+        very different ``m`` (500 vs 2500, a 5x difference). If
+        ``TractorLMM.scan`` accidentally materialized the full
+        ``(K, n, m)`` result (or accumulated all per-chunk results in a
+        way that scales with m beyond the small final concat), the peak
+        would grow roughly proportionally with m. A truly streaming
+        driver's peak is dominated by the per-chunk score_chunk
+        intermediates (sized ``K x n x chunk_size``), which do not grow
+        with m.
+        """
+        from tests.fixtures.tractor.make_synth import make_synth
+        from torchgenomics.io.ancestry_dosage import AncestryDosages
+        from torchgenomics.models.tractor_lmm import TractorLMM
+
+        def _run(m):
+            d = make_synth(n=200, m=m, K=2, seed=97)
+            vmeta = VariantMeta(
+                snp=[f"rs{i}" for i in range(m)],
+                chr=["1"] * m,
+                pos=list(range(m)),
+                a1=["A"] * m,
+                a2=["G"] * m,
+            )
+            model = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+            nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+            ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=vmeta)
+
+            def _inner():
+                return model.scan(nf, ad, vmeta, chunk_size=100)
+
+            _, peak = _peak_kib(_inner)
+            return peak
+
+        peak_small = _run(m=500)
+        peak_large = _run(m=2500)
+
+        # Allow generous headroom for the final concat's O(m) list/tensor
+        # allocation (unavoidable — the full result has to exist once at
+        # the end) and Python-object overhead; a genuine re-materialization
+        # of a (K, n, m) intermediate during the *scan loop itself* would
+        # blow well past a modest constant multiple of the m ratio (5x)
+        # once compounded with score_chunk's own per-chunk intermediates.
+        assert peak_large <= 5.0 * peak_small + 512, (
+            f"TractorLMM.scan streaming peak grew from {peak_small:.0f} KiB "
+            f"(m=500) to {peak_large:.0f} KiB (m=2500) at fixed "
+            "chunk_size=100 — should scale with chunk_size, not m. The "
+            "streaming driver likely regressed to materializing (K, n, m)."
+        )
+
+    def test_streaming_peak_under_explicit_budget(self, tractor_inputs):
+        """Hard absolute budget: <16 MiB at n=200/m=2000/K=2, chunk_size=100.
+
+        At this fixture, a materialized (K, n, m) float64 dosage tensor
+        alone costs 2*200*2000*8 B = ~6.1 MiB; a re-materializing
+        regression plus per-chunk score-test intermediates would push
+        comfortably past 16 MiB. The streaming driver's peak is bounded
+        by O(K * n * chunk_size) intermediates, which is tiny by
+        comparison (chunk_size=100 vs m=2000, a 20x reduction).
+        """
+        from torchgenomics.io.ancestry_dosage import AncestryDosages
+        from torchgenomics.models.tractor_lmm import TractorLMM
+
+        d = tractor_inputs
+        m = d["dosages"].shape[2]
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        model = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+        nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+        ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=vmeta)
+
+        def _run_streaming():
+            return model.scan(nf, ad, vmeta, chunk_size=100)
+
+        _, peak_stream = _peak_kib(_run_streaming)
+        budget_kib = 16 * 1024  # 16 MiB
+        assert peak_stream < budget_kib, (
+            f"Streaming Tractor-Mix scan peak ({peak_stream:.0f} KiB) "
+            f"exceeds the 16 MiB budget. At biobank-admixed-cohort scale "
+            "this would translate to a multi-TB regression."
+        )

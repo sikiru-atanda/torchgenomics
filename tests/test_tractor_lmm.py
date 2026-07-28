@@ -402,3 +402,237 @@ def test_spa_off_is_identical_and_on_changes_tail():
     assert (a["p_AFR"].to_numpy() == c["p_AFR"].to_numpy()).all()
     # (2) SPA-on changes at least one tail p-value
     assert not (a["p_AFR"].to_numpy() == b["p_AFR"].to_numpy()).all()
+
+
+def test_streaming_scan_matches_full_chunk_joint_p():
+    """TractorLMM.scan() streamed in two chunk sizes must reproduce the
+    same joint_p as a single non-chunked score_chunk call (streaming
+    invariance) -- score_chunk already scores variants independently, so
+    chunking must not change any per-variant result.
+    """
+    import numpy as np
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=300, m=24, K=2, seed=41)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(24)],
+        chr=["1"] * 24,
+        pos=list(range(24)),
+        a1=["A"] * 24,
+        a2=["G"] * 24,
+    )
+    mdl = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+
+    full = mdl.score_chunk(nf, d["dosages"], meta).to_dataframe()["joint_p"].to_numpy()
+
+    # Streamed via the dedicated scan() driver on the raw (K, n, m) tensor,
+    # with a chunk_size that does not evenly divide m (24 / 7 -> 4 chunks).
+    streamed_res = mdl.scan(nf, d["dosages"], meta, chunk_size=7)
+    streamed = streamed_res.to_dataframe()["joint_p"].to_numpy()
+    assert np.allclose(full, streamed, atol=1e-10, equal_nan=True)
+    assert streamed_res.snp == list(meta.snp)
+    assert streamed_res.chr == list(meta.chr)
+    assert streamed_res.pos == list(meta.pos)
+
+    # Manual two-half-chunk equivalence (mirrors the brief's smoke check).
+    h1 = mdl.score_chunk(
+        nf, d["dosages"][:, :, :12],
+        VariantMeta(snp=[f"v{i}" for i in range(12)], chr=["1"] * 12,
+                    pos=list(range(12)), a1=["A"] * 12, a2=["G"] * 12),
+    )
+    h2 = mdl.score_chunk(
+        nf, d["dosages"][:, :, 12:],
+        VariantMeta(snp=[f"v{i}" for i in range(12, 24)], chr=["1"] * 12,
+                    pos=list(range(12, 24)), a1=["A"] * 12, a2=["G"] * 12),
+    )
+    manual_streamed = np.concatenate(
+        [h1.to_dataframe()["joint_p"], h2.to_dataframe()["joint_p"]]
+    )
+    assert np.allclose(full, manual_streamed, atol=1e-10, equal_nan=True)
+
+
+def test_streaming_scan_over_ancestry_dosages_container():
+    """TractorLMM.scan() must also work when handed an AncestryDosages
+    container (not just a raw tensor), iterating its own iter_chunks and
+    adopting its ancestry_names when the model has none set.
+    """
+    import numpy as np
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.io.ancestry_dosage import AncestryDosages
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=200, m=17, K=2, seed=13)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(17)],
+        chr=["1"] * 17,
+        pos=list(range(17)),
+        a1=["A"] * 17,
+        a2=["G"] * 17,
+    )
+    mdl = TractorLMM(family="gaussian")  # no ancestry_names -> adopt from AD
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+
+    full = mdl.score_chunk(nf, d["dosages"], meta).to_dataframe()["joint_p"].to_numpy()
+
+    ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=meta)
+    res = mdl.scan(nf, ad, meta, chunk_size=5)
+    df = res.to_dataframe()
+    assert np.allclose(full, df["joint_p"].to_numpy(), atol=1e-10, equal_nan=True)
+    assert res.ancestry_names == ["AFR", "EUR"]
+    assert "beta_AFR" in df.columns and "beta_EUR" in df.columns
+    assert len(res) == 17
+
+
+def test_conditional_joint_p_present_only_with_local_ancestry():
+    """Passing L_chunk to score_chunk must add a conditional_joint_p
+    column; without it, no such column exists (unchanged output).
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=300, m=10, K=2, seed=41)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(10)],
+        chr=["1"] * 10,
+        pos=list(range(10)),
+        a1=["A"] * 10,
+        a2=["G"] * 10,
+    )
+    mdl = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+
+    no_l = mdl.score_chunk(nf, d["dosages"], meta)
+    assert no_l.conditional_joint_p is None
+    assert "conditional_joint_p" not in no_l.to_dataframe().columns
+
+    # Stand-in local ancestry: use the (admixture-derived) ancestry
+    # dosages themselves as a smoke check of the conditional pathway.
+    L = d["dosages"].clone()
+    res = mdl.score_chunk(nf, d["dosages"], meta, L_chunk=L)
+    assert res.conditional_joint_p is not None
+    df = res.to_dataframe()
+    assert "conditional_joint_p" in df.columns
+    import numpy as np
+    cp = df["conditional_joint_p"].to_numpy()
+    valid = cp[~np.isnan(cp)]
+    assert len(valid) > 0
+    assert ((valid >= 0.0) & (valid <= 1.0)).all()
+
+
+def test_conditional_joint_p_binary_raises_not_implemented():
+    """family='binary' + L_chunk given must raise NotImplementedError --
+    the conditional analysis is gaussian-only (uses null.Py / null.resid,
+    which only the continuous null fit populates)."""
+    import pytest
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=300, m=6, K=2, seed=4)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(6)], chr=["1"] * 6, pos=list(range(6)),
+        a1=["A"] * 6, a2=["G"] * 6,
+    )
+    mdl = TractorLMM(family="binary", ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_bin"], d["X0"], d["K_grm"])
+    L = d["dosages"].clone()
+    with pytest.raises(NotImplementedError):
+        mdl.score_chunk(nf, d["dosages"], meta, L_chunk=L)
+
+
+def test_conditional_joint_p_bruteforce_matches_formula():
+    """Cross-check the conditional stat at one variant against a direct
+    (non-vectorized) re-derivation of the brief's formula, using a
+    synthetic local-ancestry track independent of the tested dosages so
+    the conditional test is exercised on a nontrivial Lv.
+    """
+    import torch
+    from scipy.stats import chi2 as chi2_dist
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=250, m=4, K=2, seed=55)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(4)], chr=["1"] * 4, pos=list(range(4)),
+        a1=["A"] * 4, a2=["G"] * 4,
+    )
+    mdl = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+
+    g = torch.Generator().manual_seed(99)
+    L = torch.rand(2, 250, 4, generator=g, dtype=torch.float64)
+
+    res = mdl.score_chunk(nf, d["dosages"], meta, L_chunk=L)
+    j = 0
+    Gv = d["dosages"][:, :, j].T.to(torch.float64)
+    T, Var = nf.score_moments(Gv)
+    Lv = L[:-1, :, j].T.to(torch.float64)
+    PLv = nf.Py(Lv)
+    TL = Lv.T @ nf.resid
+    LtPL = Lv.T @ PLv
+    LtPL_inv = torch.linalg.pinv(LtPL)
+    GtPL = Gv.T @ PLv
+    cond_mean = GtPL @ (LtPL_inv @ TL)
+    cond_var = Var - GtPL @ LtPL_inv @ GtPL.T
+    dvec = T - cond_mean
+    cond_stat = float(dvec @ torch.linalg.pinv(cond_var) @ dvec)
+    rank = int(torch.linalg.matrix_rank(cond_var))
+    expected_p = float(chi2_dist.sf(cond_stat, df=rank))
+
+    got_p = float(res.to_dataframe()["conditional_joint_p"].to_numpy()[j])
+    assert abs(got_p - expected_p) < 1e-9
+
+
+def test_tractor_scan_result_concat_preserves_order_and_fields():
+    """TractorScanResult.concat stitches per-chunk results back together,
+    preserving variant order and every tensor/list field, including
+    conditional_joint_p when present on every chunk.
+    """
+    import torch
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM, TractorScanResult
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=200, m=9, K=2, seed=61)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(9)], chr=["1"] * 9, pos=list(range(9)),
+        a1=["A"] * 9, a2=["G"] * 9,
+    )
+    mdl = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+    nf = mdl.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    L = d["dosages"].clone()
+
+    chunks = []
+    for start in range(0, 9, 4):
+        end = min(start + 4, 9)
+        sl = slice(start, end)
+        cmeta = VariantMeta(
+            snp=meta.snp[sl], chr=meta.chr[sl], pos=meta.pos[sl],
+            a1=meta.a1[sl], a2=meta.a2[sl],
+        )
+        chunks.append(
+            mdl.score_chunk(nf, d["dosages"][:, :, sl], cmeta, L_chunk=L[:, :, sl])
+        )
+
+    merged = TractorScanResult.concat(chunks)
+    full = mdl.score_chunk(nf, d["dosages"], meta, L_chunk=L)
+
+    assert merged.snp == full.snp
+    assert merged.chr == full.chr
+    assert merged.pos == full.pos
+    assert merged.ancestry_names == full.ancestry_names
+    assert torch.allclose(merged.joint_p, full.joint_p, atol=1e-10, equal_nan=True)
+    assert torch.allclose(merged.beta, full.beta, atol=1e-10, equal_nan=True)
+    assert torch.allclose(merged.se, full.se, atol=1e-10, equal_nan=True)
+    assert torch.allclose(merged.p_anc, full.p_anc, atol=1e-10, equal_nan=True)
+    assert merged.conditional_joint_p is not None
+    assert torch.allclose(
+        merged.conditional_joint_p, full.conditional_joint_p,
+        atol=1e-10, equal_nan=True,
+    )
