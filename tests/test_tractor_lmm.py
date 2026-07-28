@@ -359,3 +359,46 @@ def test_wald_binary_not_implemented():
 
     with pytest.raises(NotImplementedError):
         TractorLMM(family="binary", test="wald")
+
+
+def test_spa_off_is_identical_and_on_changes_tail():
+    """Opt-in SPA (Task 8) for the per-ancestry binary score component.
+
+    (1) SPA-off identity guard: the default (``use_spa=False``) path must be
+        completely inert to ``spa_threshold`` -- proving the gated SPA block
+        never executes (no import, no call) when the feature is off, which
+        protects the faithful normal-approx equivalence claim.
+    (2) SPA-on changes at least one tail per-ancestry p-value relative to the
+        normal approximation, demonstrating the SPA correction actually wires
+        through to ``p_anc`` when enabled.
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=600, m=10, K=2, seed=31)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(10)],
+        chr=["1"] * 10,
+        pos=list(range(10)),
+        a1=["A"] * 10,
+        a2=["G"] * 10,
+    )
+    names = ["AFR", "EUR"]
+    off = TractorLMM(family="binary", use_spa=False, ancestry_names=names)
+    on = TractorLMM(family="binary", use_spa=True, spa_threshold=1.0, ancestry_names=names)
+    # default-off must be INERT to SPA settings (proves the faithful path is
+    # pure normal-approx): flipping spa_threshold with use_spa=False changes
+    # nothing.
+    off_lowthr = TractorLMM(family="binary", use_spa=False, spa_threshold=0.0,
+                             ancestry_names=names)
+    nf1 = off.fit_null(d["y_bin"], d["X0"], d["K_grm"])
+    nf2 = on.fit_null(d["y_bin"], d["X0"], d["K_grm"])
+    nf3 = off_lowthr.fit_null(d["y_bin"], d["X0"], d["K_grm"])
+    a = off.score_chunk(nf1, d["dosages"], meta).to_dataframe()
+    b = on.score_chunk(nf2, d["dosages"], meta).to_dataframe()
+    c = off_lowthr.score_chunk(nf3, d["dosages"], meta).to_dataframe()
+    # (1) SPA-off identity guard: default path unaffected by SPA settings
+    assert (a["p_AFR"].to_numpy() == c["p_AFR"].to_numpy()).all()
+    # (2) SPA-on changes at least one tail p-value
+    assert not (a["p_AFR"].to_numpy() == b["p_AFR"].to_numpy()).all()

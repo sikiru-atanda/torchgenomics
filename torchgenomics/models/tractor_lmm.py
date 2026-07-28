@@ -235,10 +235,27 @@ class TractorLMM:
         Minimum ancestry-specific allele count for a variant to be tested
         (Tractor convention, Atkinson et al. 2021).
     use_spa : bool
-        Whether to apply saddlepoint approximation for rare-variant score
-        calibration (binary trait only).
+        Opt-in saddlepoint approximation (SPA; Zhou et al. 2018, SAIGE) for
+        the per-ancestry (1-df) binary score component, applied to variants
+        with low ancestry-specific minor allele count where the normal/
+        chi2_1 tail approximation is poorly calibrated. Default ``False``
+        (off): the off path is byte-identical to the pre-Task-8 normal
+        approximation, protecting the "faithful port" equivalence claim.
+        Applies to ``family="binary"`` only; ignored (no-op, no error) for
+        ``family="gaussian"`` since the normal approximation is exact there.
+        Tan et al. 2026 (Tractor-Mix) defers a SPA-corrected per-ancestry
+        tail p-value to future work -- this is our own opt-in extension of
+        that deferred idea, reusing the same ``saddlepoint_pvalue`` routine
+        already validated for :class:`~torchgenomics.models.binary_glmm.BinaryGLMM`,
+        qualified "to our knowledge" (no prior published Tractor-Mix
+        implementation applies SPA to the per-ancestry score component).
+        See :meth:`score_chunk` for exactly what is and is not affected.
     spa_threshold : float
-        |Z| threshold above which SPA is triggered.
+        Chi2_1 statistic (``U_a^2 / Var_aa``) threshold above which SPA is
+        triggered for a given per-ancestry score component; below it, the
+        chi2_1 approximation is used (matching
+        :func:`torchgenomics.stats.spa.saddlepoint_pvalue`'s own
+        threshold semantics). Only consulted when ``use_spa=True``.
     ancestry_names : list[str] | None
         Optional labels for the ancestry-specific dosage columns (e.g.
         ["AFR", "EUR"]); defaults to "anc0", "anc1", ... when None. Not
@@ -581,10 +598,12 @@ class TractorLMM:
             # score covariance Gv^T P Gv); for Wald it is the ancestry-block
             # of the full-model information-matrix pseudo-inverse. ``joint``
             # is always ``b^T pinv(cov) b`` under the null.
+            T = None
+            Var = None
             if self.test == "wald":
                 b, cov, joint = self._wald_stats(null, Gv)
             else:
-                T, _Var, Vinv, joint = self._score_stats(null, Gv)
+                T, Var, Vinv, joint = self._score_stats(null, Gv)
                 b = Vinv @ T
                 cov = Vinv
             rank = int(torch.linalg.matrix_rank(cov))
@@ -611,6 +630,58 @@ class TractorLMM:
                 device=device,
             )
             p_kept = torch.where(zero_mask, torch.ones_like(p_kept), p_kept)
+
+            # --- Opt-in SPA for the per-ancestry (1-df) score component ---
+            # (Task 8; default OFF). Gated behind BOTH ``self.use_spa`` and
+            # ``self.family == "binary"`` so that when SPA is off (the
+            # default), NOTHING in this block executes -- not even the
+            # import -- and the normal-approximation ``p_kept`` computed
+            # above is untouched, byte-identical to the pre-Task-8 behavior.
+            # This is required to protect the "faithful port" equivalence
+            # claim: Tan et al. 2026 (Tractor-Mix) defers a SPA-corrected
+            # per-ancestry tail p-value to future work, so applying it here
+            # is an enhancement beyond the published method, offered
+            # opt-in and qualified "to our knowledge" (no prior published
+            # Tractor-Mix implementation applies SAIGE-style SPA to the
+            # per-ancestry score component).
+            #
+            # Reuses the same ``saddlepoint_pvalue`` (Zhou et al. 2018,
+            # SAIGE) that ``BinaryGLMM.score_chunk`` already calls for its
+            # scalar 1-df score test (see
+            # ``torchgenomics.models.binary_glmm.BinaryGLMM.score_chunk``),
+            # generalized here from a single genotype column to the K_keep
+            # surviving ancestry-specific dosage columns of one variant,
+            # batched in a single call: ``observed_score = T`` (the raw,
+            # unstandardized per-ancestry scores ``U_a = g_a^T (Y - mu)``,
+            # already computed above by ``_score_stats``),
+            # ``variance = diag(Var)`` (the marginal per-ancestry score
+            # variance ``Var_aa``, i.e. the Schur-complement-adjusted
+            # ``g_a^T W g_a - (X0^T W g_a)^T M00 (X0^T W g_a)`` -- exactly
+            # the ``variance`` kwarg's documented Schur-complement
+            # semantics), and ``mu`` the PQL-fitted null probabilities
+            # cached on the binary null fit. Only per-ancestry components
+            # whose standardized chi2_1 statistic ``U_a^2 / Var_aa``
+            # exceeds ``self.spa_threshold`` are corrected via the
+            # Lugannani-Rice saddlepoint formula; the rest fall back to the
+            # same chi2_1 tail internally. **Scope**: this replaces the
+            # marginal per-ancestry p only -- the joint chi2_K test
+            # (``joint_p`` above) and the point estimates (``beta``/``se``)
+            # are left untouched (multi-df SPA is out of scope here).
+            if self.use_spa and self.family == "binary" and T is not None:
+                from ..stats.spa import saddlepoint_pvalue
+
+                mu0 = null._binary_nf._glm_mu.to(torch.float64).reshape(-1)
+                var_diag = torch.clamp(
+                    torch.diagonal(Var).to(torch.float64), min=1e-20
+                )
+                p_spa = saddlepoint_pvalue(
+                    T.to(torch.float64),
+                    mu0,
+                    Gv.to(torch.float64),
+                    threshold=self.spa_threshold,
+                    variance=var_diag,
+                ).to(device=device, dtype=torch.float64)
+                p_kept = torch.where(zero_mask, torch.ones_like(p_kept), p_spa)
 
             for slot, k in enumerate(keep.tolist()):
                 beta[j, k] = b[slot]
