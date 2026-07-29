@@ -180,6 +180,16 @@ class TractorScanResult:
         conditional-analysis construction in Zhou et al. 2020, SAIGE-GENE,
         Sec. "Conditional analysis"). ``None`` (no column in
         :meth:`to_dataframe`) when no local ancestry was supplied.
+    allele_count : (m, K) or None — per-variant, per-ancestry summed dosage
+        (final-review Fix 3 / charter spec §7 coverage), i.e. the same
+        ``ac`` quantity :meth:`TractorLMM.score_chunk` already computes and
+        thresholds against ``min_allele_count`` -- surfaced here for ALL
+        K ancestries (surviving and dropped) so callers can see exactly why
+        an ancestry was excluded rather than re-deriving it from the raw
+        dosage tensor. Always populated by :meth:`score_chunk` (never
+        ``None`` from that path); kept optional here only so hand-built
+        ``TractorScanResult`` instances (e.g. in tests) are not forced to
+        supply it.
     """
 
     snp: list[str]
@@ -193,6 +203,7 @@ class TractorScanResult:
     p_anc: Tensor            # (m, K)
     test: str = "score"
     conditional_joint_p: Tensor | None = None   # (m,) or None
+    allele_count: Tensor | None = None          # (m, K) or None
 
     def __len__(self) -> int:
         return len(self.snp)
@@ -205,6 +216,9 @@ class TractorScanResult:
         included only when this result was produced from a ``score_chunk``
         call that passed a local-ancestry ``L_chunk`` (Requirement A);
         otherwise the schema is identical to a run without local ancestry.
+        ``allele_count_<name>`` columns (Fix 3) are included whenever
+        ``self.allele_count`` is populated (always true for results coming
+        from :meth:`TractorLMM.score_chunk`).
         """
         import pandas as pd
 
@@ -220,6 +234,8 @@ class TractorScanResult:
             d[f"beta_{nm}"] = self.beta[:, k].detach().cpu().numpy()
             d[f"se_{nm}"] = self.se[:, k].detach().cpu().numpy()
             d[f"p_{nm}"] = self.p_anc[:, k].detach().cpu().numpy()
+            if self.allele_count is not None:
+                d[f"allele_count_{nm}"] = self.allele_count[:, k].detach().cpu().numpy()
         return pd.DataFrame(d)
 
     @staticmethod
@@ -238,10 +254,10 @@ class TractorScanResult:
 
         ``ancestry_names`` and ``test`` are taken from the first result
         (they are constant across chunks of one scan — same model, same
-        ancestry labels). The optional ``conditional_joint_p`` field is
-        concatenated only when present on *every* chunk result; otherwise
-        the merged field is left ``None`` rather than silently dropping
-        data from chunks that had it.
+        ancestry labels). The optional ``conditional_joint_p`` and
+        ``allele_count`` fields are each concatenated only when present on
+        *every* chunk result; otherwise the merged field is left ``None``
+        rather than silently dropping data from chunks that had it.
 
         Parameters
         ----------
@@ -276,6 +292,10 @@ class TractorScanResult:
                 [r.conditional_joint_p for r in results], dim=0
             )
 
+        allele_count = None
+        if all(r.allele_count is not None for r in results):
+            allele_count = torch.cat([r.allele_count for r in results], dim=0)
+
         merged = TractorScanResult(
             snp=snp,
             chr=chr_,
@@ -288,6 +308,7 @@ class TractorScanResult:
             p_anc=p_anc,
             test=first.test,
             conditional_joint_p=conditional_joint_p,
+            allele_count=allele_count,
         )
         return merged
 
@@ -331,6 +352,19 @@ class TractorLMM:
         already validated for :class:`~torchgenomics.models.binary_glmm.BinaryGLMM`,
         qualified "to our knowledge" (no prior published Tractor-Mix
         implementation applies SPA to the per-ancestry score component).
+        **Marginal vs. conditional per-ancestry effects.** The default
+        (``use_spa=False``) path reports the CONDITIONAL per-ancestry
+        effect/SE (``beta = Vinv @ T``, ``se = sqrt(diag(Vinv))``, the
+        joint-model-adjusted estimate). When SPA is on, the corrected
+        ``p_a`` is a function of the MARGINAL statistic ``U_a / Var_aa``
+        (SAIGE's per-SNP construction) -- which for K >= 2 ancestries is
+        not the same statistic the conditional ``beta``/``se`` describe
+        (``diag(Vinv) != 1 / diag(Var)`` whenever the ancestry score
+        components are correlated). So that the reported (beta, se, p)
+        row is internally self-consistent, the SPA branch of
+        :meth:`score_chunk` ALSO overwrites ``beta``/``se`` with the
+        matching marginal effect/SE (``beta_a = U_a / Var_aa``,
+        ``se_a = sqrt(1 / Var_aa)``) for every ancestry it scores.
         See :meth:`score_chunk` for exactly what is and is not affected.
     spa_threshold : float
         Chi2_1 statistic (``U_a^2 / Var_aa``) threshold above which SPA is
@@ -411,10 +445,16 @@ class TractorLMM:
         # future vectors (e.g. per-variant dosage columns in the score test).
         d, U = torch.linalg.eigh(K)
 
+        # Apply V^{-1} to X0 via the eigendecomposition without ever
+        # materializing the dense (n, n) V^{-1} itself (Task 3 review fix):
+        # ViX0 = U diag(w) U^T X0, so XtVi = X0^T V^{-1} = ViX0^T and
+        # XtViX_inv = (X0^T V^{-1} X0)^{-1} = (X0^T ViX0)^{-1} -- identical
+        # to the previous ``Vi = U @ (w * U.T)``-based computation to
+        # floating-point precision, just without the O(n^2) intermediate.
         w = 1.0 / (tau2 * d + sigma2)
-        Vi = U @ (w.unsqueeze(1) * U.T)
-        XtVi = X0.T @ Vi
-        XtViX_inv = torch.linalg.inv(XtVi @ X0)
+        ViX0 = U @ (w.unsqueeze(1) * (U.T @ X0))   # (n, c)
+        XtVi = ViX0.T                               # (c, n) == X0^T V^{-1}
+        XtViX_inv = torch.linalg.inv(X0.T @ ViX0)   # (c, c)
 
         nf = TractorNullFit(
             U=U,
@@ -600,8 +640,12 @@ class TractorLMM:
         Atkinson et al. 2021, Tractor §Methods — ancestry tracks with too
         few copies of the ancestry-of-origin at a locus give unstable
         effect estimates and are excluded rather than reported). Dropped
-        ancestries receive ``se = nan`` / ``p_anc = nan`` in the returned
-        result; the joint test is computed over the *surviving* ancestries
+        ancestries receive ``beta = nan`` / ``se = nan`` / ``p_anc = nan``
+        in the returned result (Fix 3: ``beta`` used to silently read
+        ``0.0`` for a dropped ancestry even though ``se``/``p_anc`` were
+        already ``nan`` -- now all three are ``nan`` together, consistent
+        with "no test was performed"); the joint test is computed over the
+        *surviving* ancestries
         only. If every ancestry is dropped at a variant, no test can be
         formed and ``joint_stat`` / ``joint_p`` are ``nan``.
 
@@ -678,9 +722,18 @@ class TractorLMM:
 
         joint_stat = torch.full((c,), float("nan"), dtype=torch.float64, device=device)
         joint_p = torch.full((c,), float("nan"), dtype=torch.float64, device=device)
-        beta = torch.zeros(c, n_anc, dtype=torch.float64, device=device)
+        # Init nan (not zero, Fix 3): a dropped ancestry's beta must read
+        # nan alongside its (already-nan) se/p, not a misleading 0.0 that
+        # looks like an estimated null effect. Surviving ancestries always
+        # overwrite this below.
+        beta = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
         se = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
         p_anc = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
+        # Per-ancestry allele count (Fix 3 / spec §7 coverage), all K
+        # ancestries -- surviving AND dropped -- so callers can see exactly
+        # why an ancestry was dropped (ac < self.min_allele_count) without
+        # re-deriving it from the raw dosage tensor themselves.
+        allele_count = torch.zeros(c, n_anc, dtype=torch.float64, device=device)
         conditional_joint_p = (
             torch.full((c,), float("nan"), dtype=torch.float64, device=device)
             if L_chunk is not None else None
@@ -690,12 +743,14 @@ class TractorLMM:
         for j in range(c):
             full = G_chunk[:, :, j].to(torch.float64)   # (K, n)
             ac = full.sum(dim=1)                          # (K,) ancestry allele count
+            allele_count[j] = ac
             keep = (ac >= self.min_allele_count).nonzero(as_tuple=True)[0]
             if keep.numel() == 0:
                 # Every ancestry below the allele-count threshold at this
                 # locus: no joint test can be formed and no per-ancestry
-                # effect is estimable. All outputs stay at their nan/zero
-                # init (joint_stat/joint_p/se/p_anc already nan; beta 0).
+                # effect is estimable. All outputs stay at their nan
+                # init (joint_stat/joint_p/beta/se/p_anc already nan;
+                # allele_count[j] was just populated above regardless).
                 continue
 
             Gv = full[keep].T  # (n, K_keep)
@@ -815,9 +870,14 @@ class TractorLMM:
             # exceeds ``self.spa_threshold`` are corrected via the
             # Lugannani-Rice saddlepoint formula; the rest fall back to the
             # same chi2_1 tail internally. **Scope**: this replaces the
-            # marginal per-ancestry p only -- the joint chi2_K test
-            # (``joint_p`` above) and the point estimates (``beta``/``se``)
-            # are left untouched (multi-df SPA is out of scope here).
+            # marginal per-ancestry p -- and (final-review fix) the
+            # per-ancestry ``beta``/``se`` are ALSO overwritten with their
+            # MARGINAL counterparts below, so the reported (beta, se, p)
+            # row is internally self-consistent with the statistic SPA
+            # actually corrected. The joint chi2_K test (``joint_p`` above)
+            # is untouched (multi-df SPA is out of scope here); only the
+            # per-ancestry row changes basis from conditional to marginal
+            # when this branch executes.
             if self.use_spa and self.family == "binary" and T is not None:
                 from ..stats.spa import saddlepoint_pvalue
 
@@ -834,14 +894,31 @@ class TractorLMM:
                 ).to(device=device, dtype=torch.float64)
                 p_kept = torch.where(zero_mask, torch.ones_like(p_kept), p_spa)
 
+                # Marginal effect/SE to match the marginal statistic SPA
+                # just tested (beta_a = U_a / Var_aa, se_a = sqrt(1/Var_aa);
+                # U_a = T[a], Var_aa = diag(Var)[a] -- see the class
+                # docstring's ``use_spa`` entry and Fix 1 of the Phase 57
+                # Unit B final review). This intentionally replaces the
+                # CONDITIONAL ``b``/``s`` computed above (``Vinv @ T`` /
+                # ``sqrt(diag(Vinv))``) for every surviving ancestry when
+                # SPA is on; the default (use_spa=False) path never reaches
+                # this line and keeps reporting the conditional effect.
+                b = T.to(torch.float64) / var_diag
+                s = torch.sqrt(1.0 / var_diag)
+
             for slot, k in enumerate(keep.tolist()):
                 beta[j, k] = b[slot]
                 se[j, k] = s[slot]
                 p_anc[j, k] = p_kept[slot]
             # Dropped ancestries stay nan (already the init default; set
             # explicitly for robustness against future default changes).
+            # ``beta`` is included here (final-review Fix 3) so a dropped
+            # ancestry's beta/se/p are ALL nan together -- consistent with
+            # "no test was performed for this ancestry", rather than a
+            # misleading beta=0.0 alongside se=nan/p=nan.
             dropped = set(range(n_anc)) - set(keep.tolist())
             for k in dropped:
+                beta[j, k] = float("nan")
                 se[j, k] = float("nan")
                 p_anc[j, k] = float("nan")
 
@@ -857,6 +934,7 @@ class TractorLMM:
             p_anc=p_anc,
             test=self.test,
             conditional_joint_p=conditional_joint_p,
+            allele_count=allele_count,
         )
 
     def scan(

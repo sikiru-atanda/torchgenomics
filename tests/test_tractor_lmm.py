@@ -171,6 +171,17 @@ def test_allele_count_threshold_drops_rare_ancestry():
     # ancestry-1 (EUR) effect at variant 0 is NaN (dropped); ancestry-0 still tested
     assert df["p_EUR"].isna()[0] or df["se_EUR"].isna()[0]
     assert not df["joint_p"].isna()[0]  # AFR survived -> marginal joint p present
+    # Fix 3: dropped ancestry's beta must ALSO be nan (not a stray 0.0),
+    # consistent with se/p_anc already being nan for a dropped ancestry.
+    assert df["beta_EUR"].isna()[0]
+    # Fix 3: allele_count_<name> columns are present and surface the exact
+    # per-ancestry allele count the min_allele_count filter thresholded
+    # against -- dropped EUR is 0 (forced above), surviving AFR matches the
+    # raw dosage sum at this variant.
+    assert "allele_count_EUR" in df.columns and "allele_count_AFR" in df.columns
+    assert df["allele_count_EUR"].to_numpy()[0] == 0.0
+    expected_afr_ac = float(d["dosages"][0, :, 0].sum())
+    assert abs(df["allele_count_AFR"].to_numpy()[0] - expected_afr_ac) < 1e-6
 
 
 def test_allele_count_threshold_all_dropped_gives_nan_joint_p():
@@ -194,6 +205,11 @@ def test_allele_count_threshold_all_dropped_gives_nan_joint_p():
     df = res.to_dataframe()
     assert df["joint_p"].isna()[0]
     assert df["se_AFR"].isna()[0] and df["se_EUR"].isna()[0]
+    # Fix 3: both dropped ancestries' beta must be nan too (all-dropped
+    # variant), and allele_count is still surfaced (both are 0 here).
+    assert df["beta_AFR"].isna()[0] and df["beta_EUR"].isna()[0]
+    assert df["allele_count_AFR"].to_numpy()[0] == 0.0
+    assert df["allele_count_EUR"].to_numpy()[0] == 0.0
 
 
 def test_binary_null_calibrated_under_null():
@@ -240,7 +256,6 @@ def test_binary_reduces_to_binary_glmm_single_ancestry():
     from torchgenomics.models.tractor_lmm import TractorLMM
     from torchgenomics.models.binary_glmm import BinaryGLMM
     from torchgenomics.models.base import VariantMeta
-    from scipy.stats import chi2 as chi2_dist
 
     d = make_synth(n=300, m=6, K=2, seed=4)
     Y, X0, Kg = d["y_bin"], d["X0"], d["K_grm"]
@@ -263,7 +278,6 @@ def test_binary_reduces_to_binary_glmm_single_ancestry():
     ref = bg.score_chunk(G2d, bnf, meta)
     # joint chi2_1 p (rank 1) must match BinaryGLMM's chi2_1 p to high precision
     assert torch.allclose(res.joint_p, ref.p, atol=1e-9, rtol=0)
-    _ = chi2_dist  # referenced for intent
 
 
 def test_rank_deficient_surviving_var_uses_reduced_df():
@@ -302,10 +316,10 @@ def test_rank_deficient_surviving_var_uses_reduced_df():
     stat0 = float(res.joint_stat[0])
     p0 = float(res.joint_p[0])
     # rank of the (singular) 2x2 Var at variant 0 must be 1, not 2
-    Gv0 = d["dosages"][:, :, 0].T.to(__import__("torch").float64)
+    Gv0 = d["dosages"][:, :, 0].T.to(torch.float64)
     PGv0 = nf.Py(Gv0)
     Var0 = Gv0.T @ PGv0
-    rank0 = int(__import__("torch").linalg.matrix_rank(Var0))
+    rank0 = int(torch.linalg.matrix_rank(Var0))
     assert rank0 == 1
     # the p-value actually used must match the reduced-df tail, not df=2
     expected_reduced = float(chi2_dist.sf(stat0, df=rank0))
@@ -402,6 +416,81 @@ def test_spa_off_is_identical_and_on_changes_tail():
     assert (a["p_AFR"].to_numpy() == c["p_AFR"].to_numpy()).all()
     # (2) SPA-on changes at least one tail p-value
     assert not (a["p_AFR"].to_numpy() == b["p_AFR"].to_numpy()).all()
+
+
+def test_spa_marginal_effects_are_self_consistent():
+    """Final-review Fix 1: under SPA, the reported (beta, se, p) per-ancestry
+    row must be internally self-consistent with the MARGINAL statistic SPA
+    actually corrects (U_a / Var_aa), not the CONDITIONAL (Vinv @ T)
+    estimate the default (use_spa=False) path reports.
+
+    Pre-fix, ``beta``/``se`` came from ``Vinv @ T`` / ``sqrt(diag(Vinv))``
+    while ``p`` came from the marginal ``U_a^2 / Var_aa`` -- so for K >= 2
+    ancestries with correlated score components (``Vinv`` off-diagonal !=
+    0), ``2 * norm.sf(|beta_a / se_a|)`` did NOT reproduce the reported
+    ``p_a``. After the fix, ``beta_a``/``se_a`` themselves ARE the marginal
+    ``U_a / Var_aa``, ``sqrt(1 / Var_aa)`` -- so for any ancestry component
+    that falls back to the plain chi2_1 tail internally (chi2 stat at or
+    below ``spa_threshold``), ``p_a`` is now EXACTLY
+    ``2 * norm.sf(|beta_a / se_a|)``, and the below-fix conditional beta is
+    demonstrably a different number from the now-reported marginal beta.
+    """
+    import numpy as np
+    from scipy.stats import norm
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.tractor_lmm import TractorLMM
+    from torchgenomics.models.base import VariantMeta
+
+    d = make_synth(n=600, m=10, K=2, seed=31)
+    meta = VariantMeta(
+        snp=[f"v{i}" for i in range(10)],
+        chr=["1"] * 10,
+        pos=list(range(10)),
+        a1=["A"] * 10,
+        a2=["G"] * 10,
+    )
+    names = ["AFR", "EUR"]
+    mdl = TractorLMM(family="binary", use_spa=True, spa_threshold=1.0,
+                      min_allele_count=0, ancestry_names=names)
+    nf = mdl.fit_null(d["y_bin"], d["X0"], d["K_grm"])
+    res = mdl.score_chunk(nf, d["dosages"], meta)
+    df = res.to_dataframe()
+
+    below_threshold_checked = 0
+    for j in range(10):
+        Gv = d["dosages"][:, :, j].T.to(torch.float64)   # (n, 2), both kept
+        T, Var = nf.score_moments(Gv)
+        var_diag = torch.clamp(torch.diagonal(Var).to(torch.float64), min=1e-20)
+        beta_marg = (T / var_diag).numpy()
+        se_marg = torch.sqrt(1.0 / var_diag).numpy()
+        chi2_stat = (T.numpy() ** 2) / var_diag.numpy()
+        for k, nm in enumerate(names):
+            b = df[f"beta_{nm}"].to_numpy()[j]
+            s = df[f"se_{nm}"].to_numpy()[j]
+            # beta/se now ARE the marginal quantities (self-consistency).
+            assert abs(b - beta_marg[k]) < 1e-9
+            assert abs(s - se_marg[k]) < 1e-9
+            if chi2_stat[k] <= mdl.spa_threshold:
+                # Below SPA threshold: internally falls back to the plain
+                # chi2_1 tail, exactly 2*norm.sf(|z|) for z = beta/se --
+                # the row is now provably self-consistent.
+                p = df[f"p_{nm}"].to_numpy()[j]
+                expected = 2.0 * norm.sf(abs(b / s))
+                assert abs(p - expected) < 1e-8
+                below_threshold_checked += 1
+    assert below_threshold_checked > 0, "no below-threshold ancestry component to check"
+
+    # Pre-fix regression check: the OLD conditional beta (Vinv @ T) does
+    # NOT generally equal the marginal beta reported above once the two
+    # ancestries' scores are correlated (K >= 2, off-diagonal Vinv != 0) --
+    # this is exactly the inconsistency Fix 1 closes.
+    j0 = 0
+    Gv0 = d["dosages"][:, :, j0].T.to(torch.float64)
+    T0, Var0 = nf.score_moments(Gv0)
+    Vinv0 = torch.linalg.pinv(Var0)
+    beta_cond0 = (Vinv0 @ T0).numpy()
+    beta_marg0 = (T0 / torch.clamp(torch.diagonal(Var0), min=1e-20)).numpy()
+    assert not np.allclose(beta_cond0, beta_marg0, atol=1e-9)
 
 
 def test_streaming_scan_matches_full_chunk_joint_p():

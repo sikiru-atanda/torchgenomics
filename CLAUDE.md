@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TorchGenomics** (renamed from `torchgwas` in v0.4.0) is a GPU-accelerated PyTorch engine for statistical and quantitative genomics. It covers GWAS, post-GWAS, polygenic scoring, LD analysis, imputation, multi-omics integration, visualization, and annotation — a single `pip install`. It replicates GEMMA / GAPIT / GWASpoly to the 4th decimal on shared benchmarks. Diploid and polyploid.
 
-**Status**: Active development. Version 0.4.0 (Alpha). 3,406 tests pass, 289 skipped (TORCHGENOMICS_DISABLE_NATIVE=1; 3,695 collected). V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions through Phase 56.
+**Status**: Active development. Version 0.4.0 (Alpha). 3,406 tests pass, 289 skipped (TORCHGENOMICS_DISABLE_NATIVE=1; 3,695 collected). V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions through Phase 57.
 
 **v0.4.0 (current branch — 2026-06-02; refreshed 2026-06-17):** Rename `torchgwas` → `torchgenomics`. New `torchgenomics.api` one-call facade (14 tier-1 workflows = 14 MCP tools, plus 12 result classes: `tg.lmm_scan`, `tg.glm_scan`, `tg.pgs_fit`, `tg.ld_blocks`, `tg.lgebv`, ...). New `torchgenomics-mcp` MCP server publishing 14 tools over stdio (`pip install torchgenomics[mcp]`). Legacy `torchgwas` package, CLI binary, and `TORCHGWAS_*` env vars stay live as a deprecation shim through the v0.x series.
 
