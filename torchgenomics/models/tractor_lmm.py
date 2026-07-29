@@ -1,0 +1,1035 @@
+"""TractorLMM: ancestry-specific mixed-model GWAS for admixed cohorts.
+
+Reference: Tan et al., "Extending GWAS to admixed cohorts with high degrees
+of relatedness" (Tractor-Mix), Nat. Genet. 2026. Builds on the local-ancestry
+deconvolution association test of Atkinson et al., "Tractor uses local
+ancestry to enable the inclusion of admixed individuals in GWAS and to
+reveal distinct signals of selection", Nat. Genet. 2021, and on the
+GMMAT mixed-model score-test framework of Chen et al., "Control for
+population structure and relatedness for binary traits in genetic
+association studies via logistic mixed models", Am. J. Hum. Genet. 2016.
+
+This module implements the continuous (Gaussian) null-model fit, the
+binary (logistic GLMM, PQL null; delegating to ``BinaryGLMM``) null-model
+fit, and the reusable GMMAT-style projection operator
+
+    V = sigma^2 I + tau^2 K
+    P = V^{-1} - V^{-1} X0 (X0^T V^{-1} X0)^{-1} X0^T V^{-1}
+
+which residualizes any vector or matrix against the fixed-effect design
+X0 under the estimated null covariance V. The per-variant efficient score
+test itself (T = g^T P y, Var = g^T P g, one score per ancestry-specific
+dosage column) is implemented by :meth:`TractorLMM.score_chunk` /
+:meth:`TractorLMM._score_stats` in this same module, which consume the
+``TractorNullFit`` produced by :meth:`TractorLMM.fit_null`.
+
+Variance components (tau2 = additive genetic variance multiplying the
+GRM K, sigma2 = residual variance multiplying the identity) are obtained
+by delegating to the existing GAPIT-exact EMMA REML solver
+(:func:`torchgenomics.optim.emma_reml.gapit_emma_remle`), which is the
+same variance-component estimator already used by
+:class:`torchgenomics.models.single_trait_lmm.SingleTraitLMM`. No new
+REML solver is introduced here (DRY: Python-as-spec convention — the
+existing solver is the single source of truth for null variance
+components across all LMM-family models in this codebase).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import torch
+from torch import Tensor
+
+from ..optim.emma_reml import gapit_emma_remle
+from .base import VariantMeta
+
+
+@dataclass
+class TractorNullFit:
+    """Cached null-model quantities for the Tractor-Mix continuous model.
+
+    All tensors are FP64. ``Py`` / ``PX`` apply the GMMAT projection
+    ``P = V^{-1} - V^{-1} X0 (X0^T V^{-1} X0)^{-1} X0^T V^{-1}`` without
+    ever materializing the dense ``n x n`` matrix ``P`` itself; instead
+    ``V^{-1}`` is applied via the eigendecomposition of ``K`` (see
+    Chen et al. 2016, GMMAT, eq. 4-6, and Zhou et al. 2018, SAIGE, for the
+    analogous rotation-based construction).
+    """
+
+    U: Tensor            # (n, n) eigenvectors of K
+    d: Tensor            # (n,) eigenvalues of K
+    sigma2: float        # residual variance (multiplies I)
+    tau2: float          # additive genetic variance (multiplies K)
+    X0: Tensor           # (n, c) fixed-effect design
+    resid: Tensor        # (n,) P @ Y
+    n: int
+    c: int
+    _XtVi: Tensor        # (c, n) = X0^T V^{-1}
+    _XtViX_inv: Tensor   # (c, c) = (X0^T V^{-1} X0)^{-1}
+
+    # --- family dispatch + binary (logistic GLMM, PQL null) fields ---------
+    # "gaussian" (default) uses the GMMAT projection P below; "binary" uses
+    # the SAIGE/GMMAT logistic score-test working covariance built from the
+    # PQL-fitted mean ``mu`` and working weights ``W = mu(1-mu)`` (Chen et al.
+    # 2016, GMMAT eq. 4; Zhou et al. 2018, SAIGE). The binary path never
+    # forms P and leaves the eigendecomposition fields (U/d/_XtVi/...) as
+    # empty placeholders.
+    family: str = "gaussian"
+    _W: Tensor | None = None       # (n,) PQL working weights mu(1-mu)  [binary]
+    _M00: Tensor | None = None     # (c, c) = (X0^T W X0)^{-1}          [binary]
+    _binary_nf: object = None      # cached BinaryGLMM NullFit          [binary]
+
+    # --- Wald full-model test (Task 7, gaussian only) ----------------------
+    # ``fit_null`` stashes the raw phenotype here so ``score_chunk``'s Wald
+    # branch can form the per-variant full-model GLS fit ``[X0 | Gv]`` at the
+    # fixed null variance components without threading Y through the scan
+    # adapter separately (Gv/meta are all a scan adapter otherwise passes).
+    _y: Tensor | None = None       # (n,) raw phenotype                 [wald]
+
+    def _Vi(self, M: Tensor) -> Tensor:
+        """Apply V^{-1} to ``M`` via the eigendecomposition of K.
+
+        V^{-1} = U diag(1 / (tau2 * d + sigma2)) U^T
+        """
+        w = 1.0 / (self.tau2 * self.d + self.sigma2)
+        return self.U @ (w.unsqueeze(1) * (self.U.T @ M))
+
+    def Py(self, M: Tensor) -> Tensor:
+        """Apply the GMMAT projection P to a column vector or matrix ``M``.
+
+        ``P M = V^{-1} M - V^{-1} X0 (X0^T V^{-1} X0)^{-1} X0^T V^{-1} M``.
+
+        Because P already residualizes against the fixed-effect design X0,
+        no separate centering of a genotype/dosage vector against
+        covariates is needed before computing the efficient score
+        ``g^T P y`` (Chen et al. 2016, GMMAT §2.2).
+        """
+        ViM = self._Vi(M)
+        return ViM - self._Vi(self.X0) @ (self._XtViX_inv @ (self._XtVi @ M))
+
+    def PX(self, M: Tensor) -> Tensor:
+        """Alias of :meth:`Py` — apply P to an arbitrary (n, k) matrix."""
+        return self.Py(M)
+
+    def score_moments(self, Gv: Tensor) -> tuple[Tensor, Tensor]:
+        """Efficient score ``T`` and its covariance ``Var`` for one variant.
+
+        Shared entry point for both trait families so the downstream
+        allele-count filter / rank-df / pseudo-inverse-effect logic in
+        :meth:`TractorLMM.score_chunk` is written once (DRY). ``Gv`` is the
+        ``(n, K)`` matrix of ancestry-specific dosage columns for a single
+        variant, used **raw** (unrotated) in both families — matching the
+        basis in which the null quantities were fitted.
+
+        Gaussian (GMMAT continuous score test; Chen et al. 2016 §2.2)::
+
+            T   = Gv^T (P y)            # self.resid == P y
+            Var = Gv^T (P Gv)
+
+        Binary (logistic GLMM PQL score test — BinaryGLMM's single-SNP test
+        generalized from a scalar SNP to a K-column dosage matrix; Chen et
+        al. 2016 GMMAT eq. 4-7, Zhou et al. 2018 SAIGE)::
+
+            resid = y - mu                          # self.resid
+            T     = Gv^T resid
+            Var   = Gv^T W Gv - (X0^T W Gv)^T M00 (X0^T W Gv)
+
+        where ``W = diag(mu(1-mu))`` are the PQL working weights and
+        ``M00 = (X0^T W X0)^{-1}`` residualizes the score against the
+        fixed-effect design (both cached on this null fit). For ``K = 1``
+        this reduces exactly to ``BinaryGLMM.score_chunk``'s 1-df test
+        (``U^2 / V``).
+        """
+        T = Gv.T @ self.resid                      # (K,)
+        if self.family == "binary":
+            WG = self._W.unsqueeze(1) * Gv          # (n, K)
+            gWg = Gv.T @ WG                          # (K, K)
+            X0tWG = self.X0.T @ WG                   # (c, K)
+            Var = gWg - X0tWG.T @ (self._M00 @ X0tWG)
+        else:
+            Var = Gv.T @ self.Py(Gv)                # (K, K) == Gv^T P Gv
+        return T, Var
+
+
+@dataclass
+class TractorScanResult:
+    """Per-variant joint K-df score test + ancestry-specific effects.
+
+    Distinct from the shared :class:`torchgenomics.models.base.ScanResult`
+    schema because the Tractor-Mix association test produces *per-ancestry*
+    effect estimates (one ``beta`` / ``se`` / ``p`` triple per local-ancestry
+    dosage track) in addition to a single joint statistic per variant —
+    a shape the shared schema (one ``beta``/``se`` column per variant) cannot
+    represent (Atkinson et al. 2021, Tractor; Tan et al. 2026, Tractor-Mix).
+
+    Attributes
+    ----------
+    snp, chr, pos : list — variant identifiers (length m)
+    ancestry_names : list[str] — labels for the K ancestry dosage tracks
+    joint_stat : (m,) — Rao score joint chi2_K statistic per variant
+    joint_p : (m,) — chi2_K survival-function p-value per variant
+    beta : (m, K) — per-ancestry effect estimate (Var^{-1} T)
+    se : (m, K) — per-ancestry standard error (sqrt of diag(Var^{-1}))
+    p_anc : (m, K) — per-ancestry two-sided normal p-value
+    test : str — "score" (default) or "wald" (gaussian only), matching the
+        ``TractorLMM.test`` setting that produced this result
+    conditional_joint_p : (m,) or None — local-ancestry-conditional joint
+        chi2 p-value (Task 9 / Requirement A), computed only when
+        :meth:`TractorLMM.score_chunk` is called with ``L_chunk`` (gaussian
+        family only; see Tan et al. 2026, Tractor-Mix, and the analogous
+        conditional-analysis construction in Zhou et al. 2020, SAIGE-GENE,
+        Sec. "Conditional analysis"). ``None`` (no column in
+        :meth:`to_dataframe`) when no local ancestry was supplied.
+    allele_count : (m, K) or None — per-variant, per-ancestry summed dosage
+        (final-review Fix 3 / charter spec §7 coverage), i.e. the same
+        ``ac`` quantity :meth:`TractorLMM.score_chunk` already computes and
+        thresholds against ``min_allele_count`` -- surfaced here for ALL
+        K ancestries (surviving and dropped) so callers can see exactly why
+        an ancestry was excluded rather than re-deriving it from the raw
+        dosage tensor. Always populated by :meth:`score_chunk` (never
+        ``None`` from that path); kept optional here only so hand-built
+        ``TractorScanResult`` instances (e.g. in tests) are not forced to
+        supply it.
+    """
+
+    snp: list[str]
+    chr: list[str]
+    pos: list[int]
+    ancestry_names: list[str]
+    joint_stat: Tensor       # (m,)
+    joint_p: Tensor          # (m,)
+    beta: Tensor             # (m, K)
+    se: Tensor               # (m, K)
+    p_anc: Tensor            # (m, K)
+    test: str = "score"
+    conditional_joint_p: Tensor | None = None   # (m,) or None
+    allele_count: Tensor | None = None          # (m, K) or None
+
+    def __len__(self) -> int:
+        return len(self.snp)
+
+    def to_dataframe(self):
+        """Flatten to a long-form DataFrame with one row per variant.
+
+        Per-ancestry columns are suffixed with the ancestry name, e.g.
+        ``beta_AFR``, ``se_AFR``, ``p_AFR``. ``conditional_joint_p`` is
+        included only when this result was produced from a ``score_chunk``
+        call that passed a local-ancestry ``L_chunk`` (Requirement A);
+        otherwise the schema is identical to a run without local ancestry.
+        ``allele_count_<name>`` columns (Fix 3) are included whenever
+        ``self.allele_count`` is populated (always true for results coming
+        from :meth:`TractorLMM.score_chunk`).
+        """
+        import pandas as pd
+
+        d = {
+            "snp": self.snp,
+            "chr": self.chr,
+            "pos": self.pos,
+            "joint_p": self.joint_p.detach().cpu().numpy(),
+        }
+        if self.conditional_joint_p is not None:
+            d["conditional_joint_p"] = self.conditional_joint_p.detach().cpu().numpy()
+        for k, nm in enumerate(self.ancestry_names):
+            d[f"beta_{nm}"] = self.beta[:, k].detach().cpu().numpy()
+            d[f"se_{nm}"] = self.se[:, k].detach().cpu().numpy()
+            d[f"p_{nm}"] = self.p_anc[:, k].detach().cpu().numpy()
+            if self.allele_count is not None:
+                d[f"allele_count_{nm}"] = self.allele_count[:, k].detach().cpu().numpy()
+        return pd.DataFrame(d)
+
+    @staticmethod
+    def concat(results: list["TractorScanResult"]) -> "TractorScanResult":
+        """Concatenate per-chunk results from a streaming scan (Task 9).
+
+        :meth:`TractorLMM.scan` calls :meth:`TractorLMM.score_chunk`
+        independently on each variant-chunk (never materializing a full
+        ``(K, n, m)`` tensor) and stitches the resulting small per-chunk
+        :class:`TractorScanResult` objects back together with this method.
+        Every tensor field is concatenated along the variant axis (dim 0);
+        every list field (``snp``/``chr``/``pos``) is concatenated by
+        simple list extension — both preserve chunk order, so the output
+        is identical in row order to a single non-chunked
+        ``score_chunk`` call over the full panel (streaming invariance).
+
+        ``ancestry_names`` and ``test`` are taken from the first result
+        (they are constant across chunks of one scan — same model, same
+        ancestry labels). The optional ``conditional_joint_p`` and
+        ``allele_count`` fields are each concatenated only when present on
+        *every* chunk result; otherwise the merged field is left ``None``
+        rather than silently dropping data from chunks that had it.
+
+        Parameters
+        ----------
+        results : list[TractorScanResult] — one result per variant-chunk,
+            in chunk order.
+
+        Returns
+        -------
+        TractorScanResult — the full-panel result.
+        """
+        if not results:
+            raise ValueError("TractorScanResult.concat() requires at least one result")
+
+        first = results[0]
+        snp: list[str] = []
+        chr_: list[str] = []
+        pos: list[int] = []
+        for r in results:
+            snp.extend(r.snp)
+            chr_.extend(r.chr)
+            pos.extend(r.pos)
+
+        joint_stat = torch.cat([r.joint_stat for r in results], dim=0)
+        joint_p = torch.cat([r.joint_p for r in results], dim=0)
+        beta = torch.cat([r.beta for r in results], dim=0)
+        se = torch.cat([r.se for r in results], dim=0)
+        p_anc = torch.cat([r.p_anc for r in results], dim=0)
+
+        conditional_joint_p = None
+        if all(r.conditional_joint_p is not None for r in results):
+            conditional_joint_p = torch.cat(
+                [r.conditional_joint_p for r in results], dim=0
+            )
+
+        allele_count = None
+        if all(r.allele_count is not None for r in results):
+            allele_count = torch.cat([r.allele_count for r in results], dim=0)
+
+        merged = TractorScanResult(
+            snp=snp,
+            chr=chr_,
+            pos=pos,
+            ancestry_names=list(first.ancestry_names),
+            joint_stat=joint_stat,
+            joint_p=joint_p,
+            beta=beta,
+            se=se,
+            p_anc=p_anc,
+            test=first.test,
+            conditional_joint_p=conditional_joint_p,
+            allele_count=allele_count,
+        )
+        return merged
+
+
+class TractorLMM:
+    """Ancestry-specific mixed-model association test (Tractor-Mix).
+
+    Continuous (Gaussian) null fit + reusable GMMAT projection P. The
+    per-variant local-ancestry-specific score test (:meth:`score_chunk`)
+    consumes the ``TractorNullFit`` produced by :meth:`fit_null`.
+
+    Parameters
+    ----------
+    family : {"gaussian", "binary"}
+        Trait family. "gaussian" uses the GMMAT continuous score test;
+        "binary" fits a logistic GLMM null via PQL (delegating to the
+        validated :class:`~torchgenomics.models.binary_glmm.BinaryGLMM`)
+        and runs the SAIGE/GMMAT logistic score test, generalized from a
+        scalar SNP to K ancestry-specific dosage columns.
+    test : {"score", "wald"}
+        Association test used in :meth:`score_chunk`. "score" (default) is
+        the Rao efficient score test (both families). "wald" fits the full
+        model ``[X0 | Gv]`` by GLS at the fixed null variance components
+        (gaussian only; ``family="binary"`` + ``test="wald"`` raises
+        ``NotImplementedError`` here at construction time).
+    min_allele_count : int
+        Minimum ancestry-specific allele count for a variant to be tested
+        (Tractor convention, Atkinson et al. 2021).
+    use_spa : bool
+        Opt-in saddlepoint approximation (SPA; Zhou et al. 2018, SAIGE) for
+        the per-ancestry (1-df) binary score component, applied to variants
+        with low ancestry-specific minor allele count where the normal/
+        chi2_1 tail approximation is poorly calibrated. Default ``False``
+        (off): the off path is byte-identical to the pre-Task-8 normal
+        approximation, protecting the "faithful port" equivalence claim.
+        Applies to ``family="binary"`` only; ignored (no-op, no error) for
+        ``family="gaussian"`` since the normal approximation is exact there.
+        Tan et al. 2026 (Tractor-Mix) defers a SPA-corrected per-ancestry
+        tail p-value to future work -- this is our own opt-in extension of
+        that deferred idea, reusing the same ``saddlepoint_pvalue`` routine
+        already validated for :class:`~torchgenomics.models.binary_glmm.BinaryGLMM`,
+        qualified "to our knowledge" (no prior published Tractor-Mix
+        implementation applies SPA to the per-ancestry score component).
+        **Marginal vs. conditional per-ancestry effects.** The default
+        (``use_spa=False``) path reports the CONDITIONAL per-ancestry
+        effect/SE (``beta = Vinv @ T``, ``se = sqrt(diag(Vinv))``, the
+        joint-model-adjusted estimate). When SPA is on, the corrected
+        ``p_a`` is a function of the MARGINAL statistic ``U_a / Var_aa``
+        (SAIGE's per-SNP construction) -- which for K >= 2 ancestries is
+        not the same statistic the conditional ``beta``/``se`` describe
+        (``diag(Vinv) != 1 / diag(Var)`` whenever the ancestry score
+        components are correlated). So that the reported (beta, se, p)
+        row is internally self-consistent, the SPA branch of
+        :meth:`score_chunk` ALSO overwrites ``beta``/``se`` with the
+        matching marginal effect/SE (``beta_a = U_a / Var_aa``,
+        ``se_a = sqrt(1 / Var_aa)``) for every ancestry it scores.
+        See :meth:`score_chunk` for exactly what is and is not affected.
+    spa_threshold : float
+        Chi2_1 statistic (``U_a^2 / Var_aa``) threshold above which SPA is
+        triggered for a given per-ancestry score component; below it, the
+        chi2_1 approximation is used (matching
+        :func:`torchgenomics.stats.spa.saddlepoint_pvalue`'s own
+        threshold semantics). Only consulted when ``use_spa=True``.
+    ancestry_names : list[str] | None
+        Optional labels for the ancestry-specific dosage columns (e.g.
+        ["AFR", "EUR"]); defaults to "anc0", "anc1", ... when None. Not
+        used by the continuous null fit itself but threaded through so
+        the scan adapter can label per-ancestry effect columns.
+    """
+
+    def __init__(
+        self,
+        family: str = "gaussian",
+        test: str = "score",
+        min_allele_count: int = 50,
+        use_spa: bool = False,
+        spa_threshold: float = 2.0,
+        ancestry_names: list[str] | None = None,
+    ) -> None:
+        if family not in ("gaussian", "binary"):
+            raise ValueError(f"family must be gaussian|binary, got {family}")
+        if test not in ("score", "wald"):
+            raise ValueError(f"test must be score|wald, got {test}")
+        if family == "binary" and test == "wald":
+            raise NotImplementedError(
+                "Wald test not yet implemented for binary family; use test='score'."
+            )
+        self.family = family
+        self.test = test
+        self.min_allele_count = min_allele_count
+        self.use_spa = use_spa
+        self.spa_threshold = spa_threshold
+        # None -> scan adapter defaults to anc0/anc1/... labels
+        self._ancestry_names = ancestry_names
+
+    def fit_null(self, Y: Tensor, X0: Tensor, K: Tensor) -> TractorNullFit:
+        """Fit the continuous (Gaussian) null model and build P.
+
+        Estimates ``tau2`` (additive genetic variance, multiplies K) and
+        ``sigma2`` (residual variance, multiplies I) via the existing
+        GAPIT-exact EMMA REML solver
+        (:func:`torchgenomics.optim.emma_reml.gapit_emma_remle`), then
+        builds ``V^{-1}`` from a direct eigendecomposition of K so that
+        the returned :class:`TractorNullFit` can apply the GMMAT
+        projection P to any vector/matrix without re-forming ``V`` or
+        ``P`` densely.
+
+        Parameters
+        ----------
+        Y : (n,) or (n, 1) — continuous phenotype
+        X0 : (n, c) — fixed-effect covariate design (including intercept)
+        K : (n, n) — kinship/GRM matrix
+
+        Returns
+        -------
+        TractorNullFit
+        """
+        Y = Y.to(torch.float64).reshape(-1)
+        X0 = X0.to(torch.float64)
+        K = K.to(torch.float64)
+        n, c = X0.shape
+
+        if self.family == "binary":
+            return self._fit_null_binary(Y, X0, K, n, c)
+
+        # Variance components via the existing GAPIT-exact EMMA REML
+        # solver (same estimator SingleTraitLMM.fit_null already uses).
+        sig2_g, sig2_e, _ll, _delta, _trace = gapit_emma_remle(Y, X0, K)
+        tau2 = float(sig2_g)
+        sigma2 = float(sig2_e)
+
+        # Direct eigendecomposition of K (not the restricted eigendecomposition
+        # internal to gapit_emma_remle) so V^{-1} can be applied to arbitrary
+        # future vectors (e.g. per-variant dosage columns in the score test).
+        d, U = torch.linalg.eigh(K)
+
+        # Apply V^{-1} to X0 via the eigendecomposition without ever
+        # materializing the dense (n, n) V^{-1} itself (Task 3 review fix):
+        # ViX0 = U diag(w) U^T X0, so XtVi = X0^T V^{-1} = ViX0^T and
+        # XtViX_inv = (X0^T V^{-1} X0)^{-1} = (X0^T ViX0)^{-1} -- identical
+        # to the previous ``Vi = U @ (w * U.T)``-based computation to
+        # floating-point precision, just without the O(n^2) intermediate.
+        w = 1.0 / (tau2 * d + sigma2)
+        ViX0 = U @ (w.unsqueeze(1) * (U.T @ X0))   # (n, c)
+        XtVi = ViX0.T                               # (c, n) == X0^T V^{-1}
+        XtViX_inv = torch.linalg.inv(X0.T @ ViX0)   # (c, c)
+
+        nf = TractorNullFit(
+            U=U,
+            d=d,
+            sigma2=sigma2,
+            tau2=tau2,
+            X0=X0,
+            resid=torch.zeros(n, dtype=torch.float64, device=Y.device),
+            n=n,
+            c=c,
+            _XtVi=XtVi,
+            _XtViX_inv=XtViX_inv,
+            _y=Y,
+        )
+        nf.resid = nf.Py(Y.unsqueeze(1)).squeeze(1)
+        return nf
+
+    def _fit_null_binary(
+        self, Y: Tensor, X0: Tensor, K: Tensor, n: int, c: int
+    ) -> TractorNullFit:
+        """Fit the binary (logistic GLMM) null via PQL, GMMAT/SAIGE-style.
+
+        Delegates the penalized quasi-likelihood null fit to the existing,
+        validated :class:`torchgenomics.models.binary_glmm.BinaryGLMM`
+        (Python-as-spec / DRY: the PQL solver is the single source of truth
+        for the logistic-mixed-model null across the codebase), then caches
+        exactly the quantities BinaryGLMM's own score test consumes:
+
+        - ``mu`` — PQL-fitted null mean (``NullFit._glm_mu``);
+        - ``W = diag(mu(1-mu))`` — working weights (``NullFit._glm_W``);
+        - ``M00 = (X0^T W X0)^{-1}`` — covariate-adjustment matrix
+          (``NullFit.M00``);
+
+        so that :meth:`TractorNullFit.score_moments` reproduces
+        ``BinaryGLMM.score_chunk``'s score ``U = g^T (y - mu)`` and variance
+        ``V = g^T W g - (X0^T W g)^T M00 (X0^T W g)`` per ancestry column,
+        in the same raw (unrotated) sample basis (``BinaryGLMM`` stores
+        ``Y_rot = Y`` and ``X0_rot = X0`` and scores ``G`` raw). See Chen et
+        al. 2016 (GMMAT, eq. 4-7) and Zhou et al. 2018 (SAIGE).
+
+        The score residual is stored as ``resid = y - mu`` so the shared
+        downstream (filter / rank-df / effect) logic in :meth:`score_chunk`
+        is reused unchanged.
+        """
+        from .binary_glmm import BinaryGLMM
+
+        # PQL null (SPA irrelevant here: only mu / W / M00 are consumed).
+        binary_nf = BinaryGLMM(use_spa=False).fit_null(Y, X0, K)
+        mu = binary_nf._glm_mu.to(torch.float64).reshape(-1)   # (n,)
+        W = binary_nf._glm_W.to(torch.float64).reshape(-1)      # (n,)
+        M00 = binary_nf.M00.to(torch.float64)                   # (c, c)
+        resid = Y - mu                                          # y - mu, (n,)
+
+        empty = torch.empty(0, dtype=torch.float64, device=Y.device)
+        nf = TractorNullFit(
+            U=empty,
+            d=empty,
+            sigma2=float(binary_nf.sig2_e),
+            tau2=float(binary_nf.sig2_g),
+            X0=X0,
+            resid=resid,
+            n=n,
+            c=c,
+            _XtVi=empty,
+            _XtViX_inv=empty,
+            family="binary",
+            _W=W,
+            _M00=M00,
+            _binary_nf=binary_nf,
+        )
+        return nf
+
+    def _score_stats(
+        self, null: TractorNullFit, Gv: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor, float]:
+        """Per-variant joint Rao score statistic against K ancestry dosages.
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model projection P
+        Gv : (n, K) — ancestry-specific dosage columns for one variant
+
+        Returns
+        -------
+        T : (K,) — efficient score ``Gv^T P y``
+        Var : (K, K) — score covariance ``Gv^T P Gv``
+        Vinv : (K, K) — Moore-Penrose pseudo-inverse of Var (robust to
+            rank-deficient ancestry tracks, e.g. an ancestry absent from
+            the local cohort at this locus)
+        joint : float — joint statistic ``T^T Vinv T ~ chi2_K`` under the
+            null (Chen et al. 2016, GMMAT eq. 7; Atkinson et al. 2021,
+            Tractor, joint test extension in Tan et al. 2026, Tractor-Mix)
+        """
+        T, Var = null.score_moments(Gv)   # family-dispatched (gaussian|binary)
+        Vinv = torch.linalg.pinv(Var)
+        joint = float(T @ Vinv @ T)
+        return T, Var, Vinv, joint
+
+    def _wald_stats(
+        self, null: TractorNullFit, Gv: Tensor
+    ) -> tuple[Tensor, Tensor, float]:
+        """Per-variant full-model Wald statistic against K ancestry dosages.
+
+        Fits the full model ``Xf = [X0 | Gv]`` (n, c+K) by GLS at the fixed
+        null variance components (``V`` cached on ``null`` via
+        :meth:`TractorNullFit._Vi`; variance components are *not*
+        re-estimated per variant — same convention as the score test).
+        Gaussian family only (see :meth:`TractorLMM.__init__`).
+
+        By the Frisch-Waugh-Lovell theorem for weighted least squares, the
+        resulting ancestry-block estimate is algebraically identical to the
+        score test's ``beta = Vinv @ T`` (T, Vinv from
+        :meth:`TractorLMM._score_stats`) when V is held fixed rather than
+        re-estimated — the two branches diverge only through numerical
+        conditioning (a joint ``(c+K) x (c+K)`` pseudo-inverse here vs. an
+        FWL-reduced ``K x K`` one for the score test).
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model fit (gaussian; requires
+            ``null._y``, the raw phenotype stashed by :meth:`fit_null`)
+        Gv : (n, K) — ancestry-specific dosage columns for one variant
+
+        Returns
+        -------
+        bG : (K,) — GLS ancestry-block coefficient estimate
+        Cov : (K, K) — G-G block of ``(Xf^T V^{-1} Xf)^{-1}``, the
+            covariance of ``bG`` (Moore-Penrose pseudo-inverse of the full
+            ``(c+K) x (c+K)`` information matrix, robust to collinear
+            ancestry dosage columns / rank-deficient designs)
+        joint : float — joint statistic ``bG^T pinv(Cov) bG ~ chi2_K`` under
+            the null
+        """
+        Xf = torch.cat([null.X0, Gv], dim=1)               # (n, c+K)
+        ViXf = null._Vi(Xf)
+        A = Xf.T @ ViXf                                      # (c+K, c+K)
+        Ainv = torch.linalg.pinv(A)
+        y = null._y.reshape(-1, 1)
+        beta_f = (Ainv @ (Xf.T @ null._Vi(y))).squeeze(1)   # (c+K,)
+        Kk = Gv.shape[1]
+        bG = beta_f[-Kk:]
+        Cov = Ainv[-Kk:, -Kk:]
+        joint = float(bG @ torch.linalg.pinv(Cov) @ bG)
+        return bG, Cov, joint
+
+    def score_chunk(
+        self,
+        null: TractorNullFit,
+        G_chunk: Tensor,
+        meta: VariantMeta,
+        L_chunk: Tensor | None = None,
+    ) -> TractorScanResult:
+        """Joint K-df test + ancestry-specific effects, per variant.
+
+        Dispatches on ``self.test``: ``"score"`` (default) runs the Rao
+        efficient score test (:meth:`_score_stats`); ``"wald"`` (gaussian
+        only — see :meth:`__init__`) instead fits the full model
+        ``[X0 | Gv]`` by GLS at the fixed null variance components
+        (:meth:`_wald_stats`). Both branches converge on a per-ancestry
+        effect estimate ``b`` and its covariance ``cov`` so the downstream
+        allele-count filter, rank/df logic, joint statistic, and
+        per-ancestry SE/p-value computation below are written once and
+        shared by both tests.
+
+        For each variant ``j`` with ancestry-dosage matrix ``Gv = G_chunk[:, :, j].T``
+        (n, K), the score branch computes the efficient score ``T = Gv^T P y``, its
+        covariance ``Var = Gv^T P Gv`` under the fitted null model, and:
+
+        - the joint test ``stat = T^T Var^-1 T ~ chi2_df`` (Rao score test
+          against the null that *all* surviving ancestry-specific effects
+          are zero; Chen et al. 2016, GMMAT §2.2; Atkinson et al. 2021,
+          Tractor §Methods; Tan et al. 2026, Tractor-Mix, joint
+          local-ancestry test), with p-value from the chi2_df survival
+          function;
+        - per-ancestry effect estimates ``beta = Var^-1 T``, standard errors
+          ``se = sqrt(diag(Var^-1))``, and two-sided normal p-values
+          ``p_a = 2 * (1 - Phi(|beta_a / se_a|))``.
+
+        **Allele-count threshold (Tractor convention).** Before building
+        ``Gv``, each ancestry ``a`` is tested for minimum evidence at this
+        locus: its summed dosage (``Gv[:, a].sum()``, the ancestry-specific
+        allele count) must be ``>= self.min_allele_count`` (default 50,
+        Atkinson et al. 2021, Tractor §Methods — ancestry tracks with too
+        few copies of the ancestry-of-origin at a locus give unstable
+        effect estimates and are excluded rather than reported). Dropped
+        ancestries receive ``beta = nan`` / ``se = nan`` / ``p_anc = nan``
+        in the returned result (Fix 3: ``beta`` used to silently read
+        ``0.0`` for a dropped ancestry even though ``se``/``p_anc`` were
+        already ``nan`` -- now all three are ``nan`` together, consistent
+        with "no test was performed"); the joint test is computed over the
+        *surviving* ancestries
+        only. If every ancestry is dropped at a variant, no test can be
+        formed and ``joint_stat`` / ``joint_p`` are ``nan``.
+
+        **Degrees of freedom = rank, not ancestry count.** Even after the
+        allele-count filter, the surviving ``Var = Gv_keep^T P Gv_keep``
+        can still be rank-deficient — e.g. two surviving ancestry dosage
+        columns that are collinear at this locus, or a column effectively
+        annihilated by the projection P (zero variance after removing the
+        fixed-effect design). Using ``df = (number of surviving
+        ancestries)`` in that case assumes full rank and understates
+        significance (the chi2 tail with too many df is stochastically
+        larger than the correct one). This implementation instead uses
+        ``df = torch.linalg.matrix_rank(Var)`` — the true number of
+        identifiable degrees of freedom in the surviving score statistic
+        — for the chi2 survival-function p-value; if ``df == 0`` (the
+        surviving Var is exactly singular with no identifiable direction),
+        ``joint_p = nan``.
+
+        ``Var^-1`` is computed via Moore-Penrose pseudo-inverse rather than
+        a plain inverse so that ancestry tracks with (near-)zero local
+        dosage variance at a given locus (e.g. an ancestry not observed in
+        the cohort at that position) degrade gracefully instead of raising.
+
+        Where both ``beta_a`` and ``se_a`` are (numerically) zero for a
+        surviving ancestry — the pinv-degenerate case where that ancestry's
+        column contributes nothing identifiable to the score, distinct from
+        being dropped outright by the allele-count filter — the raw ratio
+        ``beta_a / se_a`` is the indeterminate form 0/0 (``nan`` in IEEE
+        arithmetic). This is guarded so the division is well-defined
+        (``p_a = 1.0``, i.e. "no signal" — the same conclusion a defined
+        z-statistic of 0 would give) rather than silently propagating
+        ``nan`` for a case that is not actually a dropped ancestry.
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model fit from :meth:`fit_null`
+        G_chunk : (K, n, c) — ancestry-specific dosage tensor for c variants
+        meta : VariantMeta — variant identifiers (snp/chr/pos), length c
+        L_chunk : optional (K, n, c) — local-ancestry dosage tensor for the
+            SAME c variants, same ancestry ordering as ``G_chunk``. When
+            given, :meth:`score_chunk` additionally computes a per-variant
+            **local-ancestry-conditional joint test**
+            (``conditional_joint_p``, Requirement A / Task 9): a
+            SAIGE-GENE-style (Zhou et al. 2020, "Efficiently controlling
+            for case-control imbalance...", Sec. "Conditional analysis")
+            conditional score test that asks whether the surviving
+            ancestry-specific dosage effect at this variant remains
+            significant *after* projecting out its ``K-1`` local-ancestry
+            dosage tracks (``L_chunk[:-1]`` — the top ancestry is dropped
+            as the reference level, since the K ancestry proportions sum
+            to 1 and are otherwise collinear). Gaussian family only (uses
+            ``null.Py`` / ``null.resid``, the GMMAT projection quantities
+            that only the continuous null fit populates); ``family="binary"``
+            with ``L_chunk`` given raises ``NotImplementedError``. ``None``
+            (the default) leaves ``conditional_joint_p`` absent from the
+            returned result and its ``to_dataframe()`` output — byte-for-
+            byte unchanged behavior from before this feature existed.
+
+        Returns
+        -------
+        TractorScanResult
+        """
+        from scipy.stats import chi2, norm
+
+        if L_chunk is not None and self.family == "binary":
+            raise NotImplementedError(
+                "Local-ancestry conditional analysis is implemented for "
+                "gaussian only."
+            )
+
+        n_anc, n, c = G_chunk.shape
+        names = self._ancestry_names or [f"anc{k}" for k in range(n_anc)]
+        device = G_chunk.device
+
+        joint_stat = torch.full((c,), float("nan"), dtype=torch.float64, device=device)
+        joint_p = torch.full((c,), float("nan"), dtype=torch.float64, device=device)
+        # Init nan (not zero, Fix 3): a dropped ancestry's beta must read
+        # nan alongside its (already-nan) se/p, not a misleading 0.0 that
+        # looks like an estimated null effect. Surviving ancestries always
+        # overwrite this below.
+        beta = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
+        se = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
+        p_anc = torch.full((c, n_anc), float("nan"), dtype=torch.float64, device=device)
+        # Per-ancestry allele count (Fix 3 / spec §7 coverage), all K
+        # ancestries -- surviving AND dropped -- so callers can see exactly
+        # why an ancestry was dropped (ac < self.min_allele_count) without
+        # re-deriving it from the raw dosage tensor themselves.
+        allele_count = torch.zeros(c, n_anc, dtype=torch.float64, device=device)
+        conditional_joint_p = (
+            torch.full((c,), float("nan"), dtype=torch.float64, device=device)
+            if L_chunk is not None else None
+        )
+
+        zero_tol = 1e-12
+        for j in range(c):
+            full = G_chunk[:, :, j].to(torch.float64)   # (K, n)
+            ac = full.sum(dim=1)                          # (K,) ancestry allele count
+            allele_count[j] = ac
+            keep = (ac >= self.min_allele_count).nonzero(as_tuple=True)[0]
+            if keep.numel() == 0:
+                # Every ancestry below the allele-count threshold at this
+                # locus: no joint test can be formed and no per-ancestry
+                # effect is estimable. All outputs stay at their nan
+                # init (joint_stat/joint_p/beta/se/p_anc already nan;
+                # allele_count[j] was just populated above regardless).
+                continue
+
+            Gv = full[keep].T  # (n, K_keep)
+            # Dispatch on self.test: both branches produce a per-ancestry
+            # effect estimate ``b`` and its covariance ``cov`` so the
+            # downstream rank / joint-p / se / per-ancestry-p / dropped-
+            # ancestry logic below is written once and shared by both tests
+            # (DRY). For the score test ``cov`` is ``Vinv`` (pinv of the
+            # score covariance Gv^T P Gv); for Wald it is the ancestry-block
+            # of the full-model information-matrix pseudo-inverse. ``joint``
+            # is always ``b^T pinv(cov) b`` under the null.
+            T = None
+            Var = None
+            if self.test == "wald":
+                b, cov, joint = self._wald_stats(null, Gv)
+            else:
+                T, Var, Vinv, joint = self._score_stats(null, Gv)
+                b = Vinv @ T
+                cov = Vinv
+            rank = int(torch.linalg.matrix_rank(cov))
+            if rank == 0:
+                # Surviving cov is exactly singular with no identifiable
+                # direction -- no valid chi2 df for a joint test.
+                joint_p[j] = float("nan")
+            else:
+                joint_stat[j] = joint
+                joint_p[j] = float(chi2.sf(joint, df=rank))
+
+            # --- Local-ancestry conditional joint test (Task 9 / Req A) ---
+            # Gaussian-only (guarded at function entry above). Conditions
+            # the surviving ancestry-specific score (T, Var -- the RAW
+            # GMMAT score and its covariance, not the Wald quantities) on
+            # the K-1 local-ancestry dosage tracks, SAIGE-GENE-style: the
+            # local-ancestry tracks are themselves regressed out of both
+            # the score and its covariance via the same GMMAT projection
+            # P (``null.Py``), and the residual joint statistic is tested
+            # against chi2_{rank(cond_var)}. When ``self.test == "wald"``,
+            # T/Var were never computed above (the wald branch only forms
+            # bG/Cov/joint), so they are computed here on demand from the
+            # shared ``score_moments`` entry point -- this conditional
+            # test is defined in terms of the score decomposition
+            # regardless of which primary test produced ``joint_p``.
+            if L_chunk is not None:
+                if T is not None and Var is not None:
+                    T_score, Var_score = T, Var
+                else:
+                    T_score, Var_score = null.score_moments(Gv)
+                Lv = L_chunk[:-1, :, j].T.to(torch.float64)     # (n, K-1)
+                if Lv.shape[1] == 0:
+                    # K == 1: no local-ancestry track to condition on --
+                    # the conditional test degenerates to the plain joint
+                    # score test on the surviving ancestries.
+                    cond_var = Var_score
+                    dvec = T_score
+                else:
+                    PLv = null.Py(Lv)
+                    TL = Lv.T @ null.resid
+                    LtPL = Lv.T @ PLv
+                    LtPL_inv = torch.linalg.pinv(LtPL)
+                    GtPL = Gv.T @ PLv                                # (K_keep, K-1)
+                    cond_mean = GtPL @ (LtPL_inv @ TL)
+                    cond_var = Var_score - GtPL @ LtPL_inv @ GtPL.T
+                    dvec = T_score - cond_mean
+                cond_rank = int(torch.linalg.matrix_rank(cond_var))
+                if cond_rank > 0:
+                    cond_stat = float(dvec @ torch.linalg.pinv(cond_var) @ dvec)
+                    conditional_joint_p[j] = float(chi2.sf(cond_stat, df=cond_rank))
+                # else: cond_var exactly singular with no identifiable
+                # direction -- conditional_joint_p stays nan (init default).
+
+            s = torch.sqrt(torch.clamp(torch.diag(cov), min=0.0))
+
+            # 0/0 guard: when both beta and se are numerically zero for a
+            # surviving ancestry, beta/se is the indeterminate 0/0 rather
+            # than a genuine large |z|; report p=1.0 ("no signal") instead
+            # of letting it fall through as nan.
+            zero_mask = (s.abs() < zero_tol) & (b.abs() < zero_tol)
+            s_safe = torch.where(zero_mask, torch.ones_like(s), s)
+            z = b / s_safe
+            p_kept = torch.as_tensor(
+                2.0 * norm.sf(torch.abs(z).detach().cpu().numpy()),
+                dtype=torch.float64,
+                device=device,
+            )
+            p_kept = torch.where(zero_mask, torch.ones_like(p_kept), p_kept)
+
+            # --- Opt-in SPA for the per-ancestry (1-df) score component ---
+            # (Task 8; default OFF). Gated behind BOTH ``self.use_spa`` and
+            # ``self.family == "binary"`` so that when SPA is off (the
+            # default), NOTHING in this block executes -- not even the
+            # import -- and the normal-approximation ``p_kept`` computed
+            # above is untouched, byte-identical to the pre-Task-8 behavior.
+            # This is required to protect the "faithful port" equivalence
+            # claim: Tan et al. 2026 (Tractor-Mix) defers a SPA-corrected
+            # per-ancestry tail p-value to future work, so applying it here
+            # is an enhancement beyond the published method, offered
+            # opt-in and qualified "to our knowledge" (no prior published
+            # Tractor-Mix implementation applies SAIGE-style SPA to the
+            # per-ancestry score component).
+            #
+            # Reuses the same ``saddlepoint_pvalue`` (Zhou et al. 2018,
+            # SAIGE) that ``BinaryGLMM.score_chunk`` already calls for its
+            # scalar 1-df score test (see
+            # ``torchgenomics.models.binary_glmm.BinaryGLMM.score_chunk``),
+            # generalized here from a single genotype column to the K_keep
+            # surviving ancestry-specific dosage columns of one variant,
+            # batched in a single call: ``observed_score = T`` (the raw,
+            # unstandardized per-ancestry scores ``U_a = g_a^T (Y - mu)``,
+            # already computed above by ``_score_stats``),
+            # ``variance = diag(Var)`` (the marginal per-ancestry score
+            # variance ``Var_aa``, i.e. the Schur-complement-adjusted
+            # ``g_a^T W g_a - (X0^T W g_a)^T M00 (X0^T W g_a)`` -- exactly
+            # the ``variance`` kwarg's documented Schur-complement
+            # semantics), and ``mu`` the PQL-fitted null probabilities
+            # cached on the binary null fit. Only per-ancestry components
+            # whose standardized chi2_1 statistic ``U_a^2 / Var_aa``
+            # exceeds ``self.spa_threshold`` are corrected via the
+            # Lugannani-Rice saddlepoint formula; the rest fall back to the
+            # same chi2_1 tail internally. **Scope**: this replaces the
+            # marginal per-ancestry p -- and (final-review fix) the
+            # per-ancestry ``beta``/``se`` are ALSO overwritten with their
+            # MARGINAL counterparts below, so the reported (beta, se, p)
+            # row is internally self-consistent with the statistic SPA
+            # actually corrected. The joint chi2_K test (``joint_p`` above)
+            # is untouched (multi-df SPA is out of scope here); only the
+            # per-ancestry row changes basis from conditional to marginal
+            # when this branch executes.
+            if self.use_spa and self.family == "binary" and T is not None:
+                from ..stats.spa import saddlepoint_pvalue
+
+                mu0 = null._binary_nf._glm_mu.to(torch.float64).reshape(-1)
+                var_diag = torch.clamp(
+                    torch.diagonal(Var).to(torch.float64), min=1e-20
+                )
+                p_spa = saddlepoint_pvalue(
+                    T.to(torch.float64),
+                    mu0,
+                    Gv.to(torch.float64),
+                    threshold=self.spa_threshold,
+                    variance=var_diag,
+                ).to(device=device, dtype=torch.float64)
+                p_kept = torch.where(zero_mask, torch.ones_like(p_kept), p_spa)
+
+                # Marginal effect/SE to match the marginal statistic SPA
+                # just tested (beta_a = U_a / Var_aa, se_a = sqrt(1/Var_aa);
+                # U_a = T[a], Var_aa = diag(Var)[a] -- see the class
+                # docstring's ``use_spa`` entry and Fix 1 of the Phase 57
+                # Unit B final review). This intentionally replaces the
+                # CONDITIONAL ``b``/``s`` computed above (``Vinv @ T`` /
+                # ``sqrt(diag(Vinv))``) for every surviving ancestry when
+                # SPA is on; the default (use_spa=False) path never reaches
+                # this line and keeps reporting the conditional effect.
+                b = T.to(torch.float64) / var_diag
+                s = torch.sqrt(1.0 / var_diag)
+
+            for slot, k in enumerate(keep.tolist()):
+                beta[j, k] = b[slot]
+                se[j, k] = s[slot]
+                p_anc[j, k] = p_kept[slot]
+            # Dropped ancestries stay nan (already the init default; set
+            # explicitly for robustness against future default changes).
+            # ``beta`` is included here (final-review Fix 3) so a dropped
+            # ancestry's beta/se/p are ALL nan together -- consistent with
+            # "no test was performed for this ancestry", rather than a
+            # misleading beta=0.0 alongside se=nan/p=nan.
+            dropped = set(range(n_anc)) - set(keep.tolist())
+            for k in dropped:
+                beta[j, k] = float("nan")
+                se[j, k] = float("nan")
+                p_anc[j, k] = float("nan")
+
+        return TractorScanResult(
+            snp=list(meta.snp),
+            chr=list(meta.chr),
+            pos=list(meta.pos),
+            ancestry_names=list(names),
+            joint_stat=joint_stat,
+            joint_p=joint_p,
+            beta=beta,
+            se=se,
+            p_anc=p_anc,
+            test=self.test,
+            conditional_joint_p=conditional_joint_p,
+            allele_count=allele_count,
+        )
+
+    def scan(
+        self,
+        null: TractorNullFit,
+        dosages,
+        meta: VariantMeta,
+        chunk_size: int = 1000,
+        local_ancestry=None,
+    ) -> TractorScanResult:
+        """Streaming scan driver over ancestry-dosage variant-chunks (Task 9 / Requirement B).
+
+        ``UnifiedScanner`` cannot drive :class:`TractorLMM`: it hands every
+        model 2-D ``(n, c)`` genotype chunks, but Tractor-Mix's per-variant
+        tensor is 3-D — ``(K, n, c)`` ancestry-specific dosage tracks, plus
+        an optional parallel 3-D local-ancestry tensor for the conditional
+        test (Requirement A). This method is the dedicated streaming driver
+        for that 3-D shape: it iterates variant-chunks and calls
+        :meth:`score_chunk` once per chunk, never materializing a full
+        ``(K, n, m)`` result at any point -- only the small per-chunk
+        :class:`TractorScanResult` objects are held, which are then
+        stitched together with :meth:`TractorScanResult.concat`. Peak
+        memory is therefore ``O(K * n * chunk_size)``, not
+        ``O(K * n * m)`` (the streaming-first hard rule; see
+        ``tests/test_streaming_memory.py``).
+
+        Parameters
+        ----------
+        null : TractorNullFit — cached null-model fit from :meth:`fit_null`
+        dosages : AncestryDosages | Tensor
+            Either an :class:`~torchgenomics.io.ancestry_dosage.AncestryDosages`
+            container or a raw ``(K, n, m)`` tensor -- a raw tensor is
+            wrapped in an ``AncestryDosages`` internally so both inputs are
+            chunked along the variant axis by the exact same
+            ``AncestryDosages.iter_chunks`` code path (no separate chunk
+            loop is re-implemented here). When ``dosages`` is an
+            ``AncestryDosages`` and this model was constructed without
+            explicit ``ancestry_names``, its ``ancestry_names`` are adopted
+            so per-ancestry output columns are labeled instead of falling
+            back to ``anc0``, ``anc1``, .... Note: this mutates
+            ``self._ancestry_names`` in place the first time such a source
+            is seen; the ``is None`` guard makes it a one-shot side effect
+            (it does not fire again, or rebind, on subsequent calls).
+        meta : VariantMeta — variant identifiers for the FULL scan
+            (length m); sliced per-chunk (matching each chunk's variant
+            range) before being passed to :meth:`score_chunk`.
+        chunk_size : int — variants per chunk (default 1000).
+        local_ancestry : AncestryDosages | Tensor | None
+            Optional local-ancestry-dosage data of the SAME ``(K, n, m)``
+            shape as ``dosages``, sliced in lockstep with it and passed
+            to :meth:`score_chunk` as ``L_chunk`` (Requirement A). If an
+            ``AncestryDosages`` is passed here, only its ``.dosages``
+            tensor is used -- it is sliced by the exact same chunk
+            boundaries ``dosages`` uses, so its own ``iter_chunks`` /
+            ``variant_meta`` are not separately consulted.
+
+        Returns
+        -------
+        TractorScanResult — the full-panel result (see
+        :meth:`TractorScanResult.concat` for exactly what is
+        concatenated and how).
+        """
+        from ..io.ancestry_dosage import AncestryDosages, _slice_variant_meta
+
+        if isinstance(dosages, AncestryDosages) and self._ancestry_names is None:
+            self._ancestry_names = list(dosages.ancestry_names)
+
+        la_tensor = (
+            local_ancestry.dosages
+            if isinstance(local_ancestry, AncestryDosages)
+            else local_ancestry
+        )
+
+        # DRY (Task 9 review, Issue 3): a raw (K, n, m) tensor is wrapped in
+        # an AncestryDosages so both call shapes (already-an-AncestryDosages
+        # vs. raw tensor) share the exact same chunk loop below instead of
+        # re-implementing ``for start in range(0, m, chunk_size)`` here.
+        # ``local_ancestry`` (if a raw tensor) is chunked consistently with
+        # ``dosages`` because both use the SAME ``sl`` slice objects, drawn
+        # from ``ad.iter_chunks`` regardless of which branch produced ``ad``.
+        ad = (
+            dosages
+            if isinstance(dosages, AncestryDosages)
+            else AncestryDosages(
+                dosages,
+                self._ancestry_names or [f"anc{k}" for k in range(dosages.shape[0])],
+            )
+        )
+
+        results: list[TractorScanResult] = []
+        for chunk, sl in ad.iter_chunks(chunk_size):
+            chunk_meta = _slice_variant_meta(meta, sl)
+            L_chunk = la_tensor[:, :, sl] if la_tensor is not None else None
+            results.append(
+                self.score_chunk(null, chunk.dosages, chunk_meta, L_chunk=L_chunk)
+            )
+
+        return TractorScanResult.concat(results)

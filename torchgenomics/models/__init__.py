@@ -88,4 +88,5 @@ from .set_based import SetBasedResult, SetBasedScanner  # noqa: F401
 from .single_trait_lmm import SingleTraitLMM  # noqa: F401
 from .survival_glmm import SurvivalGLMM  # noqa: F401
 from .threshold_linear import ThresholdLinearModel, ThresholdNullFit  # noqa: F401
+from .tractor_lmm import TractorLMM, TractorNullFit, TractorScanResult  # noqa: F401
 from .within_family_lmm import WithinFamilyLMM, WithinFamilyNullFit  # noqa: F401

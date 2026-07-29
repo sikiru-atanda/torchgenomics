@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TorchGenomics** (renamed from `torchgwas` in v0.4.0) is a GPU-accelerated PyTorch engine for statistical and quantitative genomics. It covers GWAS, post-GWAS, polygenic scoring, LD analysis, imputation, multi-omics integration, visualization, and annotation — a single `pip install`. It replicates GEMMA / GAPIT / GWASpoly to the 4th decimal on shared benchmarks. Diploid and polyploid.
 
-**Status**: Active development. Version 0.4.0 (Alpha). 3,406 tests pass, 289 skipped (TORCHGENOMICS_DISABLE_NATIVE=1; 3,695 collected). V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions through Phase 56.
+**Status**: Active development. Version 0.4.0 (Alpha). 3,406 tests pass, 289 skipped (TORCHGENOMICS_DISABLE_NATIVE=1; 3,695 collected). V1 core (Phases 0–13) complete with GEMMA / GAPIT / GWASpoly reference equivalence; post-V1 extensions through Phase 57.
 
 **v0.4.0 (current branch — 2026-06-02; refreshed 2026-06-17):** Rename `torchgwas` → `torchgenomics`. New `torchgenomics.api` one-call facade (14 tier-1 workflows = 14 MCP tools, plus 12 result classes: `tg.lmm_scan`, `tg.glm_scan`, `tg.pgs_fit`, `tg.ld_blocks`, `tg.lgebv`, ...). New `torchgenomics-mcp` MCP server publishing 14 tools over stdio (`pip install torchgenomics[mcp]`). Legacy `torchgwas` package, CLI binary, and `TORCHGWAS_*` env vars stay live as a deprecation shim through the v0.x series.
 
@@ -33,7 +33,7 @@ Data flow: **format detection → imputation/phasing → QC/preprocessing → ge
   - Core: `GLM`, `SingleTraitLMM`, `MultiTraitLMM`, `FarmCPU`, `BLINK`
   - Mixed-model extensions: `MultiKernelLMM`, `GxELMM` / `HetLMM`, `SetBasedScanner`, `BayesianVS` (SuSiE + CAVI), `BayesianVSRss` (SuSiE-RSS sumstats fine-mapping), `ThresholdLinearModel` (Bermann et al. 2026), `WithinFamilyLMM` (Young et al. 2022), `ConditionalLMM`, `MultiTraitMultiEnvLMM`, `OCFLMM` (DML cross-fit), `KnockoffLMM` (Sesia et al. 2020), `GULM` (dosage-variance score test), `LROLMM` (block-level LOCO)
   - GLM / GLMM: `BinaryGLM`, `OrdinalGLM`, `MultinomialGLM`; `BinaryGLMM`, `OrdinalGLMM`, `MultinomialGLMM` (PQL null, SAIGE-style)
-  - Specialty: `SurvivalGLMM` (Cox PH frailty), `RandomRegressionLMM` + `SpatioTemporalRR` (Phase 38), `RandomRegressionMultiEnvLMM` (Phase 39), `HaplotypeGWAS` (Phase 46), `HaplotypeMultiEnvGWAS` / `HaplotypeMultiTraitGWAS` / `HaplotypeMTMETGWAS` (Phase 47)
+  - Specialty: `SurvivalGLMM` (Cox PH frailty), `RandomRegressionLMM` + `SpatioTemporalRR` (Phase 38), `RandomRegressionMultiEnvLMM` (Phase 39), `HaplotypeGWAS` (Phase 46), `HaplotypeMultiEnvGWAS` / `HaplotypeMultiTraitGWAS` / `HaplotypeMTMETGWAS` (Phase 47), `TractorLMM` (ancestry-specific mixed-model GWAS for admixed cohorts with relatedness; Tan et al. 2026, Phase 57 Unit B)
 - **`torchgenomics.scan`** — `UnifiedScanner` streams chunks through any model via adapters.
 - **`torchgenomics.stats`** — Multiple testing: Bonferroni, Holm, BH, BY, Storey q-value, simpleM/M_eff, GPU-accelerated permutation, weighted FDR, Cauchy combination, local FDR, IHW, AdaPT, eigenMT.
 - **`torchgenomics.ld`** — LD block detection: 13 methods (4 classical, 5 novel, 3 literature, 1 diagnostic). Pairwise LD (r², D', CI), graph utilities (Laplacian, spectral partition, MWIS), change-point detection (PELT), uncertainty-corrected LD, PLINK .blocks.det compatibility. Validated against PLINK 1.9 `--blocks`. Diploid and arbitrary polyploid.
@@ -103,6 +103,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Phases 49 + 49b** — GRM-corrected causal mediation (`torchgenomics.multiomics`); multi-kernel h²; GPU-batched scan; gene-set Wald; eigenMT FDR; coloc prefilter; `mediate` / `mediate-scan` CLI
 - **Phase 55** — Polyploid allele dosage calling (`torchgenomics.preprocess.dosage_call`); updog wrapper; `dosage-call` CLI; 28 Tier 1 + 4 Tier 2 tests
 - **Phase 56** — Polyploid F1 phasing (`torchgenomics.preprocess.polyploid_phase`); PolyOrigin Julia wrapper; pedigree/map/probs pipeline; `phase-poly` CLI; 43 Tier 1 + 4 Tier 2 scaffolds
+- **Phase 57** — Tractor-Mix admixed+related GWAS (Unit B: `torchgenomics.models.TractorLMM` -- ancestry-specific GMMAT/SAIGE-style Rao score test + optional Wald test over local-ancestry-partitioned dosages, allele-count filter, opt-in SPA, local-ancestry-conditional joint test, dedicated streaming `scan()` driver over `(K, n, m)` ancestry-dosage panels; Tan et al. 2026, building on Atkinson et al. 2021 Tractor and Chen et al. 2016 GMMAT). Unit A (native PC-AiR/PC-Relate admixture-aware GRM/PCs) and Unit C (CLI/R/MCP surface + external Tractor-Mix validation harness) are separate, not-yet-implemented follow-up plans -- Unit B ships the model only, with no CLI subcommand, R wrapper, or MCP tool yet.
 
 ## Canonical Reference
 

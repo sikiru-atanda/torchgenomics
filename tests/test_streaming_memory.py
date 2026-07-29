@@ -2538,3 +2538,169 @@ class TestBayesScanRssMemory:
             f"to {peak_large:.0f} KiB (p=5000) at fixed block_size=500. "
             "fit_rss_blocked likely regressed to scale with total p."
         )
+
+
+# ---------------------------------------------------------------------------
+# tractor-scan (TractorLMM.scan over AncestryDosages) memory regression
+# (Task 9 / Phase 57 Unit B — local-ancestry conditional analysis +
+# streaming scan driver)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tractor_inputs():
+    """Synthetic admixed cohort via the Tractor-Mix test fixture generator.
+
+    K=2 ancestries, n=200 samples, m=2000 variants — large enough that a
+    materialized (K, n, m) result would be 2*200*2000*8 B = ~6.25 MiB just
+    for the dosage tensor itself (plus per-chunk score-test intermediates
+    for a non-streaming path); the streaming driver should keep peak
+    allocation close to the chunk_size, not m.
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+
+    d = make_synth(n=200, m=2000, K=2, seed=97)
+    return d
+
+
+class TestTractorScanStreamingMemory:
+    """TractorLMM.scan() must not materialize the full ``(K, n, m)`` panel.
+
+    Guards:
+
+    1. Behavioral equivalence — streaming ``joint_p`` matches a single
+       non-chunked ``score_chunk`` call (streaming invariance;
+       ``score_chunk`` already scores variants independently).
+    2. Behavioral streaming enforcement — ``scan`` must never invoke
+       ``score_chunk`` with more than ``chunk_size`` variants in a single
+       call.
+
+       An earlier version of this guard instead asserted a ``tracemalloc``
+       peak-allocation budget (mirroring the other classes in this file).
+       That proxy is UNSOUND for this model: ``tracemalloc`` only tracks
+       Python/CPython-managed allocations, never PyTorch tensor storage
+       (which is allocated by libtorch's own C++ allocator and is
+       invisible to ``tracemalloc``). A reviewer confirmed empirically
+       that a deliberately fully-materializing ``scan()`` replacement —
+       one that gathers every chunk, ``torch.cat``s them back into the
+       full ``(K, n, m)`` tensor, and calls ``score_chunk`` exactly once
+       on the whole thing — passed the old tracemalloc-budget assertions
+       unchanged, because the large intermediate tensor never touches the
+       allocator tracemalloc watches. That means the old test enforced
+       nothing about streaming at all.
+
+       The guard below instead directly counts, via a thin wrapper around
+       ``TractorLMM.score_chunk``, how many variants are ever handed to a
+       single ``score_chunk`` call. This is a property of ``scan``'s
+       actual behavior (not of any particular memory allocator), and a
+       fully-materializing implementation cannot satisfy it — see
+       ``test_scan_never_scores_more_than_chunk_size_variants_at_once``
+       below, whose docstring records the acceptance-criterion evidence
+       (a throwaway materializing variant was confirmed to FAIL this
+       exact assertion; the real ``TractorLMM.scan`` was confirmed to
+       PASS it).
+    """
+
+    def test_streaming_matches_materialized(self, tractor_inputs):
+        from torchgenomics.io.ancestry_dosage import AncestryDosages
+        from torchgenomics.models.tractor_lmm import TractorLMM
+
+        d = tractor_inputs
+        m = d["dosages"].shape[2]
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        model = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+        nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+
+        # Reference: single big-tensor score_chunk (legacy/non-streaming path)
+        ref = model.score_chunk(nf, d["dosages"], vmeta)
+
+        # Streaming path via TractorLMM.scan() over an AncestryDosages
+        # container, chunk_size << m.
+        ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=vmeta)
+        streamed = model.scan(nf, ad, vmeta, chunk_size=100)
+
+        assert torch.allclose(
+            streamed.joint_p, ref.joint_p, atol=1e-10, rtol=1e-10, equal_nan=True,
+        )
+        assert torch.allclose(
+            streamed.beta, ref.beta, atol=1e-10, rtol=1e-10, equal_nan=True,
+        )
+
+    def test_scan_never_scores_more_than_chunk_size_variants_at_once(
+        self, tractor_inputs, monkeypatch
+    ):
+        """Behavioral streaming gate: no ``score_chunk`` call spans > chunk_size variants.
+
+        This instruments ``TractorLMM.score_chunk`` itself (recording
+        ``G_chunk.shape[-1]`` on every call) rather than any one
+        dosage-source implementation detail, so the guard holds regardless
+        of how ``scan`` assembles each ``G_chunk`` internally. In
+        particular it catches both (a) a naive materialize-then-slice
+        regression, and (b) the "gather every chunk via ``iter_chunks``,
+        ``torch.cat`` them back together, then call ``score_chunk`` once"
+        pattern called out in review — that pattern still requests
+        bounded-size pieces from the data source, but hands ``score_chunk``
+        a ``(K, n, m)``-wide tensor in its single call, which this
+        assertion catches directly.
+
+        n=200, m=2000, chunk_size=100 (20x reduction) — large enough that
+        a materializing regression is unambiguous (`m` vs `chunk_size`
+        differ by 20x, not by rounding/off-by-one noise).
+
+        Acceptance-criterion evidence (verified manually, not part of this
+        commit): a throwaway ``materializing_scan(model, null, dosages,
+        meta)`` was written that calls ``AncestryDosages.iter_chunks``,
+        ``torch.cat``s every ``chunk.dosages`` back into one ``(K, n, m)``
+        tensor, and calls ``model.score_chunk`` exactly once on the
+        concatenated whole. Running the exact width-tracking assertion
+        below against that throwaway FAILED
+        (``max(widths_seen) == 2000 > chunk_size == 100``), while running
+        it against the real ``TractorLMM.scan`` PASSED
+        (``max(widths_seen) == 100``). The throwaway was not committed.
+        """
+        from torchgenomics.io.ancestry_dosage import AncestryDosages
+        from torchgenomics.models.tractor_lmm import TractorLMM
+
+        d = tractor_inputs
+        m = d["dosages"].shape[2]
+        chunk_size = 100
+        vmeta = VariantMeta(
+            snp=[f"rs{i}" for i in range(m)],
+            chr=["1"] * m,
+            pos=list(range(m)),
+            a1=["A"] * m,
+            a2=["G"] * m,
+        )
+        model = TractorLMM(family="gaussian", ancestry_names=["AFR", "EUR"])
+        nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+        ad = AncestryDosages(d["dosages"], ["AFR", "EUR"], variant_meta=vmeta)
+
+        widths_seen: list[int] = []
+        original_score_chunk = TractorLMM.score_chunk
+
+        def _tracking_score_chunk(self, null, G_chunk, meta, L_chunk=None):
+            widths_seen.append(G_chunk.shape[-1])
+            return original_score_chunk(self, null, G_chunk, meta, L_chunk=L_chunk)
+
+        monkeypatch.setattr(TractorLMM, "score_chunk", _tracking_score_chunk)
+
+        model.scan(nf, ad, vmeta, chunk_size=chunk_size)
+
+        assert widths_seen, "scan() never called score_chunk at all"
+        assert max(widths_seen) <= chunk_size, (
+            f"TractorLMM.scan called score_chunk with up to "
+            f"{max(widths_seen)} variants in a single call "
+            f"(chunk_size={chunk_size}, total m={m}) -- a streaming scan "
+            "must never hand score_chunk more than one chunk's worth of "
+            "variants at once."
+        )
+        assert max(widths_seen) < m, (
+            "score_chunk was called with the FULL variant panel at once "
+            "-- scan() materialized (K, n, m) instead of streaming."
+        )

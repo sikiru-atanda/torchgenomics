@@ -764,6 +764,93 @@ def bench_bayes_scan_rss(p: int = 1000, n: int = 5000) -> dict[str, Any]:
     }
 
 
+# ---------- Phase 57 Unit B: tractor-scan (TractorLMM.scan) ---------
+
+def bench_tractor_scan(
+    n: int = 500, m: int = 2000, K: int = 2, chunk_size: int = 200,
+) -> dict[str, Any]:
+    """Wall-time benchmark for ``TractorLMM.scan`` on a synthetic admixed cohort.
+
+    Pairs with the memory regression net in
+    ``tests/test_streaming_memory.py::TestTractorScanStreamingMemory``
+    (per ``feedback_regression_nets``: every perf-sensitive streaming
+    path needs both a memory guard and a wall-time guard). That test
+    asserts ``TractorLMM.scan`` never hands ``score_chunk`` more than
+    ``chunk_size`` variants at once (behavioral streaming enforcement,
+    since ``tracemalloc`` cannot see libtorch's own C++ allocator); this
+    function records the end-to-end wall time of the streaming scan
+    itself, both including and excluding the one-time null-model fit, so
+    a follow-on diff against a baseline can flag regressions in either
+    stage independently.
+
+    Standalone callable (not registered in ``BENCHES``) because
+    ``TractorLMM`` is pure ``torch`` -- there is no native-vs-Python
+    kernel toggle for its Rao score test / GMMAT projection, so the
+    ``run_bench`` python/native A-B split (``BENCHES`` registry) would
+    be redundant, exactly as for ``bench_bayes_scan_rss`` above. Callers
+    (CI / ad-hoc) invoke it directly with the ``n`` / ``m`` / ``K`` /
+    ``chunk_size`` of interest.
+
+    Uses the same synthetic admixed+related cohort generator as the
+    Tractor-Mix unit tests (``tests/fixtures/tractor/make_synth.py``):
+    ``K`` ancestries, ``n`` samples, ``m`` variants, with a pedigree-
+    induced GRM for relatedness and ancestry-specific allele frequencies
+    (Fst=0.1) for admixture. Defaults (K=2, n=500, m=2000, chunk_size=200)
+    are a "modest" size per the Task 10 brief -- large enough that the
+    streaming loop runs several chunks (10), small enough to finish in
+    well under a second on a laptop.
+
+    Args:
+        n: number of samples (default 500).
+        m: number of variants (default 2000).
+        K: number of local ancestries (default 2).
+        chunk_size: variants per streamed chunk passed to
+            ``TractorLMM.scan`` (default 200).
+
+    Returns:
+        ``dict`` with keys ``name``, ``n``, ``m``, ``K``, ``chunk_size``,
+        ``fit_null_wall_time_sec``, ``scan_wall_time_sec``,
+        ``total_wall_time_sec``, ``n_chunks`` -- same "one JSON-friendly
+        record per bench" convention as :func:`bench_bayes_scan_rss`.
+    """
+    from tests.fixtures.tractor.make_synth import make_synth
+    from torchgenomics.models.base import VariantMeta
+    from torchgenomics.models.tractor_lmm import TractorLMM
+
+    d = make_synth(n=n, m=m, K=K, seed=0)
+    meta = VariantMeta(
+        snp=[f"rs{i}" for i in range(m)],
+        chr=["1"] * m,
+        pos=list(range(m)),
+        a1=["A"] * m,
+        a2=["G"] * m,
+    )
+    model = TractorLMM(family="gaussian", ancestry_names=[f"anc{k}" for k in range(K)])
+
+    start = time.perf_counter()
+    nf = model.fit_null(d["y_cont"], d["X0"], d["K_grm"])
+    fit_null_elapsed = time.perf_counter() - start
+
+    start = time.perf_counter()
+    result = model.scan(nf, d["dosages"], meta, chunk_size=chunk_size)
+    scan_elapsed = time.perf_counter() - start
+
+    n_chunks = (m + chunk_size - 1) // chunk_size
+
+    return {
+        "name": "tractor-scan",
+        "n": n,
+        "m": m,
+        "K": K,
+        "chunk_size": chunk_size,
+        "fit_null_wall_time_sec": fit_null_elapsed,
+        "scan_wall_time_sec": scan_elapsed,
+        "total_wall_time_sec": fit_null_elapsed + scan_elapsed,
+        "n_chunks": n_chunks,
+        "n_variants_scored": len(result),
+    }
+
+
 # =====================================================================
 # Bench registry
 # =====================================================================
