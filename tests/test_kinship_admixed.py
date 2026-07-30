@@ -206,17 +206,78 @@ def test_king_robust_nan_handling():
     )
 
     # Also verify a het marker turned NaN drops out of the NaN-carrier's own
-    # N_Aa^i count and out of N_AaAa for the pair.
+    # N_Aa^i count and out of N_AaAa for the pair -- AND (pairwise-complete
+    # fix) drops out of the *other* individual's N_Aa^j count too, since
+    # marker 0 is no longer co-observed for the pair.
     ind1_nan2 = ind1.clone()
     ind1_nan2[0] = float("nan")  # marker 0 was a shared het marker
     G_nan2 = torch.stack([ind0, ind1_nan2])
     phi_nan2 = king_robust_kinship(G_nan2)
-    # N_AaAa drops to 5 (marker 0 excluded); N_Aa^1 drops to 5 (ind1's own
-    # het count no longer includes the NaN'd marker 0); N_Aa^0 stays 6
-    # (ind0's own dosage at marker 0 is still 1, unaffected by ind1's NaN).
-    # N_AAaa unaffected = 2.
-    expected_nan2 = (5 - 2 * 2) / (6 + 5)
+    # N_AaAa drops to 5 (marker 0 excluded, both were het there).
+    # N_AAaa unaffected = 2 (markers 6,7 opposite-homozygote; marker 0 was
+    # never part of N_AAaa).
+    # Pairwise-complete denominator (Fix 1): N_Aa^0(pairwise) = # markers
+    # where ind0 is het AND ind1 is observed = {1,2,3,4,5} = 5 (marker 0
+    # excluded because ind1 is NaN there, even though ind0 itself is
+    # observed at marker 0 -- this is the behavior change from the fix).
+    # N_Aa^1(pairwise) = # markers where ind1 is het AND ind0 is observed =
+    # {1,2,3,4,5} = 5 (marker 0 excluded because ind1 itself is NaN there).
+    # denom = 5 + 5 = 10 (was 6 + 5 = 11 under the old own-count denominator,
+    # which wrongly included ind0's marker-0 het count even though marker 0
+    # is not part of the pairwise-complete marker set for this pair).
+    expected_nan2 = (5 - 2 * 2) / (5 + 5)
     assert abs(float(phi_nan2[0, 1]) - expected_nan2) < 1e-9, (
         f"got {float(phi_nan2[0,1])}, want {expected_nan2}"
     )
     assert not torch.isnan(phi_nan2).any()
+
+
+def test_king_robust_pairwise_complete_denominator_excludes_partner_missing():
+    """Directly proves Fix 1: the denominator N_Aa^i must be restricted to
+    the pairwise-complete marker set (markers where BOTH i and j are
+    observed), not individual i's own non-missing markers.
+
+    Construct 2 individuals, 3 markers:
+        ind0: 1 (het), 1 (het), 0 (hom0)
+        ind1: 1 (het), NaN,     2 (hom2)
+
+    Marker 1 is a het marker for ind0 but NaN for ind1. Under the
+    pairwise-complete convention, marker 1 must be EXCLUDED from N_Aa^0 in
+    the denominator (since ind1 is not observed there), even though ind0
+    itself has a valid, heterozygous genotype at that marker.
+
+    Hand-derivation:
+    - N_AaAa (both-het, co-observed): marker 0 only -> 1.
+      (marker 1 excluded because ind1 is NaN there.)
+    - N_AAaa (opposite-homozygote, co-observed): marker 2 (ind0=0, ind1=2)
+      -> 1.
+    - N_Aa^0(pairwise) = # markers where ind0 het AND ind1 observed
+      = {marker 0} = 1 (marker 1 dropped: ind0 is het there, but ind1 is
+      NaN, so it must NOT count toward the denominator).
+    - N_Aa^1(pairwise) = # markers where ind1 het AND ind0 observed
+      = {marker 0} = 1 (marker 1: ind1 itself is NaN there, so it was
+      never counted as a het marker for ind1 either).
+    - denom = 1 + 1 = 2.
+    - phi_01 = (N_AaAa - 2*N_AAaa) / denom = (1 - 2*1) / 2 = -0.5.
+
+    Contrast: a (WRONG) naive own-count denominator would instead use
+    N_Aa^0(own) = 2 (markers 0 and 1, ind0's own het count, ignoring ind1's
+    missingness at marker 1) and N_Aa^1(own) = 1, giving denom = 3 and
+    phi_01 = (1 - 2) / 3 = -1/3 != -0.5. The assertion below pins the
+    pairwise-complete value (-0.5), which would fail under the old
+    (pre-fix) implementation.
+    """
+    from torchgenomics.linalg.kinship_admixed import king_robust_kinship
+
+    G = torch.tensor([
+        [1.0, 1.0, 0.0],
+        [1.0, float("nan"), 2.0],
+    ], dtype=torch.float64)
+    phi = king_robust_kinship(G)
+    expected = (1 - 2 * 1) / (1 + 1)
+    assert abs(expected - (-0.5)) < 1e-12  # sanity on the hand derivation itself
+    assert abs(float(phi[0, 1]) - expected) < 1e-9, (
+        f"got {float(phi[0,1])}, want {expected} (pairwise-complete); "
+        f"a naive own-count denominator would give {(1 - 2) / 3:.6f} instead"
+    )
+    assert not torch.isnan(phi).any()

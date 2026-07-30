@@ -29,14 +29,21 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
     - ``N_AAaa``  = number of markers at which the two individuals carry
       *opposite* homozygous genotypes (one is dosage 0 and the other is
       dosage 2). This is the classical IBS0 count.
-    - ``N_Aa^i``  = number of heterozygous markers in individual ``i`` alone
-      (i.e. the individual's own het count, not restricted to markers shared
-      with ``j``).
+    - ``N_Aa^i``  = number of heterozygous markers in individual ``i``,
+      restricted to the **pairwise-complete** marker set for the pair
+      (i, j) -- i.e. markers at which both ``i`` and ``j`` are observed,
+      not merely ``i``'s own non-missing markers. This matches the
+      convention used by the KING software, PLINK2 ``--make-king``, and
+      SNPRelate's ``snpgdsIBDKING``: numerator and denominator are computed
+      over the *same* marker set for every pair, which matters whenever
+      individuals ``i`` and ``j`` differ in missingness pattern.
 
-    The diagonal is fixed at 0.5 (self-kinship), matching the KING
-    convention (the formula above is undefined for i == j since it would
-    divide by 2 * N_Aa^i and evaluate to -0.5, which is not meaningful as a
-    self-kinship coefficient).
+    The diagonal is fixed at 0.5 (self-kinship) explicitly, rather than
+    relying on the raw formula evaluated at i == j (which is well-defined
+    there -- N_AAaa == 0 and N_Aa^i(pairwise) == N_Aa^i(own) when i == j,
+    so it reduces to het_count / (2 * het_count) = 0.5 -- but setting it
+    explicitly is more robust and sidesteps the het_count == 0 edge case,
+    where the raw formula would divide by zero).
 
     This is the *between-family* estimator (eq. 11 in the paper), chosen
     because — unlike the "population-specific"/homogeneous estimator (eq.
@@ -58,14 +65,15 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
     as reference-equivalence evidence; they are internal-consistency checks
     only.
 
-    Missing data (NaN dosages): a marker contributes to the counts for a
-    pair (i, j) only if *neither* individual has a NaN dosage at that
-    marker. This applies independently to every pairwise count
-    (N_AaAa, N_AAaa) and to each individual's own het count N_Aa^i (which
-    only counts that individual's non-missing heterozygous markers — see
-    below for why the per-individual het denominator is *not* restricted to
-    markers observed in the partner, matching the paper's definition of
-    N_Aa(i) as a per-individual quantity).
+    Missing data (NaN dosages): a marker contributes to *every* count for a
+    pair (i, j) -- N_AaAa, N_AAaa, and both denominator terms N_Aa^i,
+    N_Aa^j -- only if *neither* individual has a NaN dosage at that marker.
+    In other words, the whole estimator for pair (i, j) is computed over the
+    pairwise-complete marker set. This means N_Aa^i is, in general,
+    pair-specific (it can differ across the row/column of the kinship
+    matrix for a fixed i), because it excludes markers where the *other*
+    member of the pair happens to be missing, even though i itself is
+    observed there.
 
     Parameters
     ----------
@@ -93,7 +101,11 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
 
     N_AaAa = torch.zeros(n, n, dtype=torch.float64, device=device)
     N_AAaa = torch.zeros(n, n, dtype=torch.float64, device=device)
-    het_count = torch.zeros(n, dtype=torch.float64, device=device)  # N_Aa^i
+    # Nhet_pair[i, j] = # markers where i is het AND j is observed (pairwise-
+    # complete restriction of individual i's own het count to the marker set
+    # shared with j). Accumulated in the same streaming chunk loop as the
+    # numerator so numerator and denominator always share one marker set.
+    Nhet_pair = torch.zeros(n, n, dtype=torch.float64, device=device)
 
     for s in range(0, m, chunk_size):
         gc = G[:, s:s + chunk_size]                      # (n, c)
@@ -104,12 +116,10 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
         hom0 = (gc_safe == 0.0) & valid                     # (n, c)
         hom2 = (gc_safe == 2.0) & valid                     # (n, c)
 
-        het_f = het.to(torch.float64)
+        het_f = het.to(torch.float64)                       # het AND observed
         hom0_f = hom0.to(torch.float64)
         hom2_f = hom2.to(torch.float64)
-
-        # Per-individual heterozygous-marker count (own missingness only).
-        het_count += het_f.sum(dim=1)
+        valid_f = valid.to(torch.float64)                    # observed (any genotype)
 
         # Both-heterozygous count restricted to co-observed markers: since
         # het_f is already zeroed at missing positions (valid=False forces
@@ -122,15 +132,27 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
         # individuals observed.
         N_AAaa += hom0_f @ hom2_f.T + hom2_f @ hom0_f.T
 
-    denom = het_count.unsqueeze(1) + het_count.unsqueeze(0)
-    # Guard against div-by-zero for pairs where both individuals are fully
-    # homozygous (het_count == 0 for both) or have no shared data; such
-    # pairs get phi = 0 rather than NaN/inf.
+        # Pairwise-complete per-individual het count: [i, j] = # markers
+        # where i is het (and, via het_f, i observed) AND j is observed.
+        Nhet_pair += het_f @ valid_f.T
+
+    # N_Aa^i(pairwise) + N_Aa^j(pairwise) for each pair, both restricted to
+    # the same (i, j) shared marker set as N_AaAa/N_AAaa above -- this is
+    # the KING-software / PLINK2 / SNPRelate convention (Fix: previously the
+    # denominator used each individual's own, non-pairwise-restricted het
+    # count, which could draw on a different marker set than the numerator
+    # under differential missingness).
+    denom = Nhet_pair + Nhet_pair.T
+    # Guard against div-by-zero for pairs with no shared heterozygosity
+    # (e.g. both individuals fully homozygous, or no co-observed markers);
+    # such pairs get phi = 0 rather than NaN/inf.
     safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
     phi = (N_AaAa - 2.0 * N_AAaa) / safe_denom
     phi = torch.where(denom > 0, phi, torch.zeros_like(phi))
 
-    phi.fill_diagonal_(0.5)
+    # N_AaAa, N_AAaa, and denom are all symmetric by construction (each is
+    # built from A @ B.T + B @ A.T or A @ A.T over the same per-marker
+    # indicator vectors), so this symmetrization is defensive/a no-op.
     phi = 0.5 * (phi + phi.T)
     phi.fill_diagonal_(0.5)
     return phi
