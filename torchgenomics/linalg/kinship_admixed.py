@@ -14,6 +14,7 @@ import torch
 from torch import Tensor
 
 from ..ld._pairwise import compute_r2_matrix
+from .eigh import eigendecompose
 
 
 def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
@@ -266,3 +267,224 @@ def ld_prune_independent(
         if ok:
             kept.append(j)
     return torch.tensor(kept, dtype=torch.long, device=G.device)
+
+
+def pcair_partition(
+    king_kinship: Tensor,
+    kin_threshold: float = 0.025,
+    div_threshold: float = -0.025,
+) -> tuple[Tensor, Tensor]:
+    """Partition individuals into an ancestry-representative *unrelated* set
+    and a *related* set for PC-AiR (Conomos et al. 2015, *Genet. Epidemiol.*
+    39:276).
+
+    A pair ``(i, j)`` is "related" when ``king_kinship[i, j] > kin_threshold``.
+    The unrelated set is built as a greedy Maximal-Independent-Set of the
+    relatedness graph: individuals are considered in *descending order of
+    ancestry-informativeness* and each is admitted to the unrelated set unless
+    it is related to an individual already admitted; admitting an individual
+    blocks all of its relatives from later admission. The related set is the
+    complement.
+
+    "Ancestry-informativeness" is scored by the KING *divergence* signal that
+    Conomos et al. use to prioritise which member of a related group to retain:
+    strongly *negative* KING-robust estimates flag pairs drawn from *different*
+    ancestral populations (population structure depresses shared
+    heterozygosity relative to IBS0). An individual with many partners below
+    ``div_threshold`` is divergent from many others, i.e. ancestry-representative,
+    and is therefore preferred when seeding the unrelated set so that each
+    ancestral component is represented in the PCA basis. This ordering rule is
+    a defensible torch realisation of the GENESIS strategy; the *exact*
+    GENESIS ``pcair`` partition (and its handling of higher-degree relative
+    graphs) is verified against the reference implementation in Task 6 of this
+    Unit -- do not read this as reference-equivalence.
+
+    Parameters
+    ----------
+    king_kinship : Tensor, shape (n, n)
+        Symmetric KING-robust kinship matrix (e.g. from
+        :func:`king_robust_kinship`). Only off-diagonal entries are used.
+    kin_threshold : float, default 0.025
+        Pairs with kinship strictly above this are "related". 0.025 sits
+        between 3rd-degree (~0.0625) and unrelated (0.0) on the KING scale,
+        the conventional cut for declaring a pair related.
+    div_threshold : float, default -0.025
+        Partners with kinship below this count toward an individual's
+        ancestry-informativeness (divergence) score.
+
+    Returns
+    -------
+    (unrel_mask, rel_mask) : tuple[Tensor, Tensor]
+        Boolean masks of shape (n,). ``rel_mask == ~unrel_mask`` exactly. The
+        unrelated set is guaranteed to contain no within-set pair with
+        kinship above ``kin_threshold``.
+
+    References
+    ----------
+    Conomos, M.P., Miller, M.B., and Thornton, T.A. (2015). Robust inference
+    of population structure for ancestry prediction and correction of
+    stratification in the presence of relatedness. Genetic Epidemiology
+    39(4), 276-293.
+    """
+    K = king_kinship.to(torch.float64)
+    n = K.shape[0]
+    device = K.device
+
+    related = K > kin_threshold
+    related = related.clone()
+    related.fill_diagonal_(False)
+
+    # Ancestry-informativeness: number of strongly-divergent partners.
+    informative = (K < div_threshold).sum(dim=1)
+    # Descending order; stable so ties resolve by original index (determinism).
+    order = torch.argsort(informative, descending=True, stable=True)
+
+    unrel_mask = torch.zeros(n, dtype=torch.bool, device=device)
+    blocked = torch.zeros(n, dtype=torch.bool, device=device)
+    for idx in order.tolist():
+        if bool(blocked[idx]):
+            continue
+        unrel_mask[idx] = True
+        # Everyone related to this newly-admitted member is now barred from the
+        # unrelated set (guarantees the returned set is mutually unrelated).
+        blocked = blocked | related[idx]
+
+    rel_mask = ~unrel_mask
+    return unrel_mask, rel_mask
+
+
+def pc_air(
+    G_pruned: Tensor,
+    king_kinship: Tensor,
+    n_pcs: int = 10,
+    kin_threshold: float = 0.025,
+    div_threshold: float = -0.025,
+) -> Tensor:
+    """PC-AiR: relatedness-robust principal components (Conomos et al. 2015).
+
+    Principal Components Analysis in Related samples (PC-AiR) recovers
+    ancestry axes that are *not* distorted by relatedness. Ordinary PCA on a
+    cohort containing families is pulled toward whichever cluster carries the
+    most relatives (close relatives inflate that group's apparent variance and
+    can hijack the leading PCs), so the top PCs mix ancestry with family
+    structure. PC-AiR avoids this by (i) computing the PCA basis on a
+    carefully-chosen *unrelated* subset that still spans the ancestral
+    variation, then (ii) *projecting* the related individuals onto that basis
+    via SNP loadings. The result is a set of PCs whose leading axes track
+    ancestry regardless of how relatives are distributed across the cohort.
+
+    Algorithm (Conomos et al. 2015, "Estimation of Ancestry via PC-AiR"):
+
+    1. **Partition** (:func:`pcair_partition`): split the sample into an
+       ancestry-representative unrelated set and its related complement using
+       a greedy MIS over the relatedness graph, preferring
+       ancestry-informative (KING-divergent) individuals.
+    2. **PCA on the unrelated set**: standardize ``G_pruned`` columns by the
+       *unrelated-set* mean/sd, form the unrelated GRM
+       ``Zu Zu^T / m``, and eigendecompose. The top ``n_pcs`` eigenvectors
+       ``U`` (unit-norm columns) are the unrelated-set PC scores.
+    3. **Project the related set**: standardize the related individuals by the
+       *same* unrelated-set mean/sd (``Zr``) and predict their scores with the
+       out-of-sample PCA-projection formula
+
+           scores_rel = Zr @ Zu^T @ U / (m * lambda)
+
+       where ``lambda`` are the unrelated-set eigenvalues. This formula is the
+       exact out-of-sample extension of PCA: applied to the unrelated
+       individuals themselves it reproduces ``U`` identically
+       (``Zu Zu^T U / (m*lambda) = GRM_u U / lambda = U``), so related and
+       unrelated scores live on one common scale and one common sign
+       convention -- essential for the assembled PC matrix to be usable as a
+       single set of ancestry axes. (This differs from, and corrects, a
+       per-component ``1/sqrt(lambda)`` mis-scaling; the projection was chosen
+       for internal scale-consistency. Exact scaling/sign parity with GENESIS
+       ``pcair`` is verified in Task 6 by absolute correlation, since PC signs
+       are arbitrary.)
+    4. **Assemble** the full ``(n, n_pcs)`` matrix in original sample order.
+
+    Input markers should be LD-pruned (see :func:`ld_prune_independent`;
+    Conomos et al. recommend r2 < 0.1) so the PCA basis is not dominated by a
+    few tightly-linked regions.
+
+    Correctness / validation status
+    -------------------------------
+    The partition-validity, ancestry-separation, relatedness-robustness, and
+    projection-sanity tests in ``tests/test_kinship_admixed.py`` are Tier-1
+    internal-correctness gates on synthetic admixed+related fixtures. They are
+    **not** a reference-tool comparison: DEFINITIVE reference-equivalence to
+    GENESIS ``pcair`` -- including exact PC scaling and sign (signs are
+    arbitrary and are compared by absolute correlation) -- is Task 6 of this
+    Unit. Do not read this docstring or those tests as reference-equivalence
+    evidence.
+
+    Parameters
+    ----------
+    G_pruned : Tensor, shape (n, m)
+        LD-pruned genotype dosage matrix (diploid {0,1,2} or polyploid [0,k]);
+        float, no missing values. Cast to FP64 internally.
+    king_kinship : Tensor, shape (n, n)
+        KING-robust kinship matrix used only for the relatedness partition
+        (:func:`king_robust_kinship`).
+    n_pcs : int, default 10
+        Number of principal components to return. Truncated to the unrelated
+        set size if smaller; any remaining columns are zero-padded.
+    kin_threshold : float, default 0.025
+        Relatedness cut for the partition (see :func:`pcair_partition`).
+    div_threshold : float, default -0.025
+        Divergence cut for ancestry-informativeness (see
+        :func:`pcair_partition`).
+
+    Returns
+    -------
+    Tensor, shape (n, n_pcs), dtype float64
+        Relatedness-robust PC scores in original sample order. PC signs are
+        arbitrary (an eigenvector and its negation are equivalent).
+
+    References
+    ----------
+    Conomos, M.P., Miller, M.B., and Thornton, T.A. (2015). Robust inference
+    of population structure for ancestry prediction and correction of
+    stratification in the presence of relatedness. Genetic Epidemiology
+    39(4), 276-293.
+    """
+    G_pruned = G_pruned.to(torch.float64)
+    n, m = G_pruned.shape
+    device = G_pruned.device
+
+    unrel_mask, rel_mask = pcair_partition(
+        king_kinship, kin_threshold=kin_threshold, div_threshold=div_threshold
+    )
+
+    # --- PCA on the unrelated set ---
+    Gu = G_pruned[unrel_mask]                       # (n_u, m)
+    mu = Gu.mean(dim=0)
+    sd = Gu.std(dim=0).clamp(min=1e-8)
+    Zu = (Gu - mu) / sd                              # (n_u, m)
+    grm_u = (Zu @ Zu.T) / m                          # (n_u, n_u)
+
+    k = min(n_pcs, grm_u.shape[0])
+    ed = eigendecompose(grm_u, n_components=k)
+    U = ed.eigenvectors                              # (n_u, k), unit-norm cols
+    lam = ed.eigenvalues                             # (k,), descending
+
+    pcs = torch.zeros(n, k, dtype=torch.float64, device=device)
+    unrel_idx = unrel_mask.nonzero(as_tuple=True)[0]
+    pcs[unrel_idx] = U
+
+    # --- Project the related set onto the unrelated-set axes ---
+    if bool(rel_mask.any()):
+        Zr = (G_pruned[rel_mask] - mu) / sd          # (n_r, m), same mu/sd
+        lam_safe = lam.clamp(min=1e-12)
+        # Out-of-sample PCA projection: reproduces U exactly on the unrelated
+        # set, so all samples share one scale and sign convention.
+        proj = (Zr @ Zu.T) @ U                        # (n_r, k)
+        proj = proj / (m * lam_safe).unsqueeze(0)
+        rel_idx = rel_mask.nonzero(as_tuple=True)[0]
+        pcs[rel_idx] = proj
+
+    # Zero-pad if the unrelated set was smaller than the requested n_pcs.
+    if k < n_pcs:
+        pad = torch.zeros(n, n_pcs - k, dtype=torch.float64, device=device)
+        pcs = torch.cat([pcs, pad], dim=1)
+
+    return pcs

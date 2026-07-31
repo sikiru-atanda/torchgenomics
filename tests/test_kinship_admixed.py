@@ -360,3 +360,193 @@ def test_ld_prune_monomorphic_snp_is_kept_and_does_not_block():
     from torchgenomics.ld._pairwise import compute_r2_matrix
     r2 = compute_r2_matrix(G[:, keep])
     assert not torch.isnan(r2).any()
+
+
+# ---------------------------------------------------------------------------
+# Task 4: PC-AiR (relatedness-robust principal components; Conomos 2015)
+# ---------------------------------------------------------------------------
+def _sep_ratio(pc1: torch.Tensor, pop: torch.Tensor) -> float:
+    """Sign-invariant ancestry-separation ratio on a single PC axis:
+    |mean_pop0 - mean_pop1| / pooled within-population std. Larger = cleaner
+    ancestry separation. Sign of the axis is irrelevant (absolute gap)."""
+    a = pc1[pop == 0]
+    b = pc1[pop == 1]
+    gap = abs(float(a.mean() - b.mean()))
+    pooled = float(torch.sqrt(0.5 * (a.var(unbiased=False) + b.var(unbiased=False))).clamp(min=1e-12))
+    return gap / pooled
+
+
+def _plain_pca_scores(G: torch.Tensor, n_pcs: int) -> torch.Tensor:
+    """Standard PCA on the FULL sample (no relatedness correction): standardize
+    all columns by full-sample mean/sd, form the GRM, return top-n_pcs
+    eigenvectors as scores. This is the baseline PC-AiR must beat."""
+    from torchgenomics.linalg.eigh import eigendecompose
+    G = G.to(torch.float64)
+    mu = G.mean(dim=0)
+    sd = G.std(dim=0).clamp(min=1e-8)
+    Z = (G - mu) / sd
+    grm = (Z @ Z.T) / G.shape[1]
+    ed = eigendecompose(grm, n_components=n_pcs)
+    return ed.eigenvectors
+
+
+def test_pc_air_separates_ancestry_and_partitions():
+    from torchgenomics.linalg.kinship_admixed import (
+        king_robust_kinship, ld_prune_independent, pc_air,
+    )
+    d = make_admixed(n_per_pop=60, n_related_pairs=15, m=800, fst=0.15, seed=7)
+    G = d["G"]
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    phi = king_robust_kinship(Gp)
+    pcs = pc_air(Gp, phi, n_pcs=5)
+    assert pcs.shape == (G.shape[0], 5)
+    assert pcs.dtype == torch.float64
+    pop = d["pop_label"]
+    pc1 = pcs[:, 0]
+    sep = abs(float(pc1[pop == 0].mean() - pc1[pop == 1].mean()))
+    within = float(pc1.std())
+    assert sep > within, f"PC1 ancestry separation {sep} not > within-scatter {within}"
+
+
+def test_pc_air_partition_is_a_valid_unrelated_set():
+    """CORRECTNESS BAR 1: the selected 'unrelated' set must contain NO pair
+    whose KING kinship exceeds kin_threshold, and the related set must be
+    exactly its complement."""
+    from torchgenomics.linalg.kinship_admixed import (
+        king_robust_kinship, ld_prune_independent, pcair_partition,
+    )
+    d = make_admixed(n_per_pop=60, n_related_pairs=25, m=800, fst=0.12, seed=11)
+    G = d["G"]
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    phi = king_robust_kinship(Gp)
+    kin_threshold = 0.025
+    unrel_mask, rel_mask = pcair_partition(phi, kin_threshold=kin_threshold)
+    n = G.shape[0]
+    assert unrel_mask.shape == (n,) and rel_mask.shape == (n,)
+    # partition: related is exactly the complement of unrelated
+    assert bool((rel_mask == ~unrel_mask).all())
+    assert not bool((unrel_mask & rel_mask).any())
+    assert int(unrel_mask.sum()) + int(rel_mask.sum()) == n
+    # the unrelated set is genuinely unrelated: no within-set pair > threshold
+    u_idx = unrel_mask.nonzero(as_tuple=True)[0]
+    sub = phi[u_idx][:, u_idx].clone()
+    sub.fill_diagonal_(0.0)
+    assert float(sub.max()) <= kin_threshold, (
+        f"unrelated set has a pair with kinship {float(sub.max())} "
+        f"> kin_threshold {kin_threshold}"
+    )
+    # at least the injected parents/children cannot ALL be in the unrelated
+    # set: each PO pair (0.25 >> 0.025) forces at least one member out.
+    assert int(rel_mask.sum()) >= 1
+
+
+def test_pc_air_is_robust_to_concentrated_relatedness():
+    """THE defining PC-AiR property (CORRECTNESS BAR 3): relatedness must not
+    distort the ancestry axis.
+
+    We build a cohort in which a large, tightly-related family is concentrated
+    in ONE population: a founder in population 0 is copied into a block of
+    near-clonal relatives (KING kinship ~0.5 among them, well above threshold).
+    On such a cohort ordinary PCA-on-everyone is pulled toward the family
+    cluster -- its leading PC becomes a *family* axis, and ancestry leaks onto
+    a later PC. PC-AiR, by building its basis on the unrelated subset (which
+    retains only ONE member of the family), keeps ancestry on PC1.
+
+    We assert (a) PC-AiR's PC1 cleanly separates ancestry, (b) it does so
+    STRICTLY BETTER than plain PCA's PC1, and (c) plain PCA is genuinely
+    contaminated -- ancestry separates better on some *later* plain PC than on
+    its PC1 (proof its PC1 was hijacked, not merely weaker). All comparisons
+    use the sign-invariant absolute between-population gap over pooled
+    within-population scatter (see _sep_ratio), never raw signs.
+    """
+    from torchgenomics.linalg.kinship_admixed import (
+        king_robust_kinship, ld_prune_independent, pc_air,
+    )
+    # Clean 2-population base (no injected pairs), modest Fst so ancestry is
+    # real but not overwhelming.
+    d = make_admixed(n_per_pop=60, n_related_pairs=0, m=1000, fst=0.06, seed=5)
+    G = d["G"].clone()
+    pop = d["pop_label"]
+    # Inject a large near-clonal family into population 0: 30 of its 60 members
+    # become near-copies of the founder (index 0), each with a small
+    # per-marker mutation rate so they are near-identical but not degenerate.
+    gen = torch.Generator().manual_seed(123)
+    fam_size, mut_rate = 30, 0.03
+    founder = G[0].clone()
+    for i in range(1, fam_size):
+        child = founder.clone()
+        mut = torch.rand(G.shape[1], generator=gen) < mut_rate
+        n_mut = int(mut.sum())
+        child[mut] = torch.randint(0, 3, (n_mut,), generator=gen).to(torch.float64)
+        G[i] = child
+
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    phi = king_robust_kinship(Gp)
+
+    pcair_pcs = pc_air(Gp, phi, n_pcs=5)
+    plain_pcs = _plain_pca_scores(Gp, n_pcs=5)
+
+    pcair_sep = _sep_ratio(pcair_pcs[:, 0], pop)
+    plain_pc1_sep = _sep_ratio(plain_pcs[:, 0], pop)
+    plain_best_later = max(_sep_ratio(plain_pcs[:, j], pop) for j in range(1, 5))
+
+    # (a) PC-AiR PC1 itself cleanly separates ancestry.
+    assert pcair_sep > 1.0, f"PC-AiR PC1 fails to separate ancestry (ratio {pcair_sep:.3f})"
+    # (b) strictly better than plain PCA's (hijacked) PC1 -- the whole point.
+    assert pcair_sep > plain_pc1_sep, (
+        f"PC-AiR PC1 ancestry separation {pcair_sep:.3f} not better than plain "
+        f"PCA PC1 {plain_pc1_sep:.3f} -- PC-AiR failed its defining property"
+    )
+    # (c) plain PCA's PC1 was genuinely hijacked by relatedness: ancestry
+    # separates better on a later plain PC than on plain PC1.
+    assert plain_best_later > plain_pc1_sep, (
+        f"expected plain PCA PC1 to be hijacked by the family cluster "
+        f"(best later plain PC {plain_best_later:.3f} vs plain PC1 "
+        f"{plain_pc1_sep:.3f})"
+    )
+
+
+def test_pc_air_related_individuals_project_to_correct_population():
+    """CORRECTNESS BAR 4 (projection sanity): related individuals (all in
+    population 0 by fixture construction) must project onto population 0's
+    side of PC1 -- i.e. cluster with the UNRELATED population-0 members and
+    away from population 1, not collapse to 0 or land on the wrong side."""
+    from torchgenomics.linalg.kinship_admixed import (
+        king_robust_kinship, ld_prune_independent, pc_air, pcair_partition,
+    )
+    d = make_admixed(n_per_pop=60, n_related_pairs=25, m=1000, fst=0.12, seed=9)
+    G = d["G"]
+    pop = d["pop_label"]
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    phi = king_robust_kinship(Gp)
+    pcs = pc_air(Gp, phi, n_pcs=5)
+    unrel_mask, rel_mask = pcair_partition(phi)
+
+    pc1 = pcs[:, 0]
+    # reference population-1 (unrelated ancestry) centre
+    pop1_center = float(pc1[pop == 1].mean())
+    unrel_pop0 = (unrel_mask & (pop == 0))
+    rel_pop0 = (rel_mask & (pop == 0))
+    assert bool(rel_pop0.any()), "fixture should place related individuals in pop 0"
+    unrel_pop0_center = float(pc1[unrel_pop0].mean())
+    rel_pop0_center = float(pc1[rel_pop0].mean())
+
+    # related pop-0 individuals sit on the SAME side of the pop-1 centre as
+    # the unrelated pop-0 individuals (sign-invariant: compare displacement
+    # direction relative to the pop-1 reference).
+    assert (unrel_pop0_center - pop1_center) * (rel_pop0_center - pop1_center) > 0, (
+        f"related pop-0 projected to the wrong side: rel {rel_pop0_center:.4f}, "
+        f"unrel {unrel_pop0_center:.4f}, pop1 {pop1_center:.4f}"
+    )
+    # and they do not collapse to ~0: their distance from the pop-1 cluster is
+    # a substantial fraction of the unrelated pop-0 distance (>= 40%).
+    unrel_dist = abs(unrel_pop0_center - pop1_center)
+    rel_dist = abs(rel_pop0_center - pop1_center)
+    assert rel_dist > 0.4 * unrel_dist, (
+        f"related pop-0 collapsed toward the population boundary: "
+        f"rel_dist {rel_dist:.4f} vs unrel_dist {unrel_dist:.4f}"
+    )
