@@ -102,11 +102,76 @@ def test_king_robust_hand_computed():
     # marker 3 (ind0=2, ind1=0 -> opp), marker 2 (ind0=0, ind1=2 -> opp),
     # marker 5 (ind0=0, ind1=2 -> opp) -> N_AAaa=3
     # N_Aa^0 = #het in ind0 = markers {0,1,4} = 3 ; N_Aa^1 = {0,1,4} = 3
-    # phi_01 = (3 - 2*3) / (3 + 3) = -3/6 = -0.5
-    expected_01 = (3 - 2 * 3) / (3 + 3)
+    # OLD (wrong, sum-denominator) formula: (3 - 2*3) / (3 + 3) = -3/6 = -0.5
+    #
+    # CORRECT KING-robust derivation (Manichaikul et al. 2010; matches
+    # SNPRelate snpgdsIBDKING(type="KING-robust") machine-exactly):
+    #   Sd_01 = sum (g0 - g1)^2 over all 6 markers = 0+0+4+4+0+4 = 12
+    #     (markers 0,1,4 both-het -> diff 0; markers 2,3,5 opposite-hom ->
+    #     diff^2 = 4 each)
+    #   min-het = min(N_Aa^0, N_Aa^1) = min(3, 3) = 3
+    #   phi_01 = 0.5 - Sd/(4*min-het) = 0.5 - 12/(4*3) = 0.5 - 1.0 = -0.5
+    # Because N_Aa^0 == N_Aa^1 here (equal het counts), min(3,3) == (3+3)/2,
+    # so the new min-denominator formula reproduces the same -0.5 value as
+    # the old (incorrect) sum-denominator formula on THIS particular pair --
+    # this test alone does not distinguish the two formulas; see
+    # test_king_robust_unequal_het_counts_distinguishes_min_from_sum below
+    # for a case where they diverge.
+    expected_01 = 0.5 - 12 / (4 * 3)
     assert abs(float(phi[0, 1]) - expected_01) < 1e-9, f"got {float(phi[0,1])}, want {expected_01}"
     # symmetry
     assert torch.allclose(phi, phi.T)
+
+
+def test_king_robust_unequal_het_counts_distinguishes_min_from_sum():
+    """Regression guard: pins the CORRECT min(Nhet_i, Nhet_j) denominator on
+    a pair whose two individuals have UNEQUAL pairwise-complete het counts,
+    so that a regression to the old (incorrect) sum-denominator formula
+    ``(N_AaAa - 2*N_AAaa) / (Nhet_i + Nhet_j)`` would be caught.
+
+    2 individuals, 4 markers, no missing data:
+        ind0: 1 (het), 1 (het), 1 (het), 0 (hom0)
+        ind1: 1 (het), 0 (hom0), 2 (hom2), 0 (hom0)
+
+    Per-marker squared differences:
+        m0: (1,1) -> diff 0            (both het)
+        m1: (1,0) -> diff 1, sq 1      (het vs hom0)
+        m2: (1,2) -> diff 1, sq 1      (het vs hom2)
+        m3: (0,0) -> diff 0            (both hom0)
+    Sd_01 = 0 + 1 + 1 + 0 = 2.
+
+    Per-individual het counts (all markers co-observed, so pairwise ==
+    own): N_Aa^0 = |{m0, m1, m2}| = 3 (ind0 is het at m0, m1, m2).
+    N_Aa^1 = |{m0}| = 1 (ind1 is het only at m0). These are UNEQUAL, so
+    min(3, 1) = 1 != (3 + 1)/2 = 2 -- this pair distinguishes the two
+    denominators.
+
+    CORRECT (min-denominator) result:
+        phi_01 = 0.5 - Sd/(4*min(N_Aa^0, N_Aa^1)) = 0.5 - 2/(4*1) = 0.5 - 0.5 = 0.0
+
+    Contrast -- the OLD (wrong, pre-fix) formula
+    ``(N_AaAa - 2*N_AAaa) / (Nhet_i + Nhet_j)`` on this same pair:
+    N_AaAa (both-het markers) = 1 (m0); N_AAaa (opposite-homozygote
+    markers) = 0 (no marker has one individual at dosage 0 and the other
+    at dosage 2). Old phi_01 = (1 - 2*0) / (3 + 1) = 1/4 = 0.25 -- a
+    markedly different value from the correct 0.0, confirming this pair
+    would catch a regression to the sum-denominator formula.
+    """
+    from torchgenomics.linalg.kinship_admixed import king_robust_kinship
+
+    G = torch.tensor([
+        [1.0, 1.0, 1.0, 0.0],
+        [1.0, 0.0, 2.0, 0.0],
+    ], dtype=torch.float64)
+    phi = king_robust_kinship(G)
+    expected = 0.5 - 2 / (4 * 1)
+    assert abs(expected - 0.0) < 1e-12  # sanity on the hand derivation itself
+    assert abs(float(phi[0, 1]) - expected) < 1e-9, (
+        f"got {float(phi[0,1])}, want {expected} (min-denominator); "
+        f"the old (wrong) sum-denominator formula would give 0.25 instead"
+    )
+    assert torch.allclose(phi, phi.T)
+    assert not torch.isnan(phi).any()
 
 
 def test_king_robust_fixture_parent_offspring_vs_unrelated():
@@ -174,9 +239,18 @@ def test_king_robust_nan_handling():
 
     Construct two individuals identical except that a block of markers is
     set to NaN in one of them. Those markers must simply drop out of both
-    the pairwise counts and (for the NaN-carrying individual) its own
-    N_Aa^i denominator -- i.e. results must match manually recomputing the
-    formula on the observed (non-NaN) markers only.
+    Sd_ij and (for the NaN-carrying individual) its own Nhet_i denominator
+    term -- i.e. results must match manually recomputing the min-denominator
+    formula (0.5 - Sd/(4*min-het)) on the observed (non-NaN) markers only.
+
+    Note: this fixture happens to have NO het/homozygote single-mismatch
+    markers (every mismatch is an opposite-homozygote, diff^2 == 4) and
+    equal het counts for both individuals at every stage, so
+    Sd == 4 * N_AAaa and min-het == (Nhet_i + Nhet_j)/2 here -- the new
+    formula's numeric answer happens to coincide with the old (incorrect)
+    sum-denominator formula's on this specific fixture. That coincidence is
+    exactly why test_king_robust_unequal_het_counts_distinguishes_min_from_sum
+    exists as a separate, deliberately-asymmetric regression guard.
     """
     from torchgenomics.linalg.kinship_admixed import king_robust_kinship
 
@@ -186,46 +260,46 @@ def test_king_robust_nan_handling():
     ind1 = torch.tensor([1, 1, 1, 1, 1, 1, 2, 2], dtype=torch.float64)
     G_full = torch.stack([ind0, ind1])
     phi_full = king_robust_kinship(G_full)
-    # N_AaAa = 6, N_AAaa = 2 (markers 6,7), N_Aa^0 = 6, N_Aa^1 = 6
-    expected_full = (6 - 2 * 2) / (6 + 6)
+    # Sd = 4*2 = 8 (markers 6,7 opposite-hom, diff^2=4 each); Nhet_0 = Nhet_1 = 6
+    # phi = 0.5 - 8/(4*6) = 0.5 - 1/3 = 1/6, same value as the old formula
+    # (6 - 2*2)/(6+6) = 2/12 = 1/6 on this equal-het pair.
+    expected_full = 0.5 - 8 / (4 * 6)
     assert abs(float(phi_full[0, 1]) - expected_full) < 1e-9
 
     # Now corrupt marker index 6 to NaN in ind1: it must be dropped from
-    # N_AAaa (pairwise) and must not crash the computation.
+    # Sd (pairwise) and must not crash the computation.
     ind1_nan = ind1.clone()
     ind1_nan[6] = float("nan")
     G_nan = torch.stack([ind0, ind1_nan])
     phi_nan = king_robust_kinship(G_nan)
     assert not torch.isnan(phi_nan).any(), "kinship must not contain NaN even with missing genotypes"
-    # N_AaAa unaffected (marker 6 wasn't a het,het marker either way) = 6
-    # N_AAaa drops from 2 to 1 (marker 6 dropped, marker 7 remains an
-    # opposite-homozygote match) -> phi = (6 - 2*1) / (6 + 6) = 4/12
-    expected_nan = (6 - 2 * 1) / (6 + 6)
+    # Sd drops from 8 to 4 (marker 6 dropped, marker 7 remains an
+    # opposite-homozygote mismatch contributing 4) -> Nhet_0 = Nhet_1 = 6
+    # (marker 6 was never a het marker for either individual).
+    # phi = 0.5 - 4/(4*6) = 0.5 - 1/6 = 1/3
+    expected_nan = 0.5 - 4 / (4 * 6)
     assert abs(float(phi_nan[0, 1]) - expected_nan) < 1e-9, (
         f"got {float(phi_nan[0,1])}, want {expected_nan}"
     )
 
     # Also verify a het marker turned NaN drops out of the NaN-carrier's own
-    # N_Aa^i count and out of N_AaAa for the pair -- AND (pairwise-complete
-    # fix) drops out of the *other* individual's N_Aa^j count too, since
+    # Nhet_i count and out of Sd for the pair -- AND (pairwise-complete
+    # fix) drops out of the *other* individual's Nhet_j count too, since
     # marker 0 is no longer co-observed for the pair.
     ind1_nan2 = ind1.clone()
     ind1_nan2[0] = float("nan")  # marker 0 was a shared het marker
     G_nan2 = torch.stack([ind0, ind1_nan2])
     phi_nan2 = king_robust_kinship(G_nan2)
-    # N_AaAa drops to 5 (marker 0 excluded, both were het there).
-    # N_AAaa unaffected = 2 (markers 6,7 opposite-homozygote; marker 0 was
-    # never part of N_AAaa).
-    # Pairwise-complete denominator (Fix 1): N_Aa^0(pairwise) = # markers
-    # where ind0 is het AND ind1 is observed = {1,2,3,4,5} = 5 (marker 0
-    # excluded because ind1 is NaN there, even though ind0 itself is
-    # observed at marker 0 -- this is the behavior change from the fix).
-    # N_Aa^1(pairwise) = # markers where ind1 is het AND ind0 is observed =
+    # Sd unaffected = 8 (marker 0 contributed diff 0 either way; markers 6,7
+    # still opposite-hom mismatches, diff^2=4 each).
+    # Pairwise-complete denominator: Nhet_0(pairwise) = # markers where ind0
+    # is het AND ind1 is observed = {1,2,3,4,5} = 5 (marker 0 excluded
+    # because ind1 is NaN there, even though ind0 itself is observed at
+    # marker 0 -- this is the pairwise-complete behavior).
+    # Nhet_1(pairwise) = # markers where ind1 is het AND ind0 is observed =
     # {1,2,3,4,5} = 5 (marker 0 excluded because ind1 itself is NaN there).
-    # denom = 5 + 5 = 10 (was 6 + 5 = 11 under the old own-count denominator,
-    # which wrongly included ind0's marker-0 het count even though marker 0
-    # is not part of the pairwise-complete marker set for this pair).
-    expected_nan2 = (5 - 2 * 2) / (5 + 5)
+    # min-het = min(5, 5) = 5. phi = 0.5 - 8/(4*5) = 0.5 - 0.4 = 0.1
+    expected_nan2 = 0.5 - 8 / (4 * 5)
     assert abs(float(phi_nan2[0, 1]) - expected_nan2) < 1e-9, (
         f"got {float(phi_nan2[0,1])}, want {expected_nan2}"
     )
@@ -233,39 +307,42 @@ def test_king_robust_nan_handling():
 
 
 def test_king_robust_pairwise_complete_denominator_excludes_partner_missing():
-    """Directly proves Fix 1: the denominator N_Aa^i must be restricted to
-    the pairwise-complete marker set (markers where BOTH i and j are
-    observed), not individual i's own non-missing markers.
+    """Directly proves the denominator Nhet_i must be restricted to the
+    pairwise-complete marker set (markers where BOTH i and j are observed),
+    not individual i's own non-missing markers.
 
     Construct 2 individuals, 3 markers:
         ind0: 1 (het), 1 (het), 0 (hom0)
         ind1: 1 (het), NaN,     2 (hom2)
 
     Marker 1 is a het marker for ind0 but NaN for ind1. Under the
-    pairwise-complete convention, marker 1 must be EXCLUDED from N_Aa^0 in
+    pairwise-complete convention, marker 1 must be EXCLUDED from Nhet_0 in
     the denominator (since ind1 is not observed there), even though ind0
     itself has a valid, heterozygous genotype at that marker.
 
-    Hand-derivation:
-    - N_AaAa (both-het, co-observed): marker 0 only -> 1.
-      (marker 1 excluded because ind1 is NaN there.)
-    - N_AAaa (opposite-homozygote, co-observed): marker 2 (ind0=0, ind1=2)
-      -> 1.
-    - N_Aa^0(pairwise) = # markers where ind0 het AND ind1 observed
+    Hand-derivation (co-observed markers = {0, 2}; marker 1 dropped since
+    ind1 is NaN there):
+    - Sd (co-observed): marker 0 (1,1) -> diff 0; marker 2 (0,2) -> diff^2
+      4. Sd = 0 + 4 = 4.
+    - Nhet_0(pairwise) = # markers where ind0 het AND ind1 observed
       = {marker 0} = 1 (marker 1 dropped: ind0 is het there, but ind1 is
       NaN, so it must NOT count toward the denominator).
-    - N_Aa^1(pairwise) = # markers where ind1 het AND ind0 observed
+    - Nhet_1(pairwise) = # markers where ind1 het AND ind0 observed
       = {marker 0} = 1 (marker 1: ind1 itself is NaN there, so it was
       never counted as a het marker for ind1 either).
-    - denom = 1 + 1 = 2.
-    - phi_01 = (N_AaAa - 2*N_AAaa) / denom = (1 - 2*1) / 2 = -0.5.
+    - min-het = min(1, 1) = 1.
+    - phi_01 = 0.5 - Sd/(4*min-het) = 0.5 - 4/(4*1) = 0.5 - 1.0 = -0.5.
 
     Contrast: a (WRONG) naive own-count denominator would instead use
-    N_Aa^0(own) = 2 (markers 0 and 1, ind0's own het count, ignoring ind1's
-    missingness at marker 1) and N_Aa^1(own) = 1, giving denom = 3 and
+    Nhet_0(own) = 2 (markers 0 and 1, ind0's own het count, ignoring ind1's
+    missingness at marker 1) and Nhet_1(own) = 1 -- under the old (pre-fix)
+    sum-of-own-counts formula this would give denom = 3 and
     phi_01 = (1 - 2) / 3 = -1/3 != -0.5. The assertion below pins the
-    pairwise-complete value (-0.5), which would fail under the old
-    (pre-fix) implementation.
+    pairwise-complete value (-0.5), which would fail under that prior
+    (pre-fix) implementation. (min(1,1) == (1+1)/2 == 1 here, so this
+    particular pair does not by itself distinguish MIN from SUM of the
+    *pairwise-complete* counts -- that is covered separately by
+    test_king_robust_unequal_het_counts_distinguishes_min_from_sum.)
     """
     from torchgenomics.linalg.kinship_admixed import king_robust_kinship
 
@@ -274,7 +351,7 @@ def test_king_robust_pairwise_complete_denominator_excludes_partner_missing():
         [1.0, float("nan"), 2.0],
     ], dtype=torch.float64)
     phi = king_robust_kinship(G)
-    expected = (1 - 2 * 1) / (1 + 1)
+    expected = 0.5 - 4 / (4 * 1)
     assert abs(expected - (-0.5)) < 1e-12  # sanity on the hand derivation itself
     assert abs(float(phi[0, 1]) - expected) < 1e-9, (
         f"got {float(phi[0,1])}, want {expected} (pairwise-complete); "

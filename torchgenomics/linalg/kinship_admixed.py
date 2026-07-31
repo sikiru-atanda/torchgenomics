@@ -26,62 +26,67 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
     """KING-robust between-family kinship estimator.
 
     Implements the "between-family" (population-structure-robust) kinship
-    estimator of Manichaikul et al. 2010, *Bioinformatics* 26:2867, eq. 11:
+    estimator of Manichaikul et al. 2010, *Bioinformatics* 26:2867 -- the
+    same estimator computed by the reference KING software, PLINK2
+    ``--make-king``, and SNPRelate's ``snpgdsIBDKING(type="KING-robust")``:
 
-        phi_ij = (N_AaAa - 2 * N_AAaa) / (N_Aa^i + N_Aa^j)
+        phi_ij = 0.5 - Sd_ij / (4 * min(Nhet_i, Nhet_j))
 
-    where, over the set of markers scored for the pair (i, j):
+    where, over the **pairwise-complete** set of markers scored for the
+    pair (i, j) -- i.e. markers at which *both* ``i`` and ``j`` are
+    observed (non-NaN dosage):
 
-    - ``N_AaAa``  = number of markers at which *both* individuals are
-      heterozygous (dosage == 1 for both).
-    - ``N_AAaa``  = number of markers at which the two individuals carry
-      *opposite* homozygous genotypes (one is dosage 0 and the other is
-      dosage 2). This is the classical IBS0 count.
-    - ``N_Aa^i``  = number of heterozygous markers in individual ``i``,
-      restricted to the **pairwise-complete** marker set for the pair
-      (i, j) -- i.e. markers at which both ``i`` and ``j`` are observed,
-      not merely ``i``'s own non-missing markers. This matches the
-      convention used by the KING software, PLINK2 ``--make-king``, and
-      SNPRelate's ``snpgdsIBDKING``: numerator and denominator are computed
-      over the *same* marker set for every pair, which matters whenever
-      individuals ``i`` and ``j`` differ in missingness pattern.
+    - ``Sd_ij``   = ``sum_l (g_il - g_jl)^2``, the sum of squared genotype
+      differences over the co-observed markers ``l``. A marker contributes
+      0 when both individuals share the same dosage (including both het),
+      1 when one is heterozygous and the other homozygous, and 4 when the
+      two individuals carry *opposite* homozygous genotypes (dosage 0 vs.
+      dosage 2, the classical IBS0 case).
+    - ``Nhet_i``  = number of heterozygous markers in individual ``i``,
+      restricted to the pairwise-complete marker set for the pair (i, j)
+      (i.e. markers where ``i`` is heterozygous *and* ``j`` is observed
+      there) -- and likewise for ``Nhet_j``. ``min(Nhet_i, Nhet_j)`` is the
+      **elementwise minimum** of the two pairwise-complete het counts, not
+      their sum.
+
+    Verified machine-exact (max-abs-diff ~1e-13, correlation 1.0) against
+    SNPRelate's ``snpgdsIBDKING(type="KING-robust")`` on a synthetic
+    admixed+related fixture -- see
+    ``validation/external/genesis/{run_king_snprelate.R,compare.py}`` and
+    ``tests/test_kinship_admixed.py::test_king_robust_hand_computed`` /
+    ``test_king_robust_unequal_het_counts_distinguishes_min_from_sum``. A
+    prior version of this function used an incorrect
+    ``(N_AaAa - 2*N_AAaa) / (Nhet_i + Nhet_j)`` formula (a SUM rather than
+    MIN denominator, and one that silently dropped every het/homozygote
+    single-mismatch marker (``|g_i - g_j| == 1``) from the numerator
+    entirely) -- that formula is not the Manichaikul et al. 2010 KING-robust
+    estimator and disagreed with SNPRelate. Do not reintroduce a sum-based
+    denominator or a numerator that omits diff==1 markers.
 
     The diagonal is fixed at 0.5 (self-kinship) explicitly, rather than
     relying on the raw formula evaluated at i == j (which is well-defined
-    there -- N_AAaa == 0 and N_Aa^i(pairwise) == N_Aa^i(own) when i == j,
-    so it reduces to het_count / (2 * het_count) = 0.5 -- but setting it
-    explicitly is more robust and sidesteps the het_count == 0 edge case,
-    where the raw formula would divide by zero).
+    there -- Sd == 0 and min(Nhet_i, Nhet_i) == Nhet_i when i == j, so it
+    reduces to 0.5 - 0/(4*Nhet_i) = 0.5 -- but setting it explicitly is more
+    robust and sidesteps the Nhet_i == 0 edge case, where the raw formula
+    would divide by zero).
 
-    This is the *between-family* estimator (eq. 11 in the paper), chosen
-    because — unlike the "population-specific"/homogeneous estimator (eq.
-    9) which assumes all individuals are drawn from a single, unstructured
-    population — it remains well-behaved for pairs of individuals drawn
-    from *different* subpopulations (e.g. an admixed cohort), which is the
-    intended use case here (Task 2 of Phase 57 Unit A, upstream of
-    admixture-aware PC-AiR / PC-Relate).
+    This is the *between-family* estimator, chosen because — unlike the
+    "population-specific"/homogeneous estimator which assumes all
+    individuals are drawn from a single, unstructured population — it
+    remains well-behaved for pairs of individuals drawn from *different*
+    subpopulations (e.g. an admixed cohort), which is the intended use case
+    here (Task 2 of Phase 57 Unit A, upstream of admixture-aware PC-AiR /
+    PC-Relate).
 
-    Scope note (important — do not overclaim): this function is an
-    implementation of the published *formula*. It has been pinned against a
-    hand-computed numerical example (see
-    ``tests/test_kinship_admixed.py::test_king_robust_hand_computed``) and
-    against directional sanity properties on a synthetic admixed+related
-    fixture (parent-offspring vs. cross-population-unrelated pairs). It has
-    **not** been validated against the reference KING software or
-    SNPRelate's ``snpgdsIBDKING`` in this task — that external reference-tool
-    comparison is Task 6 of this Unit. Do not read the tests in this module
-    as reference-equivalence evidence; they are internal-consistency checks
-    only.
-
-    Missing data (NaN dosages): a marker contributes to *every* count for a
-    pair (i, j) -- N_AaAa, N_AAaa, and both denominator terms N_Aa^i,
-    N_Aa^j -- only if *neither* individual has a NaN dosage at that marker.
-    In other words, the whole estimator for pair (i, j) is computed over the
-    pairwise-complete marker set. This means N_Aa^i is, in general,
-    pair-specific (it can differ across the row/column of the kinship
-    matrix for a fixed i), because it excludes markers where the *other*
-    member of the pair happens to be missing, even though i itself is
-    observed there.
+    Missing data (NaN dosages): a marker contributes to *every* term for a
+    pair (i, j) -- ``Sd_ij`` and both denominator terms ``Nhet_i``,
+    ``Nhet_j`` -- only if *neither* individual has a NaN dosage at that
+    marker. In other words, the whole estimator for pair (i, j) is computed
+    over the pairwise-complete marker set. This means ``Nhet_i`` is, in
+    general, pair-specific (it can differ across the row/column of the
+    kinship matrix for a fixed i), because it excludes markers where the
+    *other* member of the pair happens to be missing, even though i itself
+    is observed there.
 
     Parameters
     ----------
@@ -101,66 +106,65 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
     ----------
     Manichaikul, A., Mychaleckyj, J.C., Rich, S.S., Daly, K., Sale, M., and
     Chen, W.-M. (2010). Robust relationship inference in genome-wide
-    association studies. Bioinformatics 26(22), 2867-2873. Eq. 11.
+    association studies. Bioinformatics 26(22), 2867-2873.
     """
     G = G.to(torch.float64)
     n, m = G.shape
     device = G.device
 
-    N_AaAa = torch.zeros(n, n, dtype=torch.float64, device=device)
-    N_AAaa = torch.zeros(n, n, dtype=torch.float64, device=device)
+    # Sd[i, j] accumulates sum_l valid_i_l * valid_j_l * (g_il - g_jl)^2 over
+    # marker chunks. Expanding the square:
+    #   valid_i*valid_j*(g_i - g_j)^2
+    #     = valid_i*valid_j*g_i^2 - 2*valid_i*valid_j*g_i*g_j + valid_i*valid_j*g_j^2
+    # Let gc_safe = g with NaN positions zeroed (valid ? g : 0), and
+    # sq = gc_safe**2 (== valid*g^2 elementwise, since valid is 0/1). Then,
+    # summed over l:
+    #   term1(i,j) = sum_l valid_i_l * (valid_j_l * g_il^2)      = sq  @ valid_f.T
+    #   term3(i,j) = sum_l valid_i_l * (valid_j_l * g_jl^2)      = valid_f @ sq.T
+    #   term2(i,j) = sum_l (valid_i_l*g_il) * (valid_j_l*g_jl)   = gc_safe @ gc_safe.T
+    # (term2 holds because valid is 0/1-valued, so
+    # valid_i*valid_j*g_i*g_j == (valid_i*g_i)*(valid_j*g_j).) This lets the
+    # whole (n, n) Sd accumulator be built from three matmuls per chunk,
+    # with no (n, n, m) pairwise tensor ever materialized.
+    Sd = torch.zeros(n, n, dtype=torch.float64, device=device)
     # Nhet_pair[i, j] = # markers where i is het AND j is observed (pairwise-
     # complete restriction of individual i's own het count to the marker set
-    # shared with j). Accumulated in the same streaming chunk loop as the
-    # numerator so numerator and denominator always share one marker set.
+    # shared with j). Accumulated in the same streaming chunk loop as Sd so
+    # numerator and denominator always share one marker set.
     Nhet_pair = torch.zeros(n, n, dtype=torch.float64, device=device)
 
     for s in range(0, m, chunk_size):
         gc = G[:, s:s + chunk_size]                      # (n, c)
         valid = ~torch.isnan(gc)                          # (n, c)
+        valid_f = valid.to(torch.float64)                  # observed (any genotype)
         gc_safe = torch.where(valid, gc, torch.zeros_like(gc))
+        sq = gc_safe * gc_safe                              # valid * g^2
+
+        Sd += (sq @ valid_f.T) + (valid_f @ sq.T) - 2.0 * (gc_safe @ gc_safe.T)
 
         het = (gc_safe == 1.0) & valid                     # (n, c)
-        hom0 = (gc_safe == 0.0) & valid                     # (n, c)
-        hom2 = (gc_safe == 2.0) & valid                     # (n, c)
-
         het_f = het.to(torch.float64)                       # het AND observed
-        hom0_f = hom0.to(torch.float64)
-        hom2_f = hom2.to(torch.float64)
-        valid_f = valid.to(torch.float64)                    # observed (any genotype)
-
-        # Both-heterozygous count restricted to co-observed markers: since
-        # het_f is already zeroed at missing positions (valid=False forces
-        # gc_safe=0 -> het=False there), het_f @ het_f.T automatically
-        # excludes any marker where either individual is missing.
-        N_AaAa += het_f @ het_f.T
-
-        # Opposite-homozygote count: same reasoning — hom0_f/hom2_f are zero
-        # at missing positions, so the product implicitly requires both
-        # individuals observed.
-        N_AAaa += hom0_f @ hom2_f.T + hom2_f @ hom0_f.T
 
         # Pairwise-complete per-individual het count: [i, j] = # markers
         # where i is het (and, via het_f, i observed) AND j is observed.
         Nhet_pair += het_f @ valid_f.T
 
-    # N_Aa^i(pairwise) + N_Aa^j(pairwise) for each pair, both restricted to
-    # the same (i, j) shared marker set as N_AaAa/N_AAaa above -- this is
-    # the KING-software / PLINK2 / SNPRelate convention (Fix: previously the
-    # denominator used each individual's own, non-pairwise-restricted het
-    # count, which could draw on a different marker set than the numerator
-    # under differential missingness).
-    denom = Nhet_pair + Nhet_pair.T
+    # min(Nhet_i, Nhet_j) -- the KING-robust denominator per Manichaikul
+    # et al. 2010 / SNPRelate's snpgdsIBDKING(type="KING-robust"), NOT the
+    # sum Nhet_i + Nhet_j (that was the pre-fix bug; see docstring above).
+    min_het = torch.minimum(Nhet_pair, Nhet_pair.T)
     # Guard against div-by-zero for pairs with no shared heterozygosity
     # (e.g. both individuals fully homozygous, or no co-observed markers);
-    # such pairs get phi = 0 rather than NaN/inf.
-    safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
-    phi = (N_AaAa - 2.0 * N_AAaa) / safe_denom
-    phi = torch.where(denom > 0, phi, torch.zeros_like(phi))
+    # such pairs get phi = 0 rather than NaN/inf (documented convention,
+    # matching the prior implementation's zero-denominator handling).
+    safe_min = torch.where(min_het > 0, min_het, torch.ones_like(min_het))
+    phi = 0.5 - Sd / (4.0 * safe_min)
+    phi = torch.where(min_het > 0, phi, torch.zeros_like(phi))
 
-    # N_AaAa, N_AAaa, and denom are all symmetric by construction (each is
-    # built from A @ B.T + B @ A.T or A @ A.T over the same per-marker
-    # indicator vectors), so this symmetrization is defensive/a no-op.
+    # Sd and min_het are symmetric by construction (each is built from
+    # A @ B.T + B @ A.T - 2*(C @ C.T) or elementwise min of M and M.T over
+    # the same per-marker vectors), so this symmetrization is defensive/a
+    # no-op guarding against floating-point non-associativity.
     phi = 0.5 * (phi + phi.T)
     phi.fill_diagonal_(0.5)
     return phi
