@@ -550,3 +550,78 @@ def test_pc_air_related_individuals_project_to_correct_population():
         f"related pop-0 collapsed toward the population boundary: "
         f"rel_dist {rel_dist:.4f} vs unrel_dist {unrel_dist:.4f}"
     )
+
+
+def test_pc_air_projection_formula_reproduces_own_pca_score():
+    """Fix 1 (Task 4 follow-up): reproduction-identity regression test.
+
+    The out-of-sample projection formula used inside `pc_air` for related
+    individuals,
+
+        scores_rel = Zr @ Zu^T @ U / (m * lambda),
+
+    is only a mathematically valid *extension* of the unrelated-set PCA if
+    it also reproduces the unrelated-set's own PCA scores when applied to an
+    unrelated individual through that same formula. This holds because
+    ``Zu @ Zu.T @ U = m * grm_u @ U = m * lambda * U`` (eigen-relation), so
+    dividing by ``m * lambda`` gives back ``U`` exactly. Nothing in the code
+    currently pins this identity: a future edit to the denominator (e.g.
+    swapping in ``sqrt(m * lambda)``, a historical mis-scaling this module's
+    docstring explicitly calls out as a past bug) would silently break
+    related-individual placement without failing any existing test (the
+    existing projection-sanity test only checks a coarse directional/
+    magnitude property, not the exact reproduction identity).
+
+    This test pulls a single individual OUT of the unrelated set (as if it
+    were "held out"), standardizes it with the unrelated-set's own mean/sd,
+    runs it through the *related*-branch projection formula, and asserts the
+    result matches that same individual's actual PCA score (`U[row]`) to
+    near machine precision (FP64).
+    """
+    from torchgenomics.linalg.kinship_admixed import (
+        king_robust_kinship, ld_prune_independent, pc_air, pcair_partition,
+    )
+
+    d = make_admixed(n_per_pop=60, n_related_pairs=15, m=800, fst=0.15, seed=7)
+    G = d["G"]
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    phi = king_robust_kinship(Gp)
+
+    n_pcs = 5
+    pcs, internals = pc_air(Gp, phi, n_pcs=n_pcs, return_internals=True)
+    Zu, U, lam, mu, sd = (
+        internals["Zu"], internals["U"], internals["lam"],
+        internals["mu"], internals["sd"],
+    )
+    m = Gp.shape[1]
+    k = U.shape[1]
+    assert k == n_pcs, "fixture should have enough unrelated individuals for 5 PCs"
+
+    unrel_mask, _rel_mask = pcair_partition(phi)
+    unrel_idx = unrel_mask.nonzero(as_tuple=True)[0]
+    assert unrel_idx.numel() >= 2, "need at least 2 unrelated individuals to hold one out"
+
+    # Hold out the first unrelated individual: standardize it with the
+    # unrelated-set's own mean/sd (mu, sd) exactly as pc_air does for its Zu,
+    # then apply the SAME related-projection formula used inside pc_air.
+    held_out_row = 0
+    held_out_global_idx = int(unrel_idx[held_out_row])
+    Zrow = (Gp[held_out_global_idx] - mu) / sd            # (m,)
+    lam_safe = lam.clamp(min=1e-12)
+    proj_row = (Zrow @ Zu.T) @ U / (m * lam_safe)          # (k,)
+
+    U_row = U[held_out_row]                                 # this individual's actual PCA score
+
+    max_abs_err = float((proj_row - U_row).abs().max())
+    assert torch.allclose(proj_row, U_row, atol=1e-8), (
+        f"reproduction-identity failed: projecting an unrelated individual "
+        f"through the related-projection formula did not reproduce its own "
+        f"PCA score (max abs err {max_abs_err:.3e})"
+    )
+
+    # Cross-check: pc_air's assembled output for this individual (which is
+    # placed via the unrelated-set branch, pcs[unrel_idx] = U, not the
+    # projection formula) must also match -- confirms internals are
+    # consistent with the public return value.
+    assert torch.allclose(pcs[held_out_global_idx], U_row, atol=1e-10)

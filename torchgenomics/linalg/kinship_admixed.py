@@ -10,11 +10,15 @@ All estimators run in FP64. KING-robust and PC-Relate stream over marker chunks.
 """
 from __future__ import annotations
 
+import logging
+
 import torch
 from torch import Tensor
 
 from ..ld._pairwise import compute_r2_matrix
 from .eigh import eigendecompose
+
+logger = logging.getLogger(__name__)
 
 
 def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
@@ -359,7 +363,8 @@ def pc_air(
     n_pcs: int = 10,
     kin_threshold: float = 0.025,
     div_threshold: float = -0.025,
-) -> Tensor:
+    return_internals: bool = False,
+) -> Tensor | tuple[Tensor, dict[str, Tensor]]:
     """PC-AiR: relatedness-robust principal components (Conomos et al. 2015).
 
     Principal Components Analysis in Related samples (PC-AiR) recovers
@@ -433,12 +438,24 @@ def pc_air(
     div_threshold : float, default -0.025
         Divergence cut for ancestry-informativeness (see
         :func:`pcair_partition`).
+    return_internals : bool, default False
+        If True, also return a dict of the internal unrelated-set quantities
+        used to build the projection (``Zu``, ``U``, ``lam``, ``mu``, ``sd``)
+        -- primarily for tests that need to verify the out-of-sample
+        projection formula reproduces these values exactly. Does not change
+        the default (``False``) return shape/type.
 
     Returns
     -------
     Tensor, shape (n, n_pcs), dtype float64
         Relatedness-robust PC scores in original sample order. PC signs are
         arbitrary (an eigenvector and its negation are equivalent).
+        If ``return_internals=True``, returns a tuple ``(pcs, internals)``
+        where ``internals`` is a dict with keys ``Zu`` (n_u, m) the
+        standardized unrelated-set genotypes, ``U`` (n_u, k) the unrelated-set
+        PCA eigenvectors, ``lam`` (k,) the corresponding eigenvalues, and
+        ``mu``/``sd`` (m,) the unrelated-set column mean/sd used for
+        standardization.
 
     References
     ----------
@@ -484,7 +501,18 @@ def pc_air(
 
     # Zero-pad if the unrelated set was smaller than the requested n_pcs.
     if k < n_pcs:
+        logger.warning(
+            "pc_air: requested n_pcs=%d but the unrelated set has only "
+            "%d individuals (n_unrelated=%d), so only %d PCs are computable; "
+            "the remaining %d columns are zero-padded. Callers must not "
+            "treat these structurally-zero columns as informative "
+            "PC-Relate/association covariates.",
+            n_pcs, k, int(unrel_mask.sum()), k, n_pcs - k,
+        )
         pad = torch.zeros(n, n_pcs - k, dtype=torch.float64, device=device)
         pcs = torch.cat([pcs, pad], dim=1)
+
+    if return_internals:
+        return pcs, {"Zu": Zu, "U": U, "lam": lam, "mu": mu, "sd": sd}
 
     return pcs
