@@ -594,13 +594,13 @@ def pc_relate(
     comparison: DEFINITIVE reference-equivalence to GENESIS ``pcrelate``
     (including the exact self-kinship estimator and denominator normalization)
     is Task 6 of this Unit. Do not read this docstring or those tests as
-    reference-equivalence evidence.
+    reference-equivalence evidence. The individual-specific allele-frequency regression is fit across ALL n individuals (no unrelated-only restriction and no iterative re-weighting as in GENESIS ``pcrelate``), so results are approximate relative to GENESIS — see Task 6.
 
     Parameters
     ----------
     G_pruned : Tensor, shape (n, m)
         LD-pruned diploid dosage matrix, values in ``[0, 2]`` (float), no
-        missing values. Cast to FP64 internally. Column slices ``[:, s:e]`` are
+        missing values. Missing values (NaN) are NOT supported and will corrupt the result — a single NaN genotype NaN-poisons entire rows/columns of the kinship accumulators; inputs must be complete (imputed) diploid dosages. Cast to FP64 internally. Column slices ``[:, s:e]`` are
         the only indexing performed, so a width-tracking wrapper exposing
         ``shape`` and 2-D column slicing may be passed in place of a raw tensor
         (used by the streaming-memory regression test).
