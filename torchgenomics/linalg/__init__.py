@@ -12,9 +12,12 @@ from .basis import (  # noqa: F401
 from .eigh import auto_n_components, compute_weights, eigendecompose, rotate  # noqa: F401
 from .kinship import GRMMetadata, grm_vanraden, grm_vanraden_streaming, grm_zhang  # noqa: F401
 from .kinship_admixed import (  # noqa: F401
+    AdmixedGRMResult,
+    admixed_grm,
     king_robust_kinship,
     ld_prune_independent,
     pc_air,
+    pc_relate,
     pcair_partition,
 )
 from .kinship_advanced import (  # noqa: F401

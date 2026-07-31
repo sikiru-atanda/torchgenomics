@@ -11,6 +11,7 @@ All estimators run in FP64. KING-robust and PC-Relate stream over marker chunks.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
@@ -516,3 +517,282 @@ def pc_air(
         return pcs, {"Zu": Zu, "U": U, "lam": lam, "mu": mu, "sd": sd}
 
     return pcs
+
+
+def pc_relate(
+    G_pruned: Tensor,
+    pcs: Tensor,
+    n_pcs_adjust: int = 3,
+    maf_min: float = 0.01,
+    chunk_size: int = 2000,
+) -> Tensor:
+    """PC-Relate ancestry-adjusted kinship estimator (Conomos et al. 2016).
+
+    Estimates pairwise kinship coefficients that are unbiased in the presence
+    of population structure / admixture by first modelling each individual's
+    *individual-specific allele frequency* as a linear function of ancestry
+    principal components, then forming a method-of-moments kinship estimator
+    from the ancestry-adjusted genotype residuals. Because the residuals are
+    taken relative to each individual's own ancestry-predicted allele
+    frequency, allele-frequency divergence between subpopulations no longer
+    inflates the apparent kinship of unrelated cross-population pairs (which
+    is the failure mode of a naive GRM that uses a single global mean
+    frequency per SNP).
+
+    Algorithm (Conomos et al. 2016, *AJHG* 98:127, eqs. 3-5)
+    -------------------------------------------------------
+    1. **Individual-specific allele frequencies.** Regress each SNP's genotype
+       vector ``g_.l`` (over individuals) on the design matrix
+       ``D = [1 | pcs[:, :n_pcs_adjust]]`` by ordinary least squares, giving
+       fitted values ``\\hat{g}_il``. The individual-specific allele frequency
+       is ``mu_il = \\hat{g}_il / 2`` (diploid), clamped to
+       ``[maf_min, 1 - maf_min]`` so the binomial variance term
+       ``mu(1-mu)`` stays strictly positive. The OLS hat matrix
+       ``H = D (D^T D)^{-1} D^T`` (shape ``(n, n)``, independent of the number
+       of markers) is formed once and applied per marker chunk, so the full
+       ``(n, m)`` individual-specific-frequency matrix is never materialized.
+       With ``n_pcs_adjust = 0`` the design collapses to an intercept only and
+       ``mu_il`` reduces to the single global mean frequency of SNP ``l`` for
+       every individual -- i.e. the *unadjusted* estimator, exposed here only
+       so tests can demonstrate that the PC-adjustment removes cross-ancestry
+       inflation.
+    2. **Kinship moment estimator.** With genotype residuals
+       ``r_il = g_il - 2 mu_il`` and per-individual binomial-variance weights
+       ``w_il = sqrt(mu_il (1 - mu_il))``,
+
+           phi_ij = ( sum_l r_il r_jl )
+                    / ( 4 sum_l w_il w_jl )
+
+       where both sums run over all markers (accumulated chunk-by-chunk). This
+       is eq. 5 of Conomos et al. 2016 for the off-diagonal (i != j) kinship.
+    3. **Streaming.** The numerator ``sum_l r_il r_jl`` and denominator
+       ``sum_l w_il w_jl`` are ``(n, n)`` accumulators built one marker chunk
+       at a time; the marker-loop peak memory is ``O(n * chunk_size + n^2)``
+       and does not scale with the total marker count ``m``.
+
+    Self-kinship (diagonal)
+    -----------------------
+    The diagonal is set explicitly to ``0.5`` (the identity-by-descent
+    self-kinship of a non-inbred individual). Conomos et al. 2016 define a
+    separate self-kinship / inbreeding estimator (their eq. 6, using the
+    homozygosity residual ``(g_il - 2 mu_il)^2 - ...``); implementing and
+    validating that exact self-estimator is deferred to Task 6 of this Unit
+    together with the GENESIS reference comparison. For the intended use here
+    (a random-effect covariance whose diagonal is conventionally standardized
+    to the non-inbred value) the fixed 0.5 diagonal is the documented,
+    conservative choice.
+
+    Correctness / validation status
+    -------------------------------
+    This function implements the published Conomos 2016 *formula*. The tests in
+    ``tests/test_kinship_admixed.py`` are Tier-1 internal-correctness gates:
+    (i) pedigree recovery -- injected parent-offspring pairs (true kinship
+    0.25) estimate markedly above unrelated cross-population pairs (~0), and in
+    the right ballpark; (ii) ancestry-adjustment direction -- the PC-adjusted
+    estimator gives lower spurious cross-ancestry kinship than the unadjusted
+    (``n_pcs_adjust=0``) estimator. They are **not** a reference-tool
+    comparison: DEFINITIVE reference-equivalence to GENESIS ``pcrelate``
+    (including the exact self-kinship estimator and denominator normalization)
+    is Task 6 of this Unit. Do not read this docstring or those tests as
+    reference-equivalence evidence.
+
+    Parameters
+    ----------
+    G_pruned : Tensor, shape (n, m)
+        LD-pruned diploid dosage matrix, values in ``[0, 2]`` (float), no
+        missing values. Cast to FP64 internally. Column slices ``[:, s:e]`` are
+        the only indexing performed, so a width-tracking wrapper exposing
+        ``shape`` and 2-D column slicing may be passed in place of a raw tensor
+        (used by the streaming-memory regression test).
+    pcs : Tensor, shape (n, p) with p >= n_pcs_adjust
+        Ancestry principal components (e.g. from :func:`pc_air`). Only the
+        first ``n_pcs_adjust`` columns are used.
+    n_pcs_adjust : int, default 3
+        Number of leading PCs used to model individual-specific allele
+        frequencies. ``0`` yields the unadjusted (single global mean freq)
+        estimator.
+    maf_min : float, default 0.01
+        Individual-specific allele frequencies are clamped to
+        ``[maf_min, 1 - maf_min]`` to keep the binomial variance positive.
+    chunk_size : int, default 2000
+        Number of markers processed per streaming chunk.
+
+    Returns
+    -------
+    Tensor, shape (n, n), dtype float64
+        Symmetric ancestry-adjusted kinship matrix, diagonal == 0.5.
+
+    References
+    ----------
+    Conomos, M.P., Reiner, A.P., Weir, B.S., and Thornton, T.A. (2016).
+    Model-free estimation of recent genetic relatedness. American Journal of
+    Human Genetics 98(1), 127-148.
+    """
+    n, m = G_pruned.shape
+    pcs = pcs.to(torch.float64)
+    device = pcs.device
+
+    # --- OLS design + hat matrix (formed once; (n, n), independent of m) ---
+    ones = torch.ones(n, 1, dtype=torch.float64, device=device)
+    if n_pcs_adjust > 0:
+        p_use = min(n_pcs_adjust, pcs.shape[1])
+        D = torch.cat([ones, pcs[:, :p_use]], dim=1)     # (n, 1 + p_use)
+    else:
+        D = ones                                          # (n, 1) intercept only
+    # H = D (D^T D)^{-1} D^T  -- use pinv for rank-deficiency robustness.
+    H = D @ torch.linalg.pinv(D)                          # (n, n)
+
+    num = torch.zeros(n, n, dtype=torch.float64, device=device)
+    den = torch.zeros(n, n, dtype=torch.float64, device=device)
+
+    for s in range(0, m, chunk_size):
+        e = min(s + chunk_size, m)
+        gc = G_pruned[:, s:e].to(torch.float64).to(device)   # (n, c)
+        fitted = H @ gc                                       # (n, c)
+        mu = (fitted / 2.0).clamp(maf_min, 1.0 - maf_min)     # (n, c)
+        r = gc - 2.0 * mu                                     # residuals (n, c)
+        w = torch.sqrt(mu * (1.0 - mu))                       # (n, c)
+        num += r @ r.T
+        den += w @ w.T
+
+    safe_den = torch.where(den > 0, den, torch.ones_like(den))
+    phi = num / (4.0 * safe_den)
+    phi = torch.where(den > 0, phi, torch.zeros_like(phi))
+    # Symmetric by construction (A @ A.T); symmetrize defensively.
+    phi = 0.5 * (phi + phi.T)
+    phi.fill_diagonal_(0.5)
+    return phi
+
+
+@dataclass
+class AdmixedGRMResult:
+    """Result of the admixture-aware GRM pipeline (:func:`admixed_grm`).
+
+    Attributes
+    ----------
+    pcs : Tensor, shape (n, n_pcs)
+        Relatedness-robust ancestry principal components (PC-AiR).
+    grm : Tensor, shape (n, n)
+        Dense genomic relationship matrix ``2 * pc_relate_kinship`` (diagonal
+        1.0 for non-inbred individuals).
+    sparse_grm : Tensor (sparse COO), shape (n, n)
+        Thresholded/sparsified GRM: off-diagonal entries with magnitude below
+        ``sparsify_threshold`` are zeroed and the diagonal is set to 1.0
+        (Tan et al. 2026 sparsification rule).
+    king_kinship : Tensor, shape (n, n)
+        KING-robust kinship matrix used for the PC-AiR partition.
+    pruned_idx : Tensor, shape (k,), dtype long
+        Column indices of the LD-pruned markers used for all downstream
+        estimators (KING / PC-AiR / PC-Relate).
+    """
+
+    pcs: Tensor
+    grm: Tensor
+    sparse_grm: Tensor
+    king_kinship: Tensor
+    pruned_idx: Tensor
+
+
+def admixed_grm(
+    G: Tensor,
+    n_pcs: int = 10,
+    r2_threshold: float = 0.1,
+    sparsify_threshold: float = 0.05,
+    chunk_size: int = 2000,
+    n_pcs_adjust: int = 3,
+    kin_threshold: float = 0.025,
+    div_threshold: float = -0.025,
+    maf_min: float = 0.01,
+) -> AdmixedGRMResult:
+    """Admixture-aware GRM orchestrator: LD-prune -> KING -> PC-AiR -> PC-Relate.
+
+    Composes the four Unit-A estimators into a single relatedness- and
+    ancestry-aware genomic relationship matrix suitable as a GWAS random-effect
+    covariance for structured / admixed cohorts (Tan et al. 2026, Tractor-Mix,
+    Extended Data Fig. 1):
+
+    1. **LD-prune** the markers to an approximately-independent panel
+       (:func:`ld_prune_independent`, r2 < ``r2_threshold``).
+    2. **KING-robust kinship** on the pruned panel
+       (:func:`king_robust_kinship`) for the relatedness partition.
+    3. **PC-AiR** relatedness-robust ancestry PCs (:func:`pc_air`).
+    4. **PC-Relate** ancestry-adjusted kinship (:func:`pc_relate`), using the
+       first ``n_pcs_adjust`` PC-AiR PCs to model individual-specific allele
+       frequencies.
+
+    The dense GRM is ``2 * kinship`` (diagonal 1.0). A sparse companion is
+    produced by the fastGWA / Tan-2026 sparsification rule: off-diagonal
+    entries with ``|entry| < sparsify_threshold`` are set to 0, the diagonal is
+    set to 1.0, and the result is stored as a ``torch.sparse_coo_tensor`` for
+    memory-efficient downstream matrix-vector products.
+
+    Validation status
+    -----------------
+    Internal-correctness only (shape coherence + pedigree recovery via the
+    PC-Relate Tier-1 gate). Reference-equivalence to GENESIS is Task 6.
+
+    Parameters
+    ----------
+    G : Tensor, shape (n, m)
+        Diploid dosage matrix, values in ``[0, 2]`` (float), no missing values.
+    n_pcs : int, default 10
+        Number of PC-AiR ancestry PCs to compute/return.
+    r2_threshold : float, default 0.1
+        LD-pruning r-squared threshold.
+    sparsify_threshold : float, default 0.05
+        Off-diagonal GRM entries below this magnitude are zeroed in
+        ``sparse_grm``.
+    chunk_size : int, default 2000
+        Marker-chunk size for the streaming KING / PC-Relate estimators.
+    n_pcs_adjust : int, default 3
+        Number of leading PC-AiR PCs used by PC-Relate for the
+        individual-specific-frequency adjustment.
+    kin_threshold, div_threshold : float
+        Relatedness / divergence cuts for the PC-AiR partition.
+    maf_min : float, default 0.01
+        Individual-specific allele-frequency clamp for PC-Relate.
+
+    Returns
+    -------
+    AdmixedGRMResult
+        ``pcs`` (n, n_pcs), dense ``grm`` (n, n), ``sparse_grm`` (n, n sparse
+        COO), ``king_kinship`` (n, n), and ``pruned_idx`` (k,).
+
+    References
+    ----------
+    Tan et al. (2026). Tractor-Mix (Extended Data Fig. 1).
+    Conomos et al. (2015, 2016); Manichaikul et al. (2010).
+    """
+    G = G.to(torch.float64)
+    n = G.shape[0]
+    device = G.device
+
+    keep = ld_prune_independent(G, r2_threshold=r2_threshold)
+    Gp = G[:, keep]
+    king = king_robust_kinship(Gp, chunk_size=chunk_size)
+    pcs = pc_air(
+        Gp, king, n_pcs=n_pcs,
+        kin_threshold=kin_threshold, div_threshold=div_threshold,
+    )
+    kin = pc_relate(
+        Gp, pcs, n_pcs_adjust=n_pcs_adjust, maf_min=maf_min,
+        chunk_size=chunk_size,
+    )
+
+    grm = 2.0 * kin                                     # dense; diagonal 1.0
+
+    # --- Sparsify: |off-diag| < threshold -> 0, diagonal -> 1.0 ---
+    grm_sp = grm.clone()
+    off_mask = grm_sp.abs() < sparsify_threshold
+    grm_sp[off_mask] = 0.0
+    diag_idx = torch.arange(n, device=device)
+    grm_sp[diag_idx, diag_idx] = 1.0
+    sparse_grm = grm_sp.to_sparse_coo()
+
+    return AdmixedGRMResult(
+        pcs=pcs,
+        grm=grm,
+        sparse_grm=sparse_grm,
+        king_kinship=king,
+        pruned_idx=keep,
+    )

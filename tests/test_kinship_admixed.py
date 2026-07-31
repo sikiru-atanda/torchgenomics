@@ -625,3 +625,123 @@ def test_pc_air_projection_formula_reproduces_own_pca_score():
     # projection formula) must also match -- confirms internals are
     # consistent with the public return value.
     assert torch.allclose(pcs[held_out_global_idx], U_row, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: PC-Relate ancestry-adjusted kinship + admixed_grm orchestrator
+# ---------------------------------------------------------------------------
+# PC-Relate reference: Conomos et al. 2016, AJHG 98:127. These are Tier-1
+# internal-correctness gates (pedigree recovery + ancestry-adjustment
+# direction); DEFINITIVE reference-equivalence to GENESIS ``pcrelate`` is
+# Task 6 of this Unit.
+
+
+def test_pc_relate_recovers_pedigree_and_orchestrator():
+    from torchgenomics.linalg.kinship_admixed import (
+        admixed_grm,
+        king_robust_kinship,
+        ld_prune_independent,
+        pc_air,
+        pc_relate,
+    )
+
+    d = make_admixed(n_per_pop=60, n_related_pairs=15, m=1000, fst=0.15, seed=11)
+    G = d["G"]
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    phi = king_robust_kinship(Gp)
+    pcs = pc_air(Gp, phi, n_pcs=5)
+    kin = pc_relate(Gp, pcs, n_pcs_adjust=3)
+    assert kin.shape == (G.shape[0], G.shape[0])
+    assert kin.dtype == torch.float64
+    # Diagonal self-kinship set to 0.5 (documented choice; PC-Relate
+    # self-estimator deferred to Task 6).
+    assert torch.allclose(torch.diag(kin), torch.full((G.shape[0],), 0.5,
+                                                       dtype=torch.float64))
+    # parent-offspring pairs (true kinship 0.25) estimated higher than
+    # unrelated cross-population pairs (~0).
+    po = [(i, j) for (i, j, _) in d["related_pairs"]]
+    po_est = torch.tensor([float(kin[i, j]) for i, j in po])
+    # unrelated cross-population pairs (pop 0 index 0 vs pop 1 indices)
+    n = G.shape[0]
+    unrel_est = torch.tensor(
+        [float(kin[i, j]) for i in range(0, 5) for j in range(n - 5, n)]
+    )
+    assert po_est.mean() > 0.10, f"PO kinship {po_est.mean()} too low"
+    assert po_est.mean() > unrel_est.mean() + 0.10
+    # ideally in the right ballpark
+    assert 0.15 < po_est.mean() < 0.35, f"PO mean {po_est.mean()} out of ballpark"
+    assert abs(float(unrel_est.mean())) < 0.05, "unrelated cross-pop not near 0"
+
+    # orchestrator returns a coherent result
+    res = admixed_grm(G, n_pcs=5, r2_threshold=0.2)
+    assert res.pcs.shape == (G.shape[0], 5)
+    assert res.grm.shape == (G.shape[0], G.shape[0])
+    assert res.sparse_grm.shape == (G.shape[0], G.shape[0])
+    assert res.king_kinship.shape == (G.shape[0], G.shape[0])
+    assert res.pruned_idx.dtype == torch.long
+    # GRM = 2 * kinship: diagonal 1.0 on the dense GRM.
+    assert torch.allclose(torch.diag(res.grm),
+                          torch.ones(G.shape[0], dtype=torch.float64))
+
+
+def test_pc_relate_ancestry_adjustment_reduces_crosspop_kinship():
+    """Ancestry-adjustment correctness (Conomos 2016 individual-specific AF).
+
+    PC-Relate with PC-adjustment must give LOWER spurious kinship between
+    UNRELATED cross-population individuals than a naive version WITHOUT
+    ancestry adjustment (``n_pcs_adjust=0`` = single global mean freq),
+    because unadjusted between-ancestry kinship is inflated by shared
+    ancestry-informative allele-frequency divergence. This proves the
+    individual-specific-AF regression step works.
+    """
+    from torchgenomics.linalg.kinship_admixed import (
+        king_robust_kinship,
+        ld_prune_independent,
+        pc_air,
+        pc_relate,
+    )
+
+    d = make_admixed(n_per_pop=60, n_related_pairs=15, m=1000, fst=0.15, seed=11)
+    G = d["G"]
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    phi = king_robust_kinship(Gp)
+    pcs = pc_air(Gp, phi, n_pcs=5)
+
+    kin_adj = pc_relate(Gp, pcs, n_pcs_adjust=3)
+    kin_naive = pc_relate(Gp, pcs, n_pcs_adjust=0)
+
+    n = G.shape[0]
+    idx = [(i, j) for i in range(0, 10) for j in range(n - 10, n)]
+    crosspop_adj = torch.tensor([float(kin_adj[i, j]) for i, j in idx])
+    crosspop_naive = torch.tensor([float(kin_naive[i, j]) for i, j in idx])
+
+    # Adjusted cross-pop kinship must be markedly closer to 0 than naive.
+    assert crosspop_adj.abs().mean() < crosspop_naive.abs().mean(), (
+        f"adjusted cross-pop |kin| {crosspop_adj.abs().mean():.4f} not lower "
+        f"than naive {crosspop_naive.abs().mean():.4f}"
+    )
+    # Adjusted cross-pop kinship near zero in absolute terms.
+    assert crosspop_adj.abs().mean() < 0.03
+
+
+def test_admixed_grm_sparse_grm_properties():
+    """Sparse GRM: diagonal 1.0, |off-diag| < sparsify_threshold zeroed."""
+    from torchgenomics.linalg.kinship_admixed import admixed_grm
+
+    d = make_admixed(n_per_pop=50, n_related_pairs=12, m=800, fst=0.15, seed=5)
+    G = d["G"]
+    res = admixed_grm(G, n_pcs=5, r2_threshold=0.2, sparsify_threshold=0.05)
+    dense = res.sparse_grm.to_dense()
+    n = G.shape[0]
+    # Diagonal set to exactly 1.0.
+    assert torch.allclose(torch.diag(dense), torch.ones(n, dtype=torch.float64))
+    # Off-diagonal entries either 0 or magnitude >= threshold.
+    off = dense.clone()
+    off.fill_diagonal_(0.0)
+    nz = off[off != 0.0]
+    if nz.numel() > 0:
+        assert nz.abs().min() >= 0.05 - 1e-12
+    # sparse_grm is a torch sparse tensor.
+    assert res.sparse_grm.is_sparse

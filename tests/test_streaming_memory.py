@@ -2538,3 +2538,104 @@ class TestBayesScanRssMemory:
             f"to {peak_large:.0f} KiB (p=5000) at fixed block_size=500. "
             "fit_rss_blocked likely regressed to scale with total p."
         )
+
+
+# ---------------------------------------------------------------------------
+# pc_relate (admixture-aware PC-Relate kinship) marker-streaming regression
+# ---------------------------------------------------------------------------
+# PC-Relate (Conomos et al. 2016) accumulates (n, n) numerator/denominator
+# matrices one marker CHUNK at a time; it must never materialize the full
+# (n, m) individual-specific-frequency matrix. tracemalloc does not track
+# torch tensors, so we guard the contract BEHAVIORALLY: wrap the genotype
+# source so it records the widest column slab any consumer asks for. The
+# real streaming estimator caps that at ``chunk_size`` regardless of total
+# m; a deliberately-materializing variant (single width-m slice) trips it.
+
+
+class _WidthTrackingCols:
+    """Genotype wrapper recording the max column-slice width requested.
+
+    ``pc_relate`` indexes its genotype argument ONLY via ``[:, s:e]`` column
+    slices and reads ``.shape``. A refactor that built the full ``(n, m)``
+    individual-specific-frequency matrix at once would take a single width-m
+    slice and push ``max_width`` up to m -- exactly the biobank-scale
+    regression this guards against.
+    """
+
+    def __init__(self, G: torch.Tensor) -> None:
+        self._G = G
+        self.max_width = 0
+
+    @property
+    def shape(self):
+        return self._G.shape
+
+    @property
+    def device(self):
+        return self._G.device
+
+    @property
+    def dtype(self):
+        return self._G.dtype
+
+    def __getitem__(self, key):
+        out = self._G[key]
+        if isinstance(key, tuple) and len(key) == 2 and isinstance(key[1], slice):
+            self.max_width = max(self.max_width, int(out.shape[1]))
+        return out
+
+
+class TestPcRelateStreamingMemory:
+    """PC-Relate marker-loop peak must not scale with total marker count m."""
+
+    def test_pc_relate_streaming_width_bounded_by_chunk(self):
+        from torchgenomics.linalg.kinship_admixed import pc_relate
+
+        torch.manual_seed(57)
+        n, m = 40, 6000
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        pcs = torch.randn(n, 3, dtype=torch.float64)
+        chunk = 500
+
+        tracker = _WidthTrackingCols(G)
+        kin = pc_relate(tracker, pcs, n_pcs_adjust=3, chunk_size=chunk)
+
+        assert kin.shape == (n, n)
+        # Real streaming estimator: widest slab it ever touches == chunk_size,
+        # independent of m (m=6000 >> chunk=500).
+        assert tracker.max_width <= chunk, (
+            f"streaming pc_relate touched a {tracker.max_width}-wide column "
+            f"slab; expected <= chunk_size={chunk}"
+        )
+        assert tracker.max_width < m
+
+    def test_materializing_variant_trips_the_width_guard(self):
+        """Control: a variant that materializes the full (n, m) at once MUST
+        fail the same width guard the real estimator passes -- proving the
+        guard has teeth (not vacuously satisfied)."""
+
+        torch.manual_seed(57)
+        n, m = 40, 6000
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        pcs = torch.randn(n, 3, dtype=torch.float64)
+        chunk = 500
+
+        def _pc_relate_materialize(Gsrc, pcs_in):
+            n_, m_ = Gsrc.shape
+            pcs_in = pcs_in.to(torch.float64)
+            D = torch.cat(
+                [torch.ones(n_, 1, dtype=torch.float64), pcs_in[:, :3]], dim=1
+            )
+            H = D @ torch.linalg.pinv(D)
+            gc = Gsrc[:, 0:m_].to(torch.float64)     # <- full (n, m) slab
+            mu = (H @ gc / 2.0).clamp(0.01, 0.99)
+            r = gc - 2.0 * mu
+            w = torch.sqrt(mu * (1.0 - mu))
+            return (r @ r.T) / (4.0 * (w @ w.T))
+
+        tracker = _WidthTrackingCols(G)
+        _pc_relate_materialize(tracker, pcs)
+        # The materializing control touches the full width m and would FAIL
+        # ``max_width <= chunk``.
+        assert tracker.max_width == m
+        assert tracker.max_width > chunk
