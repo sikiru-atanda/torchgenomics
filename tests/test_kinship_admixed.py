@@ -745,3 +745,77 @@ def test_admixed_grm_sparse_grm_properties():
         assert nz.abs().min() >= 0.05 - 1e-12
     # sparse_grm is a torch sparse tensor.
     assert res.sparse_grm.is_sparse
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 6: opt-in GENESIS reference-equivalence gate.
+#
+# See validation/external/genesis/{README.md,compare.py} for the full
+# harness (install.sh -> fetch_data.sh -> run_genesis.R -> compare.py). This
+# test is the pytest-side hook onto that harness: it is a no-op (SKIP) in
+# every normal test run (including CI's default suite) and only does real
+# work when a human/agent has actually executed run_genesis.R and left the
+# golden TSVs behind in validation/external/genesis/out/.
+#
+# This is the DEFINITIVE reference-equivalence check for king_robust_kinship
+# / pc_air / pc_relate against GENESIS's snpgdsIBDKING / pcair / pcrelate.
+# Every other test in this file is explicit that it is NOT such evidence.
+# ─────────────────────────────────────────────────────────────────────────────
+import os
+
+import pytest
+
+
+@pytest.mark.external
+def test_genesis_equivalence_if_present():
+    """Compare torchgenomics vs GENESIS golden outputs, if the harness has
+    been run (validation/external/genesis/out/genesis_*.tsv present).
+
+    Skips (does not fail) when the harness outputs are absent -- this test
+    is opt-in / Pillar-B-style, not part of the default CI suite, per the
+    "external" marker convention (see pyproject.toml and
+    docs/superpowers/specs/2026-04-30-validation-campaign-design.md §5).
+    """
+    genesis_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "validation", "external", "genesis",
+    )
+    out_dir = os.path.join(genesis_dir, "out")
+    required = [
+        os.path.join(out_dir, "G.npy"),
+        os.path.join(out_dir, "meta.npz"),
+        os.path.join(out_dir, "genesis_king_kinship.tsv"),
+        os.path.join(out_dir, "genesis_pcair_pcs.tsv"),
+        os.path.join(out_dir, "genesis_pcrelate_kinship.tsv"),
+    ]
+    missing = [p for p in required if not os.path.isfile(p)]
+    if missing:
+        pytest.skip(
+            "GENESIS harness outputs not present (missing: "
+            f"{[os.path.basename(p) for p in missing]}); run "
+            "validation/external/genesis/{install.sh,fetch_data.sh} then "
+            "`Rscript validation/external/genesis/run_genesis.R` first. "
+            "See validation/external/genesis/README.md."
+        )
+
+    # Delegate to compare.py's own comparison logic rather than duplicating
+    # it here: import it as a module (it guards its script behavior behind
+    # `if __name__ == "__main__"`) and call main(), which returns 0 on PASS
+    # (including tolerances defined at the top of compare.py -- see that
+    # file's TOL_* PLACEHOLDER comments) and nonzero on FAIL.
+    import importlib.util
+
+    compare_path = os.path.join(genesis_dir, "compare.py")
+    spec = importlib.util.spec_from_file_location("genesis_compare", compare_path)
+    genesis_compare = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(genesis_compare)
+
+    exit_code = genesis_compare.main()
+    assert exit_code == 0, (
+        "GENESIS equivalence gate FAILED -- see printed summary table above "
+        "for which metric(s) missed tolerance. If this is the first real "
+        "run_genesis.R execution, the TOL_* constants in compare.py are "
+        "still PLACEHOLDERs and must be set from the observed values "
+        "before this assertion is meaningful as a regression gate."
+    )
