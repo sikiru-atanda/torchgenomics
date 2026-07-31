@@ -281,3 +281,82 @@ def test_king_robust_pairwise_complete_denominator_excludes_partner_missing():
         f"a naive own-count denominator would give {(1 - 2) / 3:.6f} instead"
     )
     assert not torch.isnan(phi).any()
+
+
+def test_ld_prune_drops_correlated():
+    """Task 3 brief test: perfectly-correlated duplicate SNP must be dropped,
+    and the surviving kept set must be mutually below the r2 threshold."""
+    from torchgenomics.linalg.kinship_admixed import ld_prune_independent
+    torch.manual_seed(0)
+    base = torch.randint(0, 3, (60, 20)).to(torch.float64)   # 60 indiv, 20 SNPs
+    # duplicate SNP 0 into SNP 1 (perfectly correlated) -> one must be pruned
+    base[:, 1] = base[:, 0]
+    keep = ld_prune_independent(base, r2_threshold=0.1)
+    assert keep.dtype == torch.long
+    # not both 0 and 1 survive
+    ks = set(keep.tolist())
+    assert not (0 in ks and 1 in ks)
+    # kept SNPs are mutually below r2 threshold
+    from torchgenomics.ld._pairwise import compute_r2_matrix
+    r2 = compute_r2_matrix(base[:, keep])
+    off = r2 - torch.diag(torch.diag(r2))
+    assert float(off.abs().max()) < 0.1 + 1e-6
+
+
+def test_ld_prune_block_of_three_collapses_to_one():
+    """A block of 3 mutually-correlated SNPs (all identical dosage columns,
+    hence pairwise r2 == 1.0 among them) must collapse to exactly 1 survivor
+    under greedy pruning, while genuinely independent SNPs elsewhere all
+    survive. This exercises the "mutual" independence property beyond the
+    brief's pairwise-duplicate case: greedy pruning must correctly propagate
+    the exclusion transitively across a whole correlated block, not just a
+    single pair.
+    """
+    from torchgenomics.linalg.kinship_admixed import ld_prune_independent
+    torch.manual_seed(1)
+    n = 80
+    # 5 independent SNPs drawn i.i.d.
+    indep = torch.randint(0, 3, (n, 5)).to(torch.float64)
+    # a block of 3 SNPs that are all identical (perfectly correlated with
+    # each other and with nothing else)
+    block_base = torch.randint(0, 3, (n, 1)).to(torch.float64)
+    block = block_base.repeat(1, 3)
+    G = torch.cat([indep, block], dim=1)  # columns 0-4 independent, 5-7 the block
+    keep = ld_prune_independent(G, r2_threshold=0.1)
+    ks = set(keep.tolist())
+    # exactly one of {5, 6, 7} survives
+    assert len(ks & {5, 6, 7}) == 1
+    # all 5 independent SNPs survive (they are i.i.d. random, so with n=80
+    # and 5 SNPs the odds of a spurious r2>=0.1 collision are negligible,
+    # and none of them share the block's genotype pattern)
+    assert {0, 1, 2, 3, 4}.issubset(ks)
+    # mutual independence of the final kept set
+    from torchgenomics.ld._pairwise import compute_r2_matrix
+    r2 = compute_r2_matrix(G[:, keep])
+    off = r2 - torch.diag(torch.diag(r2))
+    assert float(off.abs().max()) < 0.1 + 1e-6
+
+
+def test_ld_prune_monomorphic_snp_is_kept_and_does_not_block():
+    """A monomorphic SNP (zero variance across all individuals) has an
+    undefined correlation with every other SNP in the strict mathematical
+    sense (0/0), but torchgenomics.ld._pairwise.compute_r2_matrix resolves
+    this via its variance floor (clamp(std, min=_EPS)) to r2 == 0 rather than
+    NaN -- i.e. a monomorphic SNP is treated as "uncorrelated with
+    everything". This test pins that a monomorphic SNP therefore (a) always
+    survives pruning itself (nothing can exceed the threshold against it),
+    and (b) never blocks any other SNP from being kept.
+    """
+    from torchgenomics.linalg.kinship_admixed import ld_prune_independent
+    torch.manual_seed(2)
+    n = 50
+    mono = torch.full((n, 1), 1.0, dtype=torch.float64)  # constant column
+    others = torch.randint(0, 3, (n, 4)).to(torch.float64)
+    G = torch.cat([mono, others], dim=1)  # column 0 is monomorphic
+    keep = ld_prune_independent(G, r2_threshold=0.1)
+    ks = set(keep.tolist())
+    assert 0 in ks
+    # no NaN ever leaks into the kept-set r2 check
+    from torchgenomics.ld._pairwise import compute_r2_matrix
+    r2 = compute_r2_matrix(G[:, keep])
+    assert not torch.isnan(r2).any()

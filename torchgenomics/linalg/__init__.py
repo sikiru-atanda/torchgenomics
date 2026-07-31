@@ -11,7 +11,7 @@ from .basis import (  # noqa: F401
 )
 from .eigh import auto_n_components, compute_weights, eigendecompose, rotate  # noqa: F401
 from .kinship import GRMMetadata, grm_vanraden, grm_vanraden_streaming, grm_zhang  # noqa: F401
-from .kinship_admixed import king_robust_kinship  # noqa: F401
+from .kinship_admixed import king_robust_kinship, ld_prune_independent  # noqa: F401
 from .kinship_advanced import (  # noqa: F401
     grm_endelman_digenic,
     grm_pseudo_diploid,

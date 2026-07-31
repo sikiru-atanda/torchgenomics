@@ -13,6 +13,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+from ..ld._pairwise import compute_r2_matrix
+
 
 def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
     """KING-robust between-family kinship estimator.
@@ -156,3 +158,111 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
     phi = 0.5 * (phi + phi.T)
     phi.fill_diagonal_(0.5)
     return phi
+
+
+def ld_prune_independent(
+    G: Tensor,
+    r2_threshold: float = 0.1,
+    window: int = 500,
+) -> Tensor:
+    """Greedy LD pruning to a mutually-independent SNP subset.
+
+    Sequentially scans SNPs left-to-right and keeps a SNP only if its
+    pairwise r-squared against *every already-kept SNP within the trailing
+    ``window``* is strictly below ``r2_threshold``. This is the same greedy
+    "keep first, drop correlated followers" strategy used by PLINK
+    ``--indep-pairwise`` and is the LD-pruning step feeding PC-AiR: Conomos
+    et al. 2015, *Genet. Epidemiol.* 39:276, recommend pruning input markers
+    to r2 < 0.1 before computing relatedness-robust principal components
+    (Methods, "Estimation of Ancestry via PC-AiR"), so that the KING-robust
+    kinship + PCA step is not dominated by a handful of tightly-linked
+    genomic regions. This module's ``king_robust_kinship`` (Task 2) and this
+    function together form the pre-PC-AiR pipeline stages of Tan et al.
+    2026 (Tractor-Mix, Extended Data Fig. 1).
+
+    Because pruning is greedy and order-dependent, the *specific* SNP kept
+    out of a correlated cluster is whichever one is encountered first
+    (lowest column index) -- this matches PLINK's convention and is
+    sufficient for the intended downstream use (PC-AiR only needs *an*
+    approximately-independent marker panel, not a canonical/optimal one).
+    The property this function guarantees, and that is verified below, is
+    that the *returned* kept set is mutually below the threshold: for every
+    pair (j, k) of kept SNPs with k within `window` positions of j among the
+    kept set, r2(j, k) < r2_threshold.
+
+    Complexity note: `compute_r2_matrix` materializes the full (m, m) r2
+    matrix up front, which is O(m^2) memory -- appropriate for the typical
+    PC-AiR use case (LD-pruning a marker panel of up to a few hundred
+    thousand SNPs on a single chromosome/chunk at a time), not for a
+    genome-wide, unchunked panel of millions of SNPs. Chunked/streaming
+    computation of `compute_r2_matrix` itself is out of scope for this task
+    (Task 3 of Phase 57 Unit A); callers pruning a full genome should
+    pre-chunk by chromosome or LD block.
+
+    Missing-data / monomorphic-SNP handling
+    ----------------------------------------
+    `compute_r2_matrix` is not NaN-safe for genotypes that are themselves
+    NaN (missing dosages): callers must impute or otherwise resolve missing
+    genotypes before calling this function, exactly as required upstream
+    for `king_robust_kinship`'s pairwise-complete NaN handling not applying
+    here.
+
+    A **monomorphic** SNP (zero variance across all individuals) is *not*
+    a missing-data problem, though, and is handled gracefully:
+    `compute_r2_matrix` centers by the column mean and divides by
+    ``clamp(std, min=1e-10)``, so a zero-variance column produces an
+    all-zero normalized column (0 / 1e-10 == 0) rather than a 0/0 NaN. Its
+    r2 against every other SNP therefore evaluates to exactly 0.0, i.e. a
+    monomorphic SNP is treated as "uncorrelated with everything": it is
+    always kept (nothing can ever exceed the threshold *against* it) and it
+    never blocks any other SNP from being kept. As a defense-in-depth
+    measure against future changes to `compute_r2_matrix` (or an r2 input
+    fed in some other way that *does* contain NaN), any NaN entry
+    encountered during the greedy scan is treated as "not correlated"
+    (does not block a keep) rather than raised or silently treated as
+    correlated -- pruning must never spuriously *drop* a SNP because of an
+    undefined comparison.
+
+    Parameters
+    ----------
+    G : Tensor, shape (n, m)
+        Genotype dosage matrix (diploid dosages in {0, 1, 2}, or polyploid
+        dosages in [0, k]); float, no missing values.
+    r2_threshold : float, default 0.1
+        Maximum allowed pairwise r-squared between any two kept SNPs.
+        Conomos et al. 2015 use r2 < 0.1 for PC-AiR input.
+    window : int, default 500
+        Only the trailing ``window`` already-kept SNPs are checked against
+        each candidate (a local/banded approximation to full all-pairs
+        pruning, matching PLINK's sliding-window convention and keeping the
+        per-candidate cost bounded independent of how many SNPs have
+        already been kept).
+
+    Returns
+    -------
+    Tensor, shape (k,), dtype torch.long
+        Column indices (into `G`) of the kept, mutually-independent SNPs,
+        in increasing order.
+
+    References
+    ----------
+    Conomos, M.P., Miller, M.B., and Thornton, T.A. (2015). Robust
+    inference of population structure for ancestry prediction and
+    correction of stratification in the presence of relatedness. Genetic
+    Epidemiology 39(4), 276-293. ("Estimation of Ancestry via PC-AiR":
+    LD-prune markers to r2 < 0.1 before PCA.)
+    """
+    G = G.to(torch.float64)
+    m = G.shape[1]
+    r2 = compute_r2_matrix(G)                # (m, m), float64, symmetric
+    kept: list[int] = []
+    for j in range(m):
+        ok = True
+        for k in kept[-window:]:
+            val = r2[j, k]
+            if not torch.isnan(val) and float(val) >= r2_threshold:
+                ok = False
+                break
+        if ok:
+            kept.append(j)
+    return torch.tensor(kept, dtype=torch.long, device=G.device)
