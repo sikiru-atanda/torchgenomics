@@ -824,6 +824,105 @@ def test_admixed_grm_sparse_grm_properties():
     assert res.sparse_grm.is_sparse
 
 
+def test_pc_relate_training_set_af_regression_recovers_pedigree():
+    """PC-Relate with an unrelated ``training_set`` for the AF regression
+    (GENESIS ``pcrelate`` convention, Conomos et al. 2016) must still recover
+    PO pairs and keep unrelated cross-population kinship near 0 -- i.e. the
+    training-set-restricted path is correct, not merely different.
+
+    Also checks two structural properties of the ``training_set`` parameter
+    itself: (i) passing a boolean mask vs. the equivalent LongTensor of
+    indices gives identical results (both code paths in the implementation
+    are exercised and agree); (ii) passing a training_set covering ALL
+    individuals reproduces the ``training_set=None`` default exactly (the
+    training-set machinery reduces to the original all-individuals fit when
+    the "training set" is everyone).
+    """
+    from torchgenomics.linalg.kinship_admixed import (
+        king_robust_kinship,
+        ld_prune_independent,
+        pc_air,
+        pc_relate,
+        pcair_partition,
+    )
+
+    d = make_admixed(n_per_pop=60, n_related_pairs=15, m=1000, fst=0.15, seed=11)
+    G = d["G"]
+    keep = ld_prune_independent(G, r2_threshold=0.2)
+    Gp = G[:, keep]
+    king = king_robust_kinship(Gp)
+    pcs = pc_air(Gp, king, n_pcs=5)
+
+    unrel_mask, _ = pcair_partition(king)
+    assert unrel_mask.dtype == torch.bool
+    # Sanity: the fixture's greedy MIS partition should leave a non-trivial
+    # unrelated training set (otherwise this test would not exercise the
+    # restricted-fit code path at all).
+    assert 0 < int(unrel_mask.sum()) < G.shape[0]
+
+    kin_train = pc_relate(Gp, pcs, n_pcs_adjust=3, training_set=unrel_mask)
+    assert kin_train.shape == (G.shape[0], G.shape[0])
+    assert kin_train.dtype == torch.float64
+    assert torch.allclose(
+        torch.diag(kin_train),
+        torch.full((G.shape[0],), 0.5, dtype=torch.float64),
+    )
+
+    # PO recovery: same acceptance bars as the training_set=None gate above.
+    po = [(i, j) for (i, j, _) in d["related_pairs"]]
+    po_est = torch.tensor([float(kin_train[i, j]) for i, j in po])
+    n = G.shape[0]
+    unrel_est = torch.tensor(
+        [float(kin_train[i, j]) for i in range(0, 5) for j in range(n - 5, n)]
+    )
+    assert po_est.mean() > 0.10, f"PO kinship {po_est.mean()} too low"
+    assert po_est.mean() > unrel_est.mean() + 0.10
+    assert abs(float(unrel_est.mean())) < 0.05, "unrelated cross-pop not near 0"
+
+    # Boolean mask vs. equivalent index tensor must agree exactly.
+    train_idx = unrel_mask.nonzero(as_tuple=True)[0]
+    kin_train_idx = pc_relate(Gp, pcs, n_pcs_adjust=3, training_set=train_idx)
+    assert torch.allclose(kin_train, kin_train_idx, atol=1e-10)
+
+    # training_set covering everyone must reproduce training_set=None.
+    kin_all_default = pc_relate(Gp, pcs, n_pcs_adjust=3)
+    kin_all_explicit = pc_relate(
+        Gp, pcs, n_pcs_adjust=3,
+        training_set=torch.ones(n, dtype=torch.bool),
+    )
+    assert torch.allclose(kin_all_default, kin_all_explicit, atol=1e-8)
+
+
+def test_admixed_grm_threads_pcair_unrelated_set_into_pc_relate():
+    """admixed_grm's PC-Relate call must use the PC-AiR unrelated partition
+    as the AF-regression training set (not the training_set=None default),
+    and the result must still recover PO pairs.
+    """
+    from torchgenomics.linalg.kinship_admixed import (
+        admixed_grm,
+        pc_relate,
+        pcair_partition,
+    )
+
+    d = make_admixed(n_per_pop=60, n_related_pairs=15, m=1000, fst=0.15, seed=11)
+    G = d["G"]
+    res = admixed_grm(G, n_pcs=5, r2_threshold=0.2)
+
+    Gp = G[:, res.pruned_idx]
+    unrel_mask, _ = pcair_partition(res.king_kinship)
+    expected_kin = pc_relate(
+        Gp, res.pcs, n_pcs_adjust=3, training_set=unrel_mask,
+    )
+    assert torch.allclose(res.grm, 2.0 * expected_kin, atol=1e-8)
+
+    # And, as a coarser end-to-end sanity check, the orchestrator's GRM still
+    # recovers the injected PO pairs.
+    po = [(i, j) for (i, j, _) in d["related_pairs"]]
+    kin = res.grm / 2.0
+    po_est = torch.tensor([float(kin[i, j]) for i, j in po])
+    assert po_est.mean() > 0.10, f"PO kinship {po_est.mean()} too low"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Task 6: opt-in GENESIS reference-equivalence gate.
 #
