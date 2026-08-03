@@ -48,7 +48,10 @@ res = tg.gwas(
     pcs=None,                # int (#PCs to compute) | array | "auto" (default)
     trait=None,              # column name / index; default = first/only phenotype column
     trait_type=None,         # "continuous"|"binary"|"categorical"|None(auto-detect)
-    models=None,             # None(auto-select 1) | "lmm"|"glm"|... | list[str] (multi)
+    models="auto",           # USER'S CHOICE (primary): "lmm" | "glm" | "farmcpu" | ... ;
+                             #   a LIST runs several in one call -> GwasComparison (GAPIT model=c(...));
+                             #   default "auto" picks a sensible model from the trait type (always
+                             #   printed + overridable) so a bare call just works — never forced
     preset="standard",       # "fast" | "standard" | "thorough"
     qc=True,                 # True(default QC) | False | dict(overrides)
     correction="bh",         # "bh"|"bonferroni"|"none"|…
@@ -69,8 +72,12 @@ res = tg.gwas(
    the existing QC + variant-QC-Parquet path). `qc=dict(...)` overrides thresholds.
 4. **Auto-kinship / PCA** (if `kinship="auto"`/`pcs="auto"`): VanRaden GRM
    (`linalg.kinship.grm_vanraden`) + top-N PCs (default per preset) unless supplied.
-5. **Auto model-selection** (if `models=None`) via the decision tree in §4;
-   `models=[...]` runs several and returns a `GwasComparison`.
+5. **Model(s): the user's choice, first-class.** `models=` is how the user picks
+   exactly what to run — one model, or a **list to run several in one call**
+   (returns a `GwasComparison`), mirroring GAPIT's `model=c("GLM","MLM","FarmCPU",…)`.
+   The full TorchGenomics model registry is available by name (§4). `models="auto"`
+   is an *optional convenience fallback* (the §4 tree) for users who'd rather not
+   choose — it is never forced, and whatever it picks is printed + overridable.
 6. **Scan** by delegating to the existing `api.*_scan` functions (no re-implementation).
 7. **Multiple testing** via `correction`.
 8. **Warnings** (§5) surfaced during the run.
@@ -121,23 +128,48 @@ Standardize on the existing `ScanRun` (already has `top_hits`, `lambda_gc`,
   relatedness (suggests the mixed model / more care), phenotype with many missing.
   Each warning is one plain sentence + a suggested action.
 
-## 4. Auto model-selection decision tree (documented, overridable)
+## 4. Model choice — user-driven (primary), with an optional auto fallback
+
+### 4a. Model registry (the names the user passes to `models=`)
+
+The user is free to run any of these, singly or as a **list** (multi-model in one
+call → `GwasComparison`). Names are short, memorable aliases over the existing
+`models`/`api` layer (this is the discoverability surface — `tg.models()` lists
+them with one-line descriptions):
+
+| name | model | trait types | notes |
+|---|---|---|---|
+| `glm` | `GLM` | cont/binary/ordinal/multinomial | fixed-effects; PCs as covariates |
+| `lmm` | `SingleTraitLMM` | continuous | GRM mixed model (GEMMA-equivalent) |
+| `mvlmm` | `MultiTraitLMM` | multi continuous | multi-trait |
+| `farmcpu` | `FarmCPU` | continuous | iterative, multi-locus |
+| `blink` | `BLINK` | continuous | multi-locus, fast |
+| `glmm` | `Binary/Ordinal/MultinomialGLMM` | binary/ordinal | PQL, SAIGE-style |
+| `mklmm` | `MultiKernelLMM` | continuous | additive+dominance kernels |
+| `gxe` | `GxELMM` | continuous | genotype × environment |
+| `set` | `SetBasedScanner` | any | region/gene-based (SKAT…) |
+| `bayes` | `BayesianVS` | continuous | SuSiE fine-mapping scan |
+| `met` | multi-env models | continuous | multi-environment |
+| … | (the full model list) | | surfaced via `tg.models()` |
+
+`models=` accepts any alias, a list of aliases, or `"auto"`. Unknown names raise a
+clear error listing valid options. (GAPIT-name synonyms — `MLM→lmm`, `GLM→glm`,
+`Blink→blink`, `FarmCPU→farmcpu` — are accepted for migrants.)
+
+### 4b. `models="auto"` — optional convenience fallback (never forced)
+
+Only when the user explicitly asks for `"auto"` (or omits a choice and opts into
+the default), pick a sensible model from the trait type — always printed + fully
+overridable:
 
 ```
-trait_type == continuous:
-    kinship present/auto  -> SingleTraitLMM      (GRM + PCs)      # default
-    kinship == False      -> GLM                 (PCs as fixed)
-trait_type == binary:
-    kinship present/auto  -> BinaryGLMM (PQL, SAIGE-style)
-    kinship == False      -> GLM(family=binary, firth=True on separation)
-trait_type == categorical (ordinal):
-    -> OrdinalGLMM (kinship) | OrdinalGLM        # if n_categories small
-preset == "thorough" or models is a list:
-    -> run the selected set; default set for continuous = [lmm, farmcpu, blink]
+continuous:  kinship auto/present -> lmm      ;  kinship=False -> glm
+binary:      kinship auto/present -> glmm     ;  kinship=False -> glm(firth)
+ordinal:     -> glmm (or glm)   [small #categories]
 ```
-The chosen model + the one-line reason are always printed and stored in
-`.diagnostics`. Any choice is overridable via `models=`, `kinship=`, `pcs=`,
-`trait_type=`.
+The chosen model + the one-line reason are printed and stored in `.diagnostics`.
+Auto is a helper for users who don't want to choose — it never overrides an
+explicit `models=`.
 
 ## 5. Cross-surface consistency (Python / R / CLI)
 
