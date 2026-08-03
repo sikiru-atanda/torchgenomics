@@ -49,10 +49,15 @@ def king_robust_kinship(G: Tensor, chunk_size: int = 2000) -> Tensor:
       **elementwise minimum** of the two pairwise-complete het counts, not
       their sum.
 
-    Verified machine-exact (max-abs-diff ~1e-13, correlation 1.0) against
+    Validation (Phase 57 Unit A, Task 6): verified **machine-exact** against
     SNPRelate's ``snpgdsIBDKING(type="KING-robust")`` on a synthetic
-    admixed+related fixture -- see
-    ``validation/external/genesis/{run_king_snprelate.R,compare.py}`` and
+    admixed+related fixture (n=120, m=2000, 2 populations, 15 injected
+    parent-offspring pairs) -- **max-abs-diff = 4.996e-16, Pearson r = 1.0**
+    over all off-diagonal pairs. This is REFERENCE-EQUIVALENT: the residual
+    difference is at the FP64 machine-epsilon floor, not a numerical
+    approximation. See
+    ``validation/external/genesis/{run_king_snprelate.R,compare.py,VALIDATION_RESULTS.md}``
+    and
     ``tests/test_kinship_admixed.py::test_king_robust_hand_computed`` /
     ``test_king_robust_unequal_het_counts_distinguishes_min_from_sum``. A
     prior version of this function used an incorrect
@@ -420,12 +425,29 @@ def pc_air(
     -------------------------------
     The partition-validity, ancestry-separation, relatedness-robustness, and
     projection-sanity tests in ``tests/test_kinship_admixed.py`` are Tier-1
-    internal-correctness gates on synthetic admixed+related fixtures. They are
-    **not** a reference-tool comparison: DEFINITIVE reference-equivalence to
-    GENESIS ``pcair`` -- including exact PC scaling and sign (signs are
-    arbitrary and are compared by absolute correlation) -- is Task 6 of this
-    Unit. Do not read this docstring or those tests as reference-equivalence
-    evidence.
+    internal-correctness gates on synthetic admixed+related fixtures; they
+    check internal consistency, not agreement with an external reference tool.
+
+    Validation (Phase 57 Unit A, Task 6): compared against GENESIS ``pcair``
+    on two synthetic admixed+related fixtures (see
+    ``validation/external/genesis/VALIDATION_RESULTS.md`` for the full
+    write-up):
+
+    - **2-population fixture** (n=120, m=2000, 1 real ancestry axis): PC1
+      ``|r| = 0.9998`` vs. GENESIS ``pcair`` PC1.
+    - **3-population fixture** (n=135, m=2500, 2 real ancestry axes, via
+      ``export_fixture_3pop.py`` / ``run_pcair_3pop.R``): PC1 ``|r| = 0.9992``,
+      PC2 ``|r| = 0.9990`` vs. the corresponding GENESIS ``pcair`` axes.
+
+    Every REAL ancestry axis (i.e. every PC up to the number of source
+    populations minus 1) matches GENESIS to ``|r| ~ 0.999`` -- this is
+    **REFERENCE-CONCORDANT**. Sub-dominant PCs beyond the number of real
+    ancestry dimensions (pure sampling/LD noise eigenvectors with no
+    population-structure signal to anchor them) are expected to diverge
+    between independent eigensolver implementations and should not be
+    interpreted as ancestry axes by callers; this divergence is correct
+    behavior, not a defect. PC signs are arbitrary and are compared by
+    absolute correlation throughout.
 
     Parameters
     ----------
@@ -613,29 +635,41 @@ def pc_relate(
     0.25) estimate markedly above unrelated cross-population pairs (~0), and in
     the right ballpark; (ii) ancestry-adjustment direction -- the PC-adjusted
     estimator gives lower spurious cross-ancestry kinship than the unadjusted
-    (``n_pcs_adjust=0``) estimator. They are **not** a reference-tool
-    comparison: DEFINITIVE reference-equivalence to GENESIS ``pcrelate``
-    (including the exact self-kinship estimator and denominator normalization)
-    is Task 6 of this Unit. Do not read this docstring or those tests as
-    reference-equivalence evidence.
+    (``n_pcs_adjust=0``) estimator. These check internal consistency only.
 
-    Restricting the allele-frequency regression to a training (unrelated) set
-    via ``training_set`` -- per Conomos et al. 2016 / the GENESIS ``pcrelate``
-    convention -- was verified against actual GENESIS ``pcrelate`` output
-    (using GENESIS's own ``pcair`` PCs as input, so this isolates the
-    PC-Relate step itself) on the ``validation/external/genesis`` fixture:
-    fitting the AF regression on all individuals gives r=0.849 vs. GENESIS;
-    restricting the fit to the unrelated training set raises this to
-    **r=0.913** (max-abs-diff 0.045). This is a real, verified correctness
-    improvement toward reference-equivalence, not merely a formula match.
-    Remaining divergence from GENESIS at r~0.91 is attributed to GENESIS's
-    additional per-pair SNP filtering (e.g. per-pair MAF/missingness
-    exclusions) and other estimator details (e.g. the iterative
-    re-weighting and the exact self-kinship/inbreeding estimator, Conomos
-    et al. 2016 eq. 6) not implemented here -- a documented limitation, not
-    claimed reference-equivalence. There is no iterative re-weighting of the
-    AF regression as in GENESIS ``pcrelate``; see Task 6 for further
-    reference-equivalence work.
+    Validation (Phase 57 Unit A, Task 6) against actual GENESIS ``pcrelate``
+    output (using GENESIS's own ``pcair`` PCs as input, so this isolates the
+    PC-Relate step itself) on the ``validation/external/genesis`` fixture --
+    see ``VALIDATION_RESULTS.md`` for the full write-up -- gives, in order of
+    successive refinement:
+
+    - r = 0.849 -- AF regression fit on *all* individuals (``training_set=None``).
+    - r = 0.913 -- AF regression restricted to the unrelated training set via
+      ``training_set`` (max-abs-diff 0.045). **This is the shipped default
+      recommendation** (pass the PC-AiR unrelated-partition mask).
+    - r = 0.937 -- using GENESIS's *own exact* unrelated training set
+      (``pca$unrels``, exported via ``export_unrels.R``) rather than this
+      module's independently-computed partition, isolating the AF-regression
+      step to the residual formula/normalization difference alone.
+
+    r = 0.937 is the empirically-determined **ceiling** of this
+    moment-estimator implementation: additionally matching GENESIS's
+    per-pair SNP filtering (per-pair MAF/missingness exclusions) was tried
+    and verified to NOT close the remaining gap. The residual ~6% divergence
+    is therefore attributed to GENESIS ``pcrelate``'s internal small-sample
+    bias-correction / normalization machinery, which goes beyond the
+    published Conomos et al. 2016 moment-estimator formula (eq. 5) implemented
+    here (e.g. iterative re-weighting and the exact self-kinship/inbreeding
+    estimator, eq. 6, which this function does not implement -- see
+    "Self-kinship (diagonal)" above).
+
+    **Verdict: STRONGLY CONCORDANT with GENESIS ``pcrelate`` (r ~ 0.94), NOT
+    reference-equivalent.** This is an honest, documented limitation, not a
+    claim of reference-equivalence. Callers who require exact numerical
+    equivalence with GENESIS ``pcrelate`` (e.g. for a publication claiming
+    tool-parity) should use GENESIS ``pcrelate`` directly rather than this
+    function; this function is appropriate where a fast, GPU-portable,
+    moment-consistent ancestry-adjusted kinship estimate is sufficient.
 
     Parameters
     ----------

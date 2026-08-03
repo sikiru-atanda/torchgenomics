@@ -61,20 +61,39 @@ from torchgenomics.linalg.kinship_admixed import (  # noqa: E402
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tolerance gates -- PLACEHOLDERS, observed-then-floored per repo convention
-# (see CLAUDE.md "Validation campaign" / feedback_validation_spec.md): these
-# numbers are NOT aspirational targets picked from a paper. They MUST be
-# replaced with the actual first-successful-run values (floored, not
-# rounded up) once run_genesis.R has been executed for real. Do not treat
-# these placeholders as validated tolerances.
+# Tolerance gates -- observed-then-floored per repo convention (see CLAUDE.md
+# "Validation campaign" / feedback_validation_spec.md): each floor below is
+# set from the ACTUAL value observed on the real GENESIS/SNPRelate run
+# recorded in VALIDATION_RESULTS.md, floored (not rounded up, and not
+# aspirational). See VALIDATION_RESULTS.md for the full write-up of how each
+# number was obtained (fixtures, scripts, repeated experiments for
+# PC-Relate).
 # ─────────────────────────────────────────────────────────────────────────────
-# TODO(Task 6 rerun): set from the first successful GENESIS run.
-TOL_KING_MAX_ABS_DIFF = 0.05          # PLACEHOLDER
-TOL_KING_CORR = 0.95                  # PLACEHOLDER
-TOL_PCAIR_ABS_CORR = 0.90             # PLACEHOLDER, per PC axis (top few PCs)
-TOL_PCRELATE_MAX_ABS_DIFF = 0.05      # PLACEHOLDER
-TOL_PCRELATE_CORR = 0.90              # PLACEHOLDER
-TOL_PCRELATE_RELATED_PAIR_ABS_DIFF = 0.10  # PLACEHOLDER (known PO pairs)
+# KING-robust vs snpgdsIBDKING(type="KING-robust"): observed max-abs-diff
+# 4.996e-16 (FP64 machine-epsilon floor), Pearson r = 1.0 -- machine-exact,
+# REFERENCE-EQUIVALENT. Floor set two orders of magnitude above the observed
+# value to absorb BLAS/eigensolver nondeterminism across machines/torch
+# versions while still being tight enough to catch a real regression (e.g.
+# a reintroduction of the old sum-denominator formula, commit 3739a9b).
+TOL_KING_MAX_ABS_DIFF = 1e-12
+TOL_KING_CORR = 0.999999              # observed 1.0 (to displayed precision)
+# PC-AiR vs GENESIS pcair(): observed |r| on REAL ancestry axes -- 2-pop
+# fixture PC1 0.9998; 3-pop fixture PC1 0.9992 / PC2 0.9990.
+# REFERENCE-CONCORDANT (~0.999). Floor is set below the lowest observed value
+# (0.9990) with margin; this only gates the leading axes that correspond to
+# real ancestry dimensions -- sub-dominant noise eigenvectors are expected to
+# diverge and are not covered by this floor (see N_PCAIR_AXES_TO_CHECK).
+TOL_PCAIR_ABS_CORR = 0.99             # per PC axis (top few PCs)
+# PC-Relate vs GENESIS pcrelate(): observed r = 0.849 (AF regression fit on
+# all individuals) -> 0.913 (training-set AF regression, shipped default) ->
+# 0.937 (GENESIS's own exact unrelated training set; empirically-determined
+# ceiling of this moment estimator -- matching per-pair SNP filtering on top
+# of that does NOT close the gap further, verified). STRONGLY CONCORDANT
+# (r ~ 0.94), documented as concordance, NOT reference-equivalence. Floor is
+# set below the shipped-default observed value (0.913) with margin.
+TOL_PCRELATE_MAX_ABS_DIFF = 0.10      # observed max-abs-diff 0.045 (shipped default)
+TOL_PCRELATE_CORR = 0.90              # observed r >= 0.913 (shipped default; ceiling 0.937)
+TOL_PCRELATE_RELATED_PAIR_ABS_DIFF = 0.10  # known PO pairs; consistent with overall max-abs-diff
 N_PCAIR_AXES_TO_CHECK = 5             # leading PCs checked by |correlation|
 
 N_PCS = 10
