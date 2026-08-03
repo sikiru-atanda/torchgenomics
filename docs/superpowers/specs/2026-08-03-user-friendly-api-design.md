@@ -1,0 +1,201 @@
+# User-Friendly Programmatic API — Design Spec
+
+**Status:** Design draft 2026-08-03 (brainstormed with user). Awaiting review.
+**Branch:** `feat/friendly-api` (off `origin/master` `f8986e3`).
+**Scope:** Python / R / CLI **programmatic surface** ergonomics. **No frontend / GUI / web** — purely the shape of the code users call.
+
+## 1. Motivation
+
+TorchGenomics is powerful and broad (40+ CLI scans, dozens of models, post-GWAS,
+PGS, LD, viz) — but that breadth makes it hard to approach. The `torchgenomics.api`
+facade exists (`tg.lmm_scan(...)` → `ScanRun`), yet a user still: runs one model
+per call, must know which model/QC/kinship/PCA/correction to use, calls plotting
+methods themselves, and gets no guidance. The user's goal (2026-08-03): make the
+package **very user-friendly** — "simple by default, powerful on demand" — across
+all four friction points they identified: (1) getting started / "just works",
+(2) choosing among many options, (3) consistency across the API, (4) understanding
+and acting on results.
+
+GAPIT was cited only as a reference for *ease of use*, NOT as a feature target —
+TorchGenomics already far exceeds GAPIT's capability. The aim is ergonomics.
+
+## 2. Goal & non-goals
+
+**Goal:** a single obvious entry point + a self-explaining unified result + a
+guidance layer, so a domain scientist goes from raw data to a trustworthy,
+well-diagnosed result in one call — while experts keep the untouched low-level
+modules.
+
+**Non-goals:** no frontend/GUI/web; no new statistical methods (this is thin
+orchestration over existing `api`/`models`/`linalg`/`viz`); the low-level API
+(`models`, `scan`, `linalg`, per-scan `api.*_scan`) is **unchanged** and remains
+the power-user path; LLM/MCP surface is a separate later effort.
+
+**Design principle:** *simple by default, powerful on demand.* The default path
+makes every reasonable choice automatically AND states what it chose (nothing
+hidden); every choice is overridable.
+
+## 3. Three components
+
+### 3a. `tg.gwas(...)` — the one obvious entry point
+
+```python
+res = tg.gwas(
+    phenotype,               # path | DataFrame | array | Series
+    genotype,                # path (BED/VCF/CSV/…) | array   — format auto-detected
+    covariates=None,         # path | DataFrame | array
+    kinship=None,            # path | array | "auto" (default) | False (no random effect)
+    pcs=None,                # int (#PCs to compute) | array | "auto" (default)
+    trait=None,              # column name / index; default = first/only phenotype column
+    trait_type=None,         # "continuous"|"binary"|"categorical"|None(auto-detect)
+    models=None,             # None(auto-select 1) | "lmm"|"glm"|... | list[str] (multi)
+    preset="standard",       # "fast" | "standard" | "thorough"
+    qc=True,                 # True(default QC) | False | dict(overrides)
+    correction="bh",         # "bh"|"bonferroni"|"none"|…
+    output=None,             # dir to auto-write the full report folder; None = no files
+    device=None,             # None(auto) | "cpu" | "cuda"
+    verbose=True,            # print the decisions it made
+) -> GwasResult | GwasComparison
+```
+
+**Behavior (thin orchestration over existing code):**
+1. **Load + align** phenotype/genotype/covariates (reuse `io` auto-detection +
+   the existing three-way sample alignment). Accept in-memory objects by writing
+   a tiny adapter (array/DataFrame → the reader interface) — no new formats.
+2. **Auto trait-type detection** (if `trait_type=None`): binary if exactly 2
+   distinct non-missing values; categorical if a small integer set (≤ ~10 and
+   non-continuous); else continuous. Always report what was detected.
+3. **Auto-QC** (if `qc=True`): MAF, call-rate, HWE at documented defaults (reuse
+   the existing QC + variant-QC-Parquet path). `qc=dict(...)` overrides thresholds.
+4. **Auto-kinship / PCA** (if `kinship="auto"`/`pcs="auto"`): VanRaden GRM
+   (`linalg.kinship.grm_vanraden`) + top-N PCs (default per preset) unless supplied.
+5. **Auto model-selection** (if `models=None`) via the decision tree in §4;
+   `models=[...]` runs several and returns a `GwasComparison`.
+6. **Scan** by delegating to the existing `api.*_scan` functions (no re-implementation).
+7. **Multiple testing** via `correction`.
+8. **Warnings** (§5) surfaced during the run.
+9. Return a `GwasResult` (or `GwasComparison`); if `output=` given, call
+   `.report(output)`.
+10. If `verbose`, print a concise decision log (trait type, QC survivors, model +
+    rationale, #PCs, correction, λ_GC).
+
+**Presets** (only change defaults, never correctness):
+- `fast`: fewer PCs, GLM/quick model when defensible, no permutation.
+- `standard`: LMM/GLMM + GRM + PCs + BH (the sensible default).
+- `thorough`: multi-model comparison + stricter diagnostics + enable optional
+  add-ons (e.g. suggest fine-mapping); may run permutation where cheap.
+
+### 3b. `GwasResult` — consistency + understanding
+
+Standardize on the existing `ScanRun` (already has `top_hits`, `lambda_gc`,
+`output_files`, `summary()`, `manhattan()`, `qq()`, `to_dict/json`). Enhance so
+**every** `api` scan returns this same shape:
+
+- `.hits` — tidy DataFrame of significant/top variants (alias/companion to `top_hits`).
+- `.summary()` — **plain-language** block: trait + type, n aligned, #variants after
+  QC, model + one-line rationale, correction, **λ_GC with interpretation**
+  ("✓ well-calibrated" / "⚠ inflated — consider more PCs"), #genome-wide-significant
+  loci + top locus, any warnings, and a **"Next:" suggestions** line
+  (e.g. `res.report("out/")`, `tg.annotate(res)`).
+- `.diagnostics` — structured dict/obj: λ_GC, MAF spectrum summary, n, model config,
+  QC survivors, warnings list.
+- `.manhattan()` / `.qq()` — unchanged (already present), now uniformly available.
+- `.report(dir)` — writes the full **publication folder**: `manhattan.png`,
+  `qq.png`, `pca.png` (if PCs computed), `kinship.png` (if GRM computed),
+  `results.tsv`/`.parquet`, and `summary.txt` (the plain-language summary).
+  Reuses `viz` for all plots.
+
+`GwasComparison` (multi-model): holds a `GwasResult` per model, with
+`.summary()` (side-by-side λ_GC + #hits per model), `.results["lmm"]`, a combined
+`.report(dir)` (per-model subfolders + an overlap/consistency table).
+
+### 3c. Guidance layer
+
+- `tg.recommend(phenotype, genotype, covariates=None) -> Recommendation` — runs the
+  same load + auto-detection + choice logic as `gwas()` but **stops before scanning**;
+  prints/returns the plan + rationale (detected trait type, suggested model, #PCs,
+  QC that would apply, expected runtime ballpark). The "what should I use?" helper.
+- **Warnings** (emitted during `gwas()` and reported in `.diagnostics.warnings`),
+  a small high-value set: genomic inflation (λ_GC > ~1.10), excessive deflation,
+  low post-QC variant count, extreme case/control imbalance (binary), high mean
+  relatedness (suggests the mixed model / more care), phenotype with many missing.
+  Each warning is one plain sentence + a suggested action.
+
+## 4. Auto model-selection decision tree (documented, overridable)
+
+```
+trait_type == continuous:
+    kinship present/auto  -> SingleTraitLMM      (GRM + PCs)      # default
+    kinship == False      -> GLM                 (PCs as fixed)
+trait_type == binary:
+    kinship present/auto  -> BinaryGLMM (PQL, SAIGE-style)
+    kinship == False      -> GLM(family=binary, firth=True on separation)
+trait_type == categorical (ordinal):
+    -> OrdinalGLMM (kinship) | OrdinalGLM        # if n_categories small
+preset == "thorough" or models is a list:
+    -> run the selected set; default set for continuous = [lmm, farmcpu, blink]
+```
+The chosen model + the one-line reason are always printed and stored in
+`.diagnostics`. Any choice is overridable via `models=`, `kinship=`, `pcs=`,
+`trait_type=`.
+
+## 5. Cross-surface consistency (Python / R / CLI)
+
+The same concept, three faithful surfaces (consistent names + semantics):
+
+- **Python (primary):** `tg.gwas(...)`, `tg.recommend(...)`, `GwasResult`.
+- **R (`rTorchGenomics`, reticulate bridge):** `tg_gwas(...)`, `tg_recommend(...)`
+  → an S4 `GwasResult` class mirroring the Python attrs/methods (`summary()`,
+  `top_hits`, `manhattan()`, `report()`), following the existing `tg_*` /
+  `bridge_call` pattern; add to `NAMESPACE` + `_pkgdown.yml`.
+- **CLI:** a new `torchgenomics gwas` subcommand (44→45) mirroring the same flags
+  (`--phenotype --genotype --covariates --kinship auto --pcs auto --models
+  --preset --correction --output`), which by default writes the report folder
+  (`output` required or defaulted) and prints the decision log + summary. Plus
+  `torchgenomics recommend` (dry-run). Same auto-behavior as the library.
+
+Consistency requirements (apply to the whole `api` surface, not just `gwas`):
+- Uniform argument names everywhere: `phenotype`, `genotype`, `covariates`,
+  `kinship`, `pcs`, `correction`, `output`, `device`, `verbose`.
+- **Every `api.*_scan` returns a `GwasResult`** with the same attrs/methods (audit
+  the existing scans; fix any that diverge).
+
+## 6. Backward compatibility
+
+- Existing `tg.lmm_scan(...)` / `glm_scan(...)` etc. keep working; they may gain the
+  richer `summary()`/`.report()` (additive). No breaking changes.
+- Low-level `models`/`scan`/`linalg` untouched.
+- `tg.gwas` is purely additive orchestration.
+
+## 7. Scope / MVP boundary
+
+**MVP (this effort):** `tg.gwas` (auto trait-type, auto-QC/kinship/PCA, model
+decision tree, presets, single + multi-model), enriched `GwasResult`
+(`.summary` plain-language, `.diagnostics`, `.report` folder, `.hits`),
+`GwasComparison`, `tg.recommend`, the core warnings, the `gwas`/`recommend` CLI
+subcommands, and the `tg_gwas`/`tg_recommend` R wrappers. Reuses existing
+scans/GRM/PCA/QC/viz.
+
+**Deferred (not now):** interactive/HTML reports; ML-based model suggestion;
+biobank-scale streaming of the orchestrator (delegates to existing streaming
+scans, but the orchestrator's own convenience loads are moderate-scale first);
+LLM/MCP wiring; auto-fine-mapping/annotation chaining beyond a suggestion.
+
+## 8. Risks
+
+- **In-memory input adapter**: arrays/DataFrames → reader interface must align
+  samples/variants correctly; reuse the existing alignment path, don't reinvent.
+- **Auto-detection wrong call**: trait-type/model heuristics must be conservative
+  + always visible + overridable; document the rules; test the boundaries
+  (2-value continuous vs binary, small-int categorical).
+- **Consistency audit scope**: making every existing scan return `GwasResult` may
+  surface divergent result schemas (gxe/mvlmm/me-glmm produce multi-output) —
+  handle these explicitly (a `GwasResult` that carries multiple sub-results).
+- **CLI/R parity**: keep the three surfaces in lockstep; a shared core function
+  the CLI + api + bridge all call prevents drift.
+
+## 9. References
+- Existing facade: `torchgenomics/api/` (`scans.py`, `_results.py` `ScanRun`,
+  `plotting.py`, `data.py`).
+- The "three audiences, one engine" note in `CLAUDE.md`.
+- GAPIT (Lipka et al. 2012) — cited only as an ease-of-use reference, not a target.
