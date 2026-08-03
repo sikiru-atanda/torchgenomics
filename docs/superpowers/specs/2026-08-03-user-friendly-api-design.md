@@ -1,6 +1,6 @@
 # User-Friendly Programmatic API — Design Spec
 
-**Status:** Design draft 2026-08-03 (brainstormed with user). Awaiting review.
+**Status:** Design draft 2026-08-03 (brainstormed + self-reviewed against the goal). Awaiting user review.
 **Branch:** `feat/friendly-api` (off `origin/master` `f8986e3`).
 **Scope:** Python / R / CLI **programmatic surface** ergonomics. **No frontend / GUI / web** — purely the shape of the code users call.
 
@@ -8,13 +8,17 @@
 
 TorchGenomics is powerful and broad (40+ CLI scans, dozens of models, post-GWAS,
 PGS, LD, viz) — but that breadth makes it hard to approach. The `torchgenomics.api`
-facade exists (`tg.lmm_scan(...)` → `ScanRun`), yet a user still: runs one model
-per call, must know which model/QC/kinship/PCA/correction to use, calls plotting
-methods themselves, and gets no guidance. The user's goal (2026-08-03): make the
-package **very user-friendly** — "simple by default, powerful on demand" — across
-all four friction points they identified: (1) getting started / "just works",
-(2) choosing among many options, (3) consistency across the API, (4) understanding
-and acting on results.
+facade exists but is **thin and uneven**: it exports only **`lmm_scan` + `glm_scan`**
+as scan functions (farmcpu/blink/mvlmm/glmm/gxe/… have **no `api` function** — a
+user must drop to the low-level `models`/`scan` layer for them), there is a CLI
+**`pipeline`** command (impute→model-select→scan→correct) with **no Python
+equivalent**, users run one model per call, must know which model/QC/kinship/PCA/
+correction to use, call plotting themselves, and get no guidance. The user's goal
+(2026-08-03): make the package **very user-friendly** — "simple by default,
+powerful on demand" — across all four friction points they identified: (1) getting
+started / "just works", (2) **freely choosing** among many options (esp. running
+the model(s) they want, one or several), (3) consistency across the API,
+(4) understanding and acting on results.
 
 GAPIT was cited only as a reference for *ease of use*, NOT as a feature target —
 TorchGenomics already far exceeds GAPIT's capability. The aim is ergonomics.
@@ -52,7 +56,6 @@ res = tg.gwas(
                              #   a LIST runs several in one call -> GwasComparison (GAPIT model=c(...));
                              #   default "auto" picks a sensible model from the trait type (always
                              #   printed + overridable) so a bare call just works — never forced
-    preset="standard",       # "fast" | "standard" | "thorough"
     qc=True,                 # True(default QC) | False | dict(overrides)
     correction="bh",         # "bh"|"bonferroni"|"none"|…
     output=None,             # dir to auto-write the full report folder; None = no files
@@ -78,7 +81,13 @@ res = tg.gwas(
    The full TorchGenomics model registry is available by name (§4). `models="auto"`
    is an *optional convenience fallback* (the §4 tree) for users who'd rather not
    choose — it is never forced, and whatever it picks is printed + overridable.
-6. **Scan** by delegating to the existing `api.*_scan` functions (no re-implementation).
+6. **Scan** via a single internal dispatch (`_run_model(alias, …)`) — the shared
+   core the api, CLI, and R bridge all call. **Reality check:** today only `lmm`
+   and `glm` have `api.*_scan` functions; the rest must be reached through the
+   low-level `models` + `scan.UnifiedScanner`. So this effort **adds a thin
+   `api`-level scan wrapper for every model in the §4 registry** (or a generic
+   `api.scan(model=…)`), so the whole registry is genuinely runnable through one
+   friendly surface — not just lmm/glm. No new statistics; just wiring.
 7. **Multiple testing** via `correction`.
 8. **Warnings** (§5) surfaced during the run.
 9. Return a `GwasResult` (or `GwasComparison`); if `output=` given, call
@@ -86,11 +95,19 @@ res = tg.gwas(
 10. If `verbose`, print a concise decision log (trait type, QC survivors, model +
     rationale, #PCs, correction, λ_GC).
 
-**Presets** (only change defaults, never correctness):
-- `fast`: fewer PCs, GLM/quick model when defensible, no permutation.
-- `standard`: LMM/GLMM + GRM + PCs + BH (the sensible default).
-- `thorough`: multi-model comparison + stricter diagnostics + enable optional
-  add-ons (e.g. suggest fine-mapping); may run permutation where cheap.
+**Friendly errors ("just works" — or fails helpfully):** every user-facing entry
+validates inputs early and raises **actionable** messages, never a deep torch/
+pandas traceback. E.g. unmatched sample IDs → "0 samples shared between phenotype
+(n=500) and genotype (n=480); check the ID column"; unknown model → lists valid
+names; a binary trait passed to `lmm` → suggests `glmm`. This is a first-class
+requirement, not polish.
+
+**Relationship to the existing CLI `pipeline`:** `tg.gwas` is the Python face of
+the same orchestration the CLI `pipeline` already performs (impute→model-select→
+scan→correct). They share one core. The new `torchgenomics gwas` CLI (§5) and the
+existing `pipeline` become **aliases over that shared core** (keep `pipeline`
+working; `gwas` is the discoverable name). Reuse `pipeline`'s existing
+model-selection logic rather than writing a second one.
 
 ### 3b. `GwasResult` — consistency + understanding
 
@@ -180,11 +197,13 @@ The same concept, three faithful surfaces (consistent names + semantics):
   → an S4 `GwasResult` class mirroring the Python attrs/methods (`summary()`,
   `top_hits`, `manhattan()`, `report()`), following the existing `tg_*` /
   `bridge_call` pattern; add to `NAMESPACE` + `_pkgdown.yml`.
-- **CLI:** a new `torchgenomics gwas` subcommand (44→45) mirroring the same flags
+- **CLI:** a `torchgenomics gwas` subcommand mirroring the same flags
   (`--phenotype --genotype --covariates --kinship auto --pcs auto --models
-  --preset --correction --output`), which by default writes the report folder
-  (`output` required or defaulted) and prints the decision log + summary. Plus
-  `torchgenomics recommend` (dry-run). Same auto-behavior as the library.
+  lmm,farmcpu,blink --correction --output`), which writes the report folder and
+  prints the decision log + summary. It shares the same core as the existing
+  `pipeline` command (which stays as an alias); `--models` accepts a comma-list
+  for multi-model. Plus `torchgenomics recommend` (dry-run) and `torchgenomics
+  models` (list runnable models). Same auto-behavior as the library.
 
 Consistency requirements (apply to the whole `api` surface, not just `gwas`):
 - Uniform argument names everywhere: `phenotype`, `genotype`, `covariates`,
@@ -201,17 +220,24 @@ Consistency requirements (apply to the whole `api` surface, not just `gwas`):
 
 ## 7. Scope / MVP boundary
 
-**MVP (this effort):** `tg.gwas` (auto trait-type, auto-QC/kinship/PCA, model
-decision tree, presets, single + multi-model), enriched `GwasResult`
-(`.summary` plain-language, `.diagnostics`, `.report` folder, `.hits`),
-`GwasComparison`, `tg.recommend`, the core warnings, the `gwas`/`recommend` CLI
-subcommands, and the `tg_gwas`/`tg_recommend` R wrappers. Reuses existing
-scans/GRM/PCA/QC/viz.
+**MVP (this effort):**
+- `tg.gwas` — one entry: auto trait-type, auto-QC/kinship/PCA, **user-chosen
+  model(s)** (single or list → `GwasComparison`), `"auto"` fallback, friendly
+  errors, `verbose` decision log.
+- **Wire the full model registry through the friendly surface** — add the thin
+  `api` scan wrappers (or a generic `api.scan(model=…)`) for every §4 model, so
+  `tg.gwas(models=…)` genuinely runs all of them (not just lmm/glm today).
+- Enriched `GwasResult` (`.summary` plain-language, `.diagnostics`, `.report`
+  folder, `.hits`) + `GwasComparison`; **every `api` scan returns this shape**.
+- `tg.recommend` (dry-run) + `tg.models` (registry listing) + the core warnings.
+- CLI `gwas` + `recommend` + `models` (sharing the `pipeline` core); R
+  `tg_gwas`/`tg_recommend`/`tg_models` wrappers.
 
-**Deferred (not now):** interactive/HTML reports; ML-based model suggestion;
-biobank-scale streaming of the orchestrator (delegates to existing streaming
-scans, but the orchestrator's own convenience loads are moderate-scale first);
-LLM/MCP wiring; auto-fine-mapping/annotation chaining beyond a suggestion.
+**Deferred (not now):** `preset=` bundles (fast/standard/thorough) — sensible
+defaults + explicit params suffice first; interactive/HTML reports; ML-based
+model suggestion; biobank-scale streaming of the orchestrator's own loads
+(the underlying scans already stream); LLM/MCP wiring; auto-fine-mapping/
+annotation chaining beyond a suggestion.
 
 ## 8. Risks
 
