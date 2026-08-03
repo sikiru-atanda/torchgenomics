@@ -2639,3 +2639,110 @@ class TestPcRelateStreamingMemory:
         # ``max_width <= chunk``.
         assert tracker.max_width == m
         assert tracker.max_width > chunk
+
+
+# ---------------------------------------------------------------------------
+# king_robust_kinship (KING-robust between-family kinship) marker-streaming
+# regression -- mirrors TestPcRelateStreamingMemory above.
+# ---------------------------------------------------------------------------
+# king_robust_kinship (Manichaikul et al. 2010) also accumulates (n, n) Sd /
+# Nhet_pair matrices one marker chunk at a time and, per its own docstring,
+# "the (n, m) matrix is never fully materialized as an (n, n, m) pairwise
+# tensor; only (n, chunk_size) slices and (n, n) accumulators are held at
+# once." Unlike pc_relate, this contract had no behavioral gate. Guard it the
+# same way: wrap the genotype source so it records the widest column slab any
+# consumer asks for.
+
+
+class _WidthTrackingColsKing:
+    """Genotype wrapper recording the max column-slice width requested.
+
+    Same contract as ``_WidthTrackingCols`` above, plus a ``.to(dtype)``
+    identity passthrough (returns ``self``): king_robust_kinship casts its
+    input with ``G = G.to(torch.float64)`` once at function entry, before
+    the chunking loop, so the wrapper must survive that call without
+    materializing anything -- the actual per-chunk column slicing that gets
+    tracked happens entirely inside ``__getitem__``.
+    """
+
+    def __init__(self, G: torch.Tensor) -> None:
+        self._G = G
+        self.max_width = 0
+
+    @property
+    def shape(self):
+        return self._G.shape
+
+    @property
+    def device(self):
+        return self._G.device
+
+    @property
+    def dtype(self):
+        return self._G.dtype
+
+    def to(self, *args, **kwargs):
+        return self
+
+    def __getitem__(self, key):
+        out = self._G[key]
+        if isinstance(key, tuple) and len(key) == 2 and isinstance(key[1], slice):
+            self.max_width = max(self.max_width, int(out.shape[1]))
+        return out
+
+
+class TestKingRobustStreamingMemory:
+    """KING-robust marker-loop peak must not scale with total marker count m."""
+
+    def test_king_robust_streaming_width_bounded_by_chunk(self):
+        from torchgenomics.linalg.kinship_admixed import king_robust_kinship
+
+        torch.manual_seed(57)
+        n, m = 40, 6000
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        chunk = 500
+
+        tracker = _WidthTrackingColsKing(G)
+        phi = king_robust_kinship(tracker, chunk_size=chunk)
+
+        assert phi.shape == (n, n)
+        # Real streaming estimator: widest slab it ever touches == chunk_size,
+        # independent of m (m=6000 >> chunk=500).
+        assert tracker.max_width <= chunk, (
+            f"streaming king_robust_kinship touched a {tracker.max_width}-wide "
+            f"column slab; expected <= chunk_size={chunk}"
+        )
+        assert tracker.max_width < m
+
+    def test_materializing_king_variant_trips_the_width_guard(self):
+        """Control: a variant that materializes the full (n, m) at once MUST
+        fail the same width guard the real estimator passes -- proving the
+        guard has teeth (not vacuously satisfied)."""
+
+        torch.manual_seed(57)
+        n, m = 40, 6000
+        G = torch.randint(0, 3, (n, m), dtype=torch.float64)
+        chunk = 500
+
+        def _king_materialize(Gsrc):
+            n_, m_ = Gsrc.shape
+            gc = Gsrc[:, 0:m_]                                # <- full (n, m) slab
+            valid = ~torch.isnan(gc)
+            valid_f = valid.to(torch.float64)
+            gc_safe = torch.where(valid, gc, torch.zeros_like(gc))
+            sq = gc_safe * gc_safe
+            Sd = (sq @ valid_f.T) + (valid_f @ sq.T) - 2.0 * (gc_safe @ gc_safe.T)
+            het = (gc_safe == 1.0) & valid
+            het_f = het.to(torch.float64)
+            Nhet_pair = het_f @ valid_f.T
+            min_het = torch.minimum(Nhet_pair, Nhet_pair.T)
+            safe_min = torch.where(min_het > 0, min_het, torch.ones_like(min_het))
+            phi = 0.5 - Sd / (4.0 * safe_min)
+            return torch.where(min_het > 0, phi, torch.zeros_like(phi))
+
+        tracker = _WidthTrackingColsKing(G)
+        _king_materialize(tracker)
+        # The materializing control touches the full width m and would FAIL
+        # ``max_width <= chunk``.
+        assert tracker.max_width == m
+        assert tracker.max_width > chunk

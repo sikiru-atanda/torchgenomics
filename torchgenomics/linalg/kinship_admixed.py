@@ -715,8 +715,17 @@ def pc_relate(
     Human Genetics 98(1), 127-148.
     """
     n, m = G_pruned.shape
-    pcs = pcs.to(torch.float64)
-    device = pcs.device
+    # Device is derived from G_pruned (the large (n, m) marker matrix), NOT
+    # from pcs (a small (n, p) side input). If a caller passes a CUDA
+    # G_pruned with CPU-resident pcs (e.g. an ancestry-PC file loaded
+    # separately from the genotype tensor), deriving device from pcs would
+    # silently host-move every (n, c) marker chunk each iteration of the
+    # streaming loop below -- the exact silent-perf-cliff class this
+    # codebase treats as a bug (see CLAUDE.md "GPU kernels follow the same
+    # dispatch discipline" / "never proactively move a CUDA tensor to
+    # host"). Move the small tensor (pcs) to the big tensor's device instead.
+    device = G_pruned.device
+    pcs = pcs.to(device=device, dtype=torch.float64)
 
     # --- OLS design (formed once; independent of m) ---
     ones = torch.ones(n, 1, dtype=torch.float64, device=device)
