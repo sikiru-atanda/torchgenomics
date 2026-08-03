@@ -1,6 +1,6 @@
 # User-Friendly Programmatic API — Design Spec
 
-**Status:** Design draft 2026-08-03 (brainstormed + self-reviewed against the goal). Awaiting user review.
+**Status:** APPROVED 2026-08-03 (user confirmed: name `tg.gwas`; wire the whole model registry in scope).
 **Branch:** `feat/friendly-api` (off `origin/master` `f8986e3`).
 **Scope:** Python / R / CLI **programmatic surface** ergonomics. **No frontend / GUI / web** — purely the shape of the code users call.
 
