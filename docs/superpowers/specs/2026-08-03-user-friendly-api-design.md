@@ -74,7 +74,7 @@ res = tg.gwas(
 3. **Auto-QC** (if `qc=True`): MAF, call-rate, HWE at documented defaults (reuse
    the existing QC + variant-QC-Parquet path). `qc=dict(...)` overrides thresholds.
 4. **Auto-kinship / PCA** (if `kinship="auto"`/`pcs="auto"`): VanRaden GRM
-   (`linalg.kinship.grm_vanraden`) + top-N PCs (default per preset) unless supplied.
+   (`linalg.kinship.grm_vanraden`) + top-N PCs (sensible default, e.g. 10) unless supplied.
 5. **Model(s): the user's choice, first-class.** `models=` is how the user picks
    exactly what to run — one model, or a **list to run several in one call**
    (returns a `GwasComparison`), mirroring GAPIT's `model=c("GLM","MLM","FarmCPU",…)`.
