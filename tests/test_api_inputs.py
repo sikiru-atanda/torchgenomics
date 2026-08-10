@@ -1,5 +1,5 @@
-import numpy as np, pandas as pd, pytest
-from torchgenomics.api._inputs import detect_trait_type, load_inputs
+import numpy as np, pandas as pd, pytest, torch
+from torchgenomics.api._inputs import ArrayReader, detect_trait_type, load_inputs
 
 def test_trait_type_detection():
     assert detect_trait_type(pd.Series([0,1,1,0,1])) == "binary"
@@ -21,3 +21,33 @@ def test_friendly_error_on_no_shared_samples():
     with pytest.raises(ValueError) as e:
         load_inputs(phenotype=y, genotype=G)
     assert "shared" in str(e.value).lower()   # actionable, not a KeyError/traceback
+
+def test_friendly_error_on_partial_covariates():
+    # covariates (e.g. PCs) cover fewer ids than the phenotype/genotype
+    # intersection -- must raise a friendly ValueError, not a raw KeyError.
+    ids = [f"s{i}" for i in range(10)]
+    y = pd.Series(np.random.default_rng(0).normal(size=10), index=ids, name="yield")
+    G = pd.DataFrame(np.random.default_rng(1).integers(0, 3, (10, 5)).astype(float), index=ids)
+    covar = pd.DataFrame({"PC1": np.random.default_rng(2).normal(size=6)}, index=ids[:6])
+    with pytest.raises(ValueError) as e:
+        load_inputs(phenotype=y, genotype=G, covariates=covar)
+    msg = str(e.value).lower()
+    assert "covariates" in msg
+    assert "10" in str(e.value) and "6" in str(e.value)  # names both counts
+
+def test_array_reader_yields_float64():
+    ids = ["a", "b", "c"]
+    G = np.zeros((3, 5))
+    reader = ArrayReader(G, ids)
+    chunk, _ = next(reader.iter_chunks())
+    assert chunk.dtype == torch.float64
+
+def test_invalid_trait_type_raises_friendly_error():
+    ids = [f"s{i}" for i in range(10)]
+    y = pd.Series(np.random.default_rng(0).normal(size=10), index=ids, name="yield")
+    G = np.random.default_rng(1).integers(0, 3, (10, 5)).astype(float)
+    with pytest.raises(ValueError) as e:
+        load_inputs(phenotype=y, genotype=G, trait_type="not_a_real_type")
+    msg = str(e.value).lower()
+    assert "trait_type" in msg
+    assert "continuous" in msg and "binary" in msg and "categorical" in msg

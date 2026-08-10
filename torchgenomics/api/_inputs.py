@@ -52,6 +52,9 @@ _MIN_SHARED_SAMPLES = 3
 # statistical threshold) and intentionally documented as such.
 _MAX_CATEGORICAL_LEVELS = 10
 
+# The only trait types the dispatch layer (Task 4) knows how to route.
+_VALID_TRAIT_TYPES = frozenset({"continuous", "binary", "categorical"})
+
 
 @dataclass
 class GwasInputs:
@@ -179,14 +182,16 @@ class ArrayReader:
         Yields
         ------
         tuple[torch.Tensor, VariantMeta]
-            ``G_chunk`` has shape ``(n_samples, m)`` and dtype ``float32``;
+            ``G_chunk`` has shape ``(n_samples, m)`` and dtype ``float64``
+            (FP64 is mandatory for statistical inference; see CLAUDE.md),
+            matching every other reader's ``iter_chunks`` in this codebase;
             ``variant_meta`` carries the matching column slice of the
             reader's ``VariantMeta``.
         """
         m = self.G.shape[1]
         for start in range(0, m, chunk_size):
             end = min(start + chunk_size, m)
-            G_chunk = torch.as_tensor(self.G[:, start:end]).float()
+            G_chunk = torch.as_tensor(self.G[:, start:end], dtype=torch.float64)
             vmeta_chunk = VariantMeta(
                 snp=self._variant_meta.snp[start:end],
                 chr=self._variant_meta.chr[start:end],
@@ -422,7 +427,11 @@ def _align_by_ids(
         If the shared-id intersection has fewer than :data:`_MIN_SHARED_SAMPLES`
         samples (this includes the empty-intersection case). The message
         names both input sample counts and includes the word "shared" so it
-        reads as an actionable diagnostic rather than a raw traceback.
+        reads as an actionable diagnostic rather than a raw traceback. Also
+        raised (before any ``.loc[]`` lookup that could otherwise surface a
+        raw ``KeyError``) if ``covariates`` is supplied but does not cover
+        every id in the phenotype/genotype intersection — e.g. PCs computed
+        for only a genotyped subset of samples.
     """
     pheno_ids = [str(i) for i in phenotype.index]
     geno_ids = [str(s) for s in reader.sample_ids]
@@ -435,6 +444,19 @@ def _align_by_ids(
             "too few to run a GWAS. Check that sample IDs match between the two "
             "inputs (same casing, no extra whitespace, matching ID column)."
         )
+
+    if covariates is not None:
+        covar_ids = {str(i) for i in covariates.index}
+        missing_from_covariates = [sid for sid in shared if sid not in covar_ids]
+        if missing_from_covariates:
+            raise ValueError(
+                f"covariates cover {len(covar_ids)} sample ids, but "
+                f"{len(missing_from_covariates)} of the {len(shared)} samples shared "
+                "between phenotype and genotype are missing from covariates "
+                f"(e.g. {missing_from_covariates[:5]}). Supply covariates for every "
+                "shared sample (e.g. PCs computed on the full genotyped set), or omit "
+                "the covariates= argument to run without them."
+            )
 
     pheno_reindexed = phenotype.copy()
     pheno_reindexed.index = pheno_ids
@@ -505,7 +527,7 @@ def load_inputs(
     trait_type : str | None, default None
         Force the trait type instead of inferring it via
         :func:`detect_trait_type`. One of ``"continuous"``, ``"binary"``,
-        ``"categorical"``.
+        ``"categorical"``; anything else raises a friendly ``ValueError``.
 
     Returns
     -------
@@ -516,9 +538,17 @@ def load_inputs(
     ------
     ValueError
         On an unsupported input type, a missing/ambiguous trait column, a
-        genotype/covariate shape mismatch, or too few (including zero)
-        shared sample IDs between phenotype and genotype.
+        genotype/covariate shape mismatch, an invalid ``trait_type``, or too
+        few (including zero) shared sample IDs between phenotype and
+        genotype (or between the shared set and supplied covariates).
     """
+    if trait_type is not None and trait_type not in _VALID_TRAIT_TYPES:
+        raise ValueError(
+            f"trait_type={trait_type!r} is not a recognized trait type. Valid options "
+            f"are: {sorted(_VALID_TRAIT_TYPES)}. Omit trait_type to infer it "
+            "automatically instead."
+        )
+
     pheno_series = _resolve_phenotype(phenotype, trait)
     covar_df = (
         _resolve_covariates(covariates, pheno_series.index) if covariates is not None else None
