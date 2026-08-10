@@ -166,6 +166,20 @@ class ScanRun(_BaseRun):
     top-K hits inline as a DataFrame, and paths to the full result tables.
     Plotting helpers (:meth:`manhattan`, :meth:`qq`) read from disk so the
     in-memory payload stays small.
+
+    Also exported under the friendly-API alias :data:`GwasResult` (see
+    bottom of this module) — the object returned by ``tg.gwas(...)``.
+    Beyond the raw fields, three convenience surfaces are provided for the
+    novice / notebook audience:
+
+    - :attr:`hits` — a readable alias for :attr:`top_hits`.
+    - :attr:`diagnostics` — a small JSON-safe dict for programmatic checks
+      (e.g. ``if result.diagnostics["lambda_gc"] > 1.1: ...``).
+    - :meth:`summary` — a plain-language, novice-oriented report (not just
+      a field dump): explains what λ_GC means, calls out inflation, and
+      suggests next steps.
+    - :meth:`report` — writes :meth:`summary` plus best-effort Manhattan /
+      Q-Q plots and the full results table to a directory, for sharing.
     """
 
     model: str = ""  # "SingleTraitLMM", "GLM-binary", etc.
@@ -181,24 +195,176 @@ class ScanRun(_BaseRun):
     n_samples: int = 0
     #: Top-K rows by p-value (smallest first).
     top_hits: pd.DataFrame = field(default_factory=pd.DataFrame)
+    #: Trait kind as classified by the friendly-API input layer, e.g.
+    #: ``"continuous"``, ``"binary"``, ``"ordinal"``, ``"count"``. Empty
+    #: string when unknown/unset (e.g. constructed directly by advanced
+    #: callers who bypass ``tg.gwas``).
+    trait_type: str = ""
+    #: Human-readable warnings accumulated during the run (e.g. sample
+    #: mismatches, low MAF filtering out most variants). Populated by the
+    #: input-validation layer; empty by default. Surfaced in
+    #: :meth:`summary` and :attr:`diagnostics`.
+    warnings: list[str] = field(default_factory=list)
 
     _kind: ClassVar[str] = "scan"
 
+    @property
+    def hits(self) -> pd.DataFrame:
+        """Alias for :attr:`top_hits` — the top-K variants by p-value.
+
+        Provided so novice callers can write ``result.hits`` without
+        needing to know the underlying field name.
+        """
+        return self.top_hits
+
+    @property
+    def diagnostics(self) -> dict[str, Any]:
+        """Small JSON-safe dict of scan diagnostics for programmatic checks.
+
+        Keys: ``lambda_gc``, ``n_significant``, ``n_variants``,
+        ``n_samples``, ``model``, ``trait_type``, ``warnings``. Intended
+        for quick conditionals (e.g. inflation gating) without parsing
+        :meth:`summary`'s prose, and for MCP / LLM callers that want a
+        compact status object rather than the full :meth:`to_dict`.
+        """
+        return {
+            "lambda_gc": self.lambda_gc,
+            "n_significant": self.n_significant,
+            "n_variants": self.n_variants,
+            "n_samples": self.n_samples,
+            "model": self.model,
+            "trait_type": self.trait_type,
+            "warnings": list(self.warnings),
+        }
+
     def summary(self) -> str:
+        """Plain-language report of the scan, for novice / notebook use.
+
+        Unlike a raw field dump, this explains what the numbers mean:
+        λ_GC gets an inline calibration verdict (``≤1.05`` well-calibrated,
+        ``>1.10`` inflated, in between borderline), the top hit is named
+        rather than just counted, any accumulated :attr:`warnings` are
+        surfaced, and a final ``Next:`` line suggests follow-up actions
+        (inspect hits, re-run with more PCs, save a report).
+        """
+        trait_label = f"trait ({self.trait_type})" if self.trait_type else "trait"
         lines = [
-            f"Model: {self.model}  Test: {self.test}  Correction: {self.correction or 'none'}",
-            f"Samples: {self.n_samples}  Variants tested: {self.n_variants}",
-            f"Significant @ α={self.significance_threshold:.2e}: {self.n_significant}",
+            f"GWAS scan summary — {trait_label}",
+            f"Model: {self.model or '(unspecified)'}  Test: {self.test or '(unspecified)'}  "
+            f"Correction: {self.correction or 'none'}",
+            f"Samples: {self.n_samples}   Variants tested: {self.n_variants}",
         ]
+
         if self.lambda_gc is not None:
-            lines.append(f"λ_GC: {self.lambda_gc:.4f}")
+            if self.lambda_gc <= 1.05:
+                calibration = "✓ well-calibrated"
+            elif self.lambda_gc > 1.10:
+                calibration = "⚠ inflated — consider more PCs"
+            else:
+                calibration = "borderline — monitor for inflation"
+            lines.append(f"λ_GC: {self.lambda_gc:.2f} ({calibration})")
+        else:
+            lines.append("λ_GC: not computed")
+
         if self.h2 is not None:
-            lines.append(f"Variance components: σ²_g={self.sigma2_g:.4f}, σ²_e={self.sigma2_e:.4f}, h²={self.h2:.4f}")
+            lines.append(
+                f"Variance components: σ²_g={self.sigma2_g:.4f}, "
+                f"σ²_e={self.sigma2_e:.4f}, h²={self.h2:.4f}"
+            )
+
+        lines.append(f"Significant @ α={self.significance_threshold:.2e}: {self.n_significant}")
         if not self.top_hits.empty:
-            lines.append(f"Top hits ({len(self.top_hits)} shown):")
-            lines.append(self.top_hits.head(10).to_string(index=False))
+            top_row = self.top_hits.iloc[0]
+            locus_cols = [c for c in ("SNP", "CHR", "BP", "POS") if c in self.top_hits.columns]
+            locus = " / ".join(str(top_row[c]) for c in locus_cols) if locus_cols else "(unnamed)"
+            p_col = "P" if "P" in self.top_hits.columns else None
+            p_str = f", p={top_row[p_col]:.2e}" if p_col is not None else ""
+            lines.append(f"Top locus: {locus}{p_str}")
+
+        if self.warnings:
+            lines.append(f"Warnings ({len(self.warnings)}):")
+            lines.extend(f"  - {w}" for w in self.warnings)
+
         lines.append(f"Runtime: {self.runtime_s:.1f}s")
+
+        next_steps = []
+        if self.n_significant > 0:
+            next_steps.append("inspect .hits and .manhattan() for the top loci")
+        else:
+            next_steps.append(
+                "no genome-wide-significant hits — check power or relax significance_threshold"
+            )
+        if self.lambda_gc is not None and self.lambda_gc > 1.10:
+            next_steps.append("re-run with more PCs (n_pcs) to reduce inflation")
+        next_steps.append("call .report(dir) to save the summary and plots")
+        lines.append("Next: " + "; ".join(next_steps))
+
         return "\n".join(lines)
+
+    def report(self, dir: str | Path) -> Path:
+        """Write a self-contained report folder for this scan.
+
+        Always writes ``summary.txt`` (the :meth:`summary` text). Also
+        attempts, best-effort, to write ``manhattan.png`` / ``qq.png`` via
+        :meth:`manhattan` / :meth:`qq`, and to copy the full results table
+        to ``results.tsv`` if one is referenced in :attr:`output_files`.
+        Each of these extras is wrapped in its own ``try/except`` so a
+        headless environment (no display backend) or a :attr:`top_hits`
+        schema that doesn't match the ``CHR``/``POS``/``P`` columns
+        expected by the plotting helpers cannot make the report fail —
+        only ``summary.txt`` is guaranteed.
+
+        Parameters
+        ----------
+        dir : str | Path
+            Directory to create (including parents) and populate.
+
+        Returns
+        -------
+        Path
+            The report directory (``dir``, resolved to a :class:`Path`).
+        """
+        out_dir = Path(dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        (out_dir / "summary.txt").write_text(self.summary())
+
+        try:
+            fig = self.manhattan()
+            if fig is not None:
+                fig.savefig(out_dir / "manhattan.png", dpi=150, bbox_inches="tight")
+                try:
+                    import matplotlib.pyplot as plt
+
+                    plt.close(fig)
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            fig = self.qq()
+            if fig is not None:
+                fig.savefig(out_dir / "qq.png", dpi=150, bbox_inches="tight")
+                try:
+                    import matplotlib.pyplot as plt
+
+                    plt.close(fig)
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
+
+        tsv_path = self.output_files.get("tsv")
+        if tsv_path is not None:
+            try:
+                import shutil
+
+                shutil.copy(str(tsv_path), out_dir / "results.tsv")
+            except Exception:  # noqa: BLE001
+                pass
+
+        return out_dir
 
     def manhattan(self, **kwargs):
         """Return a matplotlib Figure with a Manhattan plot of this scan.
@@ -551,3 +717,13 @@ class LGEBVResult(_BaseRun):
             lines.append(head_df.to_string(index=False))
         lines.append(f"Runtime: {self.runtime_s:.1f}s")
         return "\n".join(lines)
+
+
+# --- Friendly-API alias ------------------------------------------------------
+
+#: Result object returned by the friendly-API entry point ``tg.gwas(...)``.
+#: Identical to :class:`ScanRun` (same fields, same ``.hits`` /
+#: ``.diagnostics`` / ``.summary`` / ``.report`` surface) — the alias just
+#: gives the novice-facing entry point a name that doesn't presuppose the
+#: underlying scan model.
+GwasResult = ScanRun
