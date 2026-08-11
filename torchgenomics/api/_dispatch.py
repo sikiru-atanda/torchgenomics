@@ -47,6 +47,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..preprocess.qc import QCFilterConfig
 from ._helpers import top_hits
 from ._inputs import GwasInputs
 from ._registry import resolve_model
@@ -92,9 +93,21 @@ class RunOptions:
         ``"auto"`` currently resolves to ``0`` (no PCs); Task 5 may replace
         this with a data-driven choice.
     qc : bool, default True
-        Whether per-variant QC (MAF / missingness) is applied. Currently
-        advisory — the underlying scans always apply their default QC
-        thresholds; this flag is preserved for forward compatibility.
+        Whether per-variant QC (MAF / missingness / Hardy-Weinberg) is
+        applied. When ``True`` (default) the standard triplet is used —
+        ``maf_min=0.01``, ``miss_max=0.1``, and HWE filtering at the library
+        default (:data:`torchgenomics.preprocess.qc.QCFilterConfig.hwe_p_min`,
+        currently ``1e-6``) — matching the CLI and the rest of the library.
+        When ``False`` all per-variant filters are disabled (pure
+        pass-through: ``maf_min=0.0``, ``miss_max=1.0``, ``hwe_p_min=0.0``).
+    hwe_p_min : float | None, default None
+        Optional power-user override of the HWE p-value filter threshold,
+        used only when :attr:`qc` is ``True``. ``None`` (default) means "use
+        the library default" (see :attr:`qc` above). Set explicitly — e.g.
+        ``hwe_p_min=0.0`` — to disable *just* the HWE filter while keeping
+        MAF / missingness QC on, without setting ``qc=False`` (which would
+        also relax MAF/missingness). Ignored when ``qc=False`` (HWE is
+        already off in that case).
     correction : str, default "bh"
         Multiple-testing correction, one of the values accepted by the
         underlying scans (``"bh"``, ``"bonferroni"``, ``"holm"``, ``"by"``,
@@ -118,6 +131,7 @@ class RunOptions:
     kinship: Any = "auto"
     pcs: Any = "auto"
     qc: bool = True
+    hwe_p_min: float | None = None
     correction: str = "bh"
     device: str | None = None
     output: str | Path | None = None
@@ -305,17 +319,18 @@ def _read_scan_output(
 def _qc_kwargs(opts: RunOptions) -> dict[str, float]:
     """Friendly-API per-variant QC thresholds for the ``lmm_scan`` / ``glm_scan`` calls.
 
-    ``tg.gwas`` reports every *tested* variant by default: Hardy-Weinberg
-    filtering (on at ``1e-6`` in the CLI) is left **opt-in** here — a one-call
-    novice API surprising users by silently dropping loci for HWE is worse
-    than reporting them, and HWE violation is often the signal of interest
-    (e.g. under selection) rather than a data-quality problem. When
-    :attr:`RunOptions.qc` is ``True`` (default) the standard MAF / missingness
-    thresholds still apply (they guard model stability); when ``False`` all
-    per-variant filters are disabled so the scan is a pure pass-through.
+    ``tg.gwas`` matches the rest of the library by default: when
+    :attr:`RunOptions.qc` is ``True`` (default) the standard MAF /
+    missingness / Hardy-Weinberg triplet is applied, with HWE filtering at
+    the library default (:data:`torchgenomics.preprocess.qc.QCFilterConfig.hwe_p_min`,
+    currently ``1e-6``) unless the caller supplies an explicit
+    :attr:`RunOptions.hwe_p_min` override (e.g. ``0.0`` to disable just the
+    HWE filter while keeping MAF/missingness on). When ``qc`` is ``False``
+    all per-variant filters are disabled so the scan is a pure pass-through.
     """
     if opts.qc:
-        return {"maf_min": 0.01, "miss_max": 0.1, "hwe_p_min": 0.0}
+        hwe = QCFilterConfig.hwe_p_min if opts.hwe_p_min is None else opts.hwe_p_min
+        return {"maf_min": 0.01, "miss_max": 0.1, "hwe_p_min": hwe}
     return {"maf_min": 0.0, "miss_max": 1.0, "hwe_p_min": 0.0}
 
 
