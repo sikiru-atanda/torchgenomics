@@ -274,6 +274,7 @@ def _run_glm_scan(
     chunk_size: int = 10_000,
     maf_min: float = 0.01,
     miss_max: float = 0.1,
+    hwe_p_min: float = 1e-6,
     device: str = "cpu",
     id_column: str | None = None,
     no_save_parquet: bool = False,
@@ -294,6 +295,7 @@ def _run_glm_scan(
         chunk_size=chunk_size,
         maf_min=maf_min,
         miss_max=miss_max,
+        hwe_p_min=hwe_p_min,
         device=device,
         id_column=id_column,
         no_save_parquet=no_save_parquet,
@@ -386,7 +388,11 @@ def _cmd_glm_scan_single(args: argparse.Namespace) -> int:
 
     from .scan.unified import UnifiedScanner
     scanner = UnifiedScanner(aligned_reader, model, config)
-    qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
+    qc = QCFilterConfig(
+        maf_min=args.maf_min,
+        miss_max=args.miss_max,
+        hwe_p_min=getattr(args, "hwe_p_min", QCFilterConfig.hwe_p_min),
+    )
     result = scanner.scan(null_fit, test=test, qc_config=qc)
 
     _apply_correction_and_save(result, args)
@@ -405,6 +411,7 @@ def _run_lmm_scan(
     chunk_size: int = 10_000,
     maf_min: float = 0.01,
     miss_max: float = 0.1,
+    hwe_p_min: float = 1e-6,
     device: str = "cpu",
     grm: str | None = None,
     grm_method: str = "vanraden",
@@ -437,6 +444,7 @@ def _run_lmm_scan(
         chunk_size=chunk_size,
         maf_min=maf_min,
         miss_max=miss_max,
+        hwe_p_min=hwe_p_min,
         device=device,
         grm=grm,
         grm_method=grm_method,
@@ -580,7 +588,11 @@ def _cmd_lmm_scan_single(args: argparse.Namespace) -> int:
 
     from .scan.unified import UnifiedScanner
     scanner = UnifiedScanner(aligned_reader, model, config)
-    qc = QCFilterConfig(maf_min=args.maf_min, miss_max=args.miss_max)
+    qc = QCFilterConfig(
+        maf_min=args.maf_min,
+        miss_max=args.miss_max,
+        hwe_p_min=getattr(args, "hwe_p_min", QCFilterConfig.hwe_p_min),
+    )
     result = scanner.scan(null_fit, test=test_type, qc_config=qc)
 
     _apply_correction_and_save(result, args)

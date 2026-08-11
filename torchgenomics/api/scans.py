@@ -109,6 +109,7 @@ def lmm_scan(
     chunk_size: int = 10_000,
     maf_min: float = 0.01,
     miss_max: float = 0.1,
+    hwe_p_min: float = 1e-6,
     device: Literal["cpu", "cuda", "auto"] = "auto",
     grm: str | Path | None = None,
     grm_method: Literal["vanraden", "zhang"] = "vanraden",
@@ -195,6 +196,7 @@ def lmm_scan(
             chunk_size=chunk_size,
             maf_min=maf_min,
             miss_max=miss_max,
+            hwe_p_min=hwe_p_min,
             device=device_resolved,
             grm=str(grm) if grm else None,
             grm_method=grm_method,
@@ -285,6 +287,7 @@ def glm_scan(
     chunk_size: int = 10_000,
     maf_min: float = 0.01,
     miss_max: float = 0.1,
+    hwe_p_min: float = 1e-6,
     device: Literal["cpu", "cuda", "auto"] = "auto",
     significance_threshold: float = 5e-8,
     top_k: int = 50,
@@ -318,6 +321,7 @@ def glm_scan(
             chunk_size=chunk_size,
             maf_min=maf_min,
             miss_max=miss_max,
+            hwe_p_min=hwe_p_min,
             device=device_resolved,
         )
         if info["exit_code"] != 0:
