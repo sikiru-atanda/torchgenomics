@@ -32,7 +32,16 @@ def test_run_model_lmm_and_a_lowlevel_model(tmp_path):
     from torchgenomics.api._dispatch import run_model, RunOptions
     import numpy as np, pandas as pd
     ids=[f"s{i}" for i in range(150)]
-    G=np.random.default_rng(0).integers(0,3,(150,300)).astype(float)
+    # Hardy-Weinberg-consistent genotypes: draw a per-SNP minor-allele
+    # frequency in [0.2, 0.8] (clears the MAF>=0.01 QC filter with margin),
+    # then genotypes ~ Binomial(2, p) per sample — HWE-consistent by
+    # construction, so all 300 variants survive standard QC (MAF +
+    # missingness + HWE, which is ON by default in tg.gwas; see Fix 1).
+    # A uniform-random 0/1/2 matrix is NOT HWE-consistent and would fail the
+    # HWE filter on ~1/5 of variants, making n_variants==300 a flaky assertion.
+    rng = np.random.default_rng(0)
+    p = rng.uniform(0.2, 0.8, size=300)
+    G = rng.binomial(2, p, size=(150, 300)).astype(float)
     y=pd.Series(np.random.default_rng(1).normal(size=150), index=ids, name="y")
     inp=load_inputs(phenotype=y, genotype=G)
     r=run_model("lmm", inp, RunOptions(kinship="auto", pcs=0, correction="bh", verbose=False))
