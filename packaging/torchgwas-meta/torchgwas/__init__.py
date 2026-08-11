@@ -67,7 +67,27 @@ if not any(isinstance(f, _TorchgwasFinder) for f in sys.meta_path):
 
 
 def __getattr__(name: str):
-    return getattr(_torchgenomics, name)
+    """Forward ``torchgwas.<name>`` to ``torchgenomics.<name>``.
+
+    Tries the real submodule first (``importlib.import_module``) before
+    falling back to a plain attribute lookup on the ``torchgenomics``
+    package object. This matters because some names on ``torchgenomics``
+    are shadowed: e.g. ``torchgenomics.models`` (the friendly-API function
+    ``tg.models()``, added in v0.4.x) shadows the ``torchgenomics.models``
+    *subpackage* at the top-level attribute (see
+    :mod:`torchgenomics.api.gwas`'s ``models()`` docstring for why the
+    shadowing itself is safe for ``torchgenomics`` callers — ``from
+    torchgenomics.models import X`` and cached ``import torchgenomics.models``
+    both resolve via ``sys.modules``, not this attribute). The legacy
+    ``torchgwas`` shim has no such internal callers to protect, but it must
+    still keep resolving ``from torchgwas import models`` (and any other
+    submodule name) to the real submodule for back-compat, so submodule
+    resolution is tried first here.
+    """
+    try:
+        return importlib.import_module(f"{_torchgenomics.__name__}.{name}")
+    except ModuleNotFoundError:
+        return getattr(_torchgenomics, name)
 
 
 def __dir__():

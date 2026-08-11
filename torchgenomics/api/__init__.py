@@ -47,6 +47,7 @@ from .annotate import annotate_hits
 
 # Function imports happen here once the per-tier modules are added.
 from .data import convert, impute, validate
+from .gwas import GwasComparison, gwas, models
 from .ld import ld_blocks
 from .lgebv import lgebv
 from .pgs import pgs_fit, pgs_score
@@ -70,6 +71,10 @@ __all__ = [
     "annotate_hits",
     "manhattan",
     "qq",
+    # Friendly-API orchestrator (tg.gwas)
+    "gwas",
+    "models",
+    "GwasComparison",
     # Result types
     "ValidateRun",
     "ConvertRun",
