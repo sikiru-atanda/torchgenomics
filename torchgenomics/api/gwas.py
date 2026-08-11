@@ -15,8 +15,10 @@ comes from an already-tested model path via
 :func:`torchgenomics.api._dispatch.run_model`. This layer only resolves
 inputs, picks (or validates) a model, prints a transparent decision log,
 and shapes the output as either a single
-:class:`~torchgenomics.api._results.GwasResult` or, when more than one
-model is requested, a :class:`GwasComparison`.
+:class:`~torchgenomics.api._results.GwasResult` (``models="auto"`` or a
+bare ``str`` alias) or a :class:`GwasComparison` (``models=`` passed as a
+``list``/``tuple``, by input type — even a one-element list; see
+:func:`gwas`'s docstring, Fix 2).
 
 Auto-model selection (``models="auto"``, the default) is a documented,
 opt-in convenience — never a silent override. Every ``tg.gwas`` call with
@@ -47,6 +49,18 @@ def _auto_model(inputs: GwasInputs, kinship: Any) -> tuple[str, str]:
     trait type detected/declared by :func:`~torchgenomics.api._inputs.load_inputs`
     and whether the caller asked for kinship correction at all.
 
+    **Wired-only policy**: this function must only ever return an alias that
+    :func:`torchgenomics.api._dispatch.run_model` can actually execute today
+    (currently ``"lmm"``, ``"glm"``, ``"blink"``, ``"farmcpu"`` — see
+    :data:`torchgenomics.api._dispatch._LOWLEVEL_CLI` and the ``api_lmm`` /
+    ``api_glm`` routes). ``"auto"`` is the *default* for ``models=``, so it
+    must never raise ``NotImplementedError`` — a model that scientifically
+    "would be nicer" but isn't wired yet (e.g. ``glmm`` for a related-sample
+    binary trait) is surfaced only as a *note* in the rationale string, never
+    as the actual pick. If a future edit adds a wired alias that scientifically
+    dominates one of the branches below, update the branch *and* this
+    docstring together.
+
     Decision tree
     -------------
     - **continuous** trait, kinship on  -> ``"lmm"`` (GRM mixed model;
@@ -54,16 +68,21 @@ def _auto_model(inputs: GwasInputs, kinship: Any) -> tuple[str, str]:
       default for a quantitative trait).
     - **continuous** trait, kinship off -> ``"glm"`` (fixed-effects only;
       the caller explicitly disabled kinship correction).
-    - **binary** / **categorical** trait, kinship on -> ``"glmm"`` (PQL
-      mixed model, SAIGE-style; corrects for relatedness on a non-Gaussian
-      trait).
-    - **binary** / **categorical** trait, kinship off -> ``"glm"``
-      (fixed-effects GLM for the same trait type).
+    - **binary** / **categorical** trait, any kinship setting -> ``"glm"``
+      (fixed-effects GLM; the only wired route for a non-Gaussian trait
+      today). A mixed model (``glmm``, PQL/SAIGE-style) would be the more
+      appropriate choice for *related* samples, but ``glmm`` is not yet
+      wired through :func:`~torchgenomics.api._dispatch.run_model`, so
+      picking it here would turn the friendly, zero-argument default path
+      into a crash. The rationale string still names ``glmm`` as the
+      forward-looking alternative so the caller can act on it (via the CLI
+      or, once wired, ``models="glmm"``) without ``tg.gwas`` silently
+      guessing wrong or blowing up.
 
     "Kinship on" means anything other than an explicit ``False`` / ``None``
     for the ``kinship=`` argument — a filesystem path *or* the string
-    ``"auto"`` both count as "on", since an LMM/GLMM always ends up using
-    *some* GRM (either user-supplied or computed on the fly).
+    ``"auto"`` both count as "on". It only changes the *continuous* branch
+    today, because the binary/categorical branch has just one wired option.
 
     Parameters
     ----------
@@ -77,7 +96,8 @@ def _auto_model(inputs: GwasInputs, kinship: Any) -> tuple[str, str]:
     Returns
     -------
     tuple[str, str]
-        ``(alias, rationale)`` — the chosen registry alias and a one-line,
+        ``(alias, rationale)`` — the chosen registry alias (always a
+        currently-wired one; see "Wired-only policy" above) and a one-line,
         human-readable explanation suitable for the decision log printed by
         :func:`gwas` (and for :attr:`GwasResult`-adjacent logging/debugging).
     """
@@ -97,17 +117,14 @@ def _auto_model(inputs: GwasInputs, kinship: Any) -> tuple[str, str]:
             "kinship was explicitly disabled)",
         )
 
-    # binary / categorical
-    if kinship_on:
-        return (
-            "glmm",
-            f"{trait_type} trait + kinship on -> glmm (PQL mixed model, "
-            "SAIGE-style, for a non-Gaussian trait)",
-        )
+    # binary / categorical: glm is the only wired route today (see
+    # "Wired-only policy" above) — auto must never pick the unwired glmm.
     return (
         "glm",
-        f"{trait_type} trait + kinship off -> glm (fixed-effects GLM; "
-        "kinship was explicitly disabled)",
+        f"{trait_type} trait -> glm (fixed-effects GLM; the wired option "
+        "for a non-Gaussian trait). Note: for related samples a mixed "
+        "model (GLMM) is more appropriate -- run `torchgenomics "
+        "glmm-scan` or pass models='glmm' once wired.",
     )
 
 
@@ -115,7 +132,7 @@ def _resolve_models(
     models: str | Sequence[str],
     inputs: GwasInputs,
     kinship: Any,
-) -> tuple[list[str], bool, str | None]:
+) -> tuple[list[str], bool, str | None, bool]:
     """Resolve the ``models=`` argument of :func:`gwas` to a validated alias list.
 
     - ``"auto"`` -> the single alias chosen by :func:`_auto_model`.
@@ -128,12 +145,25 @@ def _resolve_models(
     valid aliases) that calling :func:`~torchgenomics.api._registry.resolve_model`
     directly would.
 
+    Return-type note (Fix 2, per spec): whether :func:`gwas` returns a single
+    :class:`~torchgenomics.api._results.GwasResult` or a
+    :class:`GwasComparison` is decided by the **input type** of ``models``,
+    not by how many aliases it resolves to. A ``list``/``tuple`` — even a
+    one-element one like ``["lmm"]`` — always means "the caller asked for
+    the comparison shape" and must return a :class:`GwasComparison`; only a
+    bare ``str`` (including the resolved ``"auto"`` single pick) returns a
+    plain :class:`GwasResult`. This function reports that original-type flag
+    back to :func:`gwas` as ``models_was_sequence`` so the count-based
+    ``len(aliases) == 1`` shortcut is never used for the branch decision.
+
     Returns
     -------
-    tuple[list[str], bool, str | None]
-        ``(aliases, was_auto, rationale)``. ``rationale`` is the one-line
-        explanation from :func:`_auto_model` when ``was_auto`` is ``True``,
-        else ``None``.
+    tuple[list[str], bool, str | None, bool]
+        ``(aliases, was_auto, rationale, models_was_sequence)``. ``rationale``
+        is the one-line explanation from :func:`_auto_model` when
+        ``was_auto`` is ``True``, else ``None``. ``models_was_sequence`` is
+        ``True`` iff the caller passed a ``list``/``tuple`` for ``models``
+        (as opposed to a ``str``, including ``"auto"``).
 
     Raises
     ------
@@ -142,6 +172,7 @@ def _resolve_models(
         unrecognized (bubbled up from :func:`resolve_model`).
     """
     rationale: str | None = None
+    models_was_sequence = not isinstance(models, str)
     if isinstance(models, str) and models == "auto":
         alias, rationale = _auto_model(inputs, kinship)
         aliases = [alias]
@@ -162,7 +193,7 @@ def _resolve_models(
     for alias in aliases:
         resolve_model(alias)  # friendly ValueError on an unknown name
 
-    return aliases, was_auto, rationale
+    return aliases, was_auto, rationale, models_was_sequence
 
 
 def _print_decision_log(
@@ -203,11 +234,14 @@ class GwasComparison(_BaseRun):
     """Multi-model result of ``tg.gwas(..., models=[...])``.
 
     Returned instead of a bare :class:`~torchgenomics.api._results.GwasResult`
-    whenever :func:`gwas` is called with more than one resolved model alias
-    (a ``list``/``tuple`` with 2+ entries — ``models="auto"`` or a single
-    ``str`` always resolve to exactly one model and return a plain
-    :class:`~torchgenomics.api._results.GwasResult` instead). Bundles one
-    result per requested model plus comparison-level conveniences:
+    whenever :func:`gwas` is called with ``models=`` passed as a
+    ``list``/``tuple`` — **by input type, not by resolved count** (Fix 2):
+    even a *one-element* list like ``models=["lmm"]`` returns a
+    :class:`GwasComparison`, not a bare
+    :class:`~torchgenomics.api._results.GwasResult`. Only ``models="auto"``
+    or an explicit single ``str`` alias (e.g. ``models="lmm"``) return a
+    plain :class:`~torchgenomics.api._results.GwasResult` instead. Bundles
+    one result per requested model plus comparison-level conveniences:
 
     - :attr:`results` — ``{alias: GwasResult}``, in request order.
     - :meth:`summary` — plain-language header plus a per-model
@@ -229,6 +263,15 @@ class GwasComparison(_BaseRun):
     trait_type : str
         Trait type (``"continuous"``/``"binary"``/``"categorical"``), also
         used in :meth:`summary`'s header.
+    runtime_s : float
+        (Inherited from :class:`~torchgenomics.api._results._BaseRun`, Fix
+        3.) Total wall-clock time for the *whole comparison*, computed by
+        :func:`gwas` as the **sum** of each per-model
+        :attr:`~torchgenomics.api._results.ScanRun.runtime_s` (not the max)
+        — i.e. the cost of running every requested model, since they run
+        sequentially. Left at its ``0.0`` default only when
+        :class:`GwasComparison` is constructed directly rather than via
+        :func:`gwas`.
     """
 
     results: dict[str, GwasResult] = field(default_factory=dict)
@@ -365,7 +408,9 @@ def gwas(
         when a mixed model is used; a path loads a pre-computed GRM;
         ``False``/``None`` disables kinship correction for models that
         support running without it (drives ``models="auto"`` toward
-        ``"glm"`` instead of ``"lmm"``/``"glmm"`` — see :func:`_auto_model`).
+        ``"glm"`` instead of ``"lmm"`` for a continuous trait — see
+        :func:`_auto_model`; it does not change the binary/categorical pick,
+        which is always ``"glm"`` today).
         Passed straight through to :class:`~torchgenomics.api._dispatch.RunOptions`.
     pcs : str | int | bool | None, default "auto"
         Number of genotype principal components to add as covariates.
@@ -380,13 +425,21 @@ def gwas(
         it. Also feeds ``models="auto"``'s decision (:func:`_auto_model`).
     models : str | list[str], default "auto"
         ``"auto"`` picks exactly one model via :func:`_auto_model` (printed
-        and always overridable — never a silent choice). A single alias
-        (``str``, e.g. ``"lmm"``) or GAPIT-name synonym runs that one model.
-        A ``list``/``tuple`` of 2+ aliases runs every one of them and
-        returns a :class:`GwasComparison` instead of a bare
-        :class:`~torchgenomics.api._results.GwasResult`. Every alias is
-        validated via :func:`torchgenomics.api._registry.resolve_model`
-        (see :func:`tg.models() <models>` for the full registry).
+        and always overridable — never a silent choice) and returns a plain
+        :class:`~torchgenomics.api._results.GwasResult`. A single alias
+        (``str``, e.g. ``"lmm"``) or GAPIT-name synonym runs that one model
+        and likewise returns a bare :class:`~torchgenomics.api._results.GwasResult`.
+        **The return type is decided by the type you pass, not the count**
+        (Fix 2): any ``list``/``tuple`` — including a *one-element* list
+        like ``["lmm"]`` — runs every alias in it and always returns a
+        :class:`GwasComparison`, never a bare
+        :class:`~torchgenomics.api._results.GwasResult`. Pass a bare
+        ``str`` when you want a single result; wrap it in a list only when
+        you want the comparison shape (``.results``, comparison
+        :meth:`GwasComparison.summary`/:meth:`GwasComparison.report`), even
+        for one model. Every alias is validated via
+        :func:`torchgenomics.api._registry.resolve_model` (see
+        :func:`tg.models() <models>` for the full registry).
     qc : bool, default True
         Per-variant QC (MAF / missingness / Hardy-Weinberg). See
         :class:`torchgenomics.api._dispatch.RunOptions`.
@@ -416,9 +469,12 @@ def gwas(
     -------
     GwasResult | GwasComparison
         A single :class:`~torchgenomics.api._results.GwasResult` when
-        exactly one model is resolved (the ``models="auto"``/single-``str``
-        cases), else a :class:`GwasComparison` bundling one
-        :class:`~torchgenomics.api._results.GwasResult` per requested model.
+        ``models`` was passed as a ``str`` (``"auto"`` or an explicit single
+        alias), else a :class:`GwasComparison` bundling one
+        :class:`~torchgenomics.api._results.GwasResult` per requested model
+        when ``models`` was passed as a ``list``/``tuple`` — **by input
+        type, not by resolved count**; a one-element list still returns a
+        :class:`GwasComparison` (see the ``models`` parameter above, Fix 2).
 
     Raises
     ------
@@ -443,8 +499,13 @@ def gwas(
     >>> print(cmp.summary())                   # doctest: +SKIP
     """
     inputs = load_inputs(phenotype, genotype, covariates, trait, trait_type)
-    aliases, was_auto, rationale = _resolve_models(models, inputs, kinship)
-    single = len(aliases) == 1
+    aliases, was_auto, rationale, models_was_sequence = _resolve_models(models, inputs, kinship)
+    # Fix 2: the single-vs-comparison branch is decided by the *input type*
+    # of `models` (str -> GwasResult, list/tuple -> GwasComparison), never
+    # by how many aliases it happened to resolve to — so models=["lmm"]
+    # (a one-element list) still returns a GwasComparison. See
+    # _resolve_models' docstring and the `models`/Returns sections above.
+    single = not models_was_sequence
 
     opts = RunOptions(
         kinship=kinship,
@@ -467,8 +528,15 @@ def gwas(
             result.report(output)
         return result
 
+    # Fix 3: runtime_s for the comparison is the SUM of each per-model
+    # GwasResult.runtime_s (documented on GwasComparison.runtime_s below) —
+    # this is the wall-clock cost of the tg.gwas(models=[...]) call as a
+    # whole, not just whichever model happened to run last/longest.
     comparison = GwasComparison(
-        results=results, trait_name=inputs.trait_name, trait_type=inputs.trait_type
+        results=results,
+        trait_name=inputs.trait_name,
+        trait_type=inputs.trait_type,
+        runtime_s=sum(r.runtime_s for r in results.values()),
     )
     if output is not None:
         comparison.report(output)

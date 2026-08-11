@@ -70,3 +70,77 @@ def test_tg_gwas_single_auto_and_multimodel(capsys):
     assert "lmm" in cmp.summary() and "blink" in cmp.summary()
     # tg.models() lists the registry
     assert "lmm" in set(tg.models()["alias"])
+
+
+def _hwe_consistent_fixture(n_samples=150, n_variants=300, seed=0):
+    """Shared HWE-consistent (float) genotype + continuous phenotype fixture.
+
+    Mirrors the fixture used by ``test_run_model_lmm_and_a_lowlevel_model``:
+    per-SNP MAF drawn in [0.2, 0.8], genotypes ~ Binomial(2, p) — HWE-
+    consistent by construction so all variants survive standard QC
+    (MAF + missingness + HWE, ON by default). See that test for the
+    rationale on why a uniform-random 0/1/2 matrix would be flaky here.
+    """
+    import numpy as np, pandas as pd
+    ids = [f"s{i}" for i in range(n_samples)]
+    rng = np.random.default_rng(seed)
+    p = rng.uniform(0.2, 0.8, size=n_variants)
+    G = rng.binomial(2, p, size=(n_samples, n_variants)).astype(float)
+    y = pd.Series(np.random.default_rng(seed + 1).normal(size=n_samples), index=ids, name="y")
+    return y, G
+
+
+def test_tg_gwas_list_vs_str_return_type():
+    """Fix 2 regression: models= return type is decided by INPUT TYPE, not count.
+
+    A one-element list (``models=["lmm"]``) must return a GwasComparison
+    (the caller explicitly asked for the comparison shape), while a bare
+    str (``models="lmm"``) must return a plain GwasResult -- even though
+    both resolve to exactly one alias.
+    """
+    import torchgenomics as tg
+    from torchgenomics.api.gwas import GwasComparison
+
+    y, G = _hwe_consistent_fixture()
+
+    cmp = tg.gwas(y, G, models=["lmm"], kinship="auto", pcs=0, verbose=False)
+    assert type(cmp) is GwasComparison
+    assert set(cmp.results) == {"lmm"}
+
+    r = tg.gwas(y, G, models="lmm", kinship="auto", pcs=0, verbose=False)
+    assert type(r) is tg.GwasResult
+
+
+def test_tg_gwas_comparison_runtime_s_populated():
+    """Fix 3 regression: GwasComparison.runtime_s is the sum of per-model runtimes."""
+    import torchgenomics as tg
+
+    y, G = _hwe_consistent_fixture()
+    cmp = tg.gwas(y, G, models=["lmm", "blink"], kinship="auto", pcs=0, verbose=False)
+    assert cmp.runtime_s == sum(r.runtime_s for r in cmp.results.values())
+    assert cmp.runtime_s > 0
+    assert f"Runtime: {cmp.runtime_s:.1f}s" in cmp.summary()
+
+
+def test_auto_model_never_picks_unwired_glmm_for_binary_trait():
+    """Fix 1 regression: auto-selection must never pick an unwired model.
+
+    A binary trait with default kinship="auto" used to resolve to "glmm",
+    which run_model does not wire (NotImplementedError) -- crashing the
+    most common non-continuous default path. It must now resolve to the
+    wired "glm" alias, with a rationale that still mentions glmm as the
+    scientifically-preferable (but not-yet-wired) alternative.
+    """
+    import numpy as np, pandas as pd
+    from torchgenomics.api._inputs import load_inputs
+    from torchgenomics.api.gwas import _auto_model
+
+    ids = [f"s{i}" for i in range(150)]
+    y = pd.Series(np.random.default_rng(2).integers(0, 2, size=150), index=ids, name="case")
+    _, G = _hwe_consistent_fixture(seed=3)
+    inputs = load_inputs(phenotype=y, genotype=G)
+    assert inputs.trait_type == "binary"
+
+    alias, rationale = _auto_model(inputs, kinship="auto")
+    assert alias == "glm"
+    assert "glmm" in rationale.lower()
