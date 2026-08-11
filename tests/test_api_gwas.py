@@ -50,3 +50,23 @@ def test_run_model_lmm_and_a_lowlevel_model(tmp_path):
     # a low-level model also returns the same GwasResult shape
     r2=run_model("blink", inp, RunOptions(kinship=False, pcs=0, verbose=False))
     assert isinstance(r2, GwasResult) and r2.n_variants>0
+
+
+def test_tg_gwas_single_auto_and_multimodel(capsys):
+    import numpy as np, pandas as pd
+    import torchgenomics as tg
+    ids=[f"s{i}" for i in range(150)]
+    G=np.random.default_rng(0).integers(0,3,(150,300)).astype(float)
+    y=pd.Series(np.random.default_rng(1).normal(size=150), index=ids, name="yield")
+    # bare call: auto model, prints decisions, returns one GwasResult
+    r=tg.gwas(y, G, kinship="auto", pcs=0)
+    assert isinstance(r, tg.GwasResult)
+    out=capsys.readouterr().out
+    assert "yield" in out and ("lmm" in out.lower() or "SingleTraitLMM" in out)  # decision log
+    # user picks multiple models -> GwasComparison
+    cmp=tg.gwas(y, G, models=["lmm","blink"], kinship="auto", pcs=0, verbose=False)
+    assert isinstance(cmp, tg.GwasComparison)
+    assert set(cmp.results) == {"lmm","blink"}
+    assert "lmm" in cmp.summary() and "blink" in cmp.summary()
+    # tg.models() lists the registry
+    assert "lmm" in set(tg.models()["alias"])
