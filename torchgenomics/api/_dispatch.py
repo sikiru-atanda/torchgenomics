@@ -1,0 +1,542 @@
+"""Shared dispatch core for the friendly-API entry point ``tg.gwas(...)``.
+
+This module is the linchpin between the resolved user inputs
+(:class:`~torchgenomics.api._inputs.GwasInputs`, Task 2) and the *already
+tested* scan machinery of the library. It deliberately re-implements **no**
+model math: every route delegates to a battle-tested code path —
+
+  * ``spec.runner in {"api_lmm", "api_glm"}`` → the tier-1 api functions
+    :func:`torchgenomics.api.scans.lmm_scan` / :func:`~torchgenomics.api.scans.glm_scan`
+    (which themselves wrap :func:`torchgenomics.cli._run_lmm_scan` /
+    ``_run_glm_scan``).
+  * ``spec.runner.startswith("lowlevel:")`` → the CLI single-trait runner for
+    that model (e.g. :func:`torchgenomics.cli._cmd_blink_scan_single`), which
+    already encodes the correct per-model streaming scan strategy and writes a
+    ``<prefix>.assoc.tsv`` association table; the output is then read back into
+    a uniform :class:`~torchgenomics.api._results.GwasResult`.
+
+Both routes require **file paths** (there is no in-memory entry point in the
+existing scan functions). When ``inputs`` carries an in-memory genotype
+(:class:`~torchgenomics.api._inputs.ArrayReader` or any duck-typed
+``GenotypeReader``), the matrix and phenotype are materialized to temp files
+in the numeric-dosage "3-column" CSV format
+(:class:`torchgenomics.io.numeric.NumericDosageReader`) and a phenotype TSV.
+A file-path genotype is passed straight through untouched.
+
+Only two low-level models are fully wired here — ``blink`` and ``farmcpu`` —
+because they need nothing beyond ``(phenotype, genotype)`` (plus, for LMM,
+an auto GRM). Models that need extra inputs (``gxe`` needs an environment,
+``set`` needs regions, ``mvlmm`` needs multiple traits, ``glmm`` needs a
+family, ``bayes`` needs signal priors) raise a clear
+:class:`NotImplementedError` rather than silently returning a wrong result.
+
+.. note::
+   Kinship/PC reuse: for now the LMM path lets ``lmm_scan`` compute its own
+   VanRaden GRM when ``kinship == "auto"`` (``grm=None``). Task 5 may compute a
+   GRM once and pass it through :attr:`RunOptions.kinship` so a multi-model
+   comparison shares one GRM instead of recomputing it per model.
+"""
+
+from __future__ import annotations
+
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from ._helpers import top_hits
+from ._inputs import GwasInputs
+from ._registry import resolve_model
+from ._results import GwasResult
+
+# Trait-type → GLM family map for the ``api_glm`` route. Ordinal / multinomial
+# need an explicit ``n_categories`` that the friendly-input layer does not
+# currently carry, so ``categorical`` is intentionally left unwired here.
+_GLM_FAMILY = {"continuous": "gaussian", "binary": "binary"}
+
+_VALID_CORRECTIONS = frozenset(
+    {
+        "bonferroni", "bh", "by", "holm", "storey", "weighted-bh",
+        "lfdr", "hierarchical", "ihw", "adapt", "none",
+    }
+)
+
+
+@dataclass
+class RunOptions:
+    """User-tunable knobs for a single :func:`run_model` invocation.
+
+    All fields have friendly defaults so a novice can call
+    ``run_model("lmm", inputs)`` with no options at all. Values are validated
+    at the top of :func:`run_model`, raising ``ValueError`` with an actionable
+    message rather than letting a bad value surface as an opaque downstream
+    error.
+
+    Parameters
+    ----------
+    kinship : str | bool | None | Any, default "auto"
+        GRM / kinship policy for mixed-model (LMM) routes.
+        ``"auto"`` lets :func:`~torchgenomics.api.scans.lmm_scan` compute a
+        streaming VanRaden GRM itself (``grm=None``). A filesystem path
+        (``str``) to a pre-computed GRM is passed straight through to
+        ``lmm_scan(grm=...)``. ``False`` / ``None`` also fall through to an
+        auto GRM for LMM (an LMM cannot run without one); they are meaningful
+        only for fixed-effects / multi-locus models (e.g. ``blink``,
+        ``farmcpu``) that ignore kinship entirely.
+    pcs : str | int | bool | None, default "auto"
+        Number of genotype principal components to add as covariates. An
+        ``int`` is used verbatim. ``0`` / ``None`` / ``False`` mean "no PCs".
+        ``"auto"`` currently resolves to ``0`` (no PCs); Task 5 may replace
+        this with a data-driven choice.
+    qc : bool, default True
+        Whether per-variant QC (MAF / missingness) is applied. Currently
+        advisory — the underlying scans always apply their default QC
+        thresholds; this flag is preserved for forward compatibility.
+    correction : str, default "bh"
+        Multiple-testing correction, one of the values accepted by the
+        underlying scans (``"bh"``, ``"bonferroni"``, ``"holm"``, ``"by"``,
+        ``"storey"``, ``"none"``, ...). Validated against
+        :data:`_VALID_CORRECTIONS`.
+    device : str | None, default None
+        ``"cpu"`` / ``"cuda"`` / ``"auto"``. ``None`` resolves to ``"auto"``
+        (CUDA when available) for the api routes and to the CLI default for
+        low-level routes.
+    output : str | pathlib.Path | None, default None
+        Directory for the results tables. ``None`` writes to a temp directory
+        (still referenced by :attr:`GwasResult.output_files` so plotting /
+        report helpers keep working within the process).
+    top_k : int, default 50
+        Number of top hits returned inline in :attr:`GwasResult.top_hits`.
+    verbose : bool, default True
+        Reserved for future progress/logging control; currently unused by the
+        dispatch core (kept so callers can pass it uniformly).
+    """
+
+    kinship: Any = "auto"
+    pcs: Any = "auto"
+    qc: bool = True
+    correction: str = "bh"
+    device: str | None = None
+    output: str | Path | None = None
+    top_k: int = 50
+    verbose: bool = True
+
+
+def _n_pcs_from_opts(opts: RunOptions) -> int:
+    """Resolve :attr:`RunOptions.pcs` to a concrete non-negative ``n_pcs``.
+
+    ``"auto"`` → ``0`` (no PCs by default; Task 5 may refine). ``0`` /
+    ``None`` / ``False`` → ``0``. An ``int`` (or int-like) is used verbatim
+    after a non-negativity check. Anything else raises ``ValueError``.
+    """
+    pcs = opts.pcs
+    if pcs is None or pcs is False or pcs == "auto":
+        return 0
+    if isinstance(pcs, bool):  # True — meaningless as a PC count
+        raise ValueError("pcs=True is not a valid PC count; pass an int, 0, or 'auto'.")
+    try:
+        n = int(pcs)
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"pcs={pcs!r} is not a valid number of principal components. Pass a "
+            "non-negative int, 0/None/False for none, or 'auto'."
+        ) from e
+    if n < 0:
+        raise ValueError(f"pcs must be non-negative; got {n}.")
+    return n
+
+
+def _grm_arg_from_opts(opts: RunOptions) -> str | None:
+    """Resolve :attr:`RunOptions.kinship` to the ``grm=`` argument of ``lmm_scan``.
+
+    A filesystem path (``str`` / :class:`~pathlib.Path`) is returned as a
+    ``str`` so ``lmm_scan`` loads it. ``"auto"`` / ``False`` / ``None``
+    return ``None`` (``lmm_scan`` then computes a streaming VanRaden GRM —
+    an LMM requires a GRM, so "no kinship" collapses to "auto" here).
+    """
+    kinship = opts.kinship
+    if isinstance(kinship, (str, Path)) and str(kinship) != "auto":
+        return str(kinship)
+    return None
+
+
+def _device_for_api(opts: RunOptions) -> str:
+    """Resolve device for the api routes: ``None`` → ``"auto"``."""
+    return "auto" if opts.device is None else str(opts.device)
+
+
+def _write_phenotype_tsv(inputs: GwasInputs, path: Path) -> None:
+    """Write ``inputs.phenotype`` as a two-column ``sample_id\\t<trait>`` TSV.
+
+    The index (sample ids) becomes the ``sample_id`` column so the downstream
+    loader (:func:`torchgenomics.io.phenotype.load_phenotype` /
+    :func:`~torchgenomics.io.phenotype._detect_id_column`) auto-detects it and
+    aligns by id against the genotype.
+    """
+    series = inputs.phenotype.copy()
+    series.name = inputs.trait_name
+    df = series.to_frame()
+    df.index = [str(i) for i in df.index]
+    df.index.name = "sample_id"
+    df.to_csv(path, sep="\t")
+
+
+def _write_genotype_csv(reader: Any, path: Path) -> None:
+    """Materialize an in-memory genotype reader to a 3-column-rule dosage CSV.
+
+    Streams ``reader.iter_chunks()`` (never assuming a dense ``.G`` attribute,
+    so it works for both :class:`~torchgenomics.api._inputs.ArrayReader` and
+    :class:`~torchgenomics.io.aligned.SampleAlignedReader`) and writes a
+    markers-as-rows CSV whose header is ``SNP,Chr,Pos,<sample_id_1>,...`` —
+    exactly the "structured" layout that
+    :class:`torchgenomics.io.numeric.NumericDosageReader` reads back without a
+    companion ``.map`` file.
+    """
+    sample_ids = [str(s) for s in reader.sample_ids]
+    snp: list[str] = []
+    chrom: list[str] = []
+    pos: list[int] = []
+    blocks: list[np.ndarray] = []
+    for g_chunk, vmeta in reader.iter_chunks():
+        # g_chunk is (n_samples, m_chunk); dosage rows are markers → transpose.
+        blocks.append(np.asarray(g_chunk.detach().cpu().numpy(), dtype=np.float64).T)
+        snp.extend(str(s) for s in vmeta.snp)
+        chrom.extend(str(c) for c in vmeta.chr)
+        pos.extend(int(p) for p in vmeta.pos)
+
+    dosage = np.vstack(blocks) if blocks else np.empty((0, len(sample_ids)))
+    df = pd.DataFrame(dosage, columns=sample_ids)
+    df.insert(0, "Pos", pos)
+    df.insert(0, "Chr", chrom)
+    df.insert(0, "SNP", snp)
+    df.to_csv(path, index=False)
+
+
+def _materialize_inputs(inputs: GwasInputs, workdir: Path) -> tuple[str, str]:
+    """Return ``(genotype_path, phenotype_path)`` for the file-based scan APIs.
+
+    The phenotype is always written to a TSV (built from the aligned
+    :attr:`GwasInputs.phenotype` Series). The genotype is passed through
+    untouched when it is already a path, or materialized to a dosage CSV when
+    it is an in-memory reader.
+    """
+    pheno_path = workdir / "phenotype.tsv"
+    _write_phenotype_tsv(inputs, pheno_path)
+
+    geno = inputs.genotype_path_or_reader
+    if isinstance(geno, (str, Path)):
+        geno_path = str(geno)
+    else:
+        geno_path = str(workdir / "genotype.csv")
+        _write_genotype_csv(geno, workdir / "genotype.csv")
+
+    return geno_path, str(pheno_path)
+
+
+def _read_scan_output(
+    output_prefix: str | Path,
+    *,
+    model_label: str,
+    test: str,
+    correction: str,
+    trait_type: str,
+    n_samples: int,
+    significance_threshold: float,
+    top_k: int,
+    runtime_s: float,
+) -> GwasResult:
+    """Read a CLI scan's ``<prefix>.assoc.{tsv,parquet}`` back into a ``GwasResult``.
+
+    Mirrors the read-back logic already used by
+    :func:`torchgenomics.api.scans.lmm_scan`: prefers Parquet when present,
+    computes ``n_significant`` against ``significance_threshold``, ``lambda_gc``
+    via :func:`torchgenomics.api.scans._genomic_inflation`, and ``top_hits`` via
+    :func:`torchgenomics.api._helpers.top_hits` — deliberately reusing those
+    shared helpers rather than duplicating the statistics.
+    """
+    from . import scans
+
+    prefix = str(output_prefix)
+    tsv_path = Path(prefix + ".assoc.tsv")
+    if not tsv_path.exists():
+        tsv_path = Path(prefix + ".tsv")
+    parquet_path = Path(prefix + ".assoc.parquet")
+    if not parquet_path.exists():
+        parquet_path = Path(prefix + ".parquet")
+
+    output_files: dict[str, Path] = {}
+    if parquet_path.exists():
+        df = pd.read_parquet(parquet_path)
+        output_files["parquet"] = parquet_path
+        if tsv_path.exists():
+            output_files["tsv"] = tsv_path
+    elif tsv_path.exists():
+        df = pd.read_csv(tsv_path, sep="\t")
+        output_files["tsv"] = tsv_path
+    else:
+        raise RuntimeError(
+            f"scan completed but no results file was found at {prefix}.assoc.tsv"
+        )
+
+    p_col = "P" if "P" in df.columns else "P_JOINT" if "P_JOINT" in df.columns else None
+    n_sig = int((df[p_col] < significance_threshold).sum()) if p_col else 0
+    lambda_gc = scans._genomic_inflation(df[p_col]) if p_col else None
+    top = top_hits(df, k=top_k, p_column=p_col or "P")
+
+    return GwasResult(
+        runtime_s=runtime_s,
+        output_files=output_files,
+        model=model_label,
+        test=test,
+        correction=correction,
+        n_variants=int(len(df)),
+        n_significant=n_sig,
+        significance_threshold=significance_threshold,
+        lambda_gc=lambda_gc,
+        n_samples=n_samples,
+        top_hits=top,
+        trait_type=trait_type,
+    )
+
+
+def _qc_kwargs(opts: RunOptions) -> dict[str, float]:
+    """Friendly-API per-variant QC thresholds for the ``lmm_scan`` / ``glm_scan`` calls.
+
+    ``tg.gwas`` reports every *tested* variant by default: Hardy-Weinberg
+    filtering (on at ``1e-6`` in the CLI) is left **opt-in** here — a one-call
+    novice API surprising users by silently dropping loci for HWE is worse
+    than reporting them, and HWE violation is often the signal of interest
+    (e.g. under selection) rather than a data-quality problem. When
+    :attr:`RunOptions.qc` is ``True`` (default) the standard MAF / missingness
+    thresholds still apply (they guard model stability); when ``False`` all
+    per-variant filters are disabled so the scan is a pure pass-through.
+    """
+    if opts.qc:
+        return {"maf_min": 0.01, "miss_max": 0.1, "hwe_p_min": 0.0}
+    return {"maf_min": 0.0, "miss_max": 1.0, "hwe_p_min": 0.0}
+
+
+def _run_api_lmm(inputs: GwasInputs, opts: RunOptions, workdir: Path) -> GwasResult:
+    """Route the ``api_lmm`` runner through :func:`torchgenomics.api.scans.lmm_scan`."""
+    from . import scans
+
+    geno_path, pheno_path = _materialize_inputs(inputs, workdir)
+    output = opts.output if opts.output is not None else workdir / "lmm_out"
+    result = scans.lmm_scan(
+        genotype=geno_path,
+        phenotype=pheno_path,
+        correction=opts.correction,
+        n_pcs=_n_pcs_from_opts(opts),
+        grm=_grm_arg_from_opts(opts),
+        device=_device_for_api(opts),
+        output=str(output),
+        top_k=opts.top_k,
+        **_qc_kwargs(opts),
+    )
+    result.trait_type = inputs.trait_type
+    return result
+
+
+def _run_api_glm(inputs: GwasInputs, opts: RunOptions, workdir: Path) -> GwasResult:
+    """Route the ``api_glm`` runner through :func:`torchgenomics.api.scans.glm_scan`.
+
+    The GLM family is inferred from :attr:`GwasInputs.trait_type`:
+    ``continuous`` → ``"gaussian"``, ``binary`` → ``"binary"``. ``categorical``
+    is not wired here (it needs an explicit ``n_categories`` the friendly-input
+    layer does not carry) and raises :class:`NotImplementedError`.
+    """
+    from . import scans
+
+    family = _GLM_FAMILY.get(inputs.trait_type)
+    if family is None:
+        raise NotImplementedError(
+            f"GLM route for trait_type={inputs.trait_type!r} is not yet wired through "
+            "tg.gwas (ordinal/multinomial need an explicit n_categories); use "
+            "`torchgenomics glm-scan --family ordinal/multinomial --n-categories N` "
+            "or the low-level API."
+        )
+    geno_path, pheno_path = _materialize_inputs(inputs, workdir)
+    output = opts.output if opts.output is not None else workdir / "glm_out"
+    result = scans.glm_scan(
+        genotype=geno_path,
+        phenotype=pheno_path,
+        family=family,  # type: ignore[arg-type]
+        correction=opts.correction,
+        device=_device_for_api(opts),
+        output=str(output),
+        top_k=opts.top_k,
+        **_qc_kwargs(opts),
+    )
+    result.trait_type = inputs.trait_type
+    return result
+
+
+def _run_lowlevel_cli(
+    inputs: GwasInputs,
+    opts: RunOptions,
+    *,
+    subcommand: str,
+    runner,
+    model_label: str,
+    workdir: Path,
+) -> GwasResult:
+    """Route a low-level model through its CLI single-trait runner.
+
+    Builds a fully-defaulted :class:`argparse.Namespace` by parsing a minimal
+    valid arg vector against the real subparser (so every model-specific
+    default is populated exactly as the CLI would), overrides only
+    genotype/phenotype/output/correction/device, invokes ``runner`` (which
+    fits the null, streams the scan, and writes ``<prefix>.assoc.tsv`` via
+    :func:`torchgenomics.cli._apply_correction_and_save`), then reads the
+    output back into a uniform :class:`GwasResult`.
+    """
+    import time
+
+    from .. import cli
+
+    geno_path, pheno_path = _materialize_inputs(inputs, workdir)
+    output_prefix = str(opts.output) if opts.output is not None else str(workdir / "lowlevel_out")
+
+    argv = [
+        subcommand,
+        "--genotype", geno_path,
+        "--phenotype", pheno_path,
+        "--output", output_prefix,
+        "--correction", opts.correction,
+    ]
+    if opts.device is not None:
+        argv += ["--device", str(opts.device)]
+
+    parser = cli._build_parser()
+    args = parser.parse_args(argv)
+
+    start = time.monotonic()
+    exit_code = runner(args)
+    runtime_s = time.monotonic() - start
+    if exit_code != 0:
+        raise RuntimeError(f"{subcommand} returned non-zero status {exit_code}")
+
+    return _read_scan_output(
+        output_prefix,
+        model_label=model_label,
+        test=getattr(args, "test", "wald"),
+        correction=opts.correction,
+        trait_type=inputs.trait_type,
+        n_samples=inputs.n_samples,
+        significance_threshold=5e-8,
+        top_k=opts.top_k,
+        runtime_s=runtime_s,
+    )
+
+
+#: Low-level aliases that are fully wired through their CLI single-trait
+#: runner. Each entry is ``alias -> (subcommand, runner_fn_name, model_label)``.
+#: The runner is looked up lazily on :mod:`torchgenomics.cli` to avoid importing
+#: the (heavy) CLI module at api import time.
+_LOWLEVEL_CLI = {
+    "blink": ("blink-scan", "_cmd_blink_scan_single", "BLINK"),
+    "farmcpu": ("farmcpu-scan", "_cmd_farmcpu_scan_single", "FarmCPU"),
+}
+
+
+def run_model(
+    alias: str,
+    inputs: GwasInputs,
+    opts: RunOptions | None = None,
+) -> GwasResult:
+    """Run one resolved model end-to-end and return a uniform :class:`GwasResult`.
+
+    This is the shared dispatch core behind ``tg.gwas(...)``. It resolves
+    ``alias`` to a :class:`~torchgenomics.api._registry.ModelSpec`, routes to
+    the appropriate *existing* scan path (the tier-1 api ``lmm_scan`` /
+    ``glm_scan`` for GRM/fixed-effects models, or the CLI single-trait runner
+    for wired low-level models), and normalizes every outcome to a
+    :class:`~torchgenomics.api._results.GwasResult`. No model statistics are
+    computed here — this layer is pure orchestration.
+
+    Parameters
+    ----------
+    alias : str
+        Model alias or GAPIT-name synonym (case-insensitive), resolved via
+        :func:`torchgenomics.api._registry.resolve_model` (e.g. ``"lmm"``,
+        ``"glm"``, ``"blink"``, ``"farmcpu"``, ``"MLM"``).
+    inputs : GwasInputs
+        Sample-aligned inputs from
+        :func:`torchgenomics.api._inputs.load_inputs`. An in-memory genotype
+        is materialized to temp files; a path genotype is used as-is.
+    opts : RunOptions | None, default None
+        Run options (kinship / PCs / correction / device / output / top_k).
+        Defaults to :class:`RunOptions` with its friendly defaults.
+
+    Returns
+    -------
+    GwasResult
+        Uniform result with summary stats, the top-``k`` hits inline, and
+        paths to the full association table on disk. ``trait_type`` is tagged
+        from ``inputs``.
+
+    Raises
+    ------
+    ValueError
+        On an unknown ``alias`` (from :func:`resolve_model`) or an invalid
+        option (bad ``correction``, ``pcs``, or ``top_k``).
+    NotImplementedError
+        For registry models that need inputs beyond ``(phenotype, genotype[,
+        kinship])`` — e.g. ``gxe`` (environment), ``set`` (regions),
+        ``mvlmm`` (multiple traits), ``glmm`` (family), ``bayes`` — which are
+        not yet wired through ``tg.gwas``. The message points at the
+        equivalent ``torchgenomics <alias>-scan`` CLI subcommand and the
+        low-level API.
+    """
+    opts = opts if opts is not None else RunOptions()
+
+    # --- Friendly option validation (fail fast, actionable messages) ---
+    if opts.correction not in _VALID_CORRECTIONS:
+        raise ValueError(
+            f"correction={opts.correction!r} is not recognized. Valid options: "
+            f"{sorted(_VALID_CORRECTIONS)}."
+        )
+    if not isinstance(opts.top_k, int) or isinstance(opts.top_k, bool) or opts.top_k <= 0:
+        raise ValueError(f"top_k must be a positive int; got {opts.top_k!r}.")
+    _n_pcs_from_opts(opts)  # validates pcs early
+
+    spec = resolve_model(alias)
+
+    # A temp working dir holds materialized inputs (and outputs when the caller
+    # gave no explicit output=). It is intentionally not deleted: the returned
+    # GwasResult references result files here for .manhattan() / .report().
+    workdir = Path(tempfile.mkdtemp(prefix="tg_gwas_"))
+
+    if spec.runner == "api_lmm":
+        return _run_api_lmm(inputs, opts, workdir)
+    if spec.runner == "api_glm":
+        return _run_api_glm(inputs, opts, workdir)
+    if spec.runner.startswith("lowlevel:"):
+        low = spec.alias.lower()
+        wiring = _LOWLEVEL_CLI.get(low)
+        if wiring is None:
+            raise NotImplementedError(
+                f"Model '{alias}' is not yet wired through tg.gwas; use "
+                f"`torchgenomics {low}-scan` or the low-level API."
+            )
+        from .. import cli
+
+        subcommand, runner_name, model_label = wiring
+        runner = getattr(cli, runner_name)
+        return _run_lowlevel_cli(
+            inputs,
+            opts,
+            subcommand=subcommand,
+            runner=runner,
+            model_label=model_label,
+            workdir=workdir,
+        )
+
+    raise NotImplementedError(
+        f"Model '{alias}' has an unrecognized runner {spec.runner!r} and is not "
+        "yet wired through tg.gwas; use the corresponding CLI subcommand or the "
+        "low-level API."
+    )

@@ -24,3 +24,20 @@ def test_gwasresult_shape_and_summary_and_report(tmp_path):
     # report writes a folder (summary.txt at minimum; plots best-effort)
     out = r.report(tmp_path / "rep")
     assert (tmp_path / "rep" / "summary.txt").exists()
+
+
+def test_run_model_lmm_and_a_lowlevel_model(tmp_path):
+    # reuse an existing tiny GWAS fixture if the repo has one; else synth a small BED
+    from torchgenomics.api._inputs import load_inputs
+    from torchgenomics.api._dispatch import run_model, RunOptions
+    import numpy as np, pandas as pd
+    ids=[f"s{i}" for i in range(150)]
+    G=np.random.default_rng(0).integers(0,3,(150,300)).astype(float)
+    y=pd.Series(np.random.default_rng(1).normal(size=150), index=ids, name="y")
+    inp=load_inputs(phenotype=y, genotype=G)
+    r=run_model("lmm", inp, RunOptions(kinship="auto", pcs=0, correction="bh", verbose=False))
+    from torchgenomics.api import GwasResult
+    assert isinstance(r, GwasResult) and r.n_variants==300
+    # a low-level model also returns the same GwasResult shape
+    r2=run_model("blink", inp, RunOptions(kinship=False, pcs=0, verbose=False))
+    assert isinstance(r2, GwasResult) and r2.n_variants>0
