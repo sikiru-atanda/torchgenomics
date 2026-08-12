@@ -159,3 +159,22 @@ def test_recommend_dry_run_and_warnings():
     r=tg.gwas(yb, G, models="glm", kinship=False, pcs=0, verbose=False)
     warns=" ".join(r.diagnostics.get("warnings", []))
     assert "imbalance" in warns.lower() or "case" in warns.lower()
+
+
+def test_existing_scans_return_gwasresult():
+    """Task 7 consistency audit: every friendly-API scan path (here, the
+    ``api_lmm`` route reached via ``tg.gwas(models="lmm")``) returns the
+    enriched ``GwasResult`` with ``.hits`` / ``.diagnostics`` / callable
+    ``.summary()`` -- not a divergent object. See
+    ``test_run_model_lmm_and_a_lowlevel_model`` above for the equivalent
+    check on the low-level ``blink`` route via ``run_model`` directly.
+    """
+    import numpy as np, pandas as pd, torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    # lmm_scan / glm_scan return the enriched GwasResult with .hits/.summary/.diagnostics
+    ids=[f"s{i}" for i in range(120)]
+    G=np.random.default_rng(0).integers(0,3,(120,200)).astype(float)
+    y=pd.Series(np.random.default_rng(1).normal(size=120), index=ids, name="y")
+    r=tg.gwas(y, G, models="lmm", kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult)
+    assert hasattr(r,"hits") and hasattr(r,"diagnostics") and callable(r.summary)

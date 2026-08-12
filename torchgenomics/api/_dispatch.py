@@ -35,6 +35,29 @@ family, ``bayes`` needs signal priors) raise a clear
    VanRaden GRM when ``kinship == "auto"`` (``grm=None``). Task 5 may compute a
    GRM once and pass it through :attr:`RunOptions.kinship` so a multi-model
    comparison shares one GRM instead of recomputing it per model.
+
+.. note::
+   **Consistency invariant (Task 7 audit).** :func:`run_model` is the single
+   unified scan path for the friendly API: every alias that
+   :func:`~torchgenomics.api._registry.resolve_model` can resolve to a wired
+   runner (``api_lmm``, ``api_glm``, or a ``lowlevel:`` entry present in
+   :data:`_LOWLEVEL_CLI`) returns the same shape — a
+   :class:`~torchgenomics.api._results.GwasResult` with ``.trait_type`` tagged
+   from ``inputs.trait_type`` and ``.hits`` / ``.diagnostics`` / ``.summary()``
+   all populated. ``tg.gwas(...)`` (:func:`torchgenomics.api.gwas.gwas`) never
+   calls a scan function directly — it always routes through this function, so
+   that uniformity holds for both the single-model (``GwasResult``) and
+   multi-model (``GwasComparison``, one ``GwasResult`` per requested model)
+   return shapes. Aliases whose runner is not yet wired (e.g. ``gxe``,
+   ``set``, ``mvlmm``, ``glmm``, ``bayes``, ``mklmm``) raise a clear
+   :class:`NotImplementedError` here rather than returning a divergent or
+   partially-populated result. The low-level :func:`torchgenomics.api.scans.lmm_scan`
+   / :func:`~torchgenomics.api.scans.glm_scan` functions, called directly
+   (bypassing ``run_model``/``tg.gwas``), also return a ``GwasResult`` but
+   leave ``.trait_type`` at its default (``""``) — that enrichment is applied
+   here, one line after each call, and is a property of the friendly-API
+   surface (``tg.gwas`` / ``run_model``), not of the lower-level per-model
+   functions.
 """
 
 from __future__ import annotations
