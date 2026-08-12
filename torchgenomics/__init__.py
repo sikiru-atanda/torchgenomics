@@ -43,6 +43,7 @@ from .api import (
     PgsFitRun,
     PgsScoreRun,
     PlotResult,
+    Recommendation,
     ScanRun,
     ValidateRun,
     # Tier-1 functions (12 originals + lgebv)
@@ -61,6 +62,7 @@ from .api import (
     pgs_fit,
     pgs_score,
     qq,
+    recommend,
     validate,
 )
 
@@ -82,6 +84,7 @@ __all__ = [
     "pgs_fit",
     "pgs_score",
     "qq",
+    "recommend",
     "validate",
     # Result types
     "AnnotateRun",
@@ -96,6 +99,7 @@ __all__ = [
     "PgsFitRun",
     "PgsScoreRun",
     "PlotResult",
+    "Recommendation",
     "ScanRun",
     "ValidateRun",
 ]

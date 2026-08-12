@@ -555,3 +555,137 @@ def run_model(
         "yet wired through tg.gwas; use the corresponding CLI subcommand or the "
         "low-level API."
     )
+
+
+# --- Task 6: post-run advisory warnings -------------------------------------
+
+#: λ_GC above this is flagged as inflation. Matches the calibration verdict
+#: already printed by :meth:`~torchgenomics.api._results.ScanRun.summary`
+#: (``> 1.10`` -> "inflated"), so the two surfaces never disagree.
+_LAMBDA_GC_INFLATION = 1.10
+
+#: Below this many post-QC variants, a scan is flagged as likely
+#: underpowered/unreliable. This is a UX heuristic threshold (a "did QC eat
+#: almost everything" smoke check), not a literature-cited power
+#: calculation — deliberately small so it only fires on genuinely tiny
+#: post-QC variant sets, never on an ordinary (even small) real-data run.
+_LOW_VARIANT_COUNT = 20
+
+#: Minority-class fraction below which a case/control-imbalance warning is
+#: raised. 5% is the commonly-used rule-of-thumb below which ordinary
+#: (non-Firth, non-SPA) logistic-regression p-values become unreliable due
+#: to small-sample/separation bias — the reason Firth (1993)-penalized
+#: likelihood and SPA-based tests (e.g. SAIGE, Zhou et al. 2018) exist.
+_MINORITY_CLASS_FRACTION = 0.05
+
+#: Fraction of missing raw-phenotype values above which a warning is raised.
+_HIGH_PHENOTYPE_MISSINGNESS = 0.10
+
+#: Mean off-diagonal GRM value above which a "closely related samples"
+#: warning is raised, when a kinship/GRM matrix happens to be available.
+_HIGH_MEAN_RELATEDNESS = 0.05
+
+
+def _warnings(inputs: GwasInputs, result: GwasResult) -> list[str]:
+    """Compute a small set of high-value, one-sentence actionable warnings.
+
+    Called by :func:`torchgenomics.api.gwas.gwas` right after
+    :func:`run_model` returns, and assigned to
+    :attr:`~torchgenomics.api._results.ScanRun.warnings` — from there they
+    are automatically surfaced in :attr:`~torchgenomics.api._results.ScanRun.diagnostics`
+    (``result.diagnostics["warnings"]``) and in
+    :meth:`~torchgenomics.api._results.ScanRun.summary`. This function
+    computes **no new statistics**: every check is a threshold test on a
+    quantity already present on ``inputs``/``result``.
+
+    Checks performed (each producing at most one warning, one sentence +
+    an action):
+
+    - **Genomic inflation** — :attr:`~torchgenomics.api._results.ScanRun.lambda_gc`
+      ``> `` :data:`_LAMBDA_GC_INFLATION` (1.10).
+    - **Low post-QC variant count** — :attr:`~torchgenomics.api._results.ScanRun.n_variants`
+      ``< `` :data:`_LOW_VARIANT_COUNT`.
+    - **Case/control imbalance** — for a binary trait, the minority class's
+      share of samples ``< `` :data:`_MINORITY_CLASS_FRACTION` (5%).
+    - **High mean relatedness** — only if a kinship/GRM matrix is available
+      on ``inputs`` (via an optional ``kinship_matrix`` attribute); the
+      friendly-input layer (:mod:`torchgenomics.api._inputs`) does not
+      materialize one today (the LMM route computes/consumes its GRM
+      entirely inside :func:`run_model`), so this check is skipped cleanly
+      — no attribute means no warning, never an ``AttributeError``.
+    - **Many-missing phenotype** — the raw (pre-alignment) missing-value
+      fraction of :attr:`~torchgenomics.api._inputs.GwasInputs.phenotype`
+      ``> `` :data:`_HIGH_PHENOTYPE_MISSINGNESS` (10%).
+
+    Parameters
+    ----------
+    inputs : GwasInputs
+        The resolved, sample-aligned inputs the scan was run on (for
+        ``trait_type`` and ``phenotype``).
+    result : GwasResult
+        The just-completed scan result (for ``lambda_gc`` and
+        ``n_variants``).
+
+    Returns
+    -------
+    list[str]
+        Zero or more one-sentence, actionable warning strings, in the fixed
+        check order listed above.
+    """
+    warns: list[str] = []
+
+    if result.lambda_gc is not None and result.lambda_gc > _LAMBDA_GC_INFLATION:
+        warns.append(
+            f"genomic inflation detected (λ_GC={result.lambda_gc:.2f} > "
+            f"{_LAMBDA_GC_INFLATION}); consider adding more principal components "
+            "(pcs=) or a kinship/GRM correction (kinship='auto') to control "
+            "confounding."
+        )
+
+    if result.n_variants < _LOW_VARIANT_COUNT:
+        warns.append(
+            f"only {result.n_variants} variant(s) survived QC; results may be "
+            "unreliable/underpowered -- check your QC thresholds (qc=) and input "
+            "genotype size."
+        )
+
+    if inputs.trait_type == "binary":
+        counts = inputs.phenotype.dropna().value_counts()
+        if len(counts) == 2:
+            n_minor, n_major = int(counts.min()), int(counts.max())
+            total = n_minor + n_major
+            frac_minor = n_minor / total if total else 0.0
+            if frac_minor < _MINORITY_CLASS_FRACTION:
+                warns.append(
+                    f"case/control imbalance ({n_minor} minority-class / {n_major} "
+                    f"majority-class samples, {frac_minor:.1%} minority); consider a "
+                    "Firth-penalized GLM (glm_scan(..., firth=True)) or a SAIGE-style "
+                    "GLMM/SPA test for reliable p-values in this regime."
+                )
+
+    grm = getattr(inputs, "kinship_matrix", None)
+    if grm is not None:
+        try:
+            arr = np.asarray(grm)
+            off_diag = arr[~np.eye(arr.shape[0], dtype=bool)]
+            mean_relatedness = float(off_diag.mean()) if off_diag.size else 0.0
+            if mean_relatedness > _HIGH_MEAN_RELATEDNESS:
+                warns.append(
+                    f"high mean off-diagonal relatedness ({mean_relatedness:.3f} > "
+                    f"{_HIGH_MEAN_RELATEDNESS}); the sample may include closely "
+                    "related individuals -- verify kinship correction is active "
+                    "(kinship='auto' or a precomputed GRM path)."
+                )
+        except Exception:  # noqa: BLE001 -- advisory-only; never block a result
+            pass
+
+    n_pheno = len(inputs.phenotype)
+    na_frac = float(inputs.phenotype.isna().mean()) if n_pheno else 0.0
+    if na_frac > _HIGH_PHENOTYPE_MISSINGNESS:
+        warns.append(
+            f"{na_frac:.1%} of phenotype values are missing; the scan ran on the "
+            "non-missing subset only -- verify this is expected before interpreting "
+            "results."
+        )
+
+    return warns
