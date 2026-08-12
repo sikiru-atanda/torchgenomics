@@ -22,6 +22,7 @@ _TIER_2_CLI_SUBCOMMANDS: set[str] = {
     "glmm-scan", "me-glmm-scan", "survival-scan", "rr-scan",
     "rr-met-scan", "twas-scan", "combine-gwas-twas", "ldsc", "ldsc-rg",
     "dosage-call", "phase-poly", "mediate", "mediate-scan", "pipeline",
+    "gwas", "recommend", "models",
 }
 
 

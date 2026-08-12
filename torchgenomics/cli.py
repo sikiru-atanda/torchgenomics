@@ -6,7 +6,14 @@ bayes-scan-rss, met-scan, farmcpu-scan, blink-scan, threshold-scan,
 family-scan, conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan,
 lro-scan, glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan,
 ld-blocks, ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate,
-mediate, mediate-scan, pipeline.
+mediate, mediate-scan, pipeline, gwas, recommend, models.
+
+``gwas`` / ``recommend`` / ``models`` (Task 8, friendly API) share the same
+decision core as ``torchgenomics.api.gwas`` / ``recommend`` / ``models`` —
+i.e. ``import torchgenomics as tg; tg.gwas(...)`` in Python — so the CLI,
+the library API, and the MCP tools always agree on model selection and
+results. ``pipeline`` remains the CLI entry point for capabilities not yet
+wired through the friendly API (``--impute``, ``--model met``/``gxe``).
 """
 
 from __future__ import annotations
@@ -102,6 +109,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- Full pipeline ---
     _add_pipeline_parser(subparsers)
 
+    # --- Friendly-API commands (Task 8: share the tg.gwas core) ---
+    _add_gwas_parser(subparsers)
+    _add_recommend_parser(subparsers)
+    _add_models_parser(subparsers)
+
     return parser
 
 
@@ -161,6 +173,9 @@ def main(argv: list[str] | None = None) -> int:
         "impute": _cmd_impute,
         "dosage-call": _cmd_dosage_call,  # Phase 55
         "phase-poly": _cmd_phase_poly,   # Phase 56
+        "gwas": _cmd_gwas,               # Task 8: friendly-API CLI
+        "recommend": _cmd_recommend,     # Task 8: friendly-API CLI
+        "models": _cmd_models,           # Task 8: friendly-API CLI
     }
 
     handler = handlers.get(args.command)
@@ -2958,6 +2973,19 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
 
     Models that support streaming (glm, lmm, mvlmm) never materialize
     the full genotype matrix.  FarmCPU/BLINK need full G in memory.
+
+    .. note::
+       **Task 8 (friendly-API CLI):** ``torchgenomics gwas`` is the new
+       recommended entry point for a plain single-model GWAS run — it shares
+       the same decision core (:mod:`torchgenomics.api.gwas`) used by
+       ``tg.gwas(...)`` in Python and the MCP tools, and adds automatic
+       model selection (``--models auto``), a printed decision log, and
+       multi-model comparison (``--models lmm,blink``). ``pipeline`` is kept
+       fully intact here (not rerouted) because it supports capabilities
+       ``torchgenomics.api.gwas`` does not yet wire through: ``--impute``
+       (imputation-then-scan), ``--model met`` (multi-environment GWAS), and
+       ``--model gxe``/``mklmm``/``mvlmm``. Use ``pipeline`` for those; use
+       ``gwas`` for the friendly single-call path.
     """
     import torch
 
@@ -3190,6 +3218,86 @@ def _cmd_pipeline(args: argparse.Namespace) -> int:
         return 1
 
     _apply_correction_and_save(result, args)
+    return 0
+
+
+def _cmd_gwas(args: argparse.Namespace) -> int:
+    """Run ``torchgenomics gwas`` — the friendly single-call GWAS entry point.
+
+    A thin CLI wrapper around :func:`torchgenomics.api.gwas`: it resolves
+    ``--models`` (a comma-list — a single alias is passed through as a plain
+    ``str`` so it returns a :class:`~torchgenomics.api._results.GwasResult`;
+    two or more aliases are passed as a ``list`` so it returns a
+    :class:`~torchgenomics.api.gwas.GwasComparison`, per the ``models=``
+    input-type contract documented on :func:`torchgenomics.api.gwas.gwas`),
+    parses ``--kinship``/``--pcs`` (``"auto"``/``"none"``/a path or int, both
+    passed straight through), calls :func:`torchgenomics.api.gwas.gwas`, and
+    prints ``result.summary()``. No new statistics — every number comes from
+    the same code path as ``tg.gwas(...)`` in Python and the MCP tool.
+    """
+    from . import api as tg_api
+
+    models_arg: str | list[str]
+    parts = [m.strip() for m in args.models.split(",") if m.strip()]
+    if not parts:
+        logger.error("--models resolved to an empty list; pass e.g. --models lmm or --models auto")
+        return 1
+    models_arg = parts[0] if len(parts) == 1 else parts
+
+    kinship = args.kinship
+    if isinstance(kinship, str) and kinship.lower() == "none":
+        kinship = False
+
+    pcs = args.pcs
+
+    result = tg_api.gwas(
+        phenotype=args.phenotype,
+        genotype=args.genotype,
+        covariates=args.covariates,
+        kinship=kinship,
+        pcs=pcs,
+        trait=args.trait,
+        trait_type=args.trait_type,
+        models=models_arg,
+        correction=args.correction,
+        output=args.output,
+        device=args.device,
+        verbose=not args.quiet,
+    )
+    print(result.summary())
+    return 0
+
+
+def _cmd_recommend(args: argparse.Namespace) -> int:
+    """Run ``torchgenomics recommend`` — preview what ``gwas`` would do (dry run).
+
+    Thin CLI wrapper around :func:`torchgenomics.api.gwas.recommend`: loads
+    and sample-aligns the inputs, prints the resulting
+    :meth:`~torchgenomics.api.gwas.Recommendation.explain` text, and exits.
+    No scan runs, no GRM is computed, and nothing is written to disk.
+    """
+    from . import api as tg_api
+
+    rec = tg_api.recommend(
+        phenotype=args.phenotype,
+        genotype=args.genotype,
+        covariates=args.covariates,
+    )
+    print(rec.explain())
+    return 0
+
+
+def _cmd_models(args: argparse.Namespace) -> int:
+    """Run ``torchgenomics models`` — list every model ``gwas`` can run.
+
+    Thin CLI wrapper around :func:`torchgenomics.api.gwas.models`: prints
+    the registry :class:`pandas.DataFrame` (``alias``, ``label``,
+    ``trait_types``, ``description``) as a plain-text table.
+    """
+    from . import api as tg_api
+
+    df = tg_api.models()
+    print(df.to_string(index=False))
     return 0
 
 
@@ -5428,7 +5536,11 @@ def _add_pgs_score_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _add_pipeline_parser(subparsers: argparse._SubParsersAction) -> None:
-    p = subparsers.add_parser("pipeline", help="Full pipeline: impute -> scan -> correct")
+    p = subparsers.add_parser(
+        "pipeline",
+        help="Full pipeline: impute -> scan -> correct "
+             "(see `gwas` for the newer friendly single-call entry point)",
+    )
     _add_common_scan_args(p)
     p.add_argument("--impute", choices=["mean"])
     p.add_argument("--model", default="lmm", choices=[
@@ -5449,6 +5561,69 @@ def _add_pipeline_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--gxe-model", default="het", choices=["het", "multi"],
                    help="GxE model for --model gxe: 'het' (default) or 'multi'")
     _add_approx_args(p)
+
+
+def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
+    """``torchgenomics gwas`` — friendly single-call GWAS (shares tg.gwas core).
+
+    Flags mirror the existing scan subcommands (``--genotype``,
+    ``--phenotype``, ``--covariates``, ``--correction``, ``--output``,
+    ``--device``) plus the friendly-API-specific ``--models`` (comma-list;
+    ``"auto"`` by default), ``--kinship`` (``"auto"``/``"none"``/a GRM path),
+    ``--pcs`` (``"auto"``/an int), ``--trait``, ``--trait-type``, and
+    ``--quiet`` (suppresses the decision log; ``tg.gwas``'s ``verbose=True``
+    is the CLI default).
+    """
+    p = subparsers.add_parser(
+        "gwas",
+        help="Friendly single-call GWAS: auto model selection, decision log, "
+             "optional multi-model comparison (shares the tg.gwas core)",
+    )
+    p.add_argument("--phenotype", required=True, help="Phenotype file path")
+    p.add_argument("--genotype", required=True, help="Genotype file path")
+    p.add_argument("--models", default="auto",
+                   help="Comma-separated model alias(es), or 'auto' (default) to let "
+                        "tg.gwas pick one. Two or more aliases (e.g. 'lmm,blink') run a "
+                        "multi-model comparison. See `torchgenomics models` for the "
+                        "full registry.")
+    p.add_argument("--covariates", default=None, help="Optional covariates file path")
+    p.add_argument("--kinship", default="auto",
+                   help="'auto' (default, computes a streaming VanRaden GRM), 'none' "
+                        "(disable kinship correction), or a path to a pre-computed GRM")
+    p.add_argument("--pcs", default="auto",
+                   help="'auto' (default) or an integer number of genotype principal "
+                        "components to add as covariates")
+    p.add_argument("--trait", default=None,
+                   help="Phenotype column name to select (default: first numeric column)")
+    p.add_argument("--trait-type", default=None,
+                   choices=["continuous", "binary", "categorical"],
+                   help="Force the trait type instead of auto-detecting it")
+    p.add_argument("--correction", default="bh",
+                   help="Multiple-testing correction (default: bh)")
+    p.add_argument("--output", default=None,
+                   help="Output directory for results + report (default: a temp dir)")
+    p.add_argument("--device", default=None, help="'cpu' / 'cuda' / 'auto' (default: auto)")
+    p.add_argument("--quiet", action="store_true",
+                   help="Suppress the decision-log printout (verbose=False)")
+
+
+def _add_recommend_parser(subparsers: argparse._SubParsersAction) -> None:
+    """``torchgenomics recommend`` — preview what ``gwas`` would do (dry run)."""
+    p = subparsers.add_parser(
+        "recommend",
+        help="Preview the model tg.gwas would pick, without running a scan (dry run)",
+    )
+    p.add_argument("--phenotype", required=True, help="Phenotype file path")
+    p.add_argument("--genotype", required=True, help="Genotype file path")
+    p.add_argument("--covariates", default=None, help="Optional covariates file path")
+
+
+def _add_models_parser(subparsers: argparse._SubParsersAction) -> None:
+    """``torchgenomics models`` — list every model alias ``gwas`` can run."""
+    subparsers.add_parser(
+        "models",
+        help="List every model available to `gwas --models` (alias, label, trait types)",
+    )
 
 
 def _add_rr_scan_parser(subparsers: argparse._SubParsersAction) -> None:

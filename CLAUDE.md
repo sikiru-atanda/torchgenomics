@@ -65,7 +65,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 43 as of 2026-06-17 (verified via `python -m torchgenomics --help`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
+- **CLI subcommand count**: 46 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 43 on 2026-06-17 with the addition of `gwas`/`recommend`/`models` — Task 8 of the friendly-API plan, sharing the same decision core as `torchgenomics.api.gwas`/`recommend`/`models`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
 
 ## Phase Index
 
@@ -313,4 +313,10 @@ torchgenomics combine-gwas-twas --gwas-sumstats gwas.tsv --twas-results twas.tsv
 # --- Full pipeline ---
 torchgenomics pipeline --genotype data.vcf.gz --impute beagle --model lmm --test wald
 torchgenomics pipeline --genotype data.bed --phenotype pheno.txt --model met --env-cols E1,E2,E3
+
+# --- Friendly-API GWAS (Task 8: shares the tg.gwas core with Python/MCP) ---
+torchgenomics gwas --phenotype pheno.txt --genotype data.bed --models auto
+torchgenomics gwas --phenotype pheno.txt --genotype data.bed --models lmm,farmcpu --kinship auto --correction bh --output results/
+torchgenomics recommend --phenotype pheno.txt --genotype data.bed   # dry run: prints the model tg.gwas would pick, no scan
+torchgenomics models                                                # list every model alias `gwas --models` accepts
 ```
