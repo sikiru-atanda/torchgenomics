@@ -34,7 +34,7 @@ from typing import Any, ClassVar, Sequence
 
 import pandas as pd
 
-from ._dispatch import RunOptions, _n_pcs_from_opts, run_model
+from ._dispatch import RunOptions, _n_pcs_from_opts, _qc_kwargs, _warnings, run_model
 from ._inputs import GwasInputs, load_inputs
 from ._registry import list_models as _list_models_registry
 from ._registry import resolve_model
@@ -226,6 +226,154 @@ def _print_decision_log(
         print(f"  model(s): {labels}  (user-selected)")
     print(
         f"  kinship={opts.kinship!r}  pcs={n_pcs}  correction={opts.correction!r}"
+    )
+
+
+@dataclass
+class Recommendation:
+    """The dry-run plan returned by :func:`recommend` — nothing is executed.
+
+    Bundles exactly what :func:`gwas` would decide for a given
+    ``(phenotype, genotype[, covariates])`` — trait type, model pick, PC
+    count, and planned per-variant QC thresholds — without running
+    :func:`~torchgenomics.api._dispatch.run_model` (no scan, no GRM
+    computation, no I/O beyond loading/aligning the phenotype and
+    genotype). Useful for a novice user who wants to sanity-check what
+    ``tg.gwas(...)`` would do before committing to a (possibly slow)
+    genome-wide scan, or for an LLM/MCP tool that wants a cheap planning
+    step ahead of the real call.
+
+    Attributes
+    ----------
+    trait_name : str
+        Name of the resolved trait (:attr:`~torchgenomics.api._inputs.GwasInputs.trait_name`).
+    trait_type : str
+        ``"continuous"``/``"binary"``/``"categorical"``, as detected (or
+        declared) by :func:`~torchgenomics.api._inputs.load_inputs`.
+    n_samples : int
+        Number of samples after phenotype/genotype/covariate alignment.
+    suggested_model : str
+        The registry alias :func:`_auto_model` would pick for
+        ``models="auto"`` (always a wired-only alias — see
+        :func:`_auto_model`'s "Wired-only policy").
+    rationale : str
+        The one-line explanation :func:`_auto_model` returns alongside
+        ``suggested_model``.
+    n_pcs : int
+        Number of genotype principal components :func:`gwas` would add as
+        covariates under the default ``pcs="auto"`` policy (currently
+        always ``0`` — see :func:`~torchgenomics.api._dispatch._n_pcs_from_opts`).
+    qc_summary : dict[str, float]
+        The per-variant QC thresholds :func:`gwas` would apply under the
+        default ``qc=True`` policy — ``maf_min``, ``miss_max``,
+        ``hwe_p_min`` (see :func:`~torchgenomics.api._dispatch._qc_kwargs`).
+
+    See Also
+    --------
+    recommend : Builds a :class:`Recommendation` from raw inputs.
+    gwas : The real call this plan describes; every field here mirrors one
+        of its default decisions.
+    """
+
+    trait_name: str = ""
+    trait_type: str = ""
+    n_samples: int = 0
+    suggested_model: str = ""
+    rationale: str = ""
+    n_pcs: int = 0
+    qc_summary: dict[str, float] = field(default_factory=dict)
+
+    def explain(self) -> str:
+        """Human-readable plan description — the point of this dataclass.
+
+        Names the trait and its type, the model :func:`gwas` would pick
+        (and why), the PC count, and the planned QC thresholds, closing
+        with an explicit reminder that this is a dry run. Intended for
+        ``print(rec.explain())`` in a notebook, or as the text surfaced by
+        an LLM/MCP "plan" tool before the real scan runs.
+        """
+        spec = resolve_model(self.suggested_model)
+        qc = self.qc_summary
+        lines = [
+            f"Plan for trait '{self.trait_name}' ({self.trait_type}), "
+            f"n={self.n_samples} samples:",
+            f"  model: '{self.suggested_model}' / {spec.label}  ({self.rationale})",
+            f"  principal components: {self.n_pcs}",
+            (
+                "  QC: maf_min="
+                f"{qc.get('maf_min', 'n/a')}, miss_max={qc.get('miss_max', 'n/a')}, "
+                f"hwe_p_min={qc.get('hwe_p_min', 'n/a')}"
+            ),
+            "This is a dry run -- nothing was scanned. Call tg.gwas(...) to run it "
+            "(with these defaults, or your own kinship=/pcs=/models=/qc= overrides).",
+        ]
+        return "\n".join(lines)
+
+
+def recommend(
+    phenotype: Any,
+    genotype: Any,
+    *,
+    covariates: Any = None,
+) -> Recommendation:
+    """Preview what ``tg.gwas(...)`` would do, without running a scan.
+
+    A pure planning step: it loads and sample-aligns ``phenotype`` /
+    ``genotype`` / ``covariates`` exactly as :func:`gwas` does
+    (:func:`torchgenomics.api._inputs.load_inputs`), then reuses the very
+    same auto-model decision tree (:func:`_auto_model`) and default QC/PC
+    policy (:func:`torchgenomics.api._dispatch._qc_kwargs` /
+    :func:`~torchgenomics.api._dispatch._n_pcs_from_opts`, both under the
+    library defaults ``kinship="auto"``, ``pcs="auto"``, ``qc=True``) that
+    :func:`gwas` would use — but **stops before calling
+    :func:`~torchgenomics.api._dispatch.run_model`**: no null model is
+    fit, no GRM is computed, no scan runs, and nothing is written to disk.
+
+    This computes no new statistics of its own; it is pure orchestration
+    over the same decision functions :func:`gwas` calls, run one step
+    earlier in the pipeline.
+
+    Parameters
+    ----------
+    phenotype : str | pathlib.Path | pandas.Series | pandas.DataFrame | numpy.ndarray
+        Phenotype source; see :func:`torchgenomics.api._inputs.load_inputs`.
+    genotype : str | pathlib.Path | numpy.ndarray | pandas.DataFrame | GenotypeReader
+        Genotype source; see :func:`~torchgenomics.api._inputs.load_inputs`.
+    covariates : str | pathlib.Path | pandas.DataFrame | numpy.ndarray | None, default None
+        Optional covariates, aligned to the same samples as ``phenotype``.
+
+    Returns
+    -------
+    Recommendation
+        The dry-run plan: trait type, suggested model + rationale, PC
+        count, and planned QC thresholds, plus :meth:`Recommendation.explain`
+        for a human-readable rendering.
+
+    Raises
+    ------
+    ValueError
+        On any input mismatch, bubbled up unchanged from
+        :func:`~torchgenomics.api._inputs.load_inputs` (the same errors
+        :func:`gwas` would raise at the same step).
+
+    Examples
+    --------
+    >>> rec = tg.recommend(y, G)                # doctest: +SKIP
+    >>> print(rec.explain())                    # doctest: +SKIP
+    >>> tg.gwas(y, G, models=rec.suggested_model)  # doctest: +SKIP
+    """
+    inputs = load_inputs(phenotype, genotype, covariates)
+    alias, rationale = _auto_model(inputs, kinship="auto")
+    opts = RunOptions(kinship="auto", pcs="auto", qc=True)
+
+    return Recommendation(
+        trait_name=inputs.trait_name,
+        trait_type=inputs.trait_type,
+        n_samples=inputs.n_samples,
+        suggested_model=alias,
+        rationale=rationale,
+        n_pcs=_n_pcs_from_opts(opts),
+        qc_summary=_qc_kwargs(opts),
     )
 
 
@@ -520,7 +668,17 @@ def gwas(
     if verbose:
         _print_decision_log(inputs, aliases, was_auto, rationale, opts)
 
-    results = {alias: run_model(alias, inputs, opts) for alias in aliases}
+    # Task 6: attach high-value, one-sentence advisory warnings (genomic
+    # inflation, low post-QC variant count, case/control imbalance, ...) to
+    # each per-model result right after it comes back from run_model, so
+    # they are surfaced uniformly via GwasResult.diagnostics["warnings"]
+    # and GwasResult.summary() for both the single-model and comparison
+    # (GwasComparison) return shapes below.
+    results: dict[str, GwasResult] = {}
+    for alias in aliases:
+        r = run_model(alias, inputs, opts)
+        r.warnings = _warnings(inputs, r)
+        results[alias] = r
 
     if single:
         result = results[aliases[0]]

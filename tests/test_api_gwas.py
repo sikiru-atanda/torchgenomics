@@ -144,3 +144,18 @@ def test_auto_model_never_picks_unwired_glmm_for_binary_trait():
     alias, rationale = _auto_model(inputs, kinship="auto")
     assert alias == "glm"
     assert "glmm" in rationale.lower()
+
+
+def test_recommend_dry_run_and_warnings():
+    import numpy as np, pandas as pd, torchgenomics as tg
+    ids=[f"s{i}" for i in range(120)]
+    yb=pd.Series(np.r_[np.ones(5), np.zeros(115)], index=ids, name="disease")  # imbalanced binary
+    G=np.random.default_rng(0).integers(0,3,(120,200)).astype(float)
+    rec=tg.recommend(yb, G)
+    assert rec.trait_type=="binary"
+    assert rec.suggested_model in {"glmm","glm"}
+    assert "binary" in rec.explain().lower()          # human-readable plan, nothing run
+    # a run on the imbalanced binary emits a case/control-imbalance warning
+    r=tg.gwas(yb, G, models="glm", kinship=False, pcs=0, verbose=False)
+    warns=" ".join(r.diagnostics.get("warnings", []))
+    assert "imbalance" in warns.lower() or "case" in warns.lower()

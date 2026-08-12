@@ -47,7 +47,7 @@ from .annotate import annotate_hits
 
 # Function imports happen here once the per-tier modules are added.
 from .data import convert, impute, validate
-from .gwas import GwasComparison, gwas, models
+from .gwas import GwasComparison, Recommendation, gwas, models, recommend
 from .ld import ld_blocks
 from .lgebv import lgebv
 from .pgs import pgs_fit, pgs_score
@@ -75,6 +75,8 @@ __all__ = [
     "gwas",
     "models",
     "GwasComparison",
+    "recommend",
+    "Recommendation",
     # Result types
     "ValidateRun",
     "ConvertRun",
