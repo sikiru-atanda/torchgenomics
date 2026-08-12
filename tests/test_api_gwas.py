@@ -178,3 +178,28 @@ def test_existing_scans_return_gwasresult():
     r=tg.gwas(y, G, models="lmm", kinship="auto", pcs=0, verbose=False)
     assert isinstance(r, GwasResult)
     assert hasattr(r,"hits") and hasattr(r,"diagnostics") and callable(r.summary)
+
+
+def test_api_lmm_n_samples_backfilled():
+    """Regression test: GwasResult.n_samples is backfilled from inputs on api lmm route.
+
+    The friendly-API lmm route reads n_samples from DataFrame.attrs, which doesn't
+    survive the CSV/Parquet round-trip in lmm_scan. This test verifies the backfill
+    restores it so that .summary() and .diagnostics["n_samples"] report the true count.
+    """
+    import numpy as np, pandas as pd
+    import torchgenomics as tg
+    from torchgenomics.api import GwasResult
+
+    n_samples, n_variants = 120, 200
+    ids = [f"s{i}" for i in range(n_samples)]
+    # HWE-consistent fixture: per-SNP MAF in [0.2, 0.8], Binomial(2, p).
+    rng = np.random.default_rng(42)
+    p = rng.uniform(0.2, 0.8, size=n_variants)
+    G = rng.binomial(2, p, size=(n_samples, n_variants)).astype(float)
+    y = pd.Series(np.random.default_rng(43).normal(size=n_samples), index=ids, name="y")
+
+    r = tg.gwas(y, G, models="lmm", kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult)
+    assert r.n_samples == n_samples, f"Expected n_samples={n_samples}, got {r.n_samples}"
+    assert r.diagnostics["n_samples"] == n_samples

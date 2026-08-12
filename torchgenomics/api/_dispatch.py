@@ -374,7 +374,10 @@ def _run_api_lmm(inputs: GwasInputs, opts: RunOptions, workdir: Path) -> GwasRes
         top_k=opts.top_k,
         **_qc_kwargs(opts),
     )
+    # Backfill metadata that doesn't survive CSV/Parquet round-trip in the scan.
     result.trait_type = inputs.trait_type
+    if not result.n_samples:
+        result.n_samples = inputs.n_samples
     return result
 
 
@@ -408,7 +411,10 @@ def _run_api_glm(inputs: GwasInputs, opts: RunOptions, workdir: Path) -> GwasRes
         top_k=opts.top_k,
         **_qc_kwargs(opts),
     )
+    # Backfill metadata that doesn't survive CSV/Parquet round-trip in the scan.
     result.trait_type = inputs.trait_type
+    if not result.n_samples:
+        result.n_samples = inputs.n_samples
     return result
 
 
