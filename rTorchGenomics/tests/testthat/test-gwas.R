@@ -131,6 +131,27 @@ test_that("tg_gwas: numeric pcs is coerced to integer", {
   expect_identical(captured$args$pcs, 3L)
 })
 
+test_that("tg_gwas: device defaults to 'auto' and match.arg()s an explicit valid value", {
+  captured <- new.env()
+  mockery::stub(tg_gwas, "bridge_call", function(fn, args) {
+    captured$args <- args
+    .fake_scan_dict()
+  })
+
+  tg_gwas(phenotype = "p.tsv", genotype = "g.bed")
+  expect_identical(captured$args$device, "auto")
+
+  tg_gwas(phenotype = "p.tsv", genotype = "g.bed", device = "cuda")
+  expect_identical(captured$args$device, "cuda")
+})
+
+test_that("tg_gwas: an invalid device is a clear match.arg() error, not a bridge_call round-trip", {
+  expect_error(
+    tg_gwas(phenotype = "p.tsv", genotype = "g.bed", device = "tpu"),
+    "'arg' should be one of"
+  )
+})
+
 test_that("tg_gwas: models of the wrong type is a clear R-level error, not a bridge_call crash", {
   expect_error(
     tg_gwas(phenotype = "p.tsv", genotype = "g.bed", models = 1L),
@@ -192,6 +213,59 @@ test_that("tg_models calls torchgenomics.api.models() directly (not bridge_call)
   expect_true(is.data.frame(df))
   expect_true("lmm" %in% df$alias)
   expect_setequal(names(df), c("alias", "label", "trait_types", "description"))
+})
+
+test_that(".na_preserving_unlist keeps a NULL element as NA instead of dropping it", {
+  # A pandas None/NaN cell, once reticulate hands back a per-column list,
+  # shows up as a NULL (length-0) element. A bare unlist() would drop it
+  # and shorten the vector; .na_preserving_unlist() must not.
+  col_with_null <- list(1, NULL, 3)
+  out <- .na_preserving_unlist(col_with_null)
+  expect_length(out, 3L)
+  expect_equal(out, c(1, NA, 3))
+
+  # Character column, NULL in the middle.
+  char_col <- list("a", NULL, "c")
+  out_chr <- .na_preserving_unlist(char_col)
+  expect_length(out_chr, 3L)
+  expect_equal(out_chr, c("a", NA, "c"))
+
+  # An already-atomic column (reticulate sometimes simplifies a fully
+  # populated column) passes through unchanged.
+  atomic_col <- c(1, 2, 3)
+  expect_identical(.na_preserving_unlist(atomic_col), atomic_col)
+})
+
+test_that(".pandas_df_to_r fallback path preserves row count and NA position when a column has a NULL cell", {
+  # Simulate the reticulate-style shape .pandas_df_to_r's fallback branch
+  # consumes: df$columns$tolist() -> a list of column names,
+  # df$to_dict(orient = "list") -> a named list of per-column lists, one
+  # of which contains a NULL (a pandas None/NaN cell). We stand in for
+  # the "is this a real Python object" check and for reticulate::py_to_r
+  # (which reticulate would normally apply recursively) with an identity
+  # pass-through, matching the pattern already used for tg_iclass in
+  # test-api-iclass.R -- no real Python/venv required.
+  fake_df <- list(
+    columns = list(tolist = function() list("id", "value")),
+    to_dict = function(orient) {
+      list(
+        id = list(1, 2, 3),
+        value = list(10, NULL, 30)  # row 2's `value` is missing
+      )
+    }
+  )
+
+  mockery::stub(.pandas_df_to_r, "inherits", function(x, what) TRUE)
+  mockery::stub(.pandas_df_to_r, "reticulate::py_to_r", function(x) x)
+
+  out <- .pandas_df_to_r(fake_df)
+
+  expect_true(is.data.frame(out))
+  expect_equal(nrow(out), 3L)
+  expect_equal(names(out), c("id", "value"))
+  expect_equal(out$id, c(1, 2, 3))
+  expect_equal(out$value, c(10, NA, 30))
+  expect_true(is.na(out$value[2]))
 })
 
 # --- Real, opt-in integration tests -------------------------------------

@@ -12,7 +12,9 @@ which case it is returned via \code{as.data.frame()}, unchanged in
 substance).}
 }
 \value{
-An R \code{data.frame}, preserving \code{df}'s column order.
+An R \code{data.frame}, preserving \code{df}'s column order. Cells that
+were \code{None}/\code{NaN} in the source DataFrame become \code{NA} (of whatever
+type the rest of the column coerces to), never a dropped row.
 }
 \description{
 \code{reticulate::py_to_r()} dispatches pandas-DataFrame conversion by S3
@@ -36,5 +38,22 @@ conversion via \code{DataFrame.to_dict(orient = "list")} -- a plain Python
 dict of \verb{\{column: [values...]\}\}}, whose dict/list conversion does not
 depend on the pandas-version-sensitive S3 dispatch above -- only when
 the fast path detectably didn't produce an R \code{data.frame}.
+
+\strong{NA handling in the fallback path}: \code{df$to_dict(orient = "list")}
+surfaces a pandas \code{None}/\code{NaN} cell as an R \code{NULL} (length-0) element
+inside that column's per-row list once reticulate converts it. A bare
+\code{unlist()} over such a list silently \emph{drops} those \code{NULL} elements
+instead of keeping a placeholder, which shortens the column -- causing
+either a hard "differing number of rows" error from \code{data.frame()}
+(if some other column is fully populated) or, worse, silent
+misalignment of every value after the gap via R's recycling rules (if
+the shortened column happens to divide evenly into the target length).
+The fallback path here instead maps each column through
+\code{\link[=.na_preserving_unlist]{.na_preserving_unlist()}}, which substitutes \code{NA} for every \code{NULL} (or
+other length-0) element \emph{before} unlisting, so the column keeps its
+full length and the missing cell lands as \code{NA} in the right row. This
+is dormant for \code{\link[=tg_models]{tg_models()}} (the registry has no missing cells) but
+matters for any other pandas DataFrame this general-purpose helper is
+pointed at.
 }
 \keyword{internal}

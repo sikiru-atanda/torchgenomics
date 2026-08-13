@@ -16,7 +16,7 @@ tg_gwas(
   qc = TRUE,
   correction = "bh",
   output = NULL,
-  device = NULL,
+  device = c("auto", "cpu", "cuda"),
   verbose = TRUE
 )
 }
@@ -74,8 +74,11 @@ association table and a \code{summary.txt} + best-effort plots are written
 there. For a model comparison, each model's own report is written to
 a same-named subfolder, plus a top-level \code{comparison_summary.txt}.}
 
-\item{device}{\code{"cpu"} / \code{"cuda"} / \code{"auto"} / \code{NULL} (resolves to
-\code{"auto"}).}
+\item{device}{\code{"auto"} (default), \code{"cpu"}, or \code{"cuda"}. Matches the
+\code{device = c("auto", "cpu", "cuda")} + \code{match.arg()} idiom used by the
+sibling scan wrappers (\code{\link[=tg_lmm_scan]{tg_lmm_scan()}} / \code{\link[=tg_glm_scan]{tg_glm_scan()}} in
+\code{R/api.R}); an invalid value raises a \code{match.arg()} error immediately
+in R, rather than round-tripping to the Python side first.}
 
 \item{verbose}{Print the Python-side decision log (trait name + type,
 sample count, the model(s) chosen and why, #PCs, correction) before

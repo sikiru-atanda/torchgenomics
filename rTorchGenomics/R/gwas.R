@@ -65,8 +65,11 @@
 #'   association table and a `summary.txt` + best-effort plots are written
 #'   there. For a model comparison, each model's own report is written to
 #'   a same-named subfolder, plus a top-level `comparison_summary.txt`.
-#' @param device `"cpu"` / `"cuda"` / `"auto"` / `NULL` (resolves to
-#'   `"auto"`).
+#' @param device `"auto"` (default), `"cpu"`, or `"cuda"`. Matches the
+#'   `device = c("auto", "cpu", "cuda")` + `match.arg()` idiom used by the
+#'   sibling scan wrappers ([tg_lmm_scan()] / [tg_glm_scan()] in
+#'   `R/api.R`); an invalid value raises a `match.arg()` error immediately
+#'   in R, rather than round-tripping to the Python side first.
 #' @param verbose Print the Python-side decision log (trait name + type,
 #'   sample count, the model(s) chosen and why, #PCs, correction) before
 #'   running. Default `TRUE`; pass `FALSE` for silent/scripted use.
@@ -112,8 +115,9 @@ tg_gwas <- function(phenotype, genotype,
                     qc = TRUE,
                     correction = "bh",
                     output = NULL,
-                    device = NULL,
+                    device = c("auto", "cpu", "cuda"),
                     verbose = TRUE) {
+  device <- match.arg(device)
   if (!is.character(models) && !is.list(models)) {
     stop("models must be a character alias (or vector of aliases), ",
          "'auto', or a list of aliases; see tg_models() for valid names.")
@@ -298,10 +302,29 @@ tg_models <- function() {
 #' depend on the pandas-version-sensitive S3 dispatch above -- only when
 #' the fast path detectably didn't produce an R `data.frame`.
 #'
+#' **NA handling in the fallback path**: `df$to_dict(orient = "list")`
+#' surfaces a pandas `None`/`NaN` cell as an R `NULL` (length-0) element
+#' inside that column's per-row list once reticulate converts it. A bare
+#' `unlist()` over such a list silently *drops* those `NULL` elements
+#' instead of keeping a placeholder, which shortens the column -- causing
+#' either a hard "differing number of rows" error from `data.frame()`
+#' (if some other column is fully populated) or, worse, silent
+#' misalignment of every value after the gap via R's recycling rules (if
+#' the shortened column happens to divide evenly into the target length).
+#' The fallback path here instead maps each column through
+#' [.na_preserving_unlist()], which substitutes `NA` for every `NULL` (or
+#' other length-0) element *before* unlisting, so the column keeps its
+#' full length and the missing cell lands as `NA` in the right row. This
+#' is dormant for [tg_models()] (the registry has no missing cells) but
+#' matters for any other pandas DataFrame this general-purpose helper is
+#' pointed at.
+#'
 #' @param df A `pandas.DataFrame` (or an already-converted R object, in
 #'   which case it is returned via `as.data.frame()`, unchanged in
 #'   substance).
-#' @return An R `data.frame`, preserving `df`'s column order.
+#' @return An R `data.frame`, preserving `df`'s column order. Cells that
+#'   were `None`/`NaN` in the source DataFrame become `NA` (of whatever
+#'   type the rest of the column coerces to), never a dropped row.
 #' @keywords internal
 .pandas_df_to_r <- function(df) {
   if (!inherits(df, "python.builtin.object")) {
@@ -317,7 +340,49 @@ tg_models <- function() {
     reticulate::py_to_r(df$columns$tolist()), use.names = FALSE
   ))
   as_list <- reticulate::py_to_r(df$to_dict(orient = "list"))
-  out <- lapply(cols, function(cn) unlist(as_list[[cn]], use.names = FALSE))
+  out <- lapply(cols, function(cn) .na_preserving_unlist(as_list[[cn]]))
   names(out) <- cols
   as.data.frame(out, stringsAsFactors = FALSE)
+}
+
+#' NA-preserving `unlist()` for one pandas-column-as-R-list.
+#'
+#' Used by the [.pandas_df_to_r()] fallback path. `col` is one column's
+#' worth of per-row values as reticulate hands them back from
+#' `DataFrame.to_dict(orient = "list")` -- normally an R `list` (one
+#' element per row), where a `None`/`NaN` cell surfaces as a `NULL` (or
+#' other length-0) element. A bare `unlist(col)` would drop those
+#' elements entirely and shorten the column; this function first replaces
+#' every `NULL`/length-0/`NaN` element with a scalar `NA`, so every
+#' element is length exactly 1 before `unlist()` runs, and the result is
+#' guaranteed to have `length(col)` entries with `NA` standing in for the
+#' missing cells. Mixed-type columns (e.g. character values alongside
+#' `NA`) are handled correctly because `unlist()`'s own type-coercion
+#' promotes the placeholder `NA` to the column's eventual atomic type
+#' (`NA_character_`, `NA_real_`, ...) exactly as it would for any other
+#' vector construction.
+#'
+#' If `col` is already an atomic vector (not a `list`) -- e.g. reticulate
+#' already simplified a fully-populated numeric column -- it is returned
+#' unchanged, since there is nothing to preserve.
+#'
+#' @param col One column's values, as returned inside the per-column list
+#'   from `py_to_r(df$to_dict(orient = "list"))`.
+#' @return An atomic vector of `length(col)` (when `col` was a `list`),
+#'   with `NA` in place of any `NULL`/length-0/`NaN` element.
+#' @keywords internal
+.na_preserving_unlist <- function(col) {
+  if (!is.list(col)) {
+    return(col)
+  }
+  placeholdered <- lapply(col, function(v) {
+    if (is.null(v) || length(v) == 0L) {
+      NA
+    } else if (is.numeric(v) && length(v) == 1L && is.nan(v)) {
+      NA
+    } else {
+      v
+    }
+  })
+  unlist(placeholdered, use.names = FALSE)
 }
