@@ -230,3 +230,21 @@ def test_api_lmm_n_samples_backfilled():
     assert isinstance(r, GwasResult)
     assert r.n_samples == n_samples, f"Expected n_samples={n_samples}, got {r.n_samples}"
     assert r.diagnostics["n_samples"] == n_samples
+
+
+def test_toplevel_exports():
+    """Task 10 finalization test: the five friendly-API names are exported
+    at the top level (``import torchgenomics as tg; tg.<name>``), not just
+    reachable via ``torchgenomics.api``.
+
+    This is the last item of the 10-task plan; Tasks 5/6 already added
+    ``gwas``/``recommend``/``models``/``GwasResult``/``GwasComparison`` to
+    ``torchgenomics/__init__.py``'s imports and ``__all__``, so this test is
+    expected to PASS immediately -- it exists to make that invariant
+    explicit and regression-tested going forward, not to drive new
+    implementation.
+    """
+    import torchgenomics as tg
+
+    for name in ("gwas", "recommend", "models", "GwasResult", "GwasComparison"):
+        assert hasattr(tg, name), name

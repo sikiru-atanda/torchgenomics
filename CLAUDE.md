@@ -12,6 +12,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Post-V1 maturation (v0.3.0–v0.3.10, 2026-04-30 to 2026-06-01) + surface audit (2026-06-17):** Multi-pillar validation campaign + streaming/efficiency campaign + native C++ accelerator campaign. **16 V1 production fixes** shipped from validation work (13 original + 3 from the 2026-06-17 surface audit: tetraploid LD block detection, `api.pgs_fit` device-mismatch, `cc_graph` tag-SNP polyploid MAF). **3 literature-driven feature additions** (2026-06-17, motivated by Pandit et al. 2026 *TAG* barley leaf rust paper): `--tolerance` parameter on `ld-blocks --method r2` (SelectionTools-style), `torchgenomics.postgwas.iclass` G×E classification on FA loadings (Smith et al. 2015/2021), and `torchgenomics.api.lgebv` Local GEBV per haplo-block (Endelman 2011 rrBLUP, also registered as the 14th MCP tool `tg_lgebv`). 36 of 40 CLI scan subcommands stream chunks at biobank scale (40 TB → 1-4 GB peak). Reference equivalence validated against 11 external tools (GEMMA, GAPIT, GWASpoly, PLINK 2.0, LDSC, regenie, SAIGE, BOLT-LMM, TwoSampleMR, SoyNAM, R `mediation`). 5 pillar CI workflows (`ci` / `cli-matrix` / `external` / `reproducibility` / `perf`) wire all four pillars' regression nets + native-kernel wall-time gate; 6 additional workflows handle infra/packaging (11 `.yml` total). See `docs/superpowers/SESSION_HANDOFF.md` for the full state.
 
+## Getting started
+
+The fastest path into the library is `tg.gwas(...)` — one call that resolves inputs, picks (or validates) a model, runs it, and returns a notebook-friendly result:
+
+```python
+import torchgenomics as tg
+
+r = tg.gwas(phenotype="pheno.tsv", genotype="data.bed", models="lmm")
+print(r.summary())          # header + top hits + λ_GC
+r.manhattan()                # plots, when output is enabled
+r.report("results/")         # association table + summary.txt + plots
+
+# Run several models and compare them side by side:
+cmp = tg.gwas(phenotype="pheno.tsv", genotype="data.bed", models=["lmm", "blink"])
+print(cmp.summary())         # per-model table (test, n_variants, n_sig, λ_GC) + top-hit overlap
+
+# Preview what tg.gwas would do, without running a scan:
+rec = tg.recommend(phenotype="pheno.tsv", genotype="data.bed")
+print(rec.explain())
+
+# List every model alias tg.gwas(models=...) accepts:
+print(tg.models())           # alias, label, trait_types, description
+```
+
+Full signature: `tg.gwas(phenotype, genotype, *, covariates=None, kinship="auto", pcs="auto", trait=None, trait_type=None, models="auto", qc=True, correction="bh", output=None, device=None, verbose=True)`.
+
+- `models=` is the caller's choice — pass an alias (`"lmm"`, `"glm"`, `"blink"`, `"farmcpu"`, or a GAPIT-name synonym) or a list of aliases for a `GwasComparison`. `models="auto"` (the default) is an opt-in convenience, not a silent override: it prints exactly which model it picked and why (`verbose=True`, the default), and only ever picks a model that is actually wired (`lmm` for a continuous trait with kinship on, `glm` otherwise).
+- **Only `lmm`, `glm`, `blink`, and `farmcpu` run through `tg.gwas` today.** Registry models `glmm`, `mvlmm`, `gxe`, `set`, `bayes`, and `mklmm` are listed by `tg.models()` but are not yet wired through the friendly surface — passing one of those aliases raises a `NotImplementedError` that points at the dedicated CLI (`torchgenomics glmm-scan`, `mvlmm-scan`, ...) or the low-level API instead.
+- Per-variant QC (MAF ≥ 0.01, missingness ≤ 0.1, and **Hardy-Weinberg filtering is ON by default**, `qc=True`) runs before every scan unless the caller disables it.
+
+See `tests/test_api_gwas.py`, `torchgenomics/api/gwas.py`, and `torchgenomics/api/_registry.py` for the full behavior and the registry's wired-vs-not-yet-wired model list.
+
 ### Three audiences, one engine
 
 The same code path serves three audiences (see `torchgenomics/api/` + `torchgenomics/mcp/`):
