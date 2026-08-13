@@ -309,6 +309,48 @@ class Recommendation:
         ]
         return "\n".join(lines)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe dict of this plan (additive; Task 9).
+
+        :class:`Recommendation` is a plain :func:`dataclasses.dataclass`
+        with **no** base class (unlike :class:`~torchgenomics.api._results.ScanRun`
+        / :class:`GwasComparison`, which inherit
+        :meth:`~torchgenomics.api._results._BaseRun.to_dict`), so it has no
+        JSON-safe serializer of its own -- callers that need one (the R
+        bridge's ``bridge_call``, which auto-detects and calls ``to_dict``
+        when present; the MCP tool boundary; any other caller that wants a
+        plain dict rather than a dataclass instance) previously got an
+        opaque object back. This method fixes that without changing any
+        existing field or signature.
+
+        Every field is already JSON-safe (``str``, ``int``, and a flat
+        ``dict[str, float]`` for :attr:`qc_summary`), so no recursive
+        serialization (as in :func:`torchgenomics.api._results._serialize_value`)
+        is needed here. The one derived key, ``"plan"``, holds
+        :meth:`explain`'s human-readable rendering, so a caller that only
+        has the dict (e.g. after a round-trip through R/JSON) still gets
+        the same plain-language summary a Python caller would get from
+        ``rec.explain()``.
+
+        Returns
+        -------
+        dict[str, Any]
+            Keys: ``trait_name``, ``trait_type``, ``n_samples``,
+            ``suggested_model``, ``rationale``, ``n_pcs``, ``qc_summary``
+            (a ``dict[str, float]`` copy -- never the original mutable
+            dict), and ``plan`` (the :meth:`explain` text).
+        """
+        return {
+            "trait_name": self.trait_name,
+            "trait_type": self.trait_type,
+            "n_samples": self.n_samples,
+            "suggested_model": self.suggested_model,
+            "rationale": self.rationale,
+            "n_pcs": self.n_pcs,
+            "qc_summary": dict(self.qc_summary),
+            "plan": self.explain(),
+        }
+
 
 def recommend(
     phenotype: Any,
