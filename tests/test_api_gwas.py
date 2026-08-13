@@ -146,6 +146,33 @@ def test_auto_model_never_picks_unwired_glmm_for_binary_trait():
     assert "glmm" in rationale.lower()
 
 
+def test_recommendation_to_dict_is_json_safe_and_matches_explain():
+    """Task 9 (R wrappers): Recommendation.to_dict() is additive and must
+    round-trip every field `recommend()` sets, plus a "plan" key holding
+    the same text as `.explain()` -- this is what `bridge_call` on the R
+    side actually serializes (it auto-detects and calls `to_dict()`)."""
+    import json
+    import numpy as np, pandas as pd, torchgenomics as tg
+    ids = [f"s{i}" for i in range(120)]
+    y = pd.Series(np.random.default_rng(0).normal(size=120), index=ids, name="y")
+    G = np.random.default_rng(0).integers(0, 3, (120, 200)).astype(float)
+    rec = tg.recommend(y, G)
+
+    d = rec.to_dict()
+    assert d["trait_name"] == rec.trait_name
+    assert d["trait_type"] == rec.trait_type == "continuous"
+    assert d["n_samples"] == rec.n_samples
+    assert d["suggested_model"] == rec.suggested_model
+    assert d["rationale"] == rec.rationale
+    assert d["n_pcs"] == rec.n_pcs
+    assert d["qc_summary"] == rec.qc_summary
+    assert d["qc_summary"] is not rec.qc_summary  # copy, not the same mutable dict
+    assert d["plan"] == rec.explain()
+
+    # JSON-safe: every value round-trips through json.dumps/loads unchanged.
+    json.loads(json.dumps(d))
+
+
 def test_recommend_dry_run_and_warnings():
     import numpy as np, pandas as pd, torchgenomics as tg
     ids=[f"s{i}" for i in range(120)]

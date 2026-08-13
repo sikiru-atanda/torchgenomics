@@ -33,6 +33,9 @@ reference:
     - tg_phase_poly
 - title: "GWAS scans"
   contents:
+    - tg_gwas
+    - tg_recommend
+    - tg_models
     - tg_lmm_scan
     - tg_glm_scan
     - tg_mvlmm_scan
