@@ -101,7 +101,7 @@ def resolve_model(name: str) -> ModelSpec:
         valid = ", ".join(sorted(MODEL_REGISTRY))
         raise ValueError(
             f"Unknown model '{name}'. Valid models: {valid}. "
-            f"(GAPIT names like MLM/Blink/FarmCPU are accepted too.) See tg.models()."
+            f"(GAPIT names like MLM/Blink/FarmCPU are accepted too.) See tg.list_models()."
         )
     return MODEL_REGISTRY[key]
 

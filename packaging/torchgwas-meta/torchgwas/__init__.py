@@ -71,18 +71,18 @@ def __getattr__(name: str):
 
     Tries the real submodule first (``importlib.import_module``) before
     falling back to a plain attribute lookup on the ``torchgenomics``
-    package object. This matters because some names on ``torchgenomics``
-    are shadowed: e.g. ``torchgenomics.models`` (the friendly-API function
-    ``tg.models()``, added in v0.4.x) shadows the ``torchgenomics.models``
-    *subpackage* at the top-level attribute (see
-    :mod:`torchgenomics.api.gwas`'s ``models()`` docstring for why the
-    shadowing itself is safe for ``torchgenomics`` callers — ``from
-    torchgenomics.models import X`` and cached ``import torchgenomics.models``
-    both resolve via ``sys.modules``, not this attribute). The legacy
-    ``torchgwas`` shim has no such internal callers to protect, but it must
-    still keep resolving ``from torchgwas import models`` (and any other
-    submodule name) to the real submodule for back-compat, so submodule
-    resolution is tried first here.
+    package object. Submodule resolution is tried first so that
+    ``from torchgwas import models`` (and any other submodule name) keeps
+    resolving to the real subpackage for back-compat.
+
+    Note: the friendly-API model-listing function is named
+    ``list_models`` (``tg.list_models()`` / ``torchgenomics.list_models``),
+    not ``models`` — it was deliberately named to avoid occupying the
+    ``models`` top-level attribute, which must keep resolving to the
+    :mod:`torchgenomics.models` subpackage (see
+    :func:`torchgenomics.api.gwas.list_models`'s docstring). So
+    ``torchgwas.models`` here forwards to the real ``torchgenomics.models``
+    subpackage, with no shadowing to reason about.
     """
     try:
         return importlib.import_module(f"{_torchgenomics.__name__}.{name}")

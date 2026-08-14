@@ -21,7 +21,7 @@ import torchgenomics as tg
 
 r = tg.gwas(phenotype="pheno.tsv", genotype="data.bed", models="lmm")
 print(r.summary())          # header + top hits + λ_GC
-r.manhattan()                # plots, when output is enabled
+r.manhattan()                # Manhattan/QQ plots from the results
 r.report("results/")         # association table + summary.txt + plots
 
 # Run several models and compare them side by side:
@@ -33,14 +33,16 @@ rec = tg.recommend(phenotype="pheno.tsv", genotype="data.bed")
 print(rec.explain())
 
 # List every model alias tg.gwas(models=...) accepts:
-print(tg.models())           # alias, label, trait_types, description
+print(tg.list_models())      # alias, label, trait_types, description
 ```
 
 Full signature: `tg.gwas(phenotype, genotype, *, covariates=None, kinship="auto", pcs="auto", trait=None, trait_type=None, models="auto", qc=True, correction="bh", output=None, device=None, verbose=True)`.
 
 - `models=` is the caller's choice — pass an alias (`"lmm"`, `"glm"`, `"blink"`, `"farmcpu"`, or a GAPIT-name synonym) or a list of aliases for a `GwasComparison`. `models="auto"` (the default) is an opt-in convenience, not a silent override: it prints exactly which model it picked and why (`verbose=True`, the default), and only ever picks a model that is actually wired (`lmm` for a continuous trait with kinship on, `glm` otherwise).
-- **Only `lmm`, `glm`, `blink`, and `farmcpu` run through `tg.gwas` today.** Registry models `glmm`, `mvlmm`, `gxe`, `set`, `bayes`, and `mklmm` are listed by `tg.models()` but are not yet wired through the friendly surface — passing one of those aliases raises a `NotImplementedError` that points at the dedicated CLI (`torchgenomics glmm-scan`, `mvlmm-scan`, ...) or the low-level API instead.
+- **Only `lmm`, `glm`, `blink`, and `farmcpu` run through `tg.gwas` today.** Registry models `glmm`, `mvlmm`, `gxe`, `set`, `bayes`, and `mklmm` are listed by `tg.list_models()` but are not yet wired through the friendly surface — passing one of those aliases raises a `NotImplementedError` that points at the dedicated CLI (`torchgenomics glmm-scan`, `mvlmm-scan`, ...) or the low-level API instead.
 - Per-variant QC (MAF ≥ 0.01, missingness ≤ 0.1, and **Hardy-Weinberg filtering is ON by default**, `qc=True`) runs before every scan unless the caller disables it.
+- Results live in a process-local temp directory that is cleaned up automatically when the returned `GwasResult`/`GwasComparison` is garbage-collected; pass `output=` to persist results to a directory of your choosing instead. See `torchgenomics.api.gwas.gwas`'s and `RunOptions.output`'s docstrings.
+- The `tg.list_models()` function is named `list_models`, not `models`, specifically so it does not shadow the `torchgenomics.models` subpackage — `import torchgenomics.models; torchgenomics.models.SingleTraitLMM` keeps working.
 
 See `tests/test_api_gwas.py`, `torchgenomics/api/gwas.py`, and `torchgenomics/api/_registry.py` for the full behavior and the registry's wired-vs-not-yet-wired model list.
 

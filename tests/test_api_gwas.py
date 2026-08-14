@@ -68,8 +68,8 @@ def test_tg_gwas_single_auto_and_multimodel(capsys):
     assert isinstance(cmp, tg.GwasComparison)
     assert set(cmp.results) == {"lmm","blink"}
     assert "lmm" in cmp.summary() and "blink" in cmp.summary()
-    # tg.models() lists the registry
-    assert "lmm" in set(tg.models()["alias"])
+    # tg.list_models() lists the registry
+    assert "lmm" in set(tg.list_models()["alias"])
 
 
 def _hwe_consistent_fixture(n_samples=150, n_variants=300, seed=0):
@@ -238,13 +238,103 @@ def test_toplevel_exports():
     reachable via ``torchgenomics.api``.
 
     This is the last item of the 10-task plan; Tasks 5/6 already added
-    ``gwas``/``recommend``/``models``/``GwasResult``/``GwasComparison`` to
-    ``torchgenomics/__init__.py``'s imports and ``__all__``, so this test is
-    expected to PASS immediately -- it exists to make that invariant
+    ``gwas``/``recommend``/``list_models``/``GwasResult``/``GwasComparison``
+    to ``torchgenomics/__init__.py``'s imports and ``__all__``, so this test
+    is expected to PASS immediately -- it exists to make that invariant
     explicit and regression-tested going forward, not to drive new
     implementation.
+
+    Note: the model-listing function is ``list_models``, not ``models`` --
+    see ``test_list_models_does_not_shadow_models_subpackage`` below for why
+    (the final-review fix that renamed it).
     """
     import torchgenomics as tg
 
-    for name in ("gwas", "recommend", "models", "GwasResult", "GwasComparison"):
+    for name in ("gwas", "recommend", "list_models", "GwasResult", "GwasComparison"):
         assert hasattr(tg, name), name
+
+
+def test_list_models_does_not_shadow_models_subpackage():
+    """Final-review regression test (Fix 1): ``tg.list_models`` must not
+    occupy the ``torchgenomics.models`` top-level attribute.
+
+    Before this fix, the friendly-API listing function was named
+    ``tg.models()`` and was re-exported at ``torchgenomics.models``,
+    shadowing the :mod:`torchgenomics.models` subpackage's top-level
+    attribute -- so ``import torchgenomics.models; torchgenomics.models.SingleTraitLMM``
+    raised ``AttributeError`` (the subpackage import itself still worked and
+    populated ``sys.modules["torchgenomics.models"]``, but the *attribute*
+    ``torchgenomics.models`` on the already-imported ``torchgenomics``
+    package object pointed at the shadowing function, not the module).
+    Renaming the function to ``list_models`` frees the ``models`` name so it
+    resolves to the subpackage again.
+
+    This test asserts BOTH halves of the fix in one place: the subpackage
+    attribute access works, AND the renamed listing function is callable
+    and returns the expected registry.
+    """
+    import torchgenomics
+    import torchgenomics as tg
+
+    # The subpackage resolves via attribute access on the already-imported
+    # `torchgenomics` package (not just via `sys.modules` after a submodule
+    # import) -- this is exactly the access pattern that broke before Fix 1.
+    assert torchgenomics.models.SingleTraitLMM.__name__ == "SingleTraitLMM"
+
+    # The friendly-API function moved to `list_models` and still works.
+    assert callable(tg.list_models)
+    assert "lmm" in set(tg.list_models()["alias"])
+
+
+def test_run_model_temp_workdir_cleaned_up_on_gc():
+    """Final-review regression test (Fix 2): `run_model`'s temp working
+    directory must not leak.
+
+    Before this fix, `run_model` created `tempfile.mkdtemp(prefix="tg_gwas_")`
+    for every call and never removed it -- one leaked directory (plus a
+    materialized genotype.csv for in-memory input) per call, unbounded in
+    the documented "loop over many traits" pattern (see `RunOptions.output`
+    / `gwas()`'s docstring). The fix attaches a `weakref.finalize` callback
+    to the returned `GwasResult` that removes the directory once the result
+    is garbage-collected.
+
+    This test runs two sequential `tg.gwas` calls (in-memory genotype, so a
+    temp genotype.csv is actually materialized each time), captures the
+    first result's temp workdir from its `output_files` before dropping the
+    reference, forces a GC pass, and asserts the directory is gone -- while
+    the second (still-referenced) result's own workdir is untouched.
+    """
+    import gc
+
+    import torchgenomics as tg
+
+    y1, G1 = _hwe_consistent_fixture(seed=10)
+    r1 = tg.gwas(y1, G1, models="lmm", kinship="auto", pcs=0, verbose=False)
+    tsv1 = r1.output_files["tsv"]
+    # output_files["tsv"] == <workdir>/lmm_out/results.assoc.tsv (the "lmm_out"
+    # output prefix from torchgenomics.api._dispatch._run_api_lmm is used as a
+    # directory by the underlying lmm-scan CLI route); <workdir> is the
+    # tempfile.mkdtemp(prefix="tg_gwas_") directory from run_model.
+    workdir1 = tsv1.parent.parent
+    assert workdir1.exists()
+    assert str(workdir1.name).startswith("tg_gwas_")
+
+    y2, G2 = _hwe_consistent_fixture(seed=11)
+    r2 = tg.gwas(y2, G2, models="lmm", kinship="auto", pcs=0, verbose=False)
+    tsv2 = r2.output_files["tsv"]
+    workdir2 = tsv2.parent.parent
+    assert workdir2.exists()
+    assert workdir1 != workdir2
+
+    del r1
+    gc.collect()
+
+    assert not workdir1.exists(), "first result's temp workdir should be removed after GC"
+    # The still-referenced second result's workdir must survive -- cleanup
+    # is per-result, not a blanket sweep.
+    assert workdir2.exists()
+    assert tsv2.exists()
+
+    del r2
+    gc.collect()
+    assert not workdir2.exists()

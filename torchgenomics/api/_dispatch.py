@@ -62,7 +62,9 @@ family, ``bayes`` needs signal priors) raise a clear
 
 from __future__ import annotations
 
+import shutil
 import tempfile
+import weakref
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -141,9 +143,16 @@ class RunOptions:
         (CUDA when available) for the api routes and to the CLI default for
         low-level routes.
     output : str | pathlib.Path | None, default None
-        Directory for the results tables. ``None`` writes to a temp directory
-        (still referenced by :attr:`GwasResult.output_files` so plotting /
-        report helpers keep working within the process).
+        Directory for the results tables. ``None`` (default) writes to a
+        process-local temp directory (still referenced by
+        :attr:`GwasResult.output_files` so plotting / report helpers keep
+        working within the process) that is removed automatically — via a
+        :func:`weakref.finalize` callback registered on the returned
+        :class:`~torchgenomics.api._results.GwasResult` in :func:`run_model`
+        — once that result object is garbage-collected; nothing accumulates
+        across repeated calls in a long-running process (e.g. a loop over
+        many traits). Pass an explicit directory here to persist results
+        instead of relying on GC timing.
     top_k : int, default 50
         Number of top hits returned inline in :attr:`GwasResult.top_hits`.
     verbose : bool, default True
@@ -486,6 +495,21 @@ _LOWLEVEL_CLI = {
 }
 
 
+def _cleanup_workdir(path: Path) -> None:
+    """Best-effort ``rmtree`` of a :func:`run_model` temp working directory.
+
+    Registered via :func:`weakref.finalize` on the :class:`GwasResult`
+    returned by :func:`run_model` (see there), so it fires exactly once,
+    automatically, when that result is garbage-collected — no explicit
+    ``close()``/context-manager call is required from callers. ``ignore_errors``
+    is deliberate: this runs during GC (possibly interpreter shutdown, or
+    after the directory was already moved/removed by the caller), where a
+    raised exception would be unrecoverable/unreportable and should never
+    propagate out of a finalizer.
+    """
+    shutil.rmtree(path, ignore_errors=True)
+
+
 def run_model(
     alias: str,
     inputs: GwasInputs,
@@ -520,7 +544,10 @@ def run_model(
     GwasResult
         Uniform result with summary stats, the top-``k`` hits inline, and
         paths to the full association table on disk. ``trait_type`` is tagged
-        from ``inputs``.
+        from ``inputs``. Its temp working directory (materialized inputs,
+        plus outputs when ``opts.output`` was not given) is removed
+        automatically once this result is garbage-collected — see the
+        "Temp-directory lifecycle" note below.
 
     Raises
     ------
@@ -534,6 +561,26 @@ def run_model(
         not yet wired through ``tg.gwas``. The message points at the
         equivalent ``torchgenomics <alias>-scan`` CLI subcommand and the
         low-level API.
+
+    Notes
+    -----
+    **Temp-directory lifecycle.** Every call creates a fresh
+    ``tempfile.mkdtemp(prefix="tg_gwas_")`` working directory to hold
+    materialized inputs (when ``inputs`` carries an in-memory genotype) and,
+    when ``opts.output`` is ``None``, the scan's own output files (which the
+    returned :class:`GwasResult` then references via ``output_files`` for
+    ``.manhattan()`` / ``.report()``). Rather than deleting it immediately —
+    which would break those methods — a :func:`weakref.finalize` callback
+    (:func:`_cleanup_workdir`) is attached to the returned result, so the
+    directory is removed automatically once that result is garbage-collected
+    (or immediately, on any exception raised before a result exists). This
+    means directories never accumulate unboundedly across repeated calls
+    (e.g. ``tg.gwas`` in a loop over many traits) even though nothing is
+    deleted eagerly. When ``opts.output`` is given, the scan itself writes
+    directly to that user-supplied directory — ``output_files`` then points
+    there, not at the temp directory — so the temp directory (still created,
+    to hold only materialized inputs) is redundant sooner but is cleaned up
+    on the same schedule regardless.
     """
     opts = opts if opts is not None else RunOptions()
 
@@ -550,40 +597,54 @@ def run_model(
     spec = resolve_model(alias)
 
     # A temp working dir holds materialized inputs (and outputs when the caller
-    # gave no explicit output=). It is intentionally not deleted: the returned
-    # GwasResult references result files here for .manhattan() / .report().
+    # gave no explicit output=). See "Temp-directory lifecycle" above: it is not
+    # deleted here (the returned GwasResult references result files here for
+    # .manhattan() / .report()) but is guaranteed cleanup via weakref.finalize
+    # below on success, or immediately below on any exception.
     workdir = Path(tempfile.mkdtemp(prefix="tg_gwas_"))
 
-    if spec.runner == "api_lmm":
-        return _run_api_lmm(inputs, opts, workdir)
-    if spec.runner == "api_glm":
-        return _run_api_glm(inputs, opts, workdir)
-    if spec.runner.startswith("lowlevel:"):
-        low = spec.alias.lower()
-        wiring = _LOWLEVEL_CLI.get(low)
-        if wiring is None:
-            raise NotImplementedError(
-                f"Model '{alias}' is not yet wired through tg.gwas; use "
-                f"`torchgenomics {low}-scan` or the low-level API."
+    try:
+        if spec.runner == "api_lmm":
+            result = _run_api_lmm(inputs, opts, workdir)
+        elif spec.runner == "api_glm":
+            result = _run_api_glm(inputs, opts, workdir)
+        elif spec.runner.startswith("lowlevel:"):
+            low = spec.alias.lower()
+            wiring = _LOWLEVEL_CLI.get(low)
+            if wiring is None:
+                raise NotImplementedError(
+                    f"Model '{alias}' is not yet wired through tg.gwas; use "
+                    f"`torchgenomics {low}-scan` or the low-level API."
+                )
+            from .. import cli
+
+            subcommand, runner_name, model_label = wiring
+            runner = getattr(cli, runner_name)
+            result = _run_lowlevel_cli(
+                inputs,
+                opts,
+                subcommand=subcommand,
+                runner=runner,
+                model_label=model_label,
+                workdir=workdir,
             )
-        from .. import cli
+        else:
+            raise NotImplementedError(
+                f"Model '{alias}' has an unrecognized runner {spec.runner!r} and is not "
+                "yet wired through tg.gwas; use the corresponding CLI subcommand or the "
+                "low-level API."
+            )
+    except BaseException:
+        # No result object exists to hold a finalizer -- clean up right away
+        # so a failed run never leaks its temp directory.
+        _cleanup_workdir(workdir)
+        raise
 
-        subcommand, runner_name, model_label = wiring
-        runner = getattr(cli, runner_name)
-        return _run_lowlevel_cli(
-            inputs,
-            opts,
-            subcommand=subcommand,
-            runner=runner,
-            model_label=model_label,
-            workdir=workdir,
-        )
-
-    raise NotImplementedError(
-        f"Model '{alias}' has an unrecognized runner {spec.runner!r} and is not "
-        "yet wired through tg.gwas; use the corresponding CLI subcommand or the "
-        "low-level API."
-    )
+    # Success: hand cleanup off to GC via a finalizer on the result itself,
+    # so .manhattan() / .report() keep working for as long as the caller
+    # holds a reference to `result` (see "Temp-directory lifecycle" above).
+    weakref.finalize(result, _cleanup_workdir, workdir)
+    return result
 
 
 # --- Task 6: post-run advisory warnings -------------------------------------

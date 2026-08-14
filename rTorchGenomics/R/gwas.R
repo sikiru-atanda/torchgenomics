@@ -1,12 +1,12 @@
 # rTorchGenomics/R/gwas.R
 #
 # R wrappers for the friendly-API decision core (torchgenomics.api.gwas /
-# .recommend / .models -- Task 5/6 on the Python side of the friendly-API
+# .recommend / .list_models -- Task 5/6 on the Python side of the friendly-API
 # plan). Unlike the hand-crafted wrappers in R/api.R, these three are
 # reached through `bridge_call()` almost unchanged: `bridge_call()` already
 # resolves `torchgenomics.api[["gwas"]]` / `[["recommend"]]` by name, calls
 # it, and auto-detects + calls `.to_dict()` on the result when present
-# (see R/bridge.R). `tg_models()` is the one exception -- `models()`
+# (see R/bridge.R). `tg_models()` is the one exception -- `list_models()`
 # returns a pandas DataFrame, not a `to_dict()`-able result object, so it
 # is called directly (see its own docs below).
 
@@ -231,7 +231,7 @@ print.tg_recommendation <- function(x, ...) {
 
 #' List every model available to `tg_gwas(models = ...)`.
 #'
-#' Thin wrapper around `torchgenomics.models()` -- the friendly-API model
+#' Thin wrapper around `torchgenomics.list_models()` -- the friendly-API model
 #' registry, distinct from the `torchgenomics.models` *subpackage*.
 #' Unlike the other wrappers in this file, `tg_models()` does **not** go
 #' through `bridge_call()`: the Python function returns a `pandas.DataFrame`
@@ -260,11 +260,11 @@ print.tg_recommendation <- function(x, ...) {
 #' @export
 tg_models <- function() {
   py <- tryCatch(tg_py(), tg_no_python = function(e) stop(e))
-  py_fn <- py$api$models
+  py_fn <- py$api$list_models
   if (is.null(py_fn)) {
     stop(structure(
       class = c("tg_runtime_error", "error", "condition"),
-      list(message = "torchgenomics.api has no function 'models'")
+      list(message = "torchgenomics.api has no function 'list_models'")
     ))
   }
   df <- tryCatch(
@@ -272,7 +272,7 @@ tg_models <- function() {
     python.builtin.Exception = function(e) {
       stop(structure(
         class = c("tg_runtime_error", "error", "condition"),
-        list(message = paste0("models(): ", conditionMessage(e)))
+        list(message = paste0("list_models(): ", conditionMessage(e)))
       ))
     }
   )

@@ -187,7 +187,7 @@ def _resolve_models(
     if not aliases:
         raise ValueError(
             "models=[] is empty; pass a model alias (e.g. 'lmm'), a list of "
-            "aliases, or 'auto' to let tg.gwas pick one. See tg.models()."
+            "aliases, or 'auto' to let tg.gwas pick one. See tg.list_models()."
         )
 
     for alias in aliases:
@@ -629,7 +629,7 @@ def gwas(
         :meth:`GwasComparison.summary`/:meth:`GwasComparison.report`), even
         for one model. Every alias is validated via
         :func:`torchgenomics.api._registry.resolve_model` (see
-        :func:`tg.models() <models>` for the full registry).
+        :func:`tg.list_models() <list_models>` for the full registry).
     qc : bool, default True
         Per-variant QC (MAF / missingness / Hardy-Weinberg). See
         :class:`torchgenomics.api._dispatch.RunOptions`.
@@ -645,7 +645,14 @@ def gwas(
         directory (:meth:`GwasComparison.report`), with each model's own
         report in a same-named subfolder. ``None`` (default) writes to a
         process-local temp directory that the returned result still
-        references via ``output_files`` / per-model ``output_files``.
+        references via ``output_files`` / per-model ``output_files`` — that
+        temp directory is removed automatically once the returned
+        :class:`~torchgenomics.api._results.GwasResult` /
+        :class:`GwasComparison` is garbage-collected (see
+        :func:`torchgenomics.api._dispatch.run_model`'s "Temp-directory
+        lifecycle" note), so nothing accumulates across repeated calls (e.g.
+        a loop over many traits); pass an explicit ``output=`` directory to
+        persist results independent of GC timing.
     device : str | None, default None
         ``"cpu"`` / ``"cuda"`` / ``"auto"`` / ``None`` (resolves to
         ``"auto"``); see :class:`torchgenomics.api._dispatch.RunOptions`.
@@ -743,19 +750,17 @@ def gwas(
     return comparison
 
 
-def models() -> pd.DataFrame:
+def list_models() -> pd.DataFrame:
     """List every model available to ``tg.gwas(models=...)`` as a tidy DataFrame.
 
     Thin, documented re-export of
     :func:`torchgenomics.api._registry.list_models` under the friendly-API
-    name ``tg.models()`` (a *function*, distinct from the
-    :mod:`torchgenomics.models` *subpackage* — both remain independently
-    usable: ``tg.models()`` calls the registry, while
-    ``from torchgenomics.models import SingleTraitLMM`` /
-    ``import torchgenomics.models`` continue to resolve the subpackage, since
-    Python's ``from package.sub import name`` / cached ``import package.sub``
-    forms look the submodule up directly in ``sys.modules`` rather than via
-    this shadowed top-level attribute).
+    name ``tg.list_models()``. This is named ``list_models`` (not ``models``)
+    specifically so it does not occupy the ``torchgenomics.models`` top-level
+    attribute name — that name must keep resolving to the
+    :mod:`torchgenomics.models` *subpackage* (``import torchgenomics.models``
+    / ``from torchgenomics.models import SingleTraitLMM``) rather than to a
+    friendly-API function.
 
     Returns
     -------
@@ -766,7 +771,7 @@ def models() -> pd.DataFrame:
     Examples
     --------
     >>> import torchgenomics as tg
-    >>> "lmm" in set(tg.models()["alias"])
+    >>> "lmm" in set(tg.list_models()["alias"])
     True
     """
     return _list_models_registry()
