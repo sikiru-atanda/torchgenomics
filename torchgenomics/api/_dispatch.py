@@ -158,6 +158,15 @@ class RunOptions:
     verbose : bool, default True
         Reserved for future progress/logging control; currently unused by the
         dispatch core (kept so callers can pass it uniformly).
+    model_options : dict[str, dict] | None, default None
+        Per-model advanced settings for low-level (CLI-backed) models, keyed
+        by model alias — e.g. ``{"glmm": {"family": "ordinal"}, "mklmm":
+        {"kernels": "additive,dominance,epistatic"}}``. Each inner dict is
+        translated into the model's CLI flags (key ``k`` -> ``--k-with-dashes``;
+        a bool ``True`` -> a bare store-true flag, ``False`` -> omitted; any
+        other scalar -> ``--flag value``). Ignored by api-backed models
+        (``lmm``/``glm``). Absent keys fall back to each model's friendly
+        defaults (see :func:`_lowlevel_extra_argv`).
     """
 
     kinship: Any = "auto"
@@ -169,6 +178,7 @@ class RunOptions:
     output: str | Path | None = None
     top_k: int = 50
     verbose: bool = True
+    model_options: dict[str, dict] | None = None
 
 
 def _n_pcs_from_opts(opts: RunOptions) -> int:
@@ -435,6 +445,7 @@ def _run_lowlevel_cli(
     runner,
     model_label: str,
     workdir: Path,
+    alias: str,
 ) -> GwasResult:
     """Route a low-level model through its CLI single-trait runner.
 
@@ -452,6 +463,7 @@ def _run_lowlevel_cli(
 
     geno_path, pheno_path = _materialize_inputs(inputs, workdir)
     output_prefix = str(opts.output) if opts.output is not None else str(workdir / "lowlevel_out")
+    extra_argv = _lowlevel_extra_argv(alias, inputs, opts)
 
     argv = [
         subcommand,
@@ -462,6 +474,7 @@ def _run_lowlevel_cli(
     ]
     if opts.device is not None:
         argv += ["--device", str(opts.device)]
+    argv += extra_argv
 
     parser = cli._build_parser()
     args = parser.parse_args(argv)
@@ -483,6 +496,38 @@ def _run_lowlevel_cli(
         top_k=opts.top_k,
         runtime_s=runtime_s,
     )
+
+
+def _model_options_to_argv(opts_map: dict) -> list[str]:
+    """Translate a per-model options dict into CLI argument tokens.
+
+    Key ``k`` becomes ``--k-with-dashes``. A bool ``True`` becomes a bare
+    store-true flag; ``False`` is omitted entirely. Any other scalar ``v``
+    becomes the pair ``["--flag", str(v)]``. Insertion order is preserved so
+    the resulting argv is deterministic.
+    """
+    argv: list[str] = []
+    for key, val in (opts_map or {}).items():
+        flag = "--" + str(key).replace("_", "-")
+        if isinstance(val, bool):
+            if val:
+                argv.append(flag)
+        else:
+            argv += [flag, str(val)]
+    return argv
+
+
+def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> list[str]:
+    """Build the model-specific CLI flags for a low-level (CLI-backed) model.
+
+    Merges each model's friendly defaults with any user overrides in
+    ``opts.model_options[alias]`` and returns them as argv tokens appended to
+    the base ``_run_lowlevel_cli`` argv. Models with no special handling
+    (e.g. ``blink``/``farmcpu``) simply forward any user options verbatim.
+    Per-model default/inference logic is added by later tasks.
+    """
+    user_opts = (opts.model_options or {}).get(alias, {})
+    return _model_options_to_argv(user_opts)
 
 
 #: Low-level aliases that are fully wired through their CLI single-trait
@@ -627,6 +672,7 @@ def run_model(
                 runner=runner,
                 model_label=model_label,
                 workdir=workdir,
+                alias=low,
             )
         else:
             raise NotImplementedError(
