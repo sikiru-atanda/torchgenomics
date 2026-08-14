@@ -338,3 +338,18 @@ def test_run_model_temp_workdir_cleaned_up_on_gc():
     del r2
     gc.collect()
     assert not workdir2.exists()
+
+
+def test_model_options_to_argv_conversion():
+    from torchgenomics.api._dispatch import _model_options_to_argv
+    assert _model_options_to_argv({}) == []
+    assert _model_options_to_argv({"kernels": "additive,dominance"}) == ["--kernels", "additive,dominance"]
+    assert _model_options_to_argv({"n_categories": 3}) == ["--n-categories", "3"]
+    # bool True -> bare store_true flag; False -> omitted
+    assert _model_options_to_argv({"firth": True}) == ["--firth"]
+    assert _model_options_to_argv({"firth": False}) == []
+
+
+def test_runoptions_has_model_options_default_none():
+    from torchgenomics.api._dispatch import RunOptions
+    assert RunOptions().model_options is None
