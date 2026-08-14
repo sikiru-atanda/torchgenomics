@@ -353,3 +353,56 @@ def test_model_options_to_argv_conversion():
 def test_runoptions_has_model_options_default_none():
     from torchgenomics.api._dispatch import RunOptions
     assert RunOptions().model_options is None
+
+
+def _binary_fixture(n=160, m=200, seed=0):
+    import numpy as np, pandas as pd
+    rng = np.random.default_rng(seed)
+    ids = [f"s{i}" for i in range(n)]
+    p = rng.uniform(0.2, 0.8, size=m)
+    G = rng.binomial(2, p, size=(n, m)).astype(float)
+    y = pd.Series(rng.integers(0, 2, size=n), index=ids, name="disease")
+    return y, G
+
+def test_glmm_extra_argv_infers_family_from_trait_type():
+    import pandas as pd
+    from torchgenomics.api._dispatch import _glmm_extra_argv
+    from torchgenomics.api._inputs import GwasInputs
+    # binary trait -> --family binary
+    inp_b = GwasInputs(genotype_path_or_reader="x", phenotype=pd.Series([0, 1, 1, 0]),
+                       covariates=None, trait_type="binary", n_samples=4, trait_name="t")
+    assert _glmm_extra_argv(inp_b, {}) == ["--family", "binary"]
+    # categorical -> --family multinomial --n-categories <#distinct>
+    inp_c = GwasInputs(genotype_path_or_reader="x", phenotype=pd.Series([0, 1, 2, 1, 2]),
+                       covariates=None, trait_type="categorical", n_samples=5, trait_name="t")
+    argv = _glmm_extra_argv(inp_c, {})
+    assert argv[:2] == ["--family", "multinomial"]
+    assert "--n-categories" in argv and "3" in argv
+    # continuous -> friendly ValueError
+    inp_q = GwasInputs(genotype_path_or_reader="x", phenotype=pd.Series([1.1, 2.2, 3.3]),
+                       covariates=None, trait_type="continuous", n_samples=3, trait_name="height")
+    import pytest
+    with pytest.raises(ValueError) as e:
+        _glmm_extra_argv(inp_q, {})
+    assert "glmm" in str(e.value).lower() and "lmm" in str(e.value).lower()
+    # user override wins (family explicitly set)
+    assert _glmm_extra_argv(inp_b, {"family": "ordinal", "n_categories": 3}) == [
+        "--family", "ordinal", "--n-categories", "3"]
+
+def test_glmm_runs_through_tg_gwas_on_binary_trait():
+    import torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    y, G = _binary_fixture()
+    r = tg.gwas(y, G, models="glmm", kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult) and r.n_variants > 0
+
+def test_glmm_on_continuous_trait_friendly_error():
+    import numpy as np, pandas as pd, pytest, torchgenomics as tg
+    rng = np.random.default_rng(1)
+    ids = [f"s{i}" for i in range(120)]
+    p = rng.uniform(0.2, 0.8, size=150)
+    G = rng.binomial(2, p, size=(120, 150)).astype(float)
+    y = pd.Series(rng.normal(size=120), index=ids, name="height")
+    with pytest.raises(ValueError) as e:
+        tg.gwas(y, G, models="glmm", kinship="auto", pcs=0, verbose=False)
+    assert "glmm" in str(e.value).lower() and "lmm" in str(e.value).lower()
