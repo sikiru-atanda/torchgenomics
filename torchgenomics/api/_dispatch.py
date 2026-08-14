@@ -517,6 +517,35 @@ def _model_options_to_argv(opts_map: dict) -> list[str]:
     return argv
 
 
+def _glmm_extra_argv(inputs: GwasInputs, user_opts: dict) -> list[str]:
+    """Build glmm CLI flags, inferring ``--family`` from the trait type.
+
+    binary -> ``--family binary``; categorical -> ``--family multinomial``
+    with ``--n-categories`` set to the number of distinct phenotype values
+    (multinomial is the default because it assumes no category ordering — a
+    user with ordered categories can pass ``model_options={"glmm":
+    {"family": "ordinal"}}``). A continuous trait raises a friendly
+    ``ValueError``. Explicit user options always win over the inference.
+    """
+    import pandas as pd
+
+    opts_map = dict(user_opts)
+    if "family" not in opts_map:
+        tt = inputs.trait_type
+        if tt == "binary":
+            opts_map["family"] = "binary"
+        elif tt == "categorical":
+            opts_map["family"] = "multinomial"
+            opts_map.setdefault("n_categories", int(pd.Series(inputs.phenotype).nunique()))
+        else:
+            raise ValueError(
+                f"Model 'glmm' is for binary/categorical traits, but trait "
+                f"'{inputs.trait_name}' is {tt}. Use models='lmm' for a "
+                f"continuous trait (or models='glm' for fixed-effects)."
+            )
+    return _model_options_to_argv(opts_map)
+
+
 def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> list[str]:
     """Build the model-specific CLI flags for a low-level (CLI-backed) model.
 
@@ -524,9 +553,13 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> li
     ``opts.model_options[alias]`` and returns them as argv tokens appended to
     the base ``_run_lowlevel_cli`` argv. Models with no special handling
     (e.g. ``blink``/``farmcpu``) simply forward any user options verbatim.
-    Per-model default/inference logic is added by later tasks.
+    ``glmm`` infers ``--family`` from the trait type via
+    :func:`_glmm_extra_argv`. Per-model default/inference logic for other
+    models is added by later tasks.
     """
     user_opts = (opts.model_options or {}).get(alias, {})
+    if alias == "glmm":
+        return _glmm_extra_argv(inputs, user_opts)
     return _model_options_to_argv(user_opts)
 
 
@@ -537,6 +570,7 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> li
 _LOWLEVEL_CLI = {
     "blink": ("blink-scan", "_cmd_blink_scan_single", "BLINK"),
     "farmcpu": ("farmcpu-scan", "_cmd_farmcpu_scan_single", "FarmCPU"),
+    "glmm": ("glmm-scan", "_cmd_glmm_scan", "GLMM"),
 }
 
 
