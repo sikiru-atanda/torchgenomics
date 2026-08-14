@@ -196,7 +196,7 @@ test_that("tg_recommend dispatches via bridge_call('recommend', ...) and returns
   expect_true(any(grepl("Plan for trait", out)))
 })
 
-test_that("tg_models calls torchgenomics.api.models() directly (not bridge_call) and returns a data.frame", {
+test_that("tg_models calls torchgenomics.api.list_models() directly (not bridge_call) and returns a data.frame", {
   fake_df <- data.frame(
     alias = c("lmm", "glm", "farmcpu"),
     label = c("GRM mixed model", "Fixed-effects GLM", "FarmCPU"),
@@ -204,7 +204,7 @@ test_that("tg_models calls torchgenomics.api.models() directly (not bridge_call)
     description = c("d1", "d2", "d3"),
     stringsAsFactors = FALSE
   )
-  fake_api <- list(models = function() fake_df)
+  fake_api <- list(list_models = function() fake_df)
   fake_py <- list(api = fake_api)
   mockery::stub(tg_models, "tg_py", function() fake_py)
 

@@ -9,7 +9,10 @@ ld-blocks, ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate,
 mediate, mediate-scan, pipeline, gwas, recommend, models.
 
 ``gwas`` / ``recommend`` / ``models`` (Task 8, friendly API) share the same
-decision core as ``torchgenomics.api.gwas`` / ``recommend`` / ``models`` —
+decision core as the Python functions ``torchgenomics.api.gwas`` /
+``recommend`` / ``list_models`` (the CLI subcommand keeps the name
+``models``; the underlying Python function is ``list_models``, to avoid
+shadowing the :mod:`torchgenomics.models` subpackage) —
 i.e. ``import torchgenomics as tg; tg.gwas(...)`` in Python — so the CLI,
 the library API, and the MCP tools always agree on model selection and
 results. ``pipeline`` remains the CLI entry point for capabilities not yet
@@ -3290,13 +3293,17 @@ def _cmd_recommend(args: argparse.Namespace) -> int:
 def _cmd_models(args: argparse.Namespace) -> int:
     """Run ``torchgenomics models`` — list every model ``gwas`` can run.
 
-    Thin CLI wrapper around :func:`torchgenomics.api.gwas.models`: prints
-    the registry :class:`pandas.DataFrame` (``alias``, ``label``,
-    ``trait_types``, ``description``) as a plain-text table.
+    Thin CLI wrapper around :func:`torchgenomics.api.gwas.list_models`
+    (the CLI subcommand keeps the name ``models`` — there is no collision
+    at the CLI layer — but the underlying Python function is
+    ``list_models``, not ``models``, so it does not shadow the
+    :mod:`torchgenomics.models` subpackage): prints the registry
+    :class:`pandas.DataFrame` (``alias``, ``label``, ``trait_types``,
+    ``description``) as a plain-text table.
     """
     from . import api as tg_api
 
-    df = tg_api.models()
+    df = tg_api.list_models()
     print(df.to_string(index=False))
     return 0
 
