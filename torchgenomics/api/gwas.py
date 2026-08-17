@@ -571,6 +571,7 @@ def gwas(
     output: str | Path | None = None,
     device: str | None = None,
     verbose: bool = True,
+    model_options: dict[str, dict] | None = None,
 ) -> "GwasResult | GwasComparison":
     """Run a GWAS scan end-to-end from whatever inputs a notebook user has on hand.
 
@@ -661,6 +662,11 @@ def gwas(
         model(s) chosen and why, #PCs, and the correction method) to
         stdout before running. Set ``False`` for silent/scripted use (e.g.
         inside a loop over many traits).
+    model_options : dict[str, dict] | None, default None
+        Per-model advanced settings for CLI-backed models, keyed by alias —
+        e.g. ``{"glmm": {"family": "ordinal"}, "mklmm": {"kernels":
+        "additive,dominance,epistatic"}}``. Ignored by ``lmm``/``glm``.
+        See :class:`torchgenomics.api._dispatch.RunOptions`.
 
     Returns
     -------
@@ -684,7 +690,7 @@ def gwas(
     NotImplementedError
         For registry models that :func:`torchgenomics.api._dispatch.run_model`
         does not yet wire through the friendly API (e.g. ``gxe``, ``set``,
-        ``mvlmm``, ``bayes``, and currently ``glmm`` — see that function's
+        ``mvlmm``, and ``bayes`` — see that function's
         docstring); the message points at the equivalent
         ``torchgenomics <alias>-scan`` CLI subcommand or the low-level API.
 
@@ -712,6 +718,7 @@ def gwas(
         device=device,
         output=output if single else None,
         verbose=verbose,
+        model_options=model_options,
     )
 
     if verbose:

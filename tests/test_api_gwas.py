@@ -437,3 +437,13 @@ def test_multimodel_comparison_includes_glmm():
     cmp = tg.gwas(y, G, models=["glm", "glmm"], kinship=False, pcs=0, verbose=False)
     assert isinstance(cmp, GwasComparison)
     assert set(cmp.results) == {"glm", "glmm"}
+
+def test_gwas_model_options_reaches_runner():
+    # mklmm with an explicit kernels override runs end-to-end (proves the
+    # option threads gwas() -> RunOptions -> run_model -> argv).
+    import torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    y, G = _quant_fixture()
+    r = tg.gwas(y, G, models="mklmm", kinship="auto", pcs=0, verbose=False,
+                model_options={"mklmm": {"kernels": "additive,dominance"}})
+    assert isinstance(r, GwasResult) and r.n_variants > 0
