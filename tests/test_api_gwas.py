@@ -406,3 +406,34 @@ def test_glmm_on_continuous_trait_friendly_error():
     with pytest.raises(ValueError) as e:
         tg.gwas(y, G, models="glmm", kinship="auto", pcs=0, verbose=False)
     assert "glmm" in str(e.value).lower() and "lmm" in str(e.value).lower()
+
+
+def _quant_fixture(n=140, m=180, seed=2):
+    import numpy as np, pandas as pd
+    rng = np.random.default_rng(seed)
+    ids = [f"s{i}" for i in range(n)]
+    p = rng.uniform(0.2, 0.8, size=m)
+    G = rng.binomial(2, p, size=(n, m)).astype(float)
+    y = pd.Series(rng.normal(size=n), index=ids, name="yield")
+    return y, G
+
+def test_mklmm_extra_argv_default_and_override():
+    from torchgenomics.api._dispatch import _mklmm_extra_argv
+    assert _mklmm_extra_argv({}) == ["--kernels", "additive,dominance"]
+    assert _mklmm_extra_argv({"kernels": "additive,dominance,epistatic"}) == [
+        "--kernels", "additive,dominance,epistatic"]
+
+def test_mklmm_runs_through_tg_gwas():
+    import torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    y, G = _quant_fixture()
+    r = tg.gwas(y, G, models="mklmm", kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult) and r.n_variants > 0
+
+def test_multimodel_comparison_includes_glmm():
+    import torchgenomics as tg
+    from torchgenomics.api import GwasComparison
+    y, G = _binary_fixture()
+    cmp = tg.gwas(y, G, models=["glm", "glmm"], kinship=False, pcs=0, verbose=False)
+    assert isinstance(cmp, GwasComparison)
+    assert set(cmp.results) == {"glm", "glmm"}
