@@ -11,7 +11,7 @@ A \code{data.frame} with columns \code{alias}, \code{label}, \code{trait_types},
 \code{description} -- one row per model \code{\link[=tg_gwas]{tg_gwas()}} can run.
 }
 \description{
-Thin wrapper around \code{torchgenomics.models()} -- the friendly-API model
+Thin wrapper around \code{torchgenomics.list_models()} -- the friendly-API model
 registry, distinct from the \code{torchgenomics.models} \emph{subpackage}.
 Unlike the other wrappers in this file, \code{tg_models()} does \strong{not} go
 through \code{bridge_call()}: the Python function returns a \code{pandas.DataFrame}
