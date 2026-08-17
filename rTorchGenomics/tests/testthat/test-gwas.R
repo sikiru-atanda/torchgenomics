@@ -170,6 +170,19 @@ test_that("tg_gwas: an empty 'results' in a comparison response is a clear runti
   )
 })
 
+test_that("tg_gwas forwards model_options to the bridge", {
+  captured <- new.env()
+  mockery::stub(tg_gwas, "bridge_call", function(fn, args) {
+    captured$args <- args
+    .fake_scan_dict(model = "GLMM")
+  })
+
+  tg_gwas("p.tsv", "g.bed", models = "glmm",
+          model_options = list(glmm = list(family = "ordinal")))
+
+  expect_equal(captured$args$model_options$glmm$family, "ordinal")
+})
+
 test_that("tg_recommend dispatches via bridge_call('recommend', ...) and returns a printable plan", {
   captured <- new.env()
   mockery::stub(tg_recommend, "bridge_call", function(fn, args) {

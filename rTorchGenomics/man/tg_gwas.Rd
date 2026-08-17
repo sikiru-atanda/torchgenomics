@@ -17,7 +17,8 @@ tg_gwas(
   correction = "bh",
   output = NULL,
   device = c("auto", "cpu", "cuda"),
-  verbose = TRUE
+  verbose = TRUE,
+  model_options = NULL
 )
 }
 \arguments{
@@ -83,6 +84,10 @@ in R, rather than round-tripping to the Python side first.}
 \item{verbose}{Print the Python-side decision log (trait name + type,
 sample count, the model(s) chosen and why, #PCs, correction) before
 running. Default \code{TRUE}; pass \code{FALSE} for silent/scripted use.}
+
+\item{model_options}{Named list of per-model advanced settings, keyed by
+model alias (e.g. \code{list(glmm = list(family = "ordinal"))}). Forwarded to
+the Python friendly API; ignored by lmm/glm. Default \code{NULL}.}
 }
 \value{
 \itemize{

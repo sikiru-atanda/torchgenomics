@@ -73,6 +73,9 @@
 #' @param verbose Print the Python-side decision log (trait name + type,
 #'   sample count, the model(s) chosen and why, #PCs, correction) before
 #'   running. Default `TRUE`; pass `FALSE` for silent/scripted use.
+#' @param model_options Named list of per-model advanced settings, keyed by
+#'   model alias (e.g. `list(glmm = list(family = "ordinal"))`). Forwarded to
+#'   the Python friendly API; ignored by lmm/glm. Default `NULL`.
 #'
 #' @return
 #' - When `models` is a character **scalar** (`"auto"` or a single alias
@@ -116,7 +119,8 @@ tg_gwas <- function(phenotype, genotype,
                     correction = "bh",
                     output = NULL,
                     device = c("auto", "cpu", "cuda"),
-                    verbose = TRUE) {
+                    verbose = TRUE,
+                    model_options = NULL) {
   device <- match.arg(device)
   if (!is.character(models) && !is.list(models)) {
     stop("models must be a character alias (or vector of aliases), ",
@@ -149,7 +153,8 @@ tg_gwas <- function(phenotype, genotype,
     correction = correction,
     output = .as_path(output),
     device = device,
-    verbose = verbose
+    verbose = verbose,
+    model_options = model_options
   ))
 
   d <- bridge_call("gwas", args)
