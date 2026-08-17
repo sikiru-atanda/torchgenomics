@@ -23,11 +23,12 @@ in the numeric-dosage "3-column" CSV format
 (:class:`torchgenomics.io.numeric.NumericDosageReader`) and a phenotype TSV.
 A file-path genotype is passed straight through untouched.
 
-Only two low-level models are fully wired here — ``blink`` and ``farmcpu`` —
-because they need nothing beyond ``(phenotype, genotype)`` (plus, for LMM,
-an auto GRM). Models that need extra inputs (``gxe`` needs an environment,
-``set`` needs regions, ``mvlmm`` needs multiple traits, ``glmm`` needs a
-family, ``bayes`` needs signal priors) raise a clear
+Four low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
+(``--family`` inferred from the trait type), and ``mklmm`` (a friendly
+default ``--kernels additive,dominance``) — because each needs nothing
+beyond ``(phenotype, genotype[, family])``. Models that need extra inputs
+(``gxe`` needs an environment, ``set`` needs regions, ``mvlmm`` needs
+multiple traits, ``bayes`` needs signal priors) raise a clear
 :class:`NotImplementedError` rather than silently returning a wrong result.
 
 .. note::
@@ -49,7 +50,7 @@ family, ``bayes`` needs signal priors) raise a clear
    that uniformity holds for both the single-model (``GwasResult``) and
    multi-model (``GwasComparison``, one ``GwasResult`` per requested model)
    return shapes. Aliases whose runner is not yet wired (e.g. ``gxe``,
-   ``set``, ``mvlmm``, ``glmm``, ``bayes``, ``mklmm``) raise a clear
+   ``set``, ``mvlmm``, ``bayes``) raise a clear
    :class:`NotImplementedError` here rather than returning a divergent or
    partially-populated result. The low-level :func:`torchgenomics.api.scans.lmm_scan`
    / :func:`~torchgenomics.api.scans.glm_scan` functions, called directly
@@ -546,6 +547,19 @@ def _glmm_extra_argv(inputs: GwasInputs, user_opts: dict) -> list[str]:
     return _model_options_to_argv(opts_map)
 
 
+def _mklmm_extra_argv(user_opts: dict) -> list[str]:
+    """Build mklmm CLI flags with a friendly default kernel set.
+
+    Defaults to ``--kernels additive,dominance`` (the mklmm-scan CLI default
+    also includes the expensive ``epistatic`` kernel; tg.gwas omits it for a
+    fast, friendly default). A user can opt back in via
+    ``model_options={"mklmm": {"kernels": "additive,dominance,epistatic"}}``.
+    """
+    opts_map = dict(user_opts)
+    opts_map.setdefault("kernels", "additive,dominance")
+    return _model_options_to_argv(opts_map)
+
+
 def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> list[str]:
     """Build the model-specific CLI flags for a low-level (CLI-backed) model.
 
@@ -554,12 +568,15 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> li
     the base ``_run_lowlevel_cli`` argv. Models with no special handling
     (e.g. ``blink``/``farmcpu``) simply forward any user options verbatim.
     ``glmm`` infers ``--family`` from the trait type via
-    :func:`_glmm_extra_argv`. Per-model default/inference logic for other
+    :func:`_glmm_extra_argv`. ``mklmm`` defaults to a lighter kernel set via
+    :func:`_mklmm_extra_argv`. Per-model default/inference logic for other
     models is added by later tasks.
     """
     user_opts = (opts.model_options or {}).get(alias, {})
     if alias == "glmm":
         return _glmm_extra_argv(inputs, user_opts)
+    if alias == "mklmm":
+        return _mklmm_extra_argv(user_opts)
     return _model_options_to_argv(user_opts)
 
 
@@ -571,6 +588,7 @@ _LOWLEVEL_CLI = {
     "blink": ("blink-scan", "_cmd_blink_scan_single", "BLINK"),
     "farmcpu": ("farmcpu-scan", "_cmd_farmcpu_scan_single", "FarmCPU"),
     "glmm": ("glmm-scan", "_cmd_glmm_scan", "GLMM"),
+    "mklmm": ("mklmm-scan", "_cmd_mklmm_scan", "MultiKernelLMM"),
 }
 
 
@@ -636,7 +654,7 @@ def run_model(
     NotImplementedError
         For registry models that need inputs beyond ``(phenotype, genotype[,
         kinship])`` — e.g. ``gxe`` (environment), ``set`` (regions),
-        ``mvlmm`` (multiple traits), ``glmm`` (family), ``bayes`` — which are
+        ``mvlmm`` (multiple traits), ``bayes`` (signal priors) — which are
         not yet wired through ``tg.gwas``. The message points at the
         equivalent ``torchgenomics <alias>-scan`` CLI subcommand and the
         low-level API.
