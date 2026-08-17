@@ -3238,6 +3238,8 @@ def _cmd_gwas(args: argparse.Namespace) -> int:
     prints ``result.summary()``. No new statistics — every number comes from
     the same code path as ``tg.gwas(...)`` in Python and the MCP tool.
     """
+    import json
+
     from . import api as tg_api
 
     models_arg: str | list[str]
@@ -3253,6 +3255,15 @@ def _cmd_gwas(args: argparse.Namespace) -> int:
 
     pcs = args.pcs
 
+    model_options = None
+    raw_model_options = getattr(args, "model_options", None)
+    if raw_model_options:
+        try:
+            model_options = json.loads(raw_model_options)
+        except json.JSONDecodeError as e:
+            logger.error("--model-options is not valid JSON: %s (%s)", raw_model_options, e)
+            return 1
+
     result = tg_api.gwas(
         phenotype=args.phenotype,
         genotype=args.genotype,
@@ -3266,6 +3277,7 @@ def _cmd_gwas(args: argparse.Namespace) -> int:
         output=args.output,
         device=args.device,
         verbose=not args.quiet,
+        model_options=model_options,
     )
     print(result.summary())
     return 0
@@ -5577,9 +5589,11 @@ def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
     ``--phenotype``, ``--covariates``, ``--correction``, ``--output``,
     ``--device``) plus the friendly-API-specific ``--models`` (comma-list;
     ``"auto"`` by default), ``--kinship`` (``"auto"``/``"none"``/a GRM path),
-    ``--pcs`` (``"auto"``/an int), ``--trait``, ``--trait-type``, and
-    ``--quiet`` (suppresses the decision log; ``tg.gwas``'s ``verbose=True``
-    is the CLI default).
+    ``--pcs`` (``"auto"``/an int), ``--trait``, ``--trait-type``,
+    ``--model-options`` (a JSON dict of per-model settings, keyed by alias —
+    e.g. ``'{"glmm": {"family": "ordinal"}}'``; see ``tg.gwas``'s
+    ``model_options`` parameter), and ``--quiet`` (suppresses the decision
+    log; ``tg.gwas``'s ``verbose=True`` is the CLI default).
     """
     p = subparsers.add_parser(
         "gwas",
@@ -5612,6 +5626,9 @@ def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--device", default=None, help="'cpu' / 'cuda' / 'auto' (default: auto)")
     p.add_argument("--quiet", action="store_true",
                    help="Suppress the decision-log printout (verbose=False)")
+    p.add_argument("--model-options", default=None,
+                   help="JSON dict of per-model advanced settings, keyed by "
+                        "model alias, e.g. '{\"glmm\": {\"family\": \"ordinal\"}}'.")
 
 
 def _add_recommend_parser(subparsers: argparse._SubParsersAction) -> None:
