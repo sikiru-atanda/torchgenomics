@@ -447,6 +447,7 @@ def _run_lowlevel_cli(
     model_label: str,
     workdir: Path,
     alias: str,
+    readback=None,
 ) -> GwasResult:
     """Route a low-level model through its CLI single-trait runner.
 
@@ -467,6 +468,12 @@ def _run_lowlevel_cli(
     in a notebook. A bad *value* for a recognized flag (e.g. an out-of-range
     choice) can still raise ``SystemExit`` from argparse; that narrower case
     is out of scope here.
+
+    ``readback``, when given, replaces the default :func:`_read_scan_output`
+    for parsing the CLI runner's output into a :class:`GwasResult` — for
+    models whose output shape the default reader can't handle. ``None``
+    (the default) uses :func:`_read_scan_output`, matching every model wired
+    today.
     """
     import time
 
@@ -501,7 +508,8 @@ def _run_lowlevel_cli(
     if exit_code != 0:
         raise RuntimeError(f"{subcommand} returned non-zero status {exit_code}")
 
-    return _read_scan_output(
+    reader = readback or _read_scan_output
+    return reader(
         output_prefix,
         model_label=model_label,
         test="score" if alias == "glmm" else getattr(args, "test", "wald"),
@@ -596,14 +604,18 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> li
 
 
 #: Low-level aliases that are fully wired through their CLI single-trait
-#: runner. Each entry is ``alias -> (subcommand, runner_fn_name, model_label)``.
-#: The runner is looked up lazily on :mod:`torchgenomics.cli` to avoid importing
-#: the (heavy) CLI module at api import time.
+#: runner. Each entry is
+#: ``alias -> (subcommand, runner_fn_name, model_label, readback)``, where
+#: ``readback`` is either ``None`` (use the default :func:`_read_scan_output`)
+#: or a callable with the same signature as :func:`_read_scan_output`, for
+#: models whose CLI runner writes a result shape the default read-back can't
+#: parse. The runner is looked up lazily on :mod:`torchgenomics.cli` to avoid
+#: importing the (heavy) CLI module at api import time.
 _LOWLEVEL_CLI = {
-    "blink": ("blink-scan", "_cmd_blink_scan_single", "BLINK"),
-    "farmcpu": ("farmcpu-scan", "_cmd_farmcpu_scan_single", "FarmCPU"),
-    "glmm": ("glmm-scan", "_cmd_glmm_scan", "GLMM"),
-    "mklmm": ("mklmm-scan", "_cmd_mklmm_scan", "MultiKernelLMM"),
+    "blink": ("blink-scan", "_cmd_blink_scan_single", "BLINK", None),
+    "farmcpu": ("farmcpu-scan", "_cmd_farmcpu_scan_single", "FarmCPU", None),
+    "glmm": ("glmm-scan", "_cmd_glmm_scan", "GLMM", None),
+    "mklmm": ("mklmm-scan", "_cmd_mklmm_scan", "MultiKernelLMM", None),
 }
 
 
@@ -730,7 +742,7 @@ def run_model(
                 )
             from .. import cli
 
-            subcommand, runner_name, model_label = wiring
+            subcommand, runner_name, model_label, readback = wiring
             runner = getattr(cli, runner_name)
             result = _run_lowlevel_cli(
                 inputs,
@@ -740,6 +752,7 @@ def run_model(
                 model_label=model_label,
                 workdir=workdir,
                 alias=low,
+                readback=readback,
             )
         else:
             raise NotImplementedError(
