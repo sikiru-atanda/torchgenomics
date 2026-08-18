@@ -513,3 +513,21 @@ def test_lowlevel_cli_entries_are_4_tuples_with_default_readback():
         assert len(entry) == 4, f"{alias} entry must be a 4-tuple (subcommand, runner, label, readback)"
         # existing models use the default read-back (None) or _read_scan_output explicitly
         assert entry[3] is None or callable(entry[3])
+
+
+def test_gxe_requires_env_friendly_error():
+    import torchgenomics as tg
+    y, G = _quant_fixture()          # helper already in this file
+    import pytest
+    with pytest.raises(ValueError) as e:
+        tg.gwas(y, G, models="gxe", kinship="auto", pcs=0, verbose=False)
+    assert "gxe" in str(e.value).lower() and "env" in str(e.value).lower()
+
+def test_gxe_runs_with_inmemory_env():
+    import numpy as np, pandas as pd, torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    y, G = _quant_fixture(n=140, m=160)
+    ids = list(y.index)
+    env = pd.Series(np.random.default_rng(7).normal(size=len(ids)), index=ids, name="ENV")
+    r = tg.gwas(y, G, models="gxe", env=env, kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult) and r.n_variants > 0

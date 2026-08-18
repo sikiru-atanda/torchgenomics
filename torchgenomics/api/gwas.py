@@ -577,6 +577,7 @@ def gwas(
     device: str | None = None,
     verbose: bool = True,
     model_options: dict[str, dict] | None = None,
+    env: Any = None,
 ) -> "GwasResult | GwasComparison":
     """Run a GWAS scan end-to-end from whatever inputs a notebook user has on hand.
 
@@ -672,6 +673,12 @@ def gwas(
         e.g. ``{"glmm": {"family": "ordinal"}, "mklmm": {"kernels":
         "additive,dominance,epistatic"}}``. Ignored by ``lmm``/``glm``.
         See :class:`torchgenomics.api._dispatch.RunOptions`.
+    env : Any, default None
+        Environment variable required by ``models="gxe"``. A ``pandas.Series``
+        indexed by sample id, a 1-D array in sample order, or a path to an
+        existing env TSV. Ignored by every other model. See
+        :attr:`torchgenomics.api._dispatch.RunOptions.env` /
+        :func:`torchgenomics.api._dispatch._materialize_env`.
 
     Returns
     -------
@@ -694,10 +701,12 @@ def gwas(
         / :func:`torchgenomics.api._dispatch.run_model`).
     NotImplementedError
         For registry models that :func:`torchgenomics.api._dispatch.run_model`
-        does not yet wire through the friendly API (e.g. ``gxe``, ``set``,
+        does not yet wire through the friendly API (e.g. ``set``,
         ``mvlmm``, and ``bayes`` — see that function's
         docstring); the message points at the equivalent
         ``torchgenomics <alias>-scan`` CLI subcommand or the low-level API.
+        ``models="gxe"`` *is* wired but raises ``ValueError`` (not this)
+        when ``env`` is not supplied — see the ``env`` parameter above.
 
     Examples
     --------
@@ -724,6 +733,7 @@ def gwas(
         output=output if single else None,
         verbose=verbose,
         model_options=model_options,
+        env=env,
     )
 
     if verbose:
