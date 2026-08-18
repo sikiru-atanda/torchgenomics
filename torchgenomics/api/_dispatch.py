@@ -23,11 +23,12 @@ in the numeric-dosage "3-column" CSV format
 (:class:`torchgenomics.io.numeric.NumericDosageReader`) and a phenotype TSV.
 A file-path genotype is passed straight through untouched.
 
-Four low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
-(``--family`` inferred from the trait type), and ``mklmm`` (a friendly
-default ``--kernels additive,dominance``) — because each needs nothing
-beyond ``(phenotype, genotype[, family])``. Models that need extra inputs
-(``gxe`` needs an environment, ``set`` needs regions, ``mvlmm`` needs
+Five low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
+(``--family`` inferred from the trait type), ``mklmm`` (a friendly default
+``--kernels additive,dominance``), and ``gxe`` (requires ``RunOptions.env``,
+materialized in-memory-or-path via :func:`_materialize_env`) — because each
+needs nothing beyond ``(phenotype, genotype[, family/env])``. Models that
+need extra inputs not yet wired (``set`` needs regions, ``mvlmm`` needs
 multiple traits, ``bayes`` needs signal priors) raise a clear
 :class:`NotImplementedError` rather than silently returning a wrong result.
 
@@ -49,7 +50,7 @@ multiple traits, ``bayes`` needs signal priors) raise a clear
    calls a scan function directly — it always routes through this function, so
    that uniformity holds for both the single-model (``GwasResult``) and
    multi-model (``GwasComparison``, one ``GwasResult`` per requested model)
-   return shapes. Aliases whose runner is not yet wired (e.g. ``gxe``,
+   return shapes. Aliases whose runner is not yet wired (e.g.
    ``set``, ``mvlmm``, ``bayes``) raise a clear
    :class:`NotImplementedError` here rather than returning a divergent or
    partially-populated result. The low-level :func:`torchgenomics.api.scans.lmm_scan`
@@ -168,6 +169,23 @@ class RunOptions:
         other scalar -> ``--flag value``). Ignored by api-backed models
         (``lmm``/``glm``). Absent keys fall back to each model's friendly
         defaults (see :func:`_lowlevel_extra_argv`).
+    env : Any, default None
+        Environment variable required by the ``gxe`` model. Accepts a
+        ``pandas.Series`` indexed by sample id (reindexed to the aligned
+        sample order — :attr:`~torchgenomics.api._inputs.GwasInputs.phenotype`'s
+        index — before use), a 1-D array/sequence already in that sample
+        order, or a ``str``/``Path`` to an existing env TSV (passed straight
+        through; the caller is responsible for its row order matching the
+        gxe-scan CLI's expectations). ``None`` (default) is fine for every
+        other model; ``gxe`` raises a friendly ``ValueError`` naming both
+        the model and the missing option if ``env`` is not supplied. See
+        :func:`_materialize_env` / :func:`_gxe_extra_argv`.
+    regions : Any, default None
+        Region/gene boundaries required by the ``set`` model (BED-like:
+        chrom, start, end, [name]). Accepts a ``str``/``Path`` to an
+        existing BED file today; in-memory shapes (``pandas.DataFrame``)
+        are wired by the task that wires ``set`` through ``tg.gwas``.
+        ``None`` (default) is fine for every other model.
     """
 
     kinship: Any = "auto"
@@ -180,6 +198,8 @@ class RunOptions:
     top_k: int = 50
     verbose: bool = True
     model_options: dict[str, dict] | None = None
+    env: Any = None
+    regions: Any = None
 
 
 def _n_pcs_from_opts(opts: RunOptions) -> int:
@@ -481,7 +501,7 @@ def _run_lowlevel_cli(
 
     geno_path, pheno_path = _materialize_inputs(inputs, workdir)
     output_prefix = str(opts.output) if opts.output is not None else str(workdir / "lowlevel_out")
-    extra_argv = _lowlevel_extra_argv(alias, inputs, opts)
+    extra_argv = _lowlevel_extra_argv(alias, inputs, opts, workdir)
 
     argv = [
         subcommand,
@@ -583,7 +603,54 @@ def _mklmm_extra_argv(user_opts: dict) -> list[str]:
     return _model_options_to_argv(opts_map)
 
 
-def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> list[str]:
+def _materialize_env(env: Any, inputs: GwasInputs, workdir: Path) -> str:
+    """Return a path to a TSV with a single ``ENV`` column for gxe-scan.
+
+    A ``str``/``Path`` is treated as an existing env file and returned as-is
+    (the caller is responsible for its sample order, matching the CLI). A
+    ``pandas.Series``/1-D array is written to a temp TSV with one ``ENV``
+    column, reindexed to the aligned sample order (``inputs.phenotype.index``)
+    when the Series carries a sample-id index — so the env lines up with the
+    genotype/phenotype the scan will align to.
+    """
+    import numpy as np
+    import pandas as pd
+
+    if isinstance(env, (str, Path)):
+        return str(env)
+    if isinstance(env, pd.Series):
+        aligned = env.reindex(inputs.phenotype.index) if env.index.equals(inputs.phenotype.index) or set(inputs.phenotype.index).issubset(set(env.index)) else env
+        vals = pd.Series(np.asarray(aligned, dtype=float), name="ENV")
+    else:
+        arr = np.asarray(env, dtype=float).reshape(-1)
+        if arr.shape[0] != inputs.n_samples:
+            raise ValueError(
+                f"env has {arr.shape[0]} values but there are {inputs.n_samples} "
+                f"aligned samples; pass a pandas Series indexed by sample id, or an "
+                f"array in sample order."
+            )
+        vals = pd.Series(arr, name="ENV")
+    path = str(workdir / "env.tsv")
+    vals.to_frame().to_csv(path, sep="\t", index=False)
+    return path
+
+
+def _gxe_extra_argv(inputs: GwasInputs, opts: RunOptions, user_opts: dict, workdir: Path) -> list[str]:
+    """Build gxe CLI flags: the required ``--env`` plus any user model_options.
+
+    Raises a friendly ``ValueError`` if no ``env`` was supplied.
+    """
+    if opts.env is None:
+        raise ValueError(
+            "Model 'gxe' needs an environment variable. Pass env=<pandas Series "
+            "indexed by sample id | array in sample order | path to a TSV with an "
+            "ENV column>."
+        )
+    env_path = _materialize_env(opts.env, inputs, workdir)
+    return ["--env", env_path] + _model_options_to_argv(user_opts)
+
+
+def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workdir: Path) -> list[str]:
     """Build the model-specific CLI flags for a low-level (CLI-backed) model.
 
     Merges each model's friendly defaults with any user overrides in
@@ -592,14 +659,19 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions) -> li
     (e.g. ``blink``/``farmcpu``) simply forward any user options verbatim.
     ``glmm`` infers ``--family`` from the trait type via
     :func:`_glmm_extra_argv`. ``mklmm`` defaults to a lighter kernel set via
-    :func:`_mklmm_extra_argv`. Per-model default/inference logic for other
-    models is added by later tasks.
+    :func:`_mklmm_extra_argv`. ``gxe`` requires ``opts.env`` and materializes
+    it (in-memory or path) via :func:`_gxe_extra_argv` / :func:`_materialize_env`
+    — ``workdir`` is where an in-memory ``env`` gets written so the temp file
+    is cleaned up on the same schedule as the rest of the run. Per-model
+    default/inference logic for other models is added by later tasks.
     """
     user_opts = (opts.model_options or {}).get(alias, {})
     if alias == "glmm":
         return _glmm_extra_argv(inputs, user_opts)
     if alias == "mklmm":
         return _mklmm_extra_argv(user_opts)
+    if alias == "gxe":
+        return _gxe_extra_argv(inputs, opts, user_opts, workdir)
     return _model_options_to_argv(user_opts)
 
 
@@ -616,6 +688,7 @@ _LOWLEVEL_CLI = {
     "farmcpu": ("farmcpu-scan", "_cmd_farmcpu_scan_single", "FarmCPU", None),
     "glmm": ("glmm-scan", "_cmd_glmm_scan", "GLMM", None),
     "mklmm": ("mklmm-scan", "_cmd_mklmm_scan", "MultiKernelLMM", None),
+    "gxe": ("gxe-scan", "_cmd_gxe_scan", "GxELMM", None),
 }
 
 
@@ -680,11 +753,15 @@ def run_model(
         option (bad ``correction``, ``pcs``, or ``top_k``).
     NotImplementedError
         For registry models that need inputs beyond ``(phenotype, genotype[,
-        kinship])`` — e.g. ``gxe`` (environment), ``set`` (regions),
-        ``mvlmm`` (multiple traits), ``bayes`` (signal priors) — which are
-        not yet wired through ``tg.gwas``. The message points at the
-        equivalent ``torchgenomics <alias>-scan`` CLI subcommand and the
-        low-level API.
+        kinship])`` — e.g. ``set`` (regions), ``mvlmm`` (multiple traits),
+        ``bayes`` (signal priors) — which are not yet wired through
+        ``tg.gwas``. The message points at the equivalent
+        ``torchgenomics <alias>-scan`` CLI subcommand and the low-level API.
+    ValueError
+        Also raised by the ``gxe`` model specifically when ``env`` was not
+        supplied — ``gxe`` *is* wired through ``tg.gwas``, but it needs an
+        environment variable to run; see :attr:`RunOptions.env` /
+        :func:`_gxe_extra_argv`.
 
     Notes
     -----
