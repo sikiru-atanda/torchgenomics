@@ -505,3 +505,11 @@ def test_gwas_model_options_reaches_runner(monkeypatch):
                 model_options={"mklmm": {"kernels": "additive"}})
     assert isinstance(r, GwasResult) and r.n_variants > 0
     assert captured["model_options"] == {"mklmm": {"kernels": "additive"}}
+
+
+def test_lowlevel_cli_entries_are_4_tuples_with_default_readback():
+    from torchgenomics.api._dispatch import _LOWLEVEL_CLI, _read_scan_output
+    for alias, entry in _LOWLEVEL_CLI.items():
+        assert len(entry) == 4, f"{alias} entry must be a 4-tuple (subcommand, runner, label, readback)"
+        # existing models use the default read-back (None) or _read_scan_output explicitly
+        assert entry[3] is None or callable(entry[3])
