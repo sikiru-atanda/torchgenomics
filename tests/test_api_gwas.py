@@ -531,3 +531,48 @@ def test_gxe_runs_with_inmemory_env():
     env = pd.Series(np.random.default_rng(7).normal(size=len(ids)), index=ids, name="ENV")
     r = tg.gwas(y, G, models="gxe", env=env, kinship="auto", pcs=0, verbose=False)
     assert isinstance(r, GwasResult) and r.n_variants > 0
+    # Confirms the P_JOINT read-back actually produced a value (not a
+    # p_col=None path that would leave lambda_gc unset).
+    assert r.lambda_gc is not None
+
+
+def test_materialize_env_reindexes_and_errors_on_missing(tmp_path):
+    """Review-fix regression: the pandas.Series branch of _materialize_env
+    must ALWAYS reindex to the aligned sample order (inputs.phenotype.index)
+    and raise a friendly ValueError if any aligned sample id is missing from
+    the env Series — never silently fall through to the Series' own
+    (possibly mismatched/shuffled) order. gxe-scan consumes env positionally
+    by row order, so a silent misorder would corrupt GxE p-values.
+    """
+    import numpy as np
+    import pandas as pd
+    import pytest
+    from torchgenomics.api._dispatch import _materialize_env
+    from torchgenomics.api._inputs import load_inputs
+
+    n = 20
+    ids = [f"s{i}" for i in range(n)]
+    rng = np.random.default_rng(3)
+    p = rng.uniform(0.2, 0.8, size=30)
+    G = rng.binomial(2, p, size=(n, 30)).astype(float)
+    y = pd.Series(rng.normal(size=n), index=ids, name="y")
+    inputs = load_inputs(phenotype=y, genotype=G)
+
+    # 1) env Series indexed by the same ids but in SHUFFLED order must be
+    #    written out in inputs.phenotype.index order, not its own order.
+    shuffled_ids = list(ids)
+    rng.shuffle(shuffled_ids)
+    env = pd.Series(rng.normal(size=n), index=shuffled_ids, name="ENV")
+    path = _materialize_env(env, inputs, tmp_path)
+    written = pd.read_csv(path, sep="\t")["ENV"].to_numpy()
+    expected = env.reindex(inputs.phenotype.index).to_numpy()
+    assert np.allclose(written, expected)
+
+    # 2) env Series missing one aligned sample id must raise a friendly
+    #    ValueError mentioning the problem, not silently fall back.
+    incomplete_ids = [i for i in ids if i != "s5"]
+    env_missing = pd.Series(rng.normal(size=n - 1), index=incomplete_ids, name="ENV")
+    with pytest.raises(ValueError) as e:
+        _materialize_env(env_missing, inputs, tmp_path)
+    msg = str(e.value).lower()
+    assert "missing" in msg and "sample" in msg

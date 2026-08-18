@@ -171,14 +171,16 @@ class RunOptions:
         defaults (see :func:`_lowlevel_extra_argv`).
     env : Any, default None
         Environment variable required by the ``gxe`` model. Accepts a
-        ``pandas.Series`` indexed by sample id (reindexed to the aligned
-        sample order — :attr:`~torchgenomics.api._inputs.GwasInputs.phenotype`'s
-        index — before use), a 1-D array/sequence already in that sample
-        order, or a ``str``/``Path`` to an existing env TSV (passed straight
-        through; the caller is responsible for its row order matching the
-        gxe-scan CLI's expectations). ``None`` (default) is fine for every
-        other model; ``gxe`` raises a friendly ``ValueError`` naming both
-        the model and the missing option if ``env`` is not supplied. See
+        ``pandas.Series`` indexed by sample id — ALWAYS reindexed to the
+        aligned sample order (:attr:`~torchgenomics.api._inputs.GwasInputs.phenotype`'s
+        index) before use, and raising a friendly ``ValueError`` if any
+        aligned sample id is missing from the Series' index — a 1-D
+        array/sequence already in that sample order, or a ``str``/``Path`` to
+        an existing env TSV (passed straight through; the caller is
+        responsible for its row order matching the gxe-scan CLI's
+        expectations). ``None`` (default) is fine for every other model;
+        ``gxe`` raises a friendly ``ValueError`` naming both the model and
+        the missing option if ``env`` is not supplied. See
         :func:`_materialize_env` / :func:`_gxe_extra_argv`.
     regions : Any, default None
         Region/gene boundaries required by the ``set`` model (BED-like:
@@ -608,10 +610,15 @@ def _materialize_env(env: Any, inputs: GwasInputs, workdir: Path) -> str:
 
     A ``str``/``Path`` is treated as an existing env file and returned as-is
     (the caller is responsible for its sample order, matching the CLI). A
-    ``pandas.Series``/1-D array is written to a temp TSV with one ``ENV``
-    column, reindexed to the aligned sample order (``inputs.phenotype.index``)
-    when the Series carries a sample-id index — so the env lines up with the
-    genotype/phenotype the scan will align to.
+    ``pandas.Series`` is ALWAYS reindexed to the aligned sample order
+    (``inputs.phenotype.index``) before being written — the gxe-scan CLI
+    consumes env positionally by row order, so any mismatch between the
+    Series' index and the aligned sample order would otherwise silently
+    misalign env values against the wrong samples. If any aligned sample id
+    is missing from the Series' index (typo'd id, dtype mismatch, sample not
+    covered, ...), this raises a friendly ``ValueError`` naming the missing
+    ids rather than silently falling back to the Series' original order. A
+    bare 1-D array is assumed already in sample order and only length-checked.
     """
     import numpy as np
     import pandas as pd
@@ -619,7 +626,16 @@ def _materialize_env(env: Any, inputs: GwasInputs, workdir: Path) -> str:
     if isinstance(env, (str, Path)):
         return str(env)
     if isinstance(env, pd.Series):
-        aligned = env.reindex(inputs.phenotype.index) if env.index.equals(inputs.phenotype.index) or set(inputs.phenotype.index).issubset(set(env.index)) else env
+        aligned = env.reindex(inputs.phenotype.index)
+        if aligned.isna().any():
+            n_missing = int(aligned.isna().sum())
+            examples = list(inputs.phenotype.index[aligned.isna()][:5])
+            raise ValueError(
+                f"env is missing values for {n_missing} of the {inputs.n_samples} "
+                f"aligned samples (e.g. {examples}); provide an env value for every "
+                f"sample. Check that the env Series is indexed by the same sample "
+                f"ids as the phenotype."
+            )
         vals = pd.Series(np.asarray(aligned, dtype=float), name="ENV")
     else:
         arr = np.asarray(env, dtype=float).reshape(-1)
