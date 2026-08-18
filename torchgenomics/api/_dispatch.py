@@ -457,6 +457,16 @@ def _run_lowlevel_cli(
     fits the null, streams the scan, and writes ``<prefix>.assoc.tsv`` via
     :func:`torchgenomics.cli._apply_correction_and_save`), then reads the
     output back into a uniform :class:`GwasResult`.
+
+    An unrecognized flag in ``opts.model_options[alias]`` (e.g. a typo'd
+    option key) is caught here and re-raised as a friendly ``ValueError``
+    naming the offending alias and tokens, rather than letting
+    :meth:`argparse.ArgumentParser.parse_args` print a usage message and
+    raise ``SystemExit(2)`` — a ``BaseException`` that would slip past a
+    caller's ``except Exception`` and surface as a raw process-exit / crash
+    in a notebook. A bad *value* for a recognized flag (e.g. an out-of-range
+    choice) can still raise ``SystemExit`` from argparse; that narrower case
+    is out of scope here.
     """
     import time
 
@@ -478,7 +488,12 @@ def _run_lowlevel_cli(
     argv += extra_argv
 
     parser = cli._build_parser()
-    args = parser.parse_args(argv)
+    args, unknown = parser.parse_known_args(argv)
+    if unknown:
+        raise ValueError(
+            f"Unrecognized model_options for {alias!r}: {unknown}. See "
+            f"`torchgenomics {subcommand} --help` for valid settings."
+        )
 
     start = time.monotonic()
     exit_code = runner(args)
@@ -489,7 +504,7 @@ def _run_lowlevel_cli(
     return _read_scan_output(
         output_prefix,
         model_label=model_label,
-        test=getattr(args, "test", "wald"),
+        test="score" if alias == "glmm" else getattr(args, "test", "wald"),
         correction=opts.correction,
         trait_type=inputs.trait_type,
         n_samples=inputs.n_samples,
