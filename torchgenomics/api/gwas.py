@@ -51,15 +51,17 @@ def _auto_model(inputs: GwasInputs, kinship: Any) -> tuple[str, str]:
 
     **Wired-only policy**: this function must only ever return an alias that
     :func:`torchgenomics.api._dispatch.run_model` can actually execute today
-    (currently ``"lmm"``, ``"glm"``, ``"blink"``, ``"farmcpu"`` — see
-    :data:`torchgenomics.api._dispatch._LOWLEVEL_CLI` and the ``api_lmm`` /
-    ``api_glm`` routes). ``"auto"`` is the *default* for ``models=``, so it
-    must never raise ``NotImplementedError`` — a model that scientifically
-    "would be nicer" but isn't wired yet (e.g. ``glmm`` for a related-sample
-    binary trait) is surfaced only as a *note* in the rationale string, never
-    as the actual pick. If a future edit adds a wired alias that scientifically
-    dominates one of the branches below, update the branch *and* this
-    docstring together.
+    (currently ``"lmm"``, ``"glm"``, ``"blink"``, ``"farmcpu"``, ``"glmm"``,
+    ``"mklmm"`` — see :data:`torchgenomics.api._dispatch._LOWLEVEL_CLI` and
+    the ``api_lmm`` / ``api_glm`` routes). ``"auto"`` is the *default* for
+    ``models=``, so it must never raise ``NotImplementedError``. It also
+    prefers the *lighter* of two wired routes when both would be
+    scientifically valid — see the binary/categorical branch below — so a
+    zero-argument ``tg.gwas(y, G)`` never surprises a novice with the more
+    expensive option by default; the heavier alternative is still surfaced
+    as a *note* in the rationale string. If a future edit adds a wired alias
+    that scientifically dominates one of the branches below, update the
+    branch *and* this docstring together.
 
     Decision tree
     -------------
@@ -69,15 +71,16 @@ def _auto_model(inputs: GwasInputs, kinship: Any) -> tuple[str, str]:
     - **continuous** trait, kinship off -> ``"glm"`` (fixed-effects only;
       the caller explicitly disabled kinship correction).
     - **binary** / **categorical** trait, any kinship setting -> ``"glm"``
-      (fixed-effects GLM; the only wired route for a non-Gaussian trait
-      today). A mixed model (``glmm``, PQL/SAIGE-style) would be the more
-      appropriate choice for *related* samples, but ``glmm`` is not yet
-      wired through :func:`~torchgenomics.api._dispatch.run_model`, so
-      picking it here would turn the friendly, zero-argument default path
-      into a crash. The rationale string still names ``glmm`` as the
-      forward-looking alternative so the caller can act on it (via the CLI
-      or, once wired, ``models="glmm"``) without ``tg.gwas`` silently
-      guessing wrong or blowing up.
+      (fixed-effects GLM; the lightest wired route for a non-Gaussian
+      trait). A mixed model (``glmm``, PQL/SAIGE-style) is wired through
+      :func:`~torchgenomics.api._dispatch.run_model` and is the more
+      statistically appropriate choice for *related* samples, but it fits a
+      GRM plus an iterative PQL null model — meaningfully heavier than a
+      plain GLM — so the zero-argument default stays ``"glm"`` rather than
+      silently paying that cost for every novice call. The rationale string
+      still names ``glmm`` as the forward-looking alternative so the caller
+      can act on it directly (``models="glmm"``) without ``tg.gwas``
+      guessing wrong or picking the expensive option unasked.
 
     "Kinship on" means anything other than an explicit ``False`` / ``None``
     for the ``kinship=`` argument — a filesystem path *or* the string
@@ -117,14 +120,16 @@ def _auto_model(inputs: GwasInputs, kinship: Any) -> tuple[str, str]:
             "kinship was explicitly disabled)",
         )
 
-    # binary / categorical: glm is the only wired route today (see
-    # "Wired-only policy" above) — auto must never pick the unwired glmm.
+    # binary / categorical: glm is the lightest wired route today (see
+    # "Wired-only policy" above) — auto prefers it over the heavier, but
+    # also-wired, glmm so the zero-argument default never silently pays for
+    # a GRM + PQL null fit.
     return (
         "glm",
-        f"{trait_type} trait -> glm (fixed-effects GLM; the wired option "
-        "for a non-Gaussian trait). Note: for related samples a mixed "
-        "model (GLMM) is more appropriate -- run `torchgenomics "
-        "glmm-scan` or pass models='glmm' once wired.",
+        f"{trait_type} trait -> glm (fixed-effects GLM; the lighter wired "
+        "option for a non-Gaussian trait). Note: for related samples a "
+        "mixed model (GLMM) is more appropriate and is available -- pass "
+        "models='glmm' (or run `torchgenomics glmm-scan`).",
     )
 
 

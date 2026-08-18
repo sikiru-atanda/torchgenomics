@@ -123,13 +123,15 @@ def test_tg_gwas_comparison_runtime_s_populated():
 
 
 def test_auto_model_never_picks_unwired_glmm_for_binary_trait():
-    """Fix 1 regression: auto-selection must never pick an unwired model.
+    """Fix 1 regression: auto-selection must prefer the lighter wired model.
 
-    A binary trait with default kinship="auto" used to resolve to "glmm",
-    which run_model does not wire (NotImplementedError) -- crashing the
-    most common non-continuous default path. It must now resolve to the
-    wired "glm" alias, with a rationale that still mentions glmm as the
-    scientifically-preferable (but not-yet-wired) alternative.
+    A binary trait with default kinship="auto" resolves to "glm", not the
+    (now wired, but heavier -- GRM + PQL null fit) "glmm": auto-selection
+    is a documented convenience for the common case, not a statistical
+    recommendation engine, so the zero-argument default stays the cheap
+    option. The rationale string still names glmm as the scientifically
+    more appropriate, and directly usable (models="glmm"), alternative for
+    related samples.
     """
     import numpy as np, pandas as pd
     from torchgenomics.api._inputs import load_inputs
@@ -430,6 +432,40 @@ def test_mklmm_runs_through_tg_gwas():
     r = tg.gwas(y, G, models="mklmm", kinship="auto", pcs=0, verbose=False)
     assert isinstance(r, GwasResult) and r.n_variants > 0
 
+def test_gwas_bogus_model_options_key_raises_friendly_value_error():
+    """Fix 2 regression: an unrecognized model_options flag must not crash via SystemExit.
+
+    argparse.parse_args() prints usage and raises SystemExit(2) on an
+    unrecognized flag; SystemExit is a BaseException, so it slips past
+    `except Exception` and reads as a raw crash in a notebook. tg.gwas
+    must instead raise a friendly ValueError naming the offending alias and
+    tokens.
+    """
+    import pytest
+    import torchgenomics as tg
+    y, G = _binary_fixture()
+    with pytest.raises(ValueError) as e:
+        tg.gwas(y, G, models="glmm", model_options={"glmm": {"nonsense": 1}},
+                kinship="auto", pcs=0, verbose=False)
+    msg = str(e.value)
+    assert "nonsense" in msg
+    assert "model_options" in msg
+
+
+def test_glmm_result_test_label_is_score_not_wald():
+    """Fix 4 regression: glmm-scan runs a PQL score test, not Wald.
+
+    _run_lowlevel_cli previously read getattr(args, "test", "wald") for every
+    low-level model, including glmm -- which mislabeled the GwasResult.test
+    field as "wald" even though the GLMM null model is fit via PQL and scored
+    with a score test.
+    """
+    import torchgenomics as tg
+    y, G = _binary_fixture()
+    r = tg.gwas(y, G, models="glmm", kinship="auto", pcs=0, verbose=False)
+    assert r.test == "score"
+
+
 def test_multimodel_comparison_includes_glmm():
     import torchgenomics as tg
     from torchgenomics.api import GwasComparison
@@ -438,12 +474,34 @@ def test_multimodel_comparison_includes_glmm():
     assert isinstance(cmp, GwasComparison)
     assert set(cmp.results) == {"glm", "glmm"}
 
-def test_gwas_model_options_reaches_runner():
-    # mklmm with an explicit kernels override runs end-to-end (proves the
-    # option threads gwas() -> RunOptions -> run_model -> argv).
+def test_gwas_model_options_reaches_runner(monkeypatch):
+    """Fix 3: non-vacuous threading test.
+
+    The previous version of this test passed {"kernels": "additive,dominance"}
+    -- identical to mklmm's own default -- so it could not detect a dropped
+    option (the assertion would pass even if model_options were silently
+    ignored). This version overrides with a *distinguishing* non-default
+    value ("additive" only, no dominance) and captures the RunOptions that
+    actually reaches torchgenomics.api._dispatch._run_lowlevel_cli by
+    monkeypatching it with a recording wrapper that still delegates to the
+    real implementation -- proving the full gwas() -> RunOptions ->
+    run_model -> _run_lowlevel_cli threading, in one real end-to-end call.
+    """
     import torchgenomics as tg
     from torchgenomics.api import GwasResult
+    from torchgenomics.api import _dispatch
+
+    captured: dict = {}
+    real_run_lowlevel_cli = _dispatch._run_lowlevel_cli
+
+    def _recording_run_lowlevel_cli(inputs, opts, **kwargs):
+        captured["model_options"] = opts.model_options
+        return real_run_lowlevel_cli(inputs, opts, **kwargs)
+
+    monkeypatch.setattr(_dispatch, "_run_lowlevel_cli", _recording_run_lowlevel_cli)
+
     y, G = _quant_fixture()
     r = tg.gwas(y, G, models="mklmm", kinship="auto", pcs=0, verbose=False,
-                model_options={"mklmm": {"kernels": "additive,dominance"}})
+                model_options={"mklmm": {"kernels": "additive"}})
     assert isinstance(r, GwasResult) and r.n_variants > 0
+    assert captured["model_options"] == {"mklmm": {"kernels": "additive"}}
