@@ -23,13 +23,15 @@ in the numeric-dosage "3-column" CSV format
 (:class:`torchgenomics.io.numeric.NumericDosageReader`) and a phenotype TSV.
 A file-path genotype is passed straight through untouched.
 
-Five low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
+Six low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
 (``--family`` inferred from the trait type), ``mklmm`` (a friendly default
-``--kernels additive,dominance``), and ``gxe`` (requires ``RunOptions.env``,
-materialized in-memory-or-path via :func:`_materialize_env`) — because each
-needs nothing beyond ``(phenotype, genotype[, family/env])``. Models that
-need extra inputs not yet wired (``set`` needs regions, ``mvlmm`` needs
-multiple traits, ``bayes`` needs signal priors) raise a clear
+``--kernels additive,dominance``), ``gxe`` (requires ``RunOptions.env``,
+materialized in-memory-or-path via :func:`_materialize_env`), and ``bayes``
+(SuSiE fine-mapping; :func:`_read_bayes_output` reads back
+``<prefix>_bayesian_vs.tsv`` / ``<prefix>_credible_sets.tsv`` since it has no
+p-value column) — because each needs nothing beyond ``(phenotype,
+genotype[, family/env])``. Models that need extra inputs not yet wired
+(``set`` needs regions, ``mvlmm`` needs multiple traits) raise a clear
 :class:`NotImplementedError` rather than silently returning a wrong result.
 
 .. note::
@@ -51,7 +53,7 @@ multiple traits, ``bayes`` needs signal priors) raise a clear
    that uniformity holds for both the single-model (``GwasResult``) and
    multi-model (``GwasComparison``, one ``GwasResult`` per requested model)
    return shapes. Aliases whose runner is not yet wired (e.g.
-   ``set``, ``mvlmm``, ``bayes``) raise a clear
+   ``set``, ``mvlmm``) raise a clear
    :class:`NotImplementedError` here rather than returning a divergent or
    partially-populated result. The low-level :func:`torchgenomics.api.scans.lmm_scan`
    / :func:`~torchgenomics.api.scans.glm_scan` functions, called directly
@@ -666,6 +668,51 @@ def _gxe_extra_argv(inputs: GwasInputs, opts: RunOptions, user_opts: dict, workd
     return ["--env", env_path] + _model_options_to_argv(user_opts)
 
 
+def _read_bayes_output(
+    output_prefix: str | Path,
+    *,
+    model_label: str,
+    test: str,
+    correction: str,
+    trait_type: str,
+    n_samples: int,
+    significance_threshold: float,
+    top_k: int,
+    runtime_s: float,
+) -> GwasResult:
+    """Read a BayesianVS fine-mapping run into a ``GwasResult``.
+
+    Reads ``<prefix>_bayesian_vs.tsv`` (columns incl. ``PIP``), sorts by ``PIP``
+    descending for ``top_hits``, and counts credible-set membership from
+    ``<prefix>_credible_sets.tsv`` as ``n_significant``. There are no p-values,
+    so ``lambda_gc`` is ``None`` and ``summary()`` presents fine-mapping output.
+    """
+    prefix = str(output_prefix)
+    vs_path = Path(prefix + "_bayesian_vs.tsv")
+    if not vs_path.exists():
+        raise RuntimeError(f"bayes scan produced no fine-mapping table at {vs_path}")
+    df = pd.read_csv(vs_path, sep="\t")
+    top = df.sort_values("PIP", ascending=False).head(top_k).reset_index(drop=True)
+    cs_path = Path(prefix + "_credible_sets.tsv")
+    n_sig = 0
+    if cs_path.exists():
+        cs = pd.read_csv(cs_path, sep="\t")
+        n_sig = int(len(cs))
+    return GwasResult(
+        runtime_s=runtime_s, output_files={"bayesian_vs": vs_path},
+        model=model_label, test=test, correction=correction,
+        n_variants=int(len(df)), n_significant=n_sig,
+        significance_threshold=significance_threshold, lambda_gc=None,
+        n_samples=n_samples, top_hits=top, trait_type=trait_type,
+    )
+
+
+def _bayes_extra_argv(user_opts: dict) -> list[str]:
+    """Build bayes CLI flags from model_options (method/n-signals/priors); no
+    required extra input (SuSiE defaults apply)."""
+    return _model_options_to_argv(user_opts)
+
+
 def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workdir: Path) -> list[str]:
     """Build the model-specific CLI flags for a low-level (CLI-backed) model.
 
@@ -688,6 +735,8 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workd
         return _mklmm_extra_argv(user_opts)
     if alias == "gxe":
         return _gxe_extra_argv(inputs, opts, user_opts, workdir)
+    if alias == "bayes":
+        return _bayes_extra_argv(user_opts)
     return _model_options_to_argv(user_opts)
 
 
@@ -705,6 +754,7 @@ _LOWLEVEL_CLI = {
     "glmm": ("glmm-scan", "_cmd_glmm_scan", "GLMM", None),
     "mklmm": ("mklmm-scan", "_cmd_mklmm_scan", "MultiKernelLMM", None),
     "gxe": ("gxe-scan", "_cmd_gxe_scan", "GxELMM", None),
+    "bayes": ("bayes-scan", "_cmd_bayes_scan", "BayesianVS", _read_bayes_output),
 }
 
 
@@ -769,10 +819,10 @@ def run_model(
         option (bad ``correction``, ``pcs``, or ``top_k``).
     NotImplementedError
         For registry models that need inputs beyond ``(phenotype, genotype[,
-        kinship])`` — e.g. ``set`` (regions), ``mvlmm`` (multiple traits),
-        ``bayes`` (signal priors) — which are not yet wired through
-        ``tg.gwas``. The message points at the equivalent
-        ``torchgenomics <alias>-scan`` CLI subcommand and the low-level API.
+        kinship])`` — e.g. ``set`` (regions), ``mvlmm`` (multiple traits) —
+        which are not yet wired through ``tg.gwas``. The message points at
+        the equivalent ``torchgenomics <alias>-scan`` CLI subcommand and the
+        low-level API.
     ValueError
         Also raised by the ``gxe`` model specifically when ``env`` was not
         supplied — ``gxe`` *is* wired through ``tg.gwas``, but it needs an
