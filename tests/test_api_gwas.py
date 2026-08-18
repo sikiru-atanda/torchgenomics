@@ -576,3 +576,31 @@ def test_materialize_env_reindexes_and_errors_on_missing(tmp_path):
         _materialize_env(env_missing, inputs, tmp_path)
     msg = str(e.value).lower()
     assert "missing" in msg and "sample" in msg
+
+
+def test_read_bayes_output_pip_sorted(tmp_path):
+    import pandas as pd
+    from torchgenomics.api._dispatch import _read_bayes_output
+    prefix = str(tmp_path / "run")
+    pd.DataFrame({
+        "SNP": ["s1", "s2", "s3"], "CHR": [1, 1, 1], "POS": [10, 20, 30],
+        "A1": ["A", "A", "A"], "A2": ["B", "B", "B"], "AF": [0.3, 0.4, 0.5],
+        "PIP": [0.1, 0.9, 0.4], "BETA_MEAN": [0.0, 1.0, 0.2], "BETA_SD": [0.1, 0.1, 0.1],
+    }).to_csv(prefix + "_bayesian_vs.tsv", sep="\t", index=False)
+    pd.DataFrame({"SNP": ["s2"], "CS": [1]}).to_csv(prefix + "_credible_sets.tsv", sep="\t", index=False)
+    r = _read_bayes_output(prefix, model_label="BayesianVS", test="susie", correction="none",
+                           trait_type="continuous", n_samples=100, significance_threshold=5e-8,
+                           top_k=50, runtime_s=0.0)
+    from torchgenomics.api import GwasResult
+    assert isinstance(r, GwasResult)
+    assert r.lambda_gc is None and r.model == "BayesianVS"
+    assert list(r.top_hits["SNP"])[0] == "s2"        # highest PIP first
+    assert r.n_significant == 1                        # one variant in a credible set
+
+def test_bayes_runs_through_tg_gwas():
+    import torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    y, G = _quant_fixture(n=140, m=160)
+    r = tg.gwas(y, G, models="bayes", kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult) and r.model == "BayesianVS"
+    assert r.lambda_gc is None and "PIP" in r.top_hits.columns
