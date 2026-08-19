@@ -3278,6 +3278,8 @@ def _cmd_gwas(args: argparse.Namespace) -> int:
         device=args.device,
         verbose=not args.quiet,
         model_options=model_options,
+        env=args.env,
+        regions=args.regions,
     )
     print(result.summary())
     return 0
@@ -5591,9 +5593,12 @@ def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
     ``"auto"`` by default), ``--kinship`` (``"auto"``/``"none"``/a GRM path),
     ``--pcs`` (``"auto"``/an int), ``--trait``, ``--trait-type``,
     ``--model-options`` (a JSON dict of per-model settings, keyed by alias —
-    e.g. ``'{"glmm": {"family": "ordinal"}}'``; see ``tg.gwas``'s
-    ``model_options`` parameter), and ``--quiet`` (suppresses the decision
-    log; ``tg.gwas``'s ``verbose=True`` is the CLI default).
+    e.g. ``'{"glmm": {"family": "ordinal"}}'``), ``--env`` (a TSV path
+    required by ``--models gxe``; mirrors ``tg.gwas``'s ``env`` parameter,
+    CLI-only so no in-memory ``pandas.Series``/array form here),
+    ``--regions`` (a BED-like path required by ``--models set``; mirrors
+    ``tg.gwas``'s ``regions`` parameter), and ``--quiet`` (suppresses the
+    decision log; ``tg.gwas``'s ``verbose=True`` is the CLI default).
     """
     p = subparsers.add_parser(
         "gwas",
@@ -5629,6 +5634,10 @@ def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--model-options", default=None,
                    help="JSON dict of per-model advanced settings, keyed by "
                         "model alias, e.g. '{\"glmm\": {\"family\": \"ordinal\"}}'.")
+    p.add_argument("--env", default=None,
+                   help="Environment variable file (TSV with an ENV column) for --models gxe.")
+    p.add_argument("--regions", default=None,
+                   help="Regions/BED file for --models set.")
 
 
 def _add_recommend_parser(subparsers: argparse._SubParsersAction) -> None:

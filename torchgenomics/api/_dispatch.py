@@ -191,11 +191,14 @@ class RunOptions:
         Region/gene boundaries required by the ``set`` model (BED-like:
         chrom, start, end, [name]). Accepts a ``str``/``Path`` to an
         existing regions file (passed straight through), or a
-        ``pandas.DataFrame`` (written to a temp tab-separated regions file
-        in the run's working directory). ``None`` (default) is fine for
-        every other model; ``set`` raises a friendly ``ValueError`` naming
-        both the model and the missing option if ``regions`` is not
-        supplied. See :func:`_materialize_regions` / :func:`_set_extra_argv`.
+        ``pandas.DataFrame`` in that column order (written to a temp
+        headerless tab-separated regions file in the run's working
+        directory, so :func:`torchgenomics.io.regions.load_regions`'s
+        positional BED3+ parsing reads it without a spurious "skipped
+        header" warning). ``None`` (default) is fine for every other model;
+        ``set`` raises a friendly ``ValueError`` naming both the model and
+        the missing option if ``regions`` is not supplied. See
+        :func:`_materialize_regions` / :func:`_set_extra_argv`.
     """
 
     kinship: Any = "auto"
@@ -758,14 +761,17 @@ def _materialize_regions(regions: Any, workdir: Path) -> str:
     """Return a path to a regions file for set-scan.
 
     A ``str``/``Path`` is returned as-is. A ``pandas.DataFrame`` (with
-    chrom/start/end[/id] columns) is written to a temp tab-separated regions
-    file that :func:`torchgenomics.io.regions.load_regions` can read.
+    chrom/start/end[/id] columns, in that positional order) is written
+    ``header=False`` to a temp tab-separated regions file, since
+    :func:`torchgenomics.io.regions.load_regions` parses BED3+ positionally
+    (no header row) and would otherwise log a "skipped malformed line"
+    warning for the header line.
     """
     if isinstance(regions, (str, Path)):
         return str(regions)
     if isinstance(regions, pd.DataFrame):
         path = str(workdir / "regions.tsv")
-        regions.to_csv(path, sep="\t", index=False)
+        regions.to_csv(path, sep="\t", index=False, header=False)
         return path
     raise ValueError(
         f"regions must be a path or a pandas DataFrame (chrom/start/end[/id]); "
