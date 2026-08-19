@@ -578,6 +578,7 @@ def gwas(
     verbose: bool = True,
     model_options: dict[str, dict] | None = None,
     env: Any = None,
+    regions: Any = None,
 ) -> "GwasResult | GwasComparison":
     """Run a GWAS scan end-to-end from whatever inputs a notebook user has on hand.
 
@@ -679,6 +680,13 @@ def gwas(
         existing env TSV. Ignored by every other model. See
         :attr:`torchgenomics.api._dispatch.RunOptions.env` /
         :func:`torchgenomics.api._dispatch._materialize_env`.
+    regions : Any, default None
+        Regions required by ``models="set"``. A path to an existing
+        chrom/start/end[/id] regions (BED-style) file, or a
+        ``pandas.DataFrame`` with those columns in that order (written to a
+        temp headerless tab-separated file). Ignored by every other model.
+        See :attr:`torchgenomics.api._dispatch.RunOptions.regions` /
+        :func:`torchgenomics.api._dispatch._materialize_regions`.
 
     Returns
     -------
@@ -701,12 +709,14 @@ def gwas(
         / :func:`torchgenomics.api._dispatch.run_model`).
     NotImplementedError
         For registry models that :func:`torchgenomics.api._dispatch.run_model`
-        does not yet wire through the friendly API (e.g. ``set``,
-        ``mvlmm``, and ``bayes`` — see that function's
-        docstring); the message points at the equivalent
+        does not yet wire through the friendly API. As of Task 5, that is
+        ``mvlmm`` only (it needs a multi-trait extension not yet threaded
+        through the friendly API's single-trait ``inputs``) — see that
+        function's docstring; the message points at the equivalent
         ``torchgenomics <alias>-scan`` CLI subcommand or the low-level API.
-        ``models="gxe"`` *is* wired but raises ``ValueError`` (not this)
-        when ``env`` is not supplied — see the ``env`` parameter above.
+        ``models="gxe"`` and ``models="set"`` *are* wired but raise
+        ``ValueError`` (not this) when their required extra input is
+        missing — see the ``env`` / ``regions`` parameters above.
 
     Examples
     --------
@@ -734,6 +744,7 @@ def gwas(
         verbose=verbose,
         model_options=model_options,
         env=env,
+        regions=regions,
     )
 
     if verbose:

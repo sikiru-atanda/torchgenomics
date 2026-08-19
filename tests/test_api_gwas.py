@@ -628,3 +628,25 @@ def test_set_requires_regions_friendly_error():
     with pytest.raises(ValueError) as e:
         tg.gwas(y, G, models="set", kinship="auto", pcs=0, verbose=False)
     assert "set" in str(e.value).lower() and "region" in str(e.value).lower()
+
+
+def test_set_runs_end_to_end_with_regions_df():
+    import pandas as pd, torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    y, G = _quant_fixture(n=140, m=160)
+    # One region spanning the first 40 synthesized variants. ArrayReader
+    # (torchgenomics/api/_inputs.py) synthesizes chr="0" (not "1") and
+    # pos=0..m-1 for an in-memory ndarray with no VariantMeta of its own --
+    # CHR must be "0" here to actually match those variants (see
+    # map_regions_to_variants' exact chr string match in
+    # torchgenomics/io/regions.py).
+    regions = pd.DataFrame({"CHR": ["0"], "START": [0], "END": [39], "REGION": ["blockA"]})
+    r = tg.gwas(y, G, models="set", regions=regions, kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult) and r.model == "SetBasedScanner" and r.n_variants >= 1
+
+
+def test_only_mvlmm_remains_unwired():
+    import torchgenomics as tg, pytest
+    y, G = _quant_fixture()
+    with pytest.raises(NotImplementedError):
+        tg.gwas(y, G, models="mvlmm", kinship="auto", pcs=0, verbose=False)
