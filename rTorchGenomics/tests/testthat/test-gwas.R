@@ -183,6 +183,18 @@ test_that("tg_gwas forwards model_options to the bridge", {
   expect_equal(captured$args$model_options$glmm$family, "ordinal")
 })
 
+test_that("tg_gwas forwards env and regions paths to the bridge", {
+  captured <- NULL
+  mockery::stub(tg_gwas, "bridge_call", function(fn, args = list()) {
+    captured <<- args
+    .fake_scan_dict()          # existing helper in this file
+  })
+  tg_gwas("pheno.tsv", "data.bed", models = "gxe", env = "env.tsv")
+  expect_equal(captured$env, "env.tsv")
+  tg_gwas("pheno.tsv", "data.bed", models = "set", regions = "regions.bed")
+  expect_equal(captured$regions, "regions.bed")
+})
+
 test_that("tg_recommend dispatches via bridge_call('recommend', ...) and returns a printable plan", {
   captured <- new.env()
   mockery::stub(tg_recommend, "bridge_call", function(fn, args) {

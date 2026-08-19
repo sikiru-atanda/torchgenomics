@@ -18,7 +18,9 @@ tg_gwas(
   output = NULL,
   device = c("auto", "cpu", "cuda"),
   verbose = TRUE,
-  model_options = NULL
+  model_options = NULL,
+  env = NULL,
+  regions = NULL
 )
 }
 \arguments{
@@ -88,6 +90,16 @@ running. Default \code{TRUE}; pass \code{FALSE} for silent/scripted use.}
 \item{model_options}{Named list of per-model advanced settings, keyed by
 model alias (e.g. \code{list(glmm = list(family = "ordinal"))}). Forwarded to
 the Python friendly API; ignored by lmm/glm. Default \code{NULL}.}
+
+\item{env}{Path to an environment TSV (must include an \code{ENV} column),
+sample-aligned to \code{phenotype}. Only paths are accepted from R (unlike
+the Python API, which also takes an in-memory Series/array). Required
+when \code{models = "gxe"}; ignored by every other model. Default \code{NULL}.}
+
+\item{regions}{Path to a regions file (chrom/start/end columns, plus an
+optional id column, e.g. BED). Only paths are accepted from R (unlike
+the Python API, which also takes an in-memory \code{data.frame}). Required
+when \code{models = "set"}; ignored by every other model. Default \code{NULL}.}
 }
 \value{
 \itemize{

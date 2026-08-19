@@ -76,6 +76,14 @@
 #' @param model_options Named list of per-model advanced settings, keyed by
 #'   model alias (e.g. `list(glmm = list(family = "ordinal"))`). Forwarded to
 #'   the Python friendly API; ignored by lmm/glm. Default `NULL`.
+#' @param env Path to an environment TSV (must include an `ENV` column),
+#'   sample-aligned to `phenotype`. Only paths are accepted from R (unlike
+#'   the Python API, which also takes an in-memory Series/array). Required
+#'   when `models = "gxe"`; ignored by every other model. Default `NULL`.
+#' @param regions Path to a regions file (chrom/start/end columns, plus an
+#'   optional id column, e.g. BED). Only paths are accepted from R (unlike
+#'   the Python API, which also takes an in-memory `data.frame`). Required
+#'   when `models = "set"`; ignored by every other model. Default `NULL`.
 #'
 #' @return
 #' - When `models` is a character **scalar** (`"auto"` or a single alias
@@ -120,7 +128,9 @@ tg_gwas <- function(phenotype, genotype,
                     output = NULL,
                     device = c("auto", "cpu", "cuda"),
                     verbose = TRUE,
-                    model_options = NULL) {
+                    model_options = NULL,
+                    env = NULL,
+                    regions = NULL) {
   device <- match.arg(device)
   if (!is.character(models) && !is.list(models)) {
     stop("models must be a character alias (or vector of aliases), ",
@@ -154,7 +164,9 @@ tg_gwas <- function(phenotype, genotype,
     output = .as_path(output),
     device = device,
     verbose = verbose,
-    model_options = model_options
+    model_options = model_options,
+    env = .as_path(env),
+    regions = .as_path(regions)
   ))
 
   d <- bridge_call("gwas", args)
