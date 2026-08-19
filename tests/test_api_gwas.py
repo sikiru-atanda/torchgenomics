@@ -578,6 +578,64 @@ def test_materialize_env_reindexes_and_errors_on_missing(tmp_path):
     assert "missing" in msg and "sample" in msg
 
 
+def test_materialize_env_id_keyed_aligns_under_reorder(tmp_path):
+    """CRITICAL regression: env must be transported BY SAMPLE ID, not by row
+    position, so it survives a downstream sort-order change between where it
+    is materialized (``inputs.phenotype.index`` order) and where it is read
+    back (``_cmd_gxe_scan``'s ``aligned_reader.sample_ids``, which for a PATH
+    genotype is lexicographically sorted by ``load_phenotype`` regardless of
+    ``inputs.phenotype``'s original order).
+
+    In-memory genotypes route through ``load_inputs`` -> ``_align_by_ids``,
+    which itself sorts ids, so building an *unsorted* ``inputs.phenotype``
+    that way is impossible; instead we hand-build a ``GwasInputs`` with a
+    phenotype Series whose index is deliberately NOT sorted (``s2, s0, s1``)
+    -- the same shape a path-genotype run produces internally -- and prove
+    ``_materialize_env`` + ``_load_env_vector`` round-trip correctly even
+    when the read-back sample order differs from the write-time order.
+    """
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    from torchgenomics import cli
+    from torchgenomics.api._dispatch import _materialize_env
+    from torchgenomics.api._inputs import GwasInputs
+
+    unsorted_ids = ["s2", "s0", "s1"]
+    phenotype = pd.Series([10.0, 20.0, 30.0], index=unsorted_ids, name="y")
+    inputs = GwasInputs(
+        genotype_path_or_reader=None,
+        phenotype=phenotype,
+        covariates=None,
+        trait_type="continuous",
+        n_samples=3,
+        trait_name="y",
+    )
+
+    # env Series indexed in the SAME unsorted order as inputs.phenotype ---
+    # distinct, identifiable-by-id values.
+    env = pd.Series([100.0, 200.0, 300.0], index=unsorted_ids, name="ENV")
+    path = _materialize_env(env, inputs, tmp_path)
+
+    # _materialize_env must have written a SAMPLE id column (not ENV-only).
+    written = pd.read_csv(path, sep="\t")
+    assert "SAMPLE" in written.columns and "ENV" in written.columns
+
+    # Read back with a DIFFERENT (sorted) sample order -- as _cmd_gxe_scan
+    # does for a path genotype via aligned_reader.sample_ids.
+    sorted_ids = ["s0", "s1", "s2"]
+    result = cli._load_env_vector(path, sorted_ids, dtype=torch.float64, device="cpu")
+
+    expected = env.reindex(sorted_ids).to_numpy()
+    assert np.allclose(result.numpy(), expected), (
+        "env must align BY SAMPLE ID: expected "
+        f"{expected} (id-reordered) but got {result.numpy()} -- a positional "
+        "read would incorrectly return [100, 200, 300] (env's own write-time "
+        "order) instead."
+    )
+
+
 def test_read_bayes_output_pip_sorted(tmp_path):
     import pandas as pd
     from torchgenomics.api._dispatch import _read_bayes_output
@@ -596,6 +654,25 @@ def test_read_bayes_output_pip_sorted(tmp_path):
     assert r.lambda_gc is None and r.model == "BayesianVS"
     assert list(r.top_hits["SNP"])[0] == "s2"        # highest PIP first
     assert r.n_significant == 1                        # one variant in a credible set
+
+def test_read_bayes_output_missing_pip_column_raises_clear_error(tmp_path):
+    """MINOR fix: a bayes output missing PIP must raise a clear RuntimeError
+    (symmetric with _read_set_output's "if 'P' in df.columns" guard), not a
+    bare KeyError from df.sort_values('PIP')."""
+    import pandas as pd
+    import pytest
+    from torchgenomics.api._dispatch import _read_bayes_output
+
+    prefix = str(tmp_path / "run")
+    pd.DataFrame({"SNP": ["s1"], "CHR": [1], "POS": [10]}).to_csv(
+        prefix + "_bayesian_vs.tsv", sep="\t", index=False
+    )
+    with pytest.raises(RuntimeError) as e:
+        _read_bayes_output(prefix, model_label="BayesianVS", test="susie", correction="none",
+                            trait_type="continuous", n_samples=100, significance_threshold=5e-8,
+                            top_k=50, runtime_s=0.0)
+    assert "PIP" in str(e.value)
+
 
 def test_bayes_runs_through_tg_gwas():
     import torchgenomics as tg
