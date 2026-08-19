@@ -617,19 +617,34 @@ def _mklmm_extra_argv(user_opts: dict) -> list[str]:
 
 
 def _materialize_env(env: Any, inputs: GwasInputs, workdir: Path) -> str:
-    """Return a path to a TSV with a single ``ENV`` column for gxe-scan.
+    """Return a path to an id-keyed ``SAMPLE``/``ENV`` TSV for gxe-scan.
 
     A ``str``/``Path`` is treated as an existing env file and returned as-is
-    (the caller is responsible for its sample order, matching the CLI). A
-    ``pandas.Series`` is ALWAYS reindexed to the aligned sample order
-    (``inputs.phenotype.index``) before being written — the gxe-scan CLI
-    consumes env positionally by row order, so any mismatch between the
-    Series' index and the aligned sample order would otherwise silently
-    misalign env values against the wrong samples. If any aligned sample id
-    is missing from the Series' index (typo'd id, dtype mismatch, sample not
-    covered, ...), this raises a friendly ``ValueError`` naming the missing
-    ids rather than silently falling back to the Series' original order. A
-    bare 1-D array is assumed already in sample order and only length-checked.
+    (the caller is responsible for its contents; ``_load_env_vector`` in
+    ``cli.py`` handles both an id-column file and a legacy id-less,
+    length-checked-positional file).
+
+    A ``pandas.Series`` is ALWAYS reindexed to the aligned sample order
+    (``inputs.phenotype.index``) before being written. If any aligned sample
+    id is missing from the Series' index (typo'd id, dtype mismatch, sample
+    not covered, ...), this raises a friendly ``ValueError`` naming the
+    missing ids rather than silently falling back to the Series' original
+    order. A bare 1-D array is assumed already in sample order and only
+    length-checked.
+
+    Either way, the written TSV carries a ``SAMPLE`` id column alongside
+    ``ENV`` (rather than an ENV-only, order-dependent file). This matters
+    because ``_cmd_gxe_scan`` reads env back via
+    :func:`torchgenomics.cli._load_env_vector`, which aligns by
+    ``SAMPLE``/``IID`` id when present. For an in-memory genotype the CLI
+    scan's own sample order happens to match ``inputs.phenotype.index``
+    (both come from the same alignment step), so id-based and positional
+    reads agree there — but for a **path genotype**, ``load_inputs`` leaves
+    ``inputs.phenotype`` in file order while the scan's internal
+    ``load_phenotype`` call returns samples in lexicographically-sorted
+    order. An ENV-only, position-keyed file would then silently pair env
+    values with the wrong samples. Writing ``SAMPLE`` here makes the
+    transport correct regardless of genotype kind or downstream sort order.
     """
     import numpy as np
     import pandas as pd
@@ -647,7 +662,8 @@ def _materialize_env(env: Any, inputs: GwasInputs, workdir: Path) -> str:
                 f"sample. Check that the env Series is indexed by the same sample "
                 f"ids as the phenotype."
             )
-        vals = pd.Series(np.asarray(aligned, dtype=float), name="ENV")
+        sample_ids = list(inputs.phenotype.index)
+        env_vals = np.asarray(aligned, dtype=float)
     else:
         arr = np.asarray(env, dtype=float).reshape(-1)
         if arr.shape[0] != inputs.n_samples:
@@ -656,9 +672,11 @@ def _materialize_env(env: Any, inputs: GwasInputs, workdir: Path) -> str:
                 f"aligned samples; pass a pandas Series indexed by sample id, or an "
                 f"array in sample order."
             )
-        vals = pd.Series(arr, name="ENV")
+        sample_ids = list(inputs.phenotype.index)
+        env_vals = arr
+    df = pd.DataFrame({"SAMPLE": [str(s) for s in sample_ids], "ENV": env_vals})
     path = str(workdir / "env.tsv")
-    vals.to_frame().to_csv(path, sep="\t", index=False)
+    df.to_csv(path, sep="\t", index=False)
     return path
 
 
@@ -701,6 +719,11 @@ def _read_bayes_output(
     if not vs_path.exists():
         raise RuntimeError(f"bayes scan produced no fine-mapping table at {vs_path}")
     df = pd.read_csv(vs_path, sep="\t")
+    if "PIP" not in df.columns:
+        raise RuntimeError(
+            f"bayes scan output at {vs_path} has no 'PIP' column (columns: "
+            f"{list(df.columns)}); cannot rank fine-mapping hits."
+        )
     top = df.sort_values("PIP", ascending=False).head(top_k).reset_index(drop=True)
     cs_path = Path(prefix + "_credible_sets.tsv")
     n_sig = 0

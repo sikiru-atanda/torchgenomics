@@ -817,9 +817,6 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
     path bypasses the merger). The dedicated merger here also fixes
     that latent crash for genomes with > chunk_size variants.
     """
-    import pandas as pd
-    import torch
-
     from .config import STAT_DTYPE, TorchGenomicsConfig, resolve_device
     from .preprocess.qc import QCFilterConfig
 
@@ -831,9 +828,13 @@ def _cmd_gxe_scan(args: argparse.Namespace) -> int:
     # Streaming sample alignment — never materializes G.
     Y, X0, aligned_reader = _align_samples(args, config)
 
-    # Load environment variable
-    env_df = pd.read_csv(args.env, sep="\t")
-    env = torch.tensor(env_df["ENV"].values, dtype=STAT_DTYPE, device=device)
+    # Load environment variable, aligned BY SAMPLE ID (not by row position) —
+    # a path genotype leaves load_phenotype's sample order lexicographically
+    # sorted, which need not match the row order of an id-less env file
+    # written by an upstream caller. _load_env_vector aligns by SAMPLE/IID
+    # when present and falls back to positional (length-checked) only for
+    # legacy id-less env files.
+    env = _load_env_vector(args.env, aligned_reader.sample_ids, dtype=STAT_DTYPE, device=device)
 
     # Streaming GRM via VanRaden.
     from .linalg.kinship import grm_vanraden_streaming
