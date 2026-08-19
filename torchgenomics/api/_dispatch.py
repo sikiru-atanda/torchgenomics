@@ -23,16 +23,19 @@ in the numeric-dosage "3-column" CSV format
 (:class:`torchgenomics.io.numeric.NumericDosageReader`) and a phenotype TSV.
 A file-path genotype is passed straight through untouched.
 
-Six low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
+Seven low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
 (``--family`` inferred from the trait type), ``mklmm`` (a friendly default
 ``--kernels additive,dominance``), ``gxe`` (requires ``RunOptions.env``,
-materialized in-memory-or-path via :func:`_materialize_env`), and ``bayes``
+materialized in-memory-or-path via :func:`_materialize_env`), ``bayes``
 (SuSiE fine-mapping; :func:`_read_bayes_output` reads back
 ``<prefix>_bayesian_vs.tsv`` / ``<prefix>_credible_sets.tsv`` since it has no
-p-value column) — because each needs nothing beyond ``(phenotype,
-genotype[, family/env])``. Models that need extra inputs not yet wired
-(``set`` needs regions, ``mvlmm`` needs multiple traits) raise a clear
-:class:`NotImplementedError` rather than silently returning a wrong result.
+p-value column), and ``set`` (requires ``RunOptions.regions``, materialized
+in-memory-or-path via :func:`_materialize_regions`; :func:`_read_set_output`
+reads back ``<prefix>_set_based.tsv``, a per-region rather than per-SNP table)
+— because each needs nothing beyond ``(phenotype, genotype[, family/env/
+regions])``. Models that need extra inputs not yet wired (``mvlmm`` needs
+multiple traits) raise a clear :class:`NotImplementedError` rather than
+silently returning a wrong result.
 
 .. note::
    Kinship/PC reuse: for now the LMM path lets ``lmm_scan`` compute its own
@@ -53,7 +56,7 @@ genotype[, family/env])``. Models that need extra inputs not yet wired
    that uniformity holds for both the single-model (``GwasResult``) and
    multi-model (``GwasComparison``, one ``GwasResult`` per requested model)
    return shapes. Aliases whose runner is not yet wired (e.g.
-   ``set``, ``mvlmm``) raise a clear
+   ``mvlmm``) raise a clear
    :class:`NotImplementedError` here rather than returning a divergent or
    partially-populated result. The low-level :func:`torchgenomics.api.scans.lmm_scan`
    / :func:`~torchgenomics.api.scans.glm_scan` functions, called directly
@@ -187,9 +190,12 @@ class RunOptions:
     regions : Any, default None
         Region/gene boundaries required by the ``set`` model (BED-like:
         chrom, start, end, [name]). Accepts a ``str``/``Path`` to an
-        existing BED file today; in-memory shapes (``pandas.DataFrame``)
-        are wired by the task that wires ``set`` through ``tg.gwas``.
-        ``None`` (default) is fine for every other model.
+        existing regions file (passed straight through), or a
+        ``pandas.DataFrame`` (written to a temp tab-separated regions file
+        in the run's working directory). ``None`` (default) is fine for
+        every other model; ``set`` raises a friendly ``ValueError`` naming
+        both the model and the missing option if ``regions`` is not
+        supplied. See :func:`_materialize_regions` / :func:`_set_extra_argv`.
     """
 
     kinship: Any = "auto"
@@ -713,6 +719,71 @@ def _bayes_extra_argv(user_opts: dict) -> list[str]:
     return _model_options_to_argv(user_opts)
 
 
+def _read_set_output(
+    output_prefix: str | Path,
+    *,
+    model_label: str,
+    test: str,
+    correction: str,
+    trait_type: str,
+    n_samples: int,
+    significance_threshold: float,
+    top_k: int,
+    runtime_s: float,
+) -> GwasResult:
+    """Read a set-based (region) scan into a ``GwasResult``.
+
+    Reads ``<prefix>_set_based.tsv`` (region rows with a ``P`` column), sorts by
+    ``P`` ascending for ``top_hits``, and counts regions below
+    ``significance_threshold`` as ``n_significant``. ``lambda_gc`` is ``None``
+    (region-level, not per-SNP).
+    """
+    prefix = str(output_prefix)
+    path = Path(prefix + "_set_based.tsv")
+    if not path.exists():
+        raise RuntimeError(f"set-based scan produced no region table at {path}")
+    df = pd.read_csv(path, sep="\t")
+    top = df.sort_values("P", ascending=True).head(top_k).reset_index(drop=True)
+    n_sig = int((df["P"] < significance_threshold).sum()) if "P" in df.columns else 0
+    return GwasResult(
+        runtime_s=runtime_s, output_files={"set_based": path},
+        model=model_label, test=test, correction=correction,
+        n_variants=int(len(df)), n_significant=n_sig,
+        significance_threshold=significance_threshold, lambda_gc=None,
+        n_samples=n_samples, top_hits=top, trait_type=trait_type,
+    )
+
+
+def _materialize_regions(regions: Any, workdir: Path) -> str:
+    """Return a path to a regions file for set-scan.
+
+    A ``str``/``Path`` is returned as-is. A ``pandas.DataFrame`` (with
+    chrom/start/end[/id] columns) is written to a temp tab-separated regions
+    file that :func:`torchgenomics.io.regions.load_regions` can read.
+    """
+    if isinstance(regions, (str, Path)):
+        return str(regions)
+    if isinstance(regions, pd.DataFrame):
+        path = str(workdir / "regions.tsv")
+        regions.to_csv(path, sep="\t", index=False)
+        return path
+    raise ValueError(
+        f"regions must be a path or a pandas DataFrame (chrom/start/end[/id]); "
+        f"got {type(regions).__name__}."
+    )
+
+
+def _set_extra_argv(opts: RunOptions, user_opts: dict, workdir: Path) -> list[str]:
+    """Build set CLI flags: the required ``--regions`` plus any user model_options."""
+    if opts.regions is None:
+        raise ValueError(
+            "Model 'set' needs regions. Pass regions=<path to a BED/region file | "
+            "pandas DataFrame with chrom/start/end columns>."
+        )
+    regions_path = _materialize_regions(opts.regions, workdir)
+    return ["--regions", regions_path] + _model_options_to_argv(user_opts)
+
+
 def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workdir: Path) -> list[str]:
     """Build the model-specific CLI flags for a low-level (CLI-backed) model.
 
@@ -725,8 +796,11 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workd
     :func:`_mklmm_extra_argv`. ``gxe`` requires ``opts.env`` and materializes
     it (in-memory or path) via :func:`_gxe_extra_argv` / :func:`_materialize_env`
     — ``workdir`` is where an in-memory ``env`` gets written so the temp file
-    is cleaned up on the same schedule as the rest of the run. Per-model
-    default/inference logic for other models is added by later tasks.
+    is cleaned up on the same schedule as the rest of the run. ``set``
+    requires ``opts.regions`` and materializes it (in-memory or path) via
+    :func:`_set_extra_argv` / :func:`_materialize_regions`, the same way.
+    Per-model default/inference logic for other models is added by later
+    tasks.
     """
     user_opts = (opts.model_options or {}).get(alias, {})
     if alias == "glmm":
@@ -737,6 +811,8 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workd
         return _gxe_extra_argv(inputs, opts, user_opts, workdir)
     if alias == "bayes":
         return _bayes_extra_argv(user_opts)
+    if alias == "set":
+        return _set_extra_argv(opts, user_opts, workdir)
     return _model_options_to_argv(user_opts)
 
 
@@ -755,6 +831,7 @@ _LOWLEVEL_CLI = {
     "mklmm": ("mklmm-scan", "_cmd_mklmm_scan", "MultiKernelLMM", None),
     "gxe": ("gxe-scan", "_cmd_gxe_scan", "GxELMM", None),
     "bayes": ("bayes-scan", "_cmd_bayes_scan", "BayesianVS", _read_bayes_output),
+    "set": ("set-scan", "_cmd_set_scan", "SetBasedScanner", _read_set_output),
 }
 
 
@@ -819,15 +896,16 @@ def run_model(
         option (bad ``correction``, ``pcs``, or ``top_k``).
     NotImplementedError
         For registry models that need inputs beyond ``(phenotype, genotype[,
-        kinship])`` — e.g. ``set`` (regions), ``mvlmm`` (multiple traits) —
-        which are not yet wired through ``tg.gwas``. The message points at
-        the equivalent ``torchgenomics <alias>-scan`` CLI subcommand and the
-        low-level API.
+        kinship])`` — e.g. ``mvlmm`` (multiple traits) — which are not yet
+        wired through ``tg.gwas``. The message points at the equivalent
+        ``torchgenomics <alias>-scan`` CLI subcommand and the low-level API.
     ValueError
-        Also raised by the ``gxe`` model specifically when ``env`` was not
-        supplied — ``gxe`` *is* wired through ``tg.gwas``, but it needs an
-        environment variable to run; see :attr:`RunOptions.env` /
-        :func:`_gxe_extra_argv`.
+        Also raised by the ``gxe`` / ``set`` models specifically when their
+        required extra input was not supplied — both *are* wired through
+        ``tg.gwas``, but ``gxe`` needs an environment variable and ``set``
+        needs regions to run; see :attr:`RunOptions.env` /
+        :func:`_gxe_extra_argv` and :attr:`RunOptions.regions` /
+        :func:`_set_extra_argv`.
 
     Notes
     -----

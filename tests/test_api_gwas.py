@@ -604,3 +604,27 @@ def test_bayes_runs_through_tg_gwas():
     r = tg.gwas(y, G, models="bayes", kinship="auto", pcs=0, verbose=False)
     assert isinstance(r, GwasResult) and r.model == "BayesianVS"
     assert r.lambda_gc is None and "PIP" in r.top_hits.columns
+
+
+def test_read_set_output_region_level(tmp_path):
+    import pandas as pd
+    from torchgenomics.api._dispatch import _read_set_output
+    prefix = str(tmp_path / "run")
+    pd.DataFrame({
+        "REGION": ["geneA", "geneB"], "CHR": [1, 1], "START": [1, 100], "END": [50, 150],
+        "N_VARIANTS": [10, 8], "P": [1e-9, 0.2],
+    }).to_csv(prefix + "_set_based.tsv", sep="\t", index=False)
+    r = _read_set_output(prefix, model_label="SetBasedScanner", test="skat", correction="bh",
+                         trait_type="continuous", n_samples=100, significance_threshold=5e-8,
+                         top_k=50, runtime_s=0.0)
+    from torchgenomics.api import GwasResult
+    assert isinstance(r, GwasResult) and r.model == "SetBasedScanner"
+    assert r.n_variants == 2 and r.n_significant == 1        # geneA below threshold
+    assert list(r.top_hits["REGION"])[0] == "geneA"          # smallest P first
+
+def test_set_requires_regions_friendly_error():
+    import torchgenomics as tg, pytest
+    y, G = _quant_fixture()
+    with pytest.raises(ValueError) as e:
+        tg.gwas(y, G, models="set", kinship="auto", pcs=0, verbose=False)
+    assert "set" in str(e.value).lower() and "region" in str(e.value).lower()
