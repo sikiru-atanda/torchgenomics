@@ -709,14 +709,20 @@ def gwas(
         / :func:`torchgenomics.api._dispatch.run_model`).
     NotImplementedError
         For registry models that :func:`torchgenomics.api._dispatch.run_model`
-        does not yet wire through the friendly API. As of Task 5, that is
-        ``mvlmm`` only (it needs a multi-trait extension not yet threaded
-        through the friendly API's single-trait ``inputs``) — see that
-        function's docstring; the message points at the equivalent
-        ``torchgenomics <alias>-scan`` CLI subcommand or the low-level API.
-        ``models="gxe"`` and ``models="set"`` *are* wired but raise
-        ``ValueError`` (not this) when their required extra input is
-        missing — see the ``env`` / ``regions`` parameters above.
+        does not yet wire through the friendly API. As of Task 2, every
+        registry model (including ``mvlmm``) is wired at the dispatch level —
+        see :func:`torchgenomics.api._dispatch.run_model`'s docstring. This
+        branch is retained for future registry additions.
+        ``models="gxe"``, ``models="set"``, and ``models="mvlmm"`` *are* wired
+        but raise ``ValueError`` (not this) when their required extra input is
+        missing — see the ``env`` / ``regions`` parameters above for
+        ``gxe``/``set``. ``mvlmm`` needs >=2 traits
+        (:func:`torchgenomics.api._dispatch._mvlmm_extra_argv`); ``gwas()``
+        itself does not yet accept a ``traits=`` parameter to supply them
+        (planned for a later task), so calling ``models="mvlmm"`` through this
+        function currently always raises that ``ValueError`` — use
+        ``torchgenomics mvlmm-scan`` or the low-level API for multi-trait runs
+        in the meantime.
 
     Examples
     --------

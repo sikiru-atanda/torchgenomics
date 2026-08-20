@@ -23,19 +23,29 @@ in the numeric-dosage "3-column" CSV format
 (:class:`torchgenomics.io.numeric.NumericDosageReader`) and a phenotype TSV.
 A file-path genotype is passed straight through untouched.
 
-Seven low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
+Eight low-level models are fully wired here — ``blink``, ``farmcpu``, ``glmm``
 (``--family`` inferred from the trait type), ``mklmm`` (a friendly default
 ``--kernels additive,dominance``), ``gxe`` (requires ``RunOptions.env``,
 materialized in-memory-or-path via :func:`_materialize_env`), ``bayes``
 (SuSiE fine-mapping; :func:`_read_bayes_output` reads back
 ``<prefix>_bayesian_vs.tsv`` / ``<prefix>_credible_sets.tsv`` since it has no
-p-value column), and ``set`` (requires ``RunOptions.regions``, materialized
+p-value column), ``set`` (requires ``RunOptions.regions``, materialized
 in-memory-or-path via :func:`_materialize_regions`; :func:`_read_set_output`
-reads back ``<prefix>_set_based.tsv``, a per-region rather than per-SNP table)
-— because each needs nothing beyond ``(phenotype, genotype[, family/env/
-regions])``. Models that need extra inputs not yet wired (``mvlmm`` needs
-multiple traits) raise a clear :class:`NotImplementedError` rather than
-silently returning a wrong result.
+reads back ``<prefix>_set_based.tsv``, a per-region rather than per-SNP table),
+and ``mvlmm`` (requires ``inputs.trait_names`` with >=2 entries, i.e. a
+multi-trait ``GwasInputs`` built with ``traits=``; :func:`_mvlmm_extra_argv`
+emits ``--traits <cols> --ploidy <2 default>`` and
+:func:`_write_multitrait_phenotype_tsv` materializes ``inputs.phenotypes``,
+each trait as its own column, instead of the single-trait writer) — because
+each needs nothing beyond ``(phenotype, genotype[, family/env/regions/
+traits])``. ``mvlmm`` raises a friendly :class:`ValueError` (not
+:class:`NotImplementedError`) when fewer than 2 traits are available; note
+``tg.gwas(...)`` itself does not yet accept a ``traits=`` parameter to supply
+them (a later task), so today that ``ValueError`` is unavoidable when routing
+through ``tg.gwas`` — the low-level API or ``torchgenomics mvlmm-scan`` CLI
+remain the supported multi-trait entry points in the meantime. Aliases whose
+runner is genuinely not yet wired at all still raise a clear
+:class:`NotImplementedError` rather than silently returning a wrong result.
 
 .. note::
    Kinship/PC reuse: for now the LMM path lets ``lmm_scan`` compute its own
@@ -55,10 +65,12 @@ silently returning a wrong result.
    calls a scan function directly — it always routes through this function, so
    that uniformity holds for both the single-model (``GwasResult``) and
    multi-model (``GwasComparison``, one ``GwasResult`` per requested model)
-   return shapes. Aliases whose runner is not yet wired (e.g.
-   ``mvlmm``) raise a clear
+   return shapes. Aliases whose runner is not yet wired at all raise a clear
    :class:`NotImplementedError` here rather than returning a divergent or
-   partially-populated result. The low-level :func:`torchgenomics.api.scans.lmm_scan`
+   partially-populated result — as of Task 2 that set no longer includes
+   ``mvlmm`` (see the module docstring above); it is dispatch-wired but still
+   raises a friendly ``ValueError`` through ``tg.gwas`` until a later task
+   threads ``traits=`` into that entry point. The low-level :func:`torchgenomics.api.scans.lmm_scan`
    / :func:`~torchgenomics.api.scans.glm_scan` functions, called directly
    (bypassing ``run_model``/``tg.gwas``), also return a ``GwasResult`` but
    leave ``.trait_type`` at its default (``""``) — that enrichment is applied
@@ -274,6 +286,20 @@ def _write_phenotype_tsv(inputs: GwasInputs, path: Path) -> None:
     df.to_csv(path, sep="\t")
 
 
+def _write_multitrait_phenotype_tsv(inputs: GwasInputs, path: Path) -> None:
+    """Write ``inputs.phenotypes`` as a ``sample_id`` + one-column-per-trait TSV.
+
+    Mirrors :func:`_write_phenotype_tsv` but for the multi-trait case: the
+    index (sample ids) becomes the ``sample_id`` column and every trait in
+    :attr:`GwasInputs.phenotypes` is carried through as its own column, so the
+    downstream ``mvlmm-scan`` CLI (``--traits <cols>``) can read them back by
+    name.
+    """
+    df = inputs.phenotypes.copy()
+    df.insert(0, "sample_id", [str(s) for s in df.index])
+    df.to_csv(path, sep="\t", index=False)
+
+
 def _write_genotype_csv(reader: Any, path: Path) -> None:
     """Materialize an in-memory genotype reader to a 3-column-rule dosage CSV.
 
@@ -308,13 +334,20 @@ def _write_genotype_csv(reader: Any, path: Path) -> None:
 def _materialize_inputs(inputs: GwasInputs, workdir: Path) -> tuple[str, str]:
     """Return ``(genotype_path, phenotype_path)`` for the file-based scan APIs.
 
-    The phenotype is always written to a TSV (built from the aligned
-    :attr:`GwasInputs.phenotype` Series). The genotype is passed through
+    The phenotype is always written to a TSV: the multi-trait writer
+    (:func:`_write_multitrait_phenotype_tsv`) is used whenever
+    :attr:`GwasInputs.phenotypes` is set (i.e. ``traits=`` was passed to
+    :func:`~torchgenomics.api._inputs.load_inputs`), else the single-trait
+    writer (:func:`_write_phenotype_tsv`) built from the aligned
+    :attr:`GwasInputs.phenotype` Series. The genotype is passed through
     untouched when it is already a path, or materialized to a dosage CSV when
     it is an in-memory reader.
     """
     pheno_path = workdir / "phenotype.tsv"
-    _write_phenotype_tsv(inputs, pheno_path)
+    if inputs.phenotypes is not None:
+        _write_multitrait_phenotype_tsv(inputs, pheno_path)
+    else:
+        _write_phenotype_tsv(inputs, pheno_path)
 
     geno = inputs.genotype_path_or_reader
     if isinstance(geno, (str, Path)):
@@ -813,6 +846,25 @@ def _set_extra_argv(opts: RunOptions, user_opts: dict, workdir: Path) -> list[st
     return ["--regions", regions_path] + _model_options_to_argv(user_opts)
 
 
+def _mvlmm_extra_argv(inputs: GwasInputs, opts: RunOptions, user_opts: dict) -> list[str]:
+    """Build mvlmm CLI flags: the required ``--traits`` (>=2) and ``--ploidy``.
+
+    Requires a multi-trait ``inputs`` (``trait_names`` with >=2 entries) — else a
+    friendly ``ValueError``. Ploidy defaults to 2 and is overridable via
+    ``model_options={"mvlmm": {"ploidy": k}}``.
+    """
+    names = inputs.trait_names or []
+    if len(names) < 2:
+        raise ValueError(
+            "Model 'mvlmm' needs >=2 traits. Pass traits=['Y1','Y2'] naming columns "
+            "of a multi-column phenotype (DataFrame or file)."
+        )
+    opts_map = dict(user_opts)
+    ploidy = opts_map.pop("ploidy", 2)
+    return (["--traits", ",".join(names), "--ploidy", str(ploidy)]
+            + _model_options_to_argv(opts_map))
+
+
 def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workdir: Path) -> list[str]:
     """Build the model-specific CLI flags for a low-level (CLI-backed) model.
 
@@ -842,6 +894,8 @@ def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workd
         return _bayes_extra_argv(user_opts)
     if alias == "set":
         return _set_extra_argv(opts, user_opts, workdir)
+    if alias == "mvlmm":
+        return _mvlmm_extra_argv(inputs, opts, user_opts)
     return _model_options_to_argv(user_opts)
 
 
@@ -861,6 +915,7 @@ _LOWLEVEL_CLI = {
     "gxe": ("gxe-scan", "_cmd_gxe_scan", "GxELMM", None),
     "bayes": ("bayes-scan", "_cmd_bayes_scan", "BayesianVS", _read_bayes_output),
     "set": ("set-scan", "_cmd_set_scan", "SetBasedScanner", _read_set_output),
+    "mvlmm": ("mvlmm-scan", "_cmd_mvlmm_scan", "MultiTraitLMM", None),
 }
 
 
@@ -924,17 +979,20 @@ def run_model(
         On an unknown ``alias`` (from :func:`resolve_model`) or an invalid
         option (bad ``correction``, ``pcs``, or ``top_k``).
     NotImplementedError
-        For registry models that need inputs beyond ``(phenotype, genotype[,
-        kinship])`` — e.g. ``mvlmm`` (multiple traits) — which are not yet
-        wired through ``tg.gwas``. The message points at the equivalent
-        ``torchgenomics <alias>-scan`` CLI subcommand and the low-level API.
+        For registry models whose runner is genuinely not yet wired through
+        ``tg.gwas`` at all (none as of Task 2 — ``mvlmm`` included; see below).
+        The message points at the equivalent ``torchgenomics <alias>-scan``
+        CLI subcommand and the low-level API.
     ValueError
-        Also raised by the ``gxe`` / ``set`` models specifically when their
-        required extra input was not supplied — both *are* wired through
-        ``tg.gwas``, but ``gxe`` needs an environment variable and ``set``
-        needs regions to run; see :attr:`RunOptions.env` /
-        :func:`_gxe_extra_argv` and :attr:`RunOptions.regions` /
-        :func:`_set_extra_argv`.
+        Also raised by the ``gxe`` / ``set`` / ``mvlmm`` models specifically
+        when their required extra input was not supplied — all three *are*
+        wired through ``tg.gwas``, but ``gxe`` needs an environment variable,
+        ``set`` needs regions, and ``mvlmm`` needs >=2 traits to run; see
+        :attr:`RunOptions.env` / :func:`_gxe_extra_argv`,
+        :attr:`RunOptions.regions` / :func:`_set_extra_argv`, and
+        :attr:`GwasInputs.trait_names` / :func:`_mvlmm_extra_argv`. ``tg.gwas``
+        does not yet accept a ``traits=`` parameter, so a single-trait
+        ``inputs`` always trips the ``mvlmm`` case today.
 
     Notes
     -----
