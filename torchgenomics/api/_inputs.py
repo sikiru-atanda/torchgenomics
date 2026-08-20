@@ -86,6 +86,13 @@ class GwasInputs:
     trait_name : str
         Name of the selected trait column (``phenotype.name``, coerced to
         ``str``; falls back to ``"trait"`` if unnamed).
+    phenotypes : pandas.DataFrame | None
+        Multi-trait mode only (``traits=`` was passed to :func:`load_inputs`):
+        all requested trait columns, sample-aligned, in the order given by
+        ``traits``. ``None`` in single-trait mode.
+    trait_names : list[str] | None
+        Multi-trait mode only: the requested trait column names, in order
+        (``== list(phenotypes.columns)``). ``None`` in single-trait mode.
     """
 
     genotype_path_or_reader: object
@@ -94,6 +101,8 @@ class GwasInputs:
     trait_type: str
     n_samples: int
     trait_name: str
+    phenotypes: pd.DataFrame | None = None
+    trait_names: list[str] | None = None
 
 
 class ArrayReader:
@@ -268,6 +277,23 @@ def detect_trait_type(y: pd.Series) -> str:
     return "continuous"
 
 
+def _load_phenotype_table(path: Any) -> pd.DataFrame:
+    """Load a phenotype/covariate table from disk and index it by sample id.
+
+    Thin wrapper around the existing tabular loader + sample-id-column
+    detection in :mod:`torchgenomics.io.phenotype`
+    (:func:`_load_tabular` / :func:`_detect_id_column`). Factored out so this
+    load-then-index sequence lives in exactly one place; shared by
+    :func:`_resolve_phenotype` (single-trait) and :func:`_resolve_phenotypes`
+    (multi-trait).
+    """
+    from ..io.phenotype import _detect_id_column, _load_tabular
+
+    df = _load_tabular(path)
+    id_col = _detect_id_column(df)
+    return df.set_index(id_col)
+
+
 def _resolve_phenotype(
     phenotype: Any, trait: str | None
 ) -> pd.Series:
@@ -280,11 +306,9 @@ def _resolve_phenotype(
     sample ids of its own — positional alignment happens downstream).
     """
     if isinstance(phenotype, (str, Path)):
-        from ..io.phenotype import _detect_id_column, _is_numeric_column, _load_tabular
+        from ..io.phenotype import _is_numeric_column
 
-        df = _load_tabular(phenotype)
-        id_col = _detect_id_column(df)
-        df = df.set_index(id_col)
+        df = _load_phenotype_table(phenotype)
 
         if trait is not None:
             if trait not in df.columns:
@@ -339,6 +363,52 @@ def _resolve_phenotype(
         f"Unsupported phenotype input type: {type(phenotype).__name__}. Pass a file "
         "path, a pandas Series/DataFrame, or a 1-D numpy array."
     )
+
+
+def _resolve_phenotypes(phenotype: Any, traits: list[str]) -> pd.DataFrame:
+    """Resolve a multi-trait ``phenotype`` to a DataFrame of the named columns.
+
+    Multi-trait counterpart to :func:`_resolve_phenotype`, used by
+    :func:`load_inputs` when ``traits=[...]`` is passed. ``phenotype`` must
+    be a :class:`pandas.DataFrame` (indexed by sample id, or with an
+    auto-detectable id column) or a path to a table containing every column
+    in ``traits`` — loaded via the same :func:`_load_phenotype_table` helper
+    :func:`_resolve_phenotype` uses for its path branch, so the tabular-load
+    + sample-id-index logic is not duplicated. A bare ``pandas.Series`` (a
+    single trait) is rejected with a friendly error pointing at multi-trait
+    mode's DataFrame requirement. Columns are returned in the order given in
+    ``traits`` and coerced to numeric (invalid entries become ``NaN``, same
+    as :func:`_resolve_phenotype`'s numeric-column handling).
+
+    Raises
+    ------
+    ValueError
+        If ``phenotype`` is a bare Series, an unsupported type, or is
+        missing one or more of the requested ``traits`` columns.
+    """
+    if isinstance(phenotype, pd.Series):
+        raise ValueError(
+            "multi-trait mode (traits=[...]) needs a phenotype DataFrame or a "
+            "path/file with the named columns, not a single Series. Provide a "
+            f"DataFrame with columns {traits}."
+        )
+    if isinstance(phenotype, (str, Path)):
+        df = _load_phenotype_table(phenotype)
+    elif isinstance(phenotype, pd.DataFrame):
+        df = phenotype.copy()
+    else:
+        raise ValueError(
+            f"Unsupported phenotype type for multi-trait mode: {type(phenotype).__name__}. "
+            "Pass a DataFrame indexed by sample id or a path to a phenotype table."
+        )
+
+    missing = [t for t in traits if t not in df.columns]
+    if missing:
+        raise ValueError(
+            f"traits {missing} not found in the phenotype columns "
+            f"({list(df.columns)[:10]}...). Check the column names."
+        )
+    return df[list(traits)].apply(pd.to_numeric, errors="coerce")
 
 
 def _resolve_covariates(covariates: Any, fallback_index: pd.Index) -> pd.DataFrame:
@@ -483,12 +553,143 @@ def _align_by_ids(
     return aligned_phenotype, aligned_covariates, aligned_reader
 
 
+def _align_by_ids_multi(
+    pheno_df: pd.DataFrame,
+    covariates: pd.DataFrame | None,
+    reader: Any,
+) -> tuple[pd.DataFrame, pd.DataFrame | None, object]:
+    """Multi-trait counterpart to :func:`_align_by_ids`, operating on a DataFrame.
+
+    Mirrors :func:`_align_by_ids` exactly (string-id intersection,
+    lexicographic sort, ``.loc[shared]`` reindex, same friendly errors) but
+    aligns every trait column of ``pheno_df`` at once instead of a single
+    Series.
+
+    Raises
+    ------
+    ValueError
+        Same conditions as :func:`_align_by_ids`: too few (including zero)
+        shared sample IDs, or covariates that don't cover the full shared-id
+        set.
+    """
+    pheno_ids = [str(i) for i in pheno_df.index]
+    geno_ids = [str(s) for s in reader.sample_ids]
+    shared = sorted(set(pheno_ids) & set(geno_ids))
+
+    if len(shared) < _MIN_SHARED_SAMPLES:
+        raise ValueError(
+            f"Only {len(shared)} shared sample IDs between phenotype "
+            f"({len(pheno_ids)} samples) and genotype ({len(geno_ids)} samples) — "
+            "too few to run a GWAS. Check that sample IDs match between the two "
+            "inputs (same casing, no extra whitespace, matching ID column)."
+        )
+
+    if covariates is not None:
+        covar_ids = {str(i) for i in covariates.index}
+        missing_from_covariates = [sid for sid in shared if sid not in covar_ids]
+        if missing_from_covariates:
+            raise ValueError(
+                f"covariates cover {len(covar_ids)} sample ids, but "
+                f"{len(missing_from_covariates)} of the {len(shared)} samples shared "
+                "between phenotype and genotype are missing from covariates "
+                f"(e.g. {missing_from_covariates[:5]}). Supply covariates for every "
+                "shared sample (e.g. PCs computed on the full genotyped set), or omit "
+                "the covariates= argument to run without them."
+            )
+
+    pheno_reindexed = pheno_df.copy()
+    pheno_reindexed.index = pheno_ids
+    aligned_pheno_df = pheno_reindexed.loc[shared]
+
+    aligned_covariates = None
+    if covariates is not None:
+        covar_reindexed = covariates.copy()
+        covar_reindexed.index = [str(i) for i in covariates.index]
+        aligned_covariates = covar_reindexed.loc[shared]
+
+    id_to_row = {sid: i for i, sid in enumerate(geno_ids)}
+    keep_indices = [id_to_row[sid] for sid in shared]
+
+    if isinstance(reader, ArrayReader):
+        aligned_reader: object = ArrayReader(
+            reader.G[keep_indices, :], shared, reader.variant_meta
+        )
+    else:
+        from ..io.aligned import SampleAlignedReader
+
+        aligned_reader = SampleAlignedReader(reader, keep_indices, shared)
+
+    return aligned_pheno_df, aligned_covariates, aligned_reader
+
+
+def _load_inputs_multitrait(
+    phenotype: Any,
+    genotype: Any,
+    covariates: Any,
+    traits: list[str],
+) -> GwasInputs:
+    """Multi-trait implementation of :func:`load_inputs` (``traits=[...]``).
+
+    Mirrors the single-trait branch of :func:`load_inputs` structurally
+    (same path-vs-in-memory genotype predicate, same
+    :func:`_make_array_reader` / duck-typed-reader handling) but resolves and
+    aligns *all* named trait columns at once via :func:`_resolve_phenotypes`
+    / :func:`_align_by_ids_multi`. ``trait_type`` is fixed to
+    ``"continuous"``; ``phenotype``/``trait_name`` on the returned
+    :class:`GwasInputs` are the *first* named trait, so single-trait
+    consumers of those two fields keep working unchanged.
+
+    Raises
+    ------
+    ValueError
+        If ``traits`` is empty, or via the same failure modes as
+        :func:`_resolve_phenotypes` / :func:`_align_by_ids_multi`.
+    """
+    if len(traits) < 1:
+        raise ValueError("traits=[] is empty; pass the trait column names.")
+
+    pheno_df = _resolve_phenotypes(phenotype, traits)
+    covar_df = _resolve_covariates(covariates, pheno_df.index) if covariates is not None else None
+
+    if isinstance(genotype, (str, Path)):
+        # Path genotype: defer opening + real alignment to the scan/dispatch
+        # layer, exactly like the single-trait branch above.
+        genotype_path_or_reader: object = str(genotype)
+        aligned_df = pheno_df
+        aligned_covariates = covar_df
+        n_samples = len(aligned_df)
+    else:
+        if isinstance(genotype, (np.ndarray, pd.DataFrame)):
+            reader: object = _make_array_reader(genotype, pheno_df.index)
+        else:
+            # Duck-typed GenotypeReader passed directly.
+            reader = genotype
+        aligned_df, aligned_covariates, aligned_reader = _align_by_ids_multi(
+            pheno_df, covar_df, reader
+        )
+        genotype_path_or_reader = aligned_reader
+        n_samples = aligned_reader.n_samples
+
+    first = aligned_df.iloc[:, 0]
+    return GwasInputs(
+        genotype_path_or_reader=genotype_path_or_reader,
+        phenotype=first,
+        covariates=aligned_covariates,
+        trait_type="continuous",
+        n_samples=n_samples,
+        trait_name=str(aligned_df.columns[0]),
+        phenotypes=aligned_df,
+        trait_names=list(aligned_df.columns),
+    )
+
+
 def load_inputs(
     phenotype: Any,
     genotype: Any,
     covariates: Any = None,
     trait: str | None = None,
     trait_type: str | None = None,
+    traits: list[str] | None = None,
 ) -> GwasInputs:
     """Resolve and sample-align phenotype/genotype/covariate inputs for ``tg.gwas``.
 
@@ -528,6 +729,17 @@ def load_inputs(
         Force the trait type instead of inferring it via
         :func:`detect_trait_type`. One of ``"continuous"``, ``"binary"``,
         ``"categorical"``; anything else raises a friendly ``ValueError``.
+    traits : list[str] | None, default None
+        Multi-trait mode switch. When given, ``phenotype`` must be a
+        ``pandas.DataFrame`` (or a path to a table) containing every named
+        column; the returned :class:`GwasInputs` carries all of them as
+        ``phenotypes``/``trait_names``, sample-aligned together, while
+        ``phenotype``/``trait_name`` are still populated with just the
+        *first* named trait so single-trait consumers keep working
+        unchanged. ``trait_type`` is fixed to ``"continuous"`` in this mode
+        (multi-trait models are Gaussian-only) and ``trait``/``trait_type``
+        arguments are ignored. ``None`` (the default) keeps the existing
+        single-trait behavior entirely untouched.
 
     Returns
     -------
@@ -548,6 +760,9 @@ def load_inputs(
             f"are: {sorted(_VALID_TRAIT_TYPES)}. Omit trait_type to infer it "
             "automatically instead."
         )
+
+    if traits is not None:
+        return _load_inputs_multitrait(phenotype, genotype, covariates, traits)
 
     pheno_series = _resolve_phenotype(phenotype, trait)
     covar_df = (

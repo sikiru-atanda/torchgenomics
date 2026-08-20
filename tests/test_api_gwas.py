@@ -727,3 +727,48 @@ def test_only_mvlmm_remains_unwired():
     y, G = _quant_fixture()
     with pytest.raises(NotImplementedError):
         tg.gwas(y, G, models="mvlmm", kinship="auto", pcs=0, verbose=False)
+
+
+def _multitrait_fixture(n=140, m=160, seed=3):
+    import numpy as np, pandas as pd
+    rng = np.random.default_rng(seed)
+    ids = [f"s{i}" for i in range(n)]
+    p = rng.uniform(0.2, 0.8, size=m)
+    G = rng.binomial(2, p, size=(n, m)).astype(float)
+    base = rng.normal(size=n)
+    pheno = pd.DataFrame(
+        {"Y1": base + rng.normal(scale=0.5, size=n),
+         "Y2": base + rng.normal(scale=0.5, size=n),
+         "Y3": rng.normal(size=n)},
+        index=ids,
+    )
+    return pheno, G
+
+def test_load_inputs_multitrait():
+    from torchgenomics.api._inputs import load_inputs
+    pheno, G = _multitrait_fixture()
+    inp = load_inputs(phenotype=pheno, genotype=G, traits=["Y1", "Y2"])
+    assert inp.trait_names == ["Y1", "Y2"]
+    assert inp.phenotypes is not None and inp.phenotypes.shape[1] == 2
+    assert list(inp.phenotypes.columns) == ["Y1", "Y2"]
+    assert inp.phenotype.name == "Y1"          # first trait as the Series
+    assert inp.n_samples == inp.phenotypes.shape[0]
+    assert inp.trait_type == "continuous"
+
+def test_load_inputs_multitrait_missing_column_errors():
+    from torchgenomics.api._inputs import load_inputs
+    import pytest
+    pheno, G = _multitrait_fixture()
+    with pytest.raises(ValueError) as e:
+        load_inputs(phenotype=pheno, genotype=G, traits=["Y1", "NOPE"])
+    assert "NOPE" in str(e.value)
+
+def test_load_inputs_multitrait_bare_series_errors():
+    from torchgenomics.api._inputs import load_inputs
+    import pandas as pd, numpy as np, pytest
+    ids = [f"s{i}" for i in range(20)]
+    y = pd.Series(np.arange(20.0), index=ids, name="Y1")
+    G = pd.DataFrame(np.zeros((20, 10)), index=ids)
+    with pytest.raises(ValueError) as e:
+        load_inputs(phenotype=y, genotype=G, traits=["Y1", "Y2"])
+    assert "multi-trait" in str(e.value).lower() or "dataframe" in str(e.value).lower()
