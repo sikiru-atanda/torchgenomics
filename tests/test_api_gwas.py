@@ -777,17 +777,24 @@ def test_load_inputs_multitrait_bare_series_errors():
         load_inputs(phenotype=y, genotype=G, traits=["Y1", "Y2"])
     assert "multi-trait" in str(e.value).lower() or "dataframe" in str(e.value).lower()
 
-def test_mvlmm_extra_argv_traits_and_ploidy():
+def test_mvlmm_extra_argv_traits():
+    # CRITICAL fix: mvlmm-scan's CLI subparser has no --ploidy flag (only
+    # poly-scan does); emitting --ploidy made every mvlmm run fail with
+    # "Unrecognized model_options for 'mvlmm': ['--ploidy', ...]" from the
+    # unknown-arg guard in _run_lowlevel_cli. _mvlmm_extra_argv must emit
+    # only --traits (+ any real user-supplied model_options).
     from torchgenomics.api._dispatch import _mvlmm_extra_argv, RunOptions
     from torchgenomics.api._inputs import load_inputs
     pheno, G = _multitrait_fixture()
     inp = load_inputs(phenotype=pheno, genotype=G, traits=["Y1", "Y2"])
     argv = _mvlmm_extra_argv(inp, RunOptions(), {})
     assert "--traits" in argv and "Y1,Y2" in argv
-    assert "--ploidy" in argv and argv[argv.index("--ploidy") + 1] == "2"
-    # ploidy override via model_options, not duplicated
-    argv4 = _mvlmm_extra_argv(inp, RunOptions(), {"ploidy": 4})
-    assert argv4[argv4.index("--ploidy") + 1] == "4" and argv4.count("--ploidy") == 1
+    assert "--ploidy" not in argv
+    # a real mvlmm-scan flag (--test is a common-scan arg mvlmm-scan accepts)
+    # passes through untouched
+    argv2 = _mvlmm_extra_argv(inp, RunOptions(), {"test": "score"})
+    assert "--test" in argv2 and argv2[argv2.index("--test") + 1] == "score"
+    assert "--ploidy" not in argv2
 
 def test_mvlmm_requires_two_traits_friendly_error():
     from torchgenomics.api._dispatch import _mvlmm_extra_argv, RunOptions
@@ -810,3 +817,20 @@ def test_write_multitrait_phenotype_tsv(tmp_path):
     back = pd.read_csv(p, sep="\t")
     assert "sample_id" in back.columns and "Y1" in back.columns and "Y2" in back.columns
     assert len(back) == inp.n_samples
+
+
+def test_mvlmm_runs_via_run_model():
+    # CRITICAL regression proof: before the fix, this call raised
+    # ValueError: "Unrecognized model_options for 'mvlmm': ['--ploidy', '2']"
+    # because _mvlmm_extra_argv emitted a --ploidy flag mvlmm-scan's CLI
+    # subparser doesn't accept. mvlmm must now run end-to-end via run_model.
+    from torchgenomics.api._dispatch import run_model, RunOptions
+    from torchgenomics.api._inputs import load_inputs
+    from torchgenomics.api import GwasResult
+
+    pheno, G = _multitrait_fixture(n=140, m=160)
+    inp = load_inputs(phenotype=pheno, genotype=G, traits=["Y1", "Y2"])
+    r = run_model("mvlmm", inp, RunOptions(kinship="auto", pcs=0))
+    assert isinstance(r, GwasResult)
+    assert r.model == "MultiTraitLMM"
+    assert r.n_variants > 0
