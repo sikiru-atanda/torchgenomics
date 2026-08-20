@@ -34,7 +34,8 @@ in-memory-or-path via :func:`_materialize_regions`; :func:`_read_set_output`
 reads back ``<prefix>_set_based.tsv``, a per-region rather than per-SNP table),
 and ``mvlmm`` (requires ``inputs.trait_names`` with >=2 entries, i.e. a
 multi-trait ``GwasInputs`` built with ``traits=``; :func:`_mvlmm_extra_argv`
-emits ``--traits <cols> --ploidy <2 default>`` and
+emits ``--traits <cols>`` only — ``mvlmm-scan`` has no ``--ploidy`` parameter,
+it is ploidy-agnostic by construction — and
 :func:`_write_multitrait_phenotype_tsv` materializes ``inputs.phenotypes``,
 each trait as its own column, instead of the single-trait writer) — because
 each needs nothing beyond ``(phenotype, genotype[, family/env/regions/
@@ -847,11 +848,16 @@ def _set_extra_argv(opts: RunOptions, user_opts: dict, workdir: Path) -> list[st
 
 
 def _mvlmm_extra_argv(inputs: GwasInputs, opts: RunOptions, user_opts: dict) -> list[str]:
-    """Build mvlmm CLI flags: the required ``--traits`` (>=2) and ``--ploidy``.
+    """Build mvlmm CLI flags: the required ``--traits`` (>=2).
 
     Requires a multi-trait ``inputs`` (``trait_names`` with >=2 entries) — else a
-    friendly ``ValueError``. Ploidy defaults to 2 and is overridable via
-    ``model_options={"mvlmm": {"ploidy": k}}``.
+    friendly ``ValueError``. ``mvlmm-scan`` has no ``--ploidy`` parameter — it is
+    ploidy-agnostic / diploid-additive dosage by construction, unlike ``poly-scan``
+    (which does take ``--ploidy``). Any real ``mvlmm-scan`` flags (e.g.
+    ``--grm-method``, ``--test``) pass through via ``model_options={"mvlmm": {...}}``;
+    an unrecognized key such as ``"ploidy"`` surfaces the existing friendly
+    "Unrecognized model_options" ``ValueError`` raised by :func:`_run_lowlevel_cli`
+    when the CLI parser rejects the resulting flag.
     """
     names = inputs.trait_names or []
     if len(names) < 2:
@@ -859,10 +865,7 @@ def _mvlmm_extra_argv(inputs: GwasInputs, opts: RunOptions, user_opts: dict) -> 
             "Model 'mvlmm' needs >=2 traits. Pass traits=['Y1','Y2'] naming columns "
             "of a multi-column phenotype (DataFrame or file)."
         )
-    opts_map = dict(user_opts)
-    ploidy = opts_map.pop("ploidy", 2)
-    return (["--traits", ",".join(names), "--ploidy", str(ploidy)]
-            + _model_options_to_argv(opts_map))
+    return ["--traits", ",".join(names)] + _model_options_to_argv(user_opts)
 
 
 def _lowlevel_extra_argv(alias: str, inputs: GwasInputs, opts: RunOptions, workdir: Path) -> list[str]:
