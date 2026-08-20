@@ -722,10 +722,14 @@ def test_set_runs_end_to_end_with_regions_df():
     assert isinstance(r, GwasResult) and r.model == "SetBasedScanner" and r.n_variants >= 1
 
 
-def test_only_mvlmm_remains_unwired():
+def test_mvlmm_via_gwas_requires_traits():
+    # mvlmm is now wired through _LOWLEVEL_CLI (Task 2); with a single-trait
+    # phenotype and no traits=, it raises the friendly "needs >=2 traits"
+    # ValueError from _mvlmm_extra_argv rather than the old NotImplementedError.
+    # Full traits= support in tg.gwas() itself lands in Task 3.
     import torchgenomics as tg, pytest
     y, G = _quant_fixture()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="(?i)mvlmm.*trait"):
         tg.gwas(y, G, models="mvlmm", kinship="auto", pcs=0, verbose=False)
 
 
@@ -772,3 +776,37 @@ def test_load_inputs_multitrait_bare_series_errors():
     with pytest.raises(ValueError) as e:
         load_inputs(phenotype=y, genotype=G, traits=["Y1", "Y2"])
     assert "multi-trait" in str(e.value).lower() or "dataframe" in str(e.value).lower()
+
+def test_mvlmm_extra_argv_traits_and_ploidy():
+    from torchgenomics.api._dispatch import _mvlmm_extra_argv, RunOptions
+    from torchgenomics.api._inputs import load_inputs
+    pheno, G = _multitrait_fixture()
+    inp = load_inputs(phenotype=pheno, genotype=G, traits=["Y1", "Y2"])
+    argv = _mvlmm_extra_argv(inp, RunOptions(), {})
+    assert "--traits" in argv and "Y1,Y2" in argv
+    assert "--ploidy" in argv and argv[argv.index("--ploidy") + 1] == "2"
+    # ploidy override via model_options, not duplicated
+    argv4 = _mvlmm_extra_argv(inp, RunOptions(), {"ploidy": 4})
+    assert argv4[argv4.index("--ploidy") + 1] == "4" and argv4.count("--ploidy") == 1
+
+def test_mvlmm_requires_two_traits_friendly_error():
+    from torchgenomics.api._dispatch import _mvlmm_extra_argv, RunOptions
+    from torchgenomics.api._inputs import load_inputs
+    import pytest
+    pheno, G = _multitrait_fixture()
+    inp1 = load_inputs(phenotype=pheno, genotype=G, traits=["Y1"])   # only 1 trait
+    with pytest.raises(ValueError) as e:
+        _mvlmm_extra_argv(inp1, RunOptions(), {})
+    assert "mvlmm" in str(e.value).lower() and "trait" in str(e.value).lower()
+
+def test_write_multitrait_phenotype_tsv(tmp_path):
+    import pandas as pd
+    from torchgenomics.api._dispatch import _write_multitrait_phenotype_tsv
+    from torchgenomics.api._inputs import load_inputs
+    pheno, G = _multitrait_fixture()
+    inp = load_inputs(phenotype=pheno, genotype=G, traits=["Y1", "Y2"])
+    p = tmp_path / "ph.tsv"
+    _write_multitrait_phenotype_tsv(inp, p)
+    back = pd.read_csv(p, sep="\t")
+    assert "sample_id" in back.columns and "Y1" in back.columns and "Y2" in back.columns
+    assert len(back) == inp.n_samples
