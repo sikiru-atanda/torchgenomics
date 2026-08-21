@@ -819,6 +819,23 @@ def test_write_multitrait_phenotype_tsv(tmp_path):
     assert len(back) == inp.n_samples
 
 
+def test_mvlmm_runs_through_tg_gwas():
+    import torchgenomics as tg
+    from torchgenomics.api import GwasResult
+    pheno, G = _multitrait_fixture()
+    r = tg.gwas(pheno, G, models="mvlmm", traits=["Y1", "Y2"],
+                kinship="auto", pcs=0, verbose=False)
+    assert isinstance(r, GwasResult) and r.model == "MultiTraitLMM" and r.n_variants > 0
+
+
+def test_mvlmm_without_traits_friendly_error():
+    import torchgenomics as tg, pytest
+    pheno, G = _multitrait_fixture()
+    with pytest.raises(ValueError) as e:
+        tg.gwas(pheno, G, models="mvlmm", kinship="auto", pcs=0, verbose=False)
+    assert "mvlmm" in str(e.value).lower() and "trait" in str(e.value).lower()
+
+
 def test_mvlmm_runs_via_run_model():
     # CRITICAL regression proof: before the fix, this call raised
     # ValueError: "Unrecognized model_options for 'mvlmm': ['--ploidy', '2']"

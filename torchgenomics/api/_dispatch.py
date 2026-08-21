@@ -40,12 +40,14 @@ it is ploidy-agnostic by construction — and
 each trait as its own column, instead of the single-trait writer) — because
 each needs nothing beyond ``(phenotype, genotype[, family/env/regions/
 traits])``. ``mvlmm`` raises a friendly :class:`ValueError` (not
-:class:`NotImplementedError`) when fewer than 2 traits are available; note
-``tg.gwas(...)`` itself does not yet accept a ``traits=`` parameter to supply
-them (a later task), so today that ``ValueError`` is unavoidable when routing
-through ``tg.gwas`` — the low-level API or ``torchgenomics mvlmm-scan`` CLI
-remain the supported multi-trait entry points in the meantime. Aliases whose
-runner is genuinely not yet wired at all still raise a clear
+:class:`NotImplementedError`) when fewer than 2 traits are available. As of
+Task 3, :func:`torchgenomics.api.gwas.gwas` accepts a ``traits=`` parameter
+that is threaded straight through to :func:`~torchgenomics.api._inputs.load_inputs`,
+so ``tg.gwas(..., models="mvlmm", traits=["Y1", "Y2"])`` runs end-to-end and
+that ``ValueError`` is now avoidable — it still fires whenever ``traits`` is
+omitted or names fewer than 2 columns. ``torchgenomics mvlmm-scan`` and the
+low-level API remain available as alternative multi-trait entry points.
+Aliases whose runner is genuinely not yet wired at all still raise a clear
 :class:`NotImplementedError` rather than silently returning a wrong result.
 
 .. note::
@@ -69,9 +71,10 @@ runner is genuinely not yet wired at all still raise a clear
    return shapes. Aliases whose runner is not yet wired at all raise a clear
    :class:`NotImplementedError` here rather than returning a divergent or
    partially-populated result — as of Task 2 that set no longer includes
-   ``mvlmm`` (see the module docstring above); it is dispatch-wired but still
-   raises a friendly ``ValueError`` through ``tg.gwas`` until a later task
-   threads ``traits=`` into that entry point. The low-level :func:`torchgenomics.api.scans.lmm_scan`
+   ``mvlmm`` (see the module docstring above); it is dispatch-wired and, as
+   of Task 3, reachable end-to-end through ``tg.gwas(..., traits=[...])`` —
+   it raises a friendly ``ValueError`` through ``tg.gwas`` only when
+   ``traits`` is omitted or names fewer than 2 columns. The low-level :func:`torchgenomics.api.scans.lmm_scan`
    / :func:`~torchgenomics.api.scans.glm_scan` functions, called directly
    (bypassing ``run_model``/``tg.gwas``), also return a ``GwasResult`` but
    leave ``.trait_type`` at its default (``""``) — that enrichment is applied
@@ -993,9 +996,12 @@ def run_model(
         ``set`` needs regions, and ``mvlmm`` needs >=2 traits to run; see
         :attr:`RunOptions.env` / :func:`_gxe_extra_argv`,
         :attr:`RunOptions.regions` / :func:`_set_extra_argv`, and
-        :attr:`GwasInputs.trait_names` / :func:`_mvlmm_extra_argv`. ``tg.gwas``
-        does not yet accept a ``traits=`` parameter, so a single-trait
-        ``inputs`` always trips the ``mvlmm`` case today.
+        :attr:`GwasInputs.trait_names` / :func:`_mvlmm_extra_argv`. As of
+        Task 3, ``tg.gwas(..., traits=[...])`` supplies the required trait
+        names directly, so ``mvlmm`` only trips this case when ``traits`` is
+        omitted or names fewer than 2 columns — a single-trait ``inputs``
+        (built without ``traits=``) still trips it, since ``trait_names``
+        then has fewer than 2 entries.
 
     Notes
     -----

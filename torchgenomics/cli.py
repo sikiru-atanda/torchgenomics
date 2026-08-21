@@ -3256,6 +3256,8 @@ def _cmd_gwas(args: argparse.Namespace) -> int:
 
     pcs = args.pcs
 
+    traits = args.traits.split(",") if getattr(args, "traits", None) else None
+
     model_options = None
     raw_model_options = getattr(args, "model_options", None)
     if raw_model_options:
@@ -3281,6 +3283,7 @@ def _cmd_gwas(args: argparse.Namespace) -> int:
         model_options=model_options,
         env=args.env,
         regions=args.regions,
+        traits=traits,
     )
     print(result.summary())
     return 0
@@ -5598,7 +5601,9 @@ def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
     required by ``--models gxe``; mirrors ``tg.gwas``'s ``env`` parameter,
     CLI-only so no in-memory ``pandas.Series``/array form here),
     ``--regions`` (a BED-like path required by ``--models set``; mirrors
-    ``tg.gwas``'s ``regions`` parameter), and ``--quiet`` (suppresses the
+    ``tg.gwas``'s ``regions`` parameter), ``--traits`` (a comma-separated
+    list of trait columns required by ``--models mvlmm``; mirrors
+    ``tg.gwas``'s ``traits`` parameter), and ``--quiet`` (suppresses the
     decision log; ``tg.gwas``'s ``verbose=True`` is the CLI default).
     """
     p = subparsers.add_parser(
@@ -5639,6 +5644,8 @@ def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
                    help="Environment variable file (TSV with an ENV column) for --models gxe.")
     p.add_argument("--regions", default=None,
                    help="Regions/BED file for --models set.")
+    p.add_argument("--traits", default=None,
+                   help="Comma-separated trait columns for --models mvlmm (multi-trait).")
 
 
 def _add_recommend_parser(subparsers: argparse._SubParsersAction) -> None:
