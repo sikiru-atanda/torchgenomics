@@ -84,6 +84,13 @@
 #'   optional id column, e.g. BED). Only paths are accepted from R (unlike
 #'   the Python API, which also takes an in-memory `data.frame`). Required
 #'   when `models = "set"`; ignored by every other model. Default `NULL`.
+#' @param traits Character vector of >= 2 column names, naming the trait
+#'   columns to jointly analyze in `phenotype`. Required when
+#'   `models = "mvlmm"` (multi-trait GWAS); ignored by every other model.
+#'   Unlike `env` / `regions`, this is not a path -- it names columns of
+#'   the `phenotype` file, since the R wrapper is path/column-based rather
+#'   than accepting an in-memory `data.frame` for `phenotype`. Default
+#'   `NULL`.
 #'
 #' @return
 #' - When `models` is a character **scalar** (`"auto"` or a single alias
@@ -130,7 +137,8 @@ tg_gwas <- function(phenotype, genotype,
                     verbose = TRUE,
                     model_options = NULL,
                     env = NULL,
-                    regions = NULL) {
+                    regions = NULL,
+                    traits = NULL) {
   device <- match.arg(device)
   if (!is.character(models) && !is.list(models)) {
     stop("models must be a character alias (or vector of aliases), ",
@@ -166,7 +174,8 @@ tg_gwas <- function(phenotype, genotype,
     verbose = verbose,
     model_options = model_options,
     env = .as_path(env),
-    regions = .as_path(regions)
+    regions = .as_path(regions),
+    traits = traits
   ))
 
   d <- bridge_call("gwas", args)
