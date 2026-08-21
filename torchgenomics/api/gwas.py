@@ -579,6 +579,7 @@ def gwas(
     model_options: dict[str, dict] | None = None,
     env: Any = None,
     regions: Any = None,
+    traits: list[str] | None = None,
 ) -> "GwasResult | GwasComparison":
     """Run a GWAS scan end-to-end from whatever inputs a notebook user has on hand.
 
@@ -687,6 +688,20 @@ def gwas(
         temp headerless tab-separated file). Ignored by every other model.
         See :attr:`torchgenomics.api._dispatch.RunOptions.regions` /
         :func:`torchgenomics.api._dispatch._materialize_regions`.
+    traits : list[str] | None, default None
+        Trait columns required by ``models="mvlmm"`` (multi-trait GWAS;
+        ``>=2`` names). ``phenotype`` must be a ``pandas.DataFrame`` (or a
+        path to a table) containing every named column; passed straight
+        through to :func:`torchgenomics.api._inputs.load_inputs`'s own
+        ``traits=`` parameter, which builds a sample-aligned
+        :attr:`~torchgenomics.api._inputs.GwasInputs.phenotypes` (one column
+        per trait) and fixes ``trait_type`` to ``"continuous"`` (multi-trait
+        models are Gaussian-only). Ignored by every other model. ``mvlmm``
+        raises a friendly ``ValueError`` (naming both "mvlmm" and "traits")
+        if fewer than 2 traits are supplied — see
+        :func:`torchgenomics.api._dispatch._mvlmm_extra_argv`. The result's
+        association table carries a joint multi-trait ``P_JOINT`` column
+        instead of the single-trait ``P`` column.
 
     Returns
     -------
@@ -713,16 +728,17 @@ def gwas(
         registry model (including ``mvlmm``) is wired at the dispatch level —
         see :func:`torchgenomics.api._dispatch.run_model`'s docstring. This
         branch is retained for future registry additions.
-        ``models="gxe"``, ``models="set"``, and ``models="mvlmm"`` *are* wired
-        but raise ``ValueError`` (not this) when their required extra input is
-        missing — see the ``env`` / ``regions`` parameters above for
-        ``gxe``/``set``. ``mvlmm`` needs >=2 traits
-        (:func:`torchgenomics.api._dispatch._mvlmm_extra_argv`); ``gwas()``
-        itself does not yet accept a ``traits=`` parameter to supply them
-        (planned for a later task), so calling ``models="mvlmm"`` through this
-        function currently always raises that ``ValueError`` — use
-        ``torchgenomics mvlmm-scan`` or the low-level API for multi-trait runs
-        in the meantime.
+        ``models="gxe"``, ``models="set"``, and ``models="mvlmm"`` *are* fully
+        wired and reachable through ``tg.gwas`` but raise ``ValueError`` (not
+        this) when their required extra input is missing — see the ``env`` /
+        ``regions`` / ``traits`` parameters above for ``gxe``/``set``/``mvlmm``
+        respectively. ``mvlmm`` needs ``traits=[...]`` with >=2 trait names
+        (:func:`torchgenomics.api._dispatch._mvlmm_extra_argv`); as of Task 3,
+        ``gwas()`` accepts that ``traits=`` parameter directly, so
+        ``models="mvlmm"`` runs end-to-end (``r.model == "MultiTraitLMM"``,
+        a joint ``P_JOINT`` column) once ``traits=`` names >=2 columns of a
+        multi-column phenotype -- it only raises ``ValueError`` when ``traits``
+        is omitted or has fewer than 2 entries.
 
     Examples
     --------
@@ -731,7 +747,7 @@ def gwas(
     >>> cmp = tg.gwas(y, G, models=["lmm", "blink"])  # doctest: +SKIP
     >>> print(cmp.summary())                   # doctest: +SKIP
     """
-    inputs = load_inputs(phenotype, genotype, covariates, trait, trait_type)
+    inputs = load_inputs(phenotype, genotype, covariates, trait, trait_type, traits=traits)
     aliases, was_auto, rationale, models_was_sequence = _resolve_models(models, inputs, kinship)
     # Fix 2: the single-vs-comparison branch is decided by the *input type*
     # of `models` (str -> GwasResult, list/tuple -> GwasComparison), never
