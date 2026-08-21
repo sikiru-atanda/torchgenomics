@@ -195,6 +195,16 @@ test_that("tg_gwas forwards env and regions paths to the bridge", {
   expect_equal(captured$regions, "regions.bed")
 })
 
+test_that("tg_gwas forwards traits to the bridge", {
+  captured <- NULL
+  mockery::stub(tg_gwas, "bridge_call", function(fn, args = list()) {
+    captured <<- args
+    .fake_scan_dict()
+  })
+  tg_gwas("pheno.tsv", "data.bed", models = "mvlmm", traits = c("Y1", "Y2"))
+  expect_equal(captured$traits, c("Y1", "Y2"))
+})
+
 test_that("tg_recommend dispatches via bridge_call('recommend', ...) and returns a printable plan", {
   captured <- new.env()
   mockery::stub(tg_recommend, "bridge_call", function(fn, args) {

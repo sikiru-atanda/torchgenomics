@@ -20,7 +20,8 @@ tg_gwas(
   verbose = TRUE,
   model_options = NULL,
   env = NULL,
-  regions = NULL
+  regions = NULL,
+  traits = NULL
 )
 }
 \arguments{
@@ -100,6 +101,14 @@ when \code{models = "gxe"}; ignored by every other model. Default \code{NULL}.}
 optional id column, e.g. BED). Only paths are accepted from R (unlike
 the Python API, which also takes an in-memory \code{data.frame}). Required
 when \code{models = "set"}; ignored by every other model. Default \code{NULL}.}
+
+\item{traits}{Character vector of >= 2 column names, naming the trait
+columns to jointly analyze in \code{phenotype}. Required when
+\code{models = "mvlmm"} (multi-trait GWAS); ignored by every other model.
+Unlike \code{env} / \code{regions}, this is not a path -- it names columns of
+the \code{phenotype} file, since the R wrapper is path/column-based rather
+than accepting an in-memory \code{data.frame} for \code{phenotype}. Default
+\code{NULL}.}
 }
 \value{
 \itemize{
