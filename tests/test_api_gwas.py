@@ -836,6 +836,29 @@ def test_mvlmm_without_traits_friendly_error():
     assert "mvlmm" in str(e.value).lower() and "trait" in str(e.value).lower()
 
 
+def test_traits_on_non_mvlmm_model_warns():
+    # traits= is only meaningful for models="mvlmm"; passing it alongside any
+    # other resolved model should warn (not error -- multi-trait loading still
+    # happens, single-trait models just use the first trait).
+    import pytest
+    import torchgenomics as tg
+    pheno, G = _multitrait_fixture()
+    with pytest.warns(UserWarning, match="mvlmm"):
+        tg.gwas(pheno, G, models="lmm", traits=["Y1", "Y2"],
+                kinship="auto", pcs=0, verbose=False)
+
+
+def test_traits_on_mvlmm_model_does_not_warn():
+    import warnings
+    import torchgenomics as tg
+    pheno, G = _multitrait_fixture()
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        tg.gwas(pheno, G, models="mvlmm", traits=["Y1", "Y2"],
+                kinship="auto", pcs=0, verbose=False)
+    assert not any("traits" in str(w.message).lower() for w in rec)
+
+
 def test_mvlmm_runs_via_run_model():
     # CRITICAL regression proof: before the fix, this call raised
     # ValueError: "Unrecognized model_options for 'mvlmm': ['--ploidy', '2']"

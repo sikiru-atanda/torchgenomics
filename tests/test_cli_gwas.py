@@ -37,3 +37,37 @@ def test_cli_gwas_help_has_traits():
     out = subprocess.run([sys.executable, "-m", "torchgenomics", "gwas", "--help"],
                          capture_output=True, text=True)
     assert out.returncode == 0 and "--traits" in out.stdout
+
+
+def test_cli_gwas_bad_pcs_fails_at_parse_time():
+    # --pcs is validated by an argparse `type=` function, so a bad value must
+    # be rejected during parsing (exit code 2, "--pcs" named in the message)
+    # rather than surfacing deep inside dispatch.
+    out = subprocess.run(
+        [sys.executable, "-m", "torchgenomics", "gwas", "--pcs", "foo",
+         "--phenotype", "x", "--genotype", "y"],
+        capture_output=True, text=True,
+    )
+    assert out.returncode == 2
+    assert "--pcs" in out.stderr
+
+
+def test_cli_gwas_pcs_int_parses_ok():
+    from torchgenomics.cli import _build_parser
+    args = _build_parser().parse_args(
+        ["gwas", "--pcs", "5", "--phenotype", "x", "--genotype", "y"]
+    )
+    assert args.pcs == 5 and isinstance(args.pcs, int)
+
+
+def test_cli_gwas_pcs_auto_parses_ok():
+    from torchgenomics.cli import _build_parser
+    args = _build_parser().parse_args(
+        ["gwas", "--pcs", "auto", "--phenotype", "x", "--genotype", "y"]
+    )
+    assert args.pcs == "auto"
+
+    args2 = _build_parser().parse_args(
+        ["gwas", "--pcs", "AUTO", "--phenotype", "x", "--genotype", "y"]
+    )
+    assert args2.pcs == "auto"
