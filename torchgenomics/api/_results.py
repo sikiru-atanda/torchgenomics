@@ -200,6 +200,11 @@ class ScanRun(_BaseRun):
     #: string when unknown/unset (e.g. constructed directly by advanced
     #: callers who bypass ``tg.gwas``).
     trait_type: str = ""
+    #: Name of the scanned phenotype column (e.g. ``"Y1"``, ``"EarHT"``), as
+    #: selected by the friendly-API input layer. Empty string when
+    #: unknown/unset (e.g. a low-level scan constructed directly by an
+    #: advanced caller). Used only to label :meth:`summary`'s header.
+    trait_name: str = ""
     #: Human-readable warnings accumulated during the run (e.g. sample
     #: mismatches, low MAF filtering out most variants). Populated by the
     #: input-validation layer; empty by default. Surfaced in
@@ -247,7 +252,8 @@ class ScanRun(_BaseRun):
         surfaced, and a final ``Next:`` line suggests follow-up actions
         (inspect hits, re-run with more PCs, save a report).
         """
-        trait_label = f"trait ({self.trait_type})" if self.trait_type else "trait"
+        name = self.trait_name or "trait"
+        trait_label = f"{name} ({self.trait_type})" if self.trait_type else name
         lines = [
             f"GWAS scan summary — {trait_label}",
             f"Model: {self.model or '(unspecified)'}  Test: {self.test or '(unspecified)'}  "
