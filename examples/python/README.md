@@ -30,7 +30,7 @@ see the comments at the top of each file for the CLI equivalent.
 
 | # | Script | What it shows |
 |---|---|---|
-| 01 | `01_single_trait_lmm.py` | EMMA-style single-trait LMM on MDP maize EarHT; Wald/LRT/score scan; BH correction; Manhattan + QQ. |
+| 01 | `01_single_trait_lmm.py` | Single-trait LMM on a self-contained synthetic fixture, two ways: the one-call `tg.gwas` API and the low-level `SingleTraitLMM`; BH correction; Manhattan + QQ. |
 | 02 | `02_multi_trait_lmm.py` | mvLMM with PX-EM + AI-REML on two correlated MDP traits. |
 | 03 | `03_met_scan.py` | Multi-environment GWAS (`MET`) with reaction-norm + FA(k) variance structures. |
 | 04 | `04_threshold_linear.py` | Bermann-2026 threshold-linear multi-trait model for ordinal + continuous traits. |
