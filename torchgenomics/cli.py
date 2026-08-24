@@ -5588,6 +5588,31 @@ def _add_pipeline_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_approx_args(p)
 
 
+def _pcs_arg(value: str) -> "str | int":
+    """Parse-time validator for ``gwas --pcs``.
+
+    Mirrors the valid set accepted downstream by
+    :func:`torchgenomics.api._dispatch._n_pcs_from_opts`: the literal string
+    ``"auto"`` (case-insensitive), or a non-negative integer. Raising
+    ``argparse.ArgumentTypeError`` here means a bad value (e.g. ``--pcs
+    foo``) fails at CLI parse time with a clear message, instead of
+    surfacing deep inside dispatch.
+    """
+    if value.strip().lower() == "auto":
+        return "auto"
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--pcs must be 'auto' or a non-negative integer, got {value!r}"
+        ) from None
+    if n < 0:
+        raise argparse.ArgumentTypeError(
+            f"--pcs must be 'auto' or a non-negative integer, got {value!r}"
+        )
+    return n
+
+
 def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
     """``torchgenomics gwas`` — friendly single-call GWAS (shares tg.gwas core).
 
@@ -5622,7 +5647,7 @@ def _add_gwas_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--kinship", default="auto",
                    help="'auto' (default, computes a streaming VanRaden GRM), 'none' "
                         "(disable kinship correction), or a path to a pre-computed GRM")
-    p.add_argument("--pcs", default="auto",
+    p.add_argument("--pcs", default="auto", type=_pcs_arg,
                    help="'auto' (default) or an integer number of genotype principal "
                         "components to add as covariates")
     p.add_argument("--trait", default=None,

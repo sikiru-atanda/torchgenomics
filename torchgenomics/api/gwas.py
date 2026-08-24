@@ -28,6 +28,7 @@ why, so the choice is always visible and always overridable via
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Sequence
@@ -749,6 +750,24 @@ def gwas(
     """
     inputs = load_inputs(phenotype, genotype, covariates, trait, trait_type, traits=traits)
     aliases, was_auto, rationale, models_was_sequence = _resolve_models(models, inputs, kinship)
+
+    # traits= is only meaningful for models="mvlmm" (it selects the joint
+    # multi-trait phenotype columns MultiTraitLMM scans). If the caller
+    # passed traits= but none of the resolved model(s) is mvlmm, multi-trait
+    # loading still happens (inputs.phenotypes keeps every named column) but
+    # every resolved model only ever consumes the first trait -- warn so
+    # that isn't a silent surprise.
+    if traits is not None and not any(
+        resolve_model(a).alias == "mvlmm" for a in aliases
+    ):
+        warnings.warn(
+            "traits= is only used by models='mvlmm'; the selected model(s) "
+            f"({', '.join(aliases)}) will use the first trait "
+            f"({inputs.phenotype.name!r}) only.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     # Fix 2: the single-vs-comparison branch is decided by the *input type*
     # of `models` (str -> GwasResult, list/tuple -> GwasComparison), never
     # by how many aliases it happened to resolve to — so models=["lmm"]
