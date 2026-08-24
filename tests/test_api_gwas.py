@@ -874,3 +874,20 @@ def test_mvlmm_runs_via_run_model():
     assert isinstance(r, GwasResult)
     assert r.model == "MultiTraitLMM"
     assert r.n_variants > 0
+
+
+def test_gwas_result_summary_header_uses_trait_name():
+    """tg.gwas backfills the scanned trait name into GwasResult so summary()'s
+    header names the trait (e.g. 'Y1 (continuous)'), not a generic 'trait'."""
+    import numpy as np
+    import pandas as pd
+    import torchgenomics as tg
+
+    rng = np.random.default_rng(0)
+    ids = [f"s{i}" for i in range(120)]
+    p = rng.uniform(0.2, 0.8, size=150)
+    G = rng.binomial(2, p, size=(120, 150)).astype(float)
+    y = pd.Series(rng.normal(size=120), index=ids, name="yield")
+    r = tg.gwas(y, G, models="lmm", kinship="auto", pcs=0, verbose=False)
+    assert r.trait_name == "yield"
+    assert r.summary().splitlines()[0] == "GWAS scan summary — yield (continuous)"

@@ -1083,6 +1083,13 @@ def run_model(
         _cleanup_workdir(workdir)
         raise
 
+    # Label the result with the scanned trait name (used only for summary()'s
+    # header) — set uniformly here so every route (api + low-level) carries it
+    # without each read-back needing the plumbing. Only backfill when the scan
+    # didn't set it, and never clobber with an empty name.
+    if not getattr(result, "trait_name", "") and inputs.trait_name:
+        result.trait_name = str(inputs.trait_name)
+
     # Success: hand cleanup off to GC via a finalizer on the result itself,
     # so .manhattan() / .report() keep working for as long as the caller
     # holds a reference to `result` (see "Temp-directory lifecycle" above).
