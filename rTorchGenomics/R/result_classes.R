@@ -171,7 +171,7 @@ setClass("MRRun",
 #' @slot candidate_snp Index of the candidate causal SNP.
 #' @slot headline Headline posterior (PP.H4 for pairwise; PP(all colocalize)
 #'   for hyprcoloc).
-#' @slot table Tibble of per-variant / per-trait colocalization detail.
+#' @slot table Tibble of colocalization posteriors: the five PP.H0-H4 hypothesis probabilities (pairwise) or per-cluster detail (hyprcoloc).
 #' @slot raw Full result dict, for fields not otherwise exposed.
 #' @export
 setClass("ColocRun",

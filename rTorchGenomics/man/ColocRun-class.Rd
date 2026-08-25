@@ -19,7 +19,7 @@ Colocalization result.
 \item{\code{headline}}{Headline posterior (PP.H4 for pairwise; PP(all colocalize)
 for hyprcoloc).}
 
-\item{\code{table}}{Tibble of per-variant / per-trait colocalization detail.}
+\item{\code{table}}{Tibble of colocalization posteriors: the five PP.H0-H4 hypothesis probabilities (pairwise) or per-cluster detail (hyprcoloc).}
 
 \item{\code{raw}}{Full result dict, for fields not otherwise exposed.}
 }}
