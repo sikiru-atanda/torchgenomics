@@ -148,3 +148,16 @@ def test_api_coloc_hyprcoloc_three_traits(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         tg.coloc([a], method="hyprcoloc")   # <2 traits
+
+
+def test_api_coloc_bad_method_and_hyprcoloc_with_sumstats2(tmp_path):
+    import torchgenomics as tg
+    import pytest
+    a, b = _write_coloc_fixture(tmp_path)
+    with pytest.raises(ValueError) as e:
+        tg.coloc(a, b, method="nope")
+    assert "nope" in str(e.value) and "pairwise" in str(e.value)
+    # hyprcoloc must not be given a second positional sumstats
+    with pytest.raises(ValueError) as e2:
+        tg.coloc([a, b], sumstats2=b, method="hyprcoloc")
+    assert "hyprcoloc" in str(e2.value).lower() or "sumstats2" in str(e2.value)

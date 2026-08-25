@@ -403,7 +403,7 @@ def coloc(
 
         output_files: dict[str, Path] = {}
         if output is not None:
-            run.table.to_csv(str(output), sep=sep, index=False)
+            run.table.to_csv(str(output), sep="\t", index=False)
             output_files["tsv"] = Path(str(output))
             run.output_files = output_files
         return run
