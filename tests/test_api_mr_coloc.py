@@ -65,3 +65,28 @@ def test_api_mr_single_method_and_bad_method(tmp_path):
     with pytest.raises(ValueError) as e:
         tg.mr(exp, out, method="nope")
     assert "nope" in str(e.value) and "ivw" in str(e.value)
+
+
+def test_api_mr_all_na_columns_are_nan(tmp_path):
+    import math
+    import torchgenomics as tg
+    exp, out, _ = _write_mr_fixture(tmp_path)
+    r = tg.mr(exp, out, method="all")
+    df = r.results.set_index("method")
+
+    egger_row = df.loc["egger"]
+    assert not pd.isna(egger_row["egger_intercept_p"])
+    assert not pd.isna(egger_row["egger_intercept"])
+    for m in ("ivw", "weighted_median"):
+        row = df.loc[m]
+        assert math.isnan(row["egger_intercept"])
+        assert math.isnan(row["egger_intercept_p"])
+
+    presso_row = df.loc["presso"]
+    assert not pd.isna(presso_row["beta_corrected"])
+    assert not pd.isna(presso_row["pval_corrected"])
+    for m in ("ivw", "egger", "weighted_median"):
+        row = df.loc[m]
+        assert math.isnan(row["beta_corrected"])
+        assert math.isnan(row["pval_corrected"])
+        assert math.isnan(row["n_outliers"])
