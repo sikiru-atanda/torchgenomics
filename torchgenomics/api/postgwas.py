@@ -171,19 +171,6 @@ _MR_METHODS = ("ivw", "egger", "weighted_median", "presso", "all")
 _MR_RESULT_LABEL = {"mr_presso": "presso"}
 
 
-@tool(
-    name="tg_mr",
-    title="Two-sample Mendelian randomization",
-    description=(
-        "Two-sample Mendelian randomization from exposure + outcome GWAS "
-        "summary statistics (IVW / Egger / weighted median / MR-PRESSO). "
-        "Instruments are the SNPs shared between the two sumstats files. "
-        "Returns MRRun with a per-method results table."
-    ),
-    long_running=False,
-    category="postgwas",
-    tags=["mendelian-randomization", "mr", "causal-inference", "postgwas"],
-)
 def mr(
     exposure: str | Path,
     outcome: str | Path,
