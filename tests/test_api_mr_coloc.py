@@ -90,3 +90,61 @@ def test_api_mr_all_na_columns_are_nan(tmp_path):
         assert math.isnan(row["beta_corrected"])
         assert math.isnan(row["pval_corrected"])
         assert math.isnan(row["n_outliers"])
+
+
+def _write_coloc_fixture(tmp_path, shared=True, seed=1, n_snp=50):
+    """Two sumstats over the same region; a shared causal SNP if shared=True."""
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    causal = 25
+    def _df(offset):
+        z = rng.normal(0, 1, size=n_snp)
+        idx = causal if shared else (causal + offset)
+        z[idx] = 6.0                     # strong signal at the (shared?) SNP
+        beta = z * 0.05
+        se = np.full(n_snp, 0.05)
+        from scipy.stats import norm
+        p = 2 * norm.sf(np.abs(z))
+        return pd.DataFrame({
+            "chr": [1] * n_snp, "pos": list(range(1, n_snp + 1)),
+            "snp": [f"rs{i}" for i in range(n_snp)], "a1": ["A"] * n_snp,
+            "a2": ["G"] * n_snp, "beta": beta, "se": se, "p": p,
+            "n": [10000] * n_snp, "af": [0.3] * n_snp,
+        })
+    a = tmp_path / "a.tsv"; b = tmp_path / "b.tsv"
+    _df(0).to_csv(a, sep="\t", index=False)
+    _df(10).to_csv(b, sep="\t", index=False)
+    return str(a), str(b)
+
+
+def test_api_coloc_pairwise_shared_signal(tmp_path):
+    import torchgenomics as tg
+    from torchgenomics.api import ColocRun
+    a, b = _write_coloc_fixture(tmp_path, shared=True)
+    r = tg.coloc(a, b, method="pairwise", output=str(tmp_path / "coloc.tsv"))
+    assert isinstance(r, ColocRun) and r.method == "pairwise"
+    assert r.headline == r.pp["h4"]
+    assert r.pp["h4"] > 0.5              # shared causal -> high PP.H4
+    assert (tmp_path / "coloc.tsv").exists()
+
+
+def test_api_coloc_pairwise_requires_second(tmp_path):
+    import torchgenomics as tg, pytest
+    a, _ = _write_coloc_fixture(tmp_path)
+    with pytest.raises(ValueError) as e:
+        tg.coloc(a, method="pairwise")
+    assert "sumstats2" in str(e.value) or "second" in str(e.value).lower()
+
+
+def test_api_coloc_hyprcoloc_three_traits(tmp_path):
+    import torchgenomics as tg
+    from torchgenomics.api import ColocRun
+    a, b = _write_coloc_fixture(tmp_path, shared=True, seed=2)
+    c, _ = _write_coloc_fixture(tmp_path, shared=True, seed=3)
+    r = tg.coloc([a, b, c], method="hyprcoloc")
+    assert isinstance(r, ColocRun) and r.method == "hyprcoloc"
+    assert r.headline is not None
+
+    import pytest
+    with pytest.raises(ValueError):
+        tg.coloc([a], method="hyprcoloc")   # <2 traits

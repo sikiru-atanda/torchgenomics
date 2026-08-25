@@ -8,7 +8,7 @@ import pandas as pd
 
 from ._decorator import tool
 from ._helpers import ProgressCallback, emit_progress, resolve_output_dir, timed
-from ._results import ClumpRun, MetaRun, MRRun
+from ._results import ClumpRun, ColocRun, MetaRun, MRRun
 
 
 @tool(
@@ -280,3 +280,132 @@ def mr(
             primary_p=float(primary.p_value),
             results=df,
         )
+
+
+def coloc(
+    sumstats,
+    sumstats2: str | Path | None = None,
+    *,
+    method: Literal["pairwise", "hyprcoloc"] = "pairwise",
+    output: str | Path | None = None,
+    prior_1: float = 1e-4,
+    prior_2: float = 1e-4,
+    prior_12: float = 1e-5,
+    trait_names: list[str] | None = None,
+    sep: str = "\t",
+) -> ColocRun:
+    """Colocalization of two (pairwise) or ≥2 (hyprcoloc) GWAS sumstats.
+
+    Parameters
+    ----------
+    sumstats
+        For ``method="pairwise"``: a path to the first sumstats TSV. For
+        ``method="hyprcoloc"``: a list of ≥2 sumstats paths.
+    sumstats2
+        The second sumstats path for ``method="pairwise"`` (required there;
+        must be ``None`` for hyprcoloc).
+    method
+        ``"pairwise"`` (Giambartolomei 2-trait, PP.H0-H4) or ``"hyprcoloc"``
+        (N-trait).
+    output
+        Optional path to write a posteriors TSV.
+    prior_1, prior_2, prior_12
+        Coloc priors, forwarded to :func:`torchgenomics.postgwas.coloc_pairwise`
+        for ``method="pairwise"``. For ``method="hyprcoloc"`` only ``prior_1``
+        is forwarded (hyprcoloc's own ``prior_2``/``prior_w`` defaults apply);
+        ``prior_12`` has no hyprcoloc analogue and is ignored there.
+    trait_names
+        Optional trait labels, forwarded to hyprcoloc only.
+    sep
+        Field delimiter for the sumstats files (default tab).
+
+    Returns
+    -------
+    ColocRun
+    """
+    from pathlib import Path as _Path
+
+    from ..postgwas import coloc_pairwise, hyprcoloc, load_sumstats
+
+    m = str(method).lower()
+    if m not in ("pairwise", "hyprcoloc"):
+        raise ValueError(
+            f"Unknown coloc method '{method}'. Valid: pairwise, hyprcoloc."
+        )
+
+    with timed() as elapsed:
+        if m == "pairwise":
+            if sumstats2 is None:
+                raise ValueError(
+                    "coloc method='pairwise' needs two sumstats; pass "
+                    "sumstats2=<path> (or use method='hyprcoloc' with a list)."
+                )
+            ss1 = load_sumstats(str(sumstats), sep=sep)
+            ss2 = load_sumstats(str(sumstats2), sep=sep)
+            res = coloc_pairwise(
+                ss1, ss2, prior_1=prior_1, prior_2=prior_2, prior_12=prior_12
+            )
+            pp = {
+                "h0": float(res.pp_h0),
+                "h1": float(res.pp_h1),
+                "h2": float(res.pp_h2),
+                "h3": float(res.pp_h3),
+                "h4": float(res.pp_h4),
+            }
+            table = pd.DataFrame([pp])
+            run = ColocRun(
+                runtime_s=elapsed(),
+                method="pairwise",
+                pp=pp,
+                candidate_snp=int(res.candidate_snp),
+                headline=pp["h4"],
+                table=table,
+            )
+        else:  # hyprcoloc
+            if sumstats2 is not None:
+                raise ValueError(
+                    "coloc method='hyprcoloc' takes a list in `sumstats`; "
+                    "do not pass sumstats2."
+                )
+            paths = (
+                list(sumstats)
+                if not isinstance(sumstats, (str, _Path))
+                else [sumstats]
+            )
+            if len(paths) < 2:
+                raise ValueError(
+                    "coloc method='hyprcoloc' needs >=2 sumstats paths."
+                )
+            ss_list = [load_sumstats(str(p), sep=sep) for p in paths]
+            res = hyprcoloc(
+                ss_list, prior_1=prior_1, trait_names=trait_names
+            )
+            pp = {
+                "all_colocalize": float(res.pp_all_colocalize),
+                "null": float(res.pp_null),
+            }
+            table = pd.DataFrame(
+                [
+                    {
+                        "pp_all_colocalize": res.pp_all_colocalize,
+                        "pp_null": res.pp_null,
+                        "best_cluster": str(res.best_cluster),
+                        "best_cluster_posterior": res.best_cluster_posterior,
+                    }
+                ]
+            )
+            run = ColocRun(
+                runtime_s=elapsed(),
+                method="hyprcoloc",
+                pp=pp,
+                candidate_snp=int(res.candidate_snp),
+                headline=float(res.pp_all_colocalize),
+                table=table,
+            )
+
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            run.table.to_csv(str(output), sep=sep, index=False)
+            output_files["tsv"] = Path(str(output))
+            run.output_files = output_files
+        return run
