@@ -145,6 +145,47 @@ setClass("MetaRun",
   )
 )
 
+#' Mendelian-randomization result.
+#' @slot method MR method (ivw / egger / weighted_median / presso / all).
+#' @slot n_instruments Instrument (shared-SNP) count.
+#' @slot primary_beta Causal effect estimate for the primary method.
+#' @slot primary_p P-value for the primary method's causal estimate.
+#' @slot results Tibble of per-method MR estimates.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("MRRun",
+  contains = "_BaseRun",
+  representation(
+    method = "character",
+    n_instruments = "integer",
+    primary_beta = "numeric",
+    primary_p = "numeric",
+    results = "data.frame",
+    raw = "list"
+  )
+)
+
+#' Colocalization result.
+#' @slot method Coloc method (pairwise / hyprcoloc).
+#' @slot pp Named list of posterior probabilities (e.g. h0-h4 for pairwise).
+#' @slot candidate_snp Index of the candidate causal SNP.
+#' @slot headline Headline posterior (PP.H4 for pairwise; PP(all colocalize)
+#'   for hyprcoloc).
+#' @slot table Tibble of per-variant / per-trait colocalization detail.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("ColocRun",
+  contains = "_BaseRun",
+  representation(
+    method = "character",
+    pp = "list",
+    candidate_snp = "integer",
+    headline = "numeric",
+    table = "data.frame",
+    raw = "list"
+  )
+)
+
 #' PGS fit result.
 #' @slot method PGS method (ct / ldpred2-* / prscs).
 #' @slot n_variants_input Input variants.
@@ -497,6 +538,52 @@ MetaRun <- list(
   }
 )
 
+#' Constructor for the MRRun S4 class.
+#'
+#' Wrapper list exposing `$MRRun$new_from_dict(d)` for building an instance
+#' from a JSON-shaped list (the dict returned by `py_to_r(to_dict())`).
+#' @name MRRun
+#' @keywords internal
+#' @export
+MRRun <- list(
+  new_from_dict = function(d) {
+    new("MRRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      method = .as_chr(d$method),
+      n_instruments = .as_int(d$n_instruments),
+      primary_beta = .as_num(d$primary_beta),
+      primary_p = .as_num(d$primary_p),
+      results = .tibble_from_list_of_dicts(d$results),
+      raw = d
+    )
+  }
+)
+
+#' Constructor for the ColocRun S4 class.
+#'
+#' Wrapper list exposing `$ColocRun$new_from_dict(d)` for building an instance
+#' from a JSON-shaped list (the dict returned by `py_to_r(to_dict())`).
+#' @name ColocRun
+#' @keywords internal
+#' @export
+ColocRun <- list(
+  new_from_dict = function(d) {
+    new("ColocRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      method = .as_chr(d$method),
+      pp = .as_list(d$pp),
+      candidate_snp = as.integer(d$candidate_snp %||% NA_integer_),
+      headline = .as_num(d$headline),
+      table = .tibble_from_list_of_dicts(d$table),
+      raw = d
+    )
+  }
+)
+
 #' Constructor for the PgsFitRun S4 class.
 #'
 #' Wrapper list exposing `$PgsFitRun$new_from_dict(d)` for building an instance
@@ -733,6 +820,24 @@ setMethod("show", "MetaRun", function(object) {
   cat(sprintf("MetaRun (method=%s, K=%d, n_variants=%d, n_sig=%d, runtime=%.1fs)\n",
               object@method, object@n_studies, object@n_variants,
               object@n_significant, object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "MRRun", function(object) {
+  cat(sprintf("MRRun (method=%s, n_instruments=%d, beta=%s, p=%s, runtime=%.1fs)\n",
+              object@method, object@n_instruments,
+              ifelse(is.na(object@primary_beta), "NA", sprintf("%.4f", object@primary_beta)),
+              ifelse(is.na(object@primary_p), "NA", sprintf("%.3e", object@primary_p)),
+              object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "ColocRun", function(object) {
+  cat(sprintf("ColocRun (method=%s, headline=%s, candidate_snp=%s, runtime=%.1fs)\n",
+              object@method,
+              ifelse(is.na(object@headline), "NA", sprintf("%.3f", object@headline)),
+              ifelse(is.na(object@candidate_snp), "NA", as.character(object@candidate_snp)),
+              object@runtime_s))
   invisible(object)
 })
 
