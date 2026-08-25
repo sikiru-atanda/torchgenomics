@@ -316,6 +316,74 @@ tg_meta <- function(inputs, output = NULL,
   MetaRun$new_from_dict(d)
 }
 
+#' Two-sample Mendelian randomization.
+#'
+#' @param exposure Path to instrument sumstats TSV for the exposure trait
+#'   (columns chr/pos/snp/a1/a2/beta/se/p, harmonized to the same effect
+#'   allele).
+#' @param outcome Path to instrument sumstats TSV for the outcome trait,
+#'   on the same SNP panel as `exposure`.
+#' @param method `"ivw"`, `"egger"`, `"weighted_median"`, `"presso"`, or
+#'   `"all"` (runs the full sensitivity panel, one row per method).
+#' @param output Optional path to write the results TSV.
+#' @param n_boot,n_perm Bootstrap / permutation controls for
+#'   weighted-median and MR-PRESSO.
+#' @param seed RNG seed.
+#'
+#' @return An `MRRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_mr("exposure.tsv", "outcome.tsv", method = "all")
+#' }
+#' @export
+tg_mr <- function(exposure, outcome,
+                  method = c("ivw", "egger", "weighted_median", "presso", "all"),
+                  output = NULL, n_boot = 1000L, n_perm = 1000L, seed = 42L) {
+  method <- match.arg(method)
+  d <- bridge_call("mr", .compact(list(
+    exposure = .as_path(exposure), outcome = .as_path(outcome),
+    method = method, output = .as_path(output),
+    n_boot = as.integer(n_boot), n_perm = as.integer(n_perm),
+    seed = as.integer(seed))))
+  MRRun$new_from_dict(d)
+}
+
+#' Colocalization (pairwise Giambartolomei or N-trait hyprcoloc).
+#'
+#' @param sumstats For `method = "pairwise"`: a path to the first sumstats
+#'   TSV. For `method = "hyprcoloc"`: a character vector of >= 2 sumstats
+#'   paths.
+#' @param sumstats2 The second sumstats path for `method = "pairwise"`
+#'   (required there; must be `NULL` for hyprcoloc).
+#' @param method `"pairwise"` (Giambartolomei 2-trait, PP.H0-H4) or
+#'   `"hyprcoloc"` (N-trait).
+#' @param output Optional path to write a posteriors TSV.
+#' @param prior_1,prior_2,prior_12 Coloc priors, forwarded to the pairwise
+#'   method. For `method = "hyprcoloc"` only `prior_1` is forwarded
+#'   (hyprcoloc's own defaults apply to the rest); `prior_12` has no
+#'   hyprcoloc analogue and is ignored there.
+#' @param trait_names Optional trait labels, forwarded to hyprcoloc only.
+#'
+#' @return A `ColocRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_coloc("a.tsv", "b.tsv", method = "pairwise")
+#' r2 <- tg_coloc(c("a.tsv", "b.tsv", "c.tsv"), method = "hyprcoloc")
+#' }
+#' @export
+tg_coloc <- function(sumstats, sumstats2 = NULL,
+                     method = c("pairwise", "hyprcoloc"), output = NULL,
+                     prior_1 = 1e-4, prior_2 = 1e-4, prior_12 = 1e-5,
+                     trait_names = NULL) {
+  method <- match.arg(method)
+  d <- bridge_call("coloc", .compact(list(
+    sumstats = if (length(sumstats) > 1) as.character(sumstats) else .as_path(sumstats),
+    sumstats2 = .as_path(sumstats2), method = method, output = .as_path(output),
+    prior_1 = prior_1, prior_2 = prior_2, prior_12 = prior_12,
+    trait_names = trait_names)))
+  ColocRun$new_from_dict(d)
+}
+
 #' Fit polygenic-score weights.
 #'
 #' @param sumstats Path to GWAS sumstats.

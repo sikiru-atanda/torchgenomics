@@ -71,6 +71,10 @@ reference:
     - tg_iclass
     - tg_combine_gwas_twas
     - tg_twas_scan
+- title: "Post-GWAS: MR + coloc"
+  contents:
+    - tg_mr
+    - tg_coloc
 - title: "Causal mediation"
   contents:
     - tg_mediate
@@ -102,6 +106,8 @@ reference:
     - LDBlocksRun-class
     - ClumpRun-class
     - MetaRun-class
+    - MRRun-class
+    - ColocRun-class
     - PgsFitRun-class
     - PgsScoreRun-class
     - AnnotateRun-class
