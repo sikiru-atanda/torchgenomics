@@ -33,6 +33,7 @@ from .api import (
     # Result types (for type hints / isinstance)
     AnnotateRun,
     ClumpRun,
+    ColocRun,
     ConvertRun,
     GwasComparison,
     GwasResult,
@@ -49,6 +50,7 @@ from .api import (
     # Tier-1 functions (12 originals + lgebv)
     annotate_hits,
     clump,
+    coloc,
     convert,
     glm_scan,
     gwas,
@@ -72,6 +74,7 @@ __all__ = [
     # Tier-1 functions
     "annotate_hits",
     "clump",
+    "coloc",
     "convert",
     "glm_scan",
     "gwas",
@@ -91,6 +94,7 @@ __all__ = [
     # Result types
     "AnnotateRun",
     "ClumpRun",
+    "ColocRun",
     "ConvertRun",
     "GwasComparison",
     "GwasResult",
