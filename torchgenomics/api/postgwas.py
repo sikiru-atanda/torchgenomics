@@ -245,11 +245,21 @@ def mr(
                 "se": r.se,
                 "pval": r.p_value,
                 "n_instruments": r.n_instruments,
-                "egger_intercept": r.intercept,
-                "egger_intercept_p": r.intercept_p,
-                "n_outliers": r.n_outliers,
-                "beta_corrected": r.beta_corrected,
-                "pval_corrected": r.p_corrected,
+                "egger_intercept": (
+                    r.intercept if r.method == "egger" else float("nan")
+                ),
+                "egger_intercept_p": (
+                    r.intercept_p if r.method == "egger" else float("nan")
+                ),
+                "n_outliers": (
+                    r.n_outliers if r.method == "mr_presso" else float("nan")
+                ),
+                "beta_corrected": (
+                    r.beta_corrected if r.method == "mr_presso" else float("nan")
+                ),
+                "pval_corrected": (
+                    r.p_corrected if r.method == "mr_presso" else float("nan")
+                ),
             }
             for r in results
         ]
