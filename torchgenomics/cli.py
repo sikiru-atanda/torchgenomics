@@ -4326,10 +4326,20 @@ def _cmd_coloc(args: argparse.Namespace) -> int:
     from .api import coloc
 
     if args.method == "pairwise":
-        # pairwise: first --sumstats value + --sumstats2
-        ss = args.sumstats[0]
-        r = coloc(ss, args.sumstats2, method="pairwise", output=args.output,
-                  prior_1=args.prior_1, prior_2=args.prior_2, prior_12=args.prior_12)
+        # pairwise: first --sumstats value + --sumstats2. Reject extra
+        # --sumstats values rather than silently dropping them (use
+        # --method hyprcoloc for >2 traits).
+        if len(args.sumstats) > 1:
+            logger.error(
+                "coloc --method pairwise takes exactly one --sumstats plus "
+                "--sumstats2; got %d --sumstats values. Use --method hyprcoloc "
+                "for more than two traits.",
+                len(args.sumstats),
+            )
+            return 1
+        r = coloc(args.sumstats[0], args.sumstats2, method="pairwise",
+                  output=args.output, prior_1=args.prior_1,
+                  prior_2=args.prior_2, prior_12=args.prior_12)
     else:
         r = coloc(args.sumstats, method="hyprcoloc", output=args.output,
                   prior_1=args.prior_1)
