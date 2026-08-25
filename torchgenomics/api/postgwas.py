@@ -323,8 +323,6 @@ def coloc(
     -------
     ColocRun
     """
-    from pathlib import Path as _Path
-
     from ..postgwas import coloc_pairwise, hyprcoloc, load_sumstats
 
     m = str(method).lower()
@@ -369,7 +367,7 @@ def coloc(
                 )
             paths = (
                 list(sumstats)
-                if not isinstance(sumstats, (str, _Path))
+                if not isinstance(sumstats, (str, Path))
                 else [sumstats]
             )
             if len(paths) < 2:
