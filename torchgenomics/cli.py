@@ -97,6 +97,8 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_ldsc_rg_parser(subparsers)
     _add_meta_parser(subparsers)
     _add_clump_parser(subparsers)
+    _add_mr_parser(subparsers)
+    _add_coloc_parser(subparsers)
 
     # --- Polygenic scores (Phase 40) ---
     _add_pgs_fit_parser(subparsers)
@@ -166,6 +168,8 @@ def main(argv: list[str] | None = None) -> int:
         "ldsc-rg": _cmd_ldsc_rg,
         "meta": _cmd_meta,
         "clump": _cmd_clump,
+        "mr": _cmd_mr,
+        "coloc": _cmd_coloc,
         "pgs-fit": _cmd_pgs_fit,
         "pgs-score": _cmd_pgs_score,
         "annotate": _cmd_annotate,
@@ -4307,6 +4311,32 @@ def _cmd_clump(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_mr(args: argparse.Namespace) -> int:
+    """Two-sample Mendelian randomization (thin wrapper over api.mr)."""
+    from .api import mr
+
+    r = mr(args.exposure, args.outcome, method=args.method, output=args.output,
+           n_boot=args.n_boot, n_perm=args.n_perm, seed=args.seed)
+    print(r.summary())
+    return 0
+
+
+def _cmd_coloc(args: argparse.Namespace) -> int:
+    """Colocalization, pairwise or hyprcoloc (thin wrapper over api.coloc)."""
+    from .api import coloc
+
+    if args.method == "pairwise":
+        # pairwise: first --sumstats value + --sumstats2
+        ss = args.sumstats[0]
+        r = coloc(ss, args.sumstats2, method="pairwise", output=args.output,
+                  prior_1=args.prior_1, prior_2=args.prior_2, prior_12=args.prior_12)
+    else:
+        r = coloc(args.sumstats, method="hyprcoloc", output=args.output,
+                  prior_1=args.prior_1)
+    print(r.summary())
+    return 0
+
+
 def _run_pgs_fit(
     sumstats_path: str,
     ld_ref_path: str,
@@ -5502,6 +5532,30 @@ def _add_clump_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--p-threshold", type=float, default=5e-8, help="P-value threshold (default 5e-8)")
     p.add_argument("--window-kb", type=float, default=250.0, help="Window in kb (default 250)")
     p.add_argument("--output", default="torchgenomics_results")
+
+
+def _add_mr_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("mr", help="Two-sample Mendelian randomization.")
+    p.add_argument("--exposure", required=True, help="Exposure sumstats TSV.")
+    p.add_argument("--outcome", required=True, help="Outcome sumstats TSV.")
+    p.add_argument("--method", default="ivw",
+                   choices=["ivw", "egger", "weighted_median", "presso", "all"])
+    p.add_argument("--n-boot", type=int, default=1000)
+    p.add_argument("--n-perm", type=int, default=1000)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--output", default=None, help="Output results TSV.")
+
+
+def _add_coloc_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("coloc", help="Colocalization (pairwise / hyprcoloc).")
+    p.add_argument("--sumstats", required=True, nargs="+",
+                   help="One sumstats TSV (pairwise, with --sumstats2) or ≥2 (hyprcoloc).")
+    p.add_argument("--sumstats2", default=None, help="Second sumstats TSV (pairwise).")
+    p.add_argument("--method", default="pairwise", choices=["pairwise", "hyprcoloc"])
+    p.add_argument("--prior-1", type=float, default=1e-4)
+    p.add_argument("--prior-2", type=float, default=1e-4)
+    p.add_argument("--prior-12", type=float, default=1e-5)
+    p.add_argument("--output", default=None, help="Output posteriors TSV.")
 
 
 def _add_pgs_fit_parser(subparsers: argparse._SubParsersAction) -> None:

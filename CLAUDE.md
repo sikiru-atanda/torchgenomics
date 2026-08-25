@@ -99,7 +99,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 46 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 43 on 2026-06-17 with the addition of `gwas`/`recommend`/`models` — Task 8 of the friendly-API plan, sharing the same decision core as `torchgenomics.api.gwas`/`recommend`/`models`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
+- **CLI subcommand count**: 48 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 46 with the addition of `mr`/`coloc`, thin CLI wrappers over `torchgenomics.api.mr`/`api.coloc` sharing the same core as the Python API — no MCP tool was added for either, that remains 14). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
 
 ## Phase Index
 
@@ -354,4 +354,9 @@ torchgenomics gwas --phenotype pheno.txt --genotype data.bed --models lmm,farmcp
 torchgenomics gwas --phenotype pheno_multi.txt --genotype data.bed --models mvlmm --traits Y1,Y2,Y3  # multi-trait (Task 3)
 torchgenomics recommend --phenotype pheno.txt --genotype data.bed   # dry run: prints the model tg.gwas would pick, no scan
 torchgenomics models                                                # list every model alias `gwas --models` accepts
+
+# --- Mendelian randomization + colocalization (thin CLI wrappers over api.mr / api.coloc) ---
+torchgenomics mr --exposure exp.tsv --outcome out.tsv --method all --output mr.tsv
+torchgenomics coloc --sumstats a.tsv --sumstats2 b.tsv --method pairwise --output coloc.tsv
+torchgenomics coloc --sumstats a.tsv b.tsv c.tsv --method hyprcoloc --output hypr.tsv
 ```
