@@ -486,6 +486,60 @@ class MetaRun(_BaseRun):
         )
 
 
+@dataclass
+class MRRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.mr` — a Mendelian-randomization panel."""
+
+    method: str = ""  # "ivw" | "egger" | "weighted_median" | "presso" | "all"
+    n_instruments: int = 0
+    primary_beta: float | None = None
+    primary_p: float | None = None
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "mr"
+
+    def summary(self) -> str:
+        lines = [
+            f"MR ({self.method}) — {self.n_instruments} instruments",
+        ]
+        if self.primary_beta is not None:
+            lines.append(f"Causal estimate: beta={self.primary_beta:.4f} "
+                         f"p={self.primary_p:.3e}")
+        if not self.results.empty:
+            lines.append(self.results.to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
+@dataclass
+class ColocRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.coloc` — colocalization posteriors."""
+
+    method: str = ""  # "pairwise" | "hyprcoloc"
+    pp: dict = field(default_factory=dict)  # posterior probabilities
+    candidate_snp: int | None = None
+    headline: float | None = None  # PP.H4 (pairwise) or PP(all colocalize)
+    table: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "coloc"
+
+    def summary(self) -> str:
+        if self.method == "pairwise":
+            verdict = ("strong" if (self.headline or 0) >= 0.8 else
+                       "moderate" if (self.headline or 0) >= 0.5 else "weak")
+            lines = [
+                f"Colocalization (pairwise) — PP.H4={self.headline:.3f} "
+                f"({verdict} evidence of a shared causal variant)",
+                "  " + "  ".join(f"PP.{k.upper()}={v:.3f}" for k, v in self.pp.items()),
+            ]
+        else:
+            lines = [
+                f"Colocalization (hyprcoloc) — PP(all colocalize)={self.headline:.3f}",
+            ]
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
 # --- PGS tier ---------------------------------------------------------------
 
 
