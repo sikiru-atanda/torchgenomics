@@ -61,8 +61,14 @@ def test_api_smr_runs(tmp_path):
     assert isinstance(r, SMRRun)
     assert r.n_genes_tested == n_genes
     assert "gene_id" in r.results.columns
-    # SMR should genuinely detect the mediated genes (shared cis signal),
-    # not just count them — proves the integration runs end-to-end.
+    # With a real per-SNP p-value distribution and a shared cis signal, SMR
+    # produces genuine significant results (not the degenerate constant-p path
+    # where every SNP ties and nothing is selected). This verifies the wiring
+    # feeds real statistics through to a non-trivial SMR outcome.
+    # NOTE: postgwas.smr_heidi selects the probe SNP by a global argmin over
+    # the whole eQTL file (not per-gene cis-SNPs), so this does not assert
+    # per-gene discrimination — that limitation is tracked as a postgwas
+    # follow-up, out of scope for this wiring layer.
     assert r.n_significant_smr >= 1
     assert r.results["p_smr"].notna().any()
     assert (tmp_path / "smr.tsv").exists()
