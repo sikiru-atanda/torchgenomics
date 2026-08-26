@@ -83,7 +83,7 @@ def run_cli_subcommand(subcommand: str, **kwargs) -> CliRun:
             raise RuntimeError(
                 f"torchgenomics {subcommand} failed (exit {code}); check the "
                 f"arguments and input paths."
-            ) from None
+            ) from e
         except Exception as e:  # handler raised (bad path, bad data, ...)
             raise RuntimeError(
                 f"torchgenomics {subcommand} failed: {e}"
