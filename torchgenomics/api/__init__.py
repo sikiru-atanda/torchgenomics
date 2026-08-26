@@ -24,12 +24,18 @@ File-path inputs accept ``str`` or :class:`pathlib.Path`.
 """
 from __future__ import annotations
 
+# CLI bridge: run tier-2 CLI subcommands (bayes-scan, ldsc, mediate, ...)
+# programmatically for Python/R parity. See `__getattr__` below for the
+# module-level dispatch that exposes each subcommand as `api.<name>(...)`.
+from ._cli_bridge import run_cli_subcommand
+
 # Registry hook for MCP layer
 from ._decorator import registered_tools, tools_by_category
 
 # Result types (re-exported for type hints / isinstance checks)
 from ._results import (
     AnnotateRun,
+    CliRun,
     ClumpRun,
     ColocRun,
     ConvertRun,
@@ -97,7 +103,39 @@ __all__ = [
     "LGEBVResult",
     "AnnotateRun",
     "PlotResult",
+    "CliRun",
+    # CLI bridge (tier-2 subcommand parity — see `__getattr__` below)
+    "run_cli_subcommand",
     # MCP registry hooks
     "registered_tools",
     "tools_by_category",
 ]
+
+
+def __getattr__(name: str):
+    """Expose tier-2 CLI subcommands as api callables (Python/R parity).
+
+    Python's module ``__getattr__`` (PEP 562) only fires for names *not*
+    already resolvable as a module attribute, so this never shadows the
+    hand-crafted tier-1 functions imported above (``gwas``, ``mr``,
+    ``clump``, ...) or the result classes — those are found by normal
+    attribute lookup first and this function is never called for them.
+
+    For everything else, ``name`` (underscores) is compared against
+    :data:`torchgenomics._manifest._TIER_2_CLI_SUBCOMMANDS` (dashes) by
+    translating ``_`` -> ``-``. A match returns a callable —
+    ``functools.partial(run_cli_subcommand, dashed_name)`` — that runs that
+    subcommand's real CLI handler via :func:`run_cli_subcommand` and returns
+    a :class:`~torchgenomics.api.CliRun`. Anything that isn't a tier-2
+    subcommand name raises ``AttributeError``, exactly as an unrecognized
+    module attribute normally would (so ``hasattr``, ``getattr(..., default)``,
+    and star-imports keep their ordinary semantics).
+    """
+    from functools import partial
+
+    from .._manifest import _TIER_2_CLI_SUBCOMMANDS
+
+    dashed = name.replace("_", "-")
+    if dashed in _TIER_2_CLI_SUBCOMMANDS:
+        return partial(run_cli_subcommand, dashed)
+    raise AttributeError(f"module 'torchgenomics.api' has no attribute {name!r}")
