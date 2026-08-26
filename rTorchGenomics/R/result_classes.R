@@ -186,6 +186,46 @@ setClass("ColocRun",
   )
 )
 
+#' SMR + HEIDI result (gene expression -> GWAS mediation).
+#' @slot n_genes_tested Genes with a usable cis-eQTL top-SNP.
+#' @slot n_significant_smr Genes passing the SMR p-value threshold.
+#' @slot n_pass_heidi Genes passing both SMR and the HEIDI heterogeneity test.
+#' @slot results Tibble of per-gene SMR/HEIDI statistics.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("SMRRun",
+  contains = "_BaseRun",
+  representation(
+    n_genes_tested = "integer",
+    n_significant_smr = "integer",
+    n_pass_heidi = "integer",
+    results = "data.frame",
+    raw = "list"
+  )
+)
+
+#' Multi-ancestry MR meta-analysis (MR-MEGA) result.
+#' @slot method Meta-analysis method (always "mr_mega").
+#' @slot n_axes Number of MEGA axes of genetic variation used.
+#' @slot n_populations Number of input populations/studies.
+#' @slot n_snps Number of SNPs in the meta-analysis.
+#' @slot min_p_meta Smallest meta-analysis p-value observed.
+#' @slot results Tibble of per-SNP meta-analysis statistics.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("MRMegaRun",
+  contains = "_BaseRun",
+  representation(
+    method = "character",
+    n_axes = "integer",
+    n_populations = "integer",
+    n_snps = "integer",
+    min_p_meta = "numeric",
+    results = "data.frame",
+    raw = "list"
+  )
+)
+
 #' PGS fit result.
 #' @slot method PGS method (ct / ldpred2-* / prscs).
 #' @slot n_variants_input Input variants.
@@ -600,6 +640,53 @@ ColocRun <- list(
   }
 )
 
+#' Constructor for the SMRRun S4 class.
+#'
+#' Wrapper list exposing `$SMRRun$new_from_dict(d)` for building an instance
+#' from a JSON-shaped list (the dict returned by `py_to_r(to_dict())`).
+#' @name SMRRun
+#' @keywords internal
+#' @export
+SMRRun <- list(
+  new_from_dict = function(d) {
+    new("SMRRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      n_genes_tested = .as_int(d$n_genes_tested),
+      n_significant_smr = .as_int(d$n_significant_smr),
+      n_pass_heidi = .as_int(d$n_pass_heidi),
+      results = .tibble_from_list_of_dicts(d$results),
+      raw = d
+    )
+  }
+)
+
+#' Constructor for the MRMegaRun S4 class.
+#'
+#' Wrapper list exposing `$MRMegaRun$new_from_dict(d)` for building an
+#' instance from a JSON-shaped list (the dict returned by
+#' `py_to_r(to_dict())`).
+#' @name MRMegaRun
+#' @keywords internal
+#' @export
+MRMegaRun <- list(
+  new_from_dict = function(d) {
+    new("MRMegaRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      method = .as_chr(d$method),
+      n_axes = .as_int(d$n_axes),
+      n_populations = .as_int(d$n_populations),
+      n_snps = .as_int(d$n_snps),
+      min_p_meta = .as_num(d$min_p_meta),
+      results = .tibble_from_list_of_dicts(d$results),
+      raw = d
+    )
+  }
+)
+
 #' Constructor for the PgsFitRun S4 class.
 #'
 #' Wrapper list exposing `$PgsFitRun$new_from_dict(d)` for building an instance
@@ -882,6 +969,21 @@ setMethod("show", "ColocRun", function(object) {
               object@method,
               ifelse(is.na(object@headline), "NA", sprintf("%.3f", object@headline)),
               ifelse(is.na(object@candidate_snp), "NA", as.character(object@candidate_snp)),
+              object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "SMRRun", function(object) {
+  cat(sprintf("SMRRun (n_genes=%d, n_sig_smr=%d, n_pass_heidi=%d, runtime=%.1fs)\n",
+              object@n_genes_tested, object@n_significant_smr,
+              object@n_pass_heidi, object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "MRMegaRun", function(object) {
+  cat(sprintf("MRMegaRun (n_axes=%d, n_pops=%d, n_snps=%d, min_p=%s, runtime=%.1fs)\n",
+              object@n_axes, object@n_populations, object@n_snps,
+              ifelse(is.na(object@min_p_meta), "NA", sprintf("%.3e", object@min_p_meta)),
               object@runtime_s))
   invisible(object)
 })
