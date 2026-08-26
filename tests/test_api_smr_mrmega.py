@@ -37,8 +37,13 @@ def _write_smr_fixture(tmp_path, seed=0, n_snp=30, n_genes=3):
             i = g * per + j
             z_e = 6.0 if i == causal else rng.normal()
             z_g = 5.0 if i == causal else rng.normal()   # shared signal at the causal cis-SNP
-            gwas_rows.append({**_row(i), "beta": z_g * 0.05, "se": 0.05, "p": 2 * (1 - 0.9999)})
-            eqtl_rows.append({**_row(i), "beta": z_e * 0.05, "se": 0.05, "p": 2 * (1 - 0.9999)})
+            # Real per-SNP p-values (not a constant) so SMR's top-eQTL probe
+            # selection can pick the causal cis-SNP and actually detect the gene.
+            from scipy.stats import norm
+            gwas_rows.append({**_row(i), "beta": z_g * 0.05, "se": 0.05,
+                              "p": float(2 * norm.sf(abs(z_g)))})
+            eqtl_rows.append({**_row(i), "beta": z_e * 0.05, "se": 0.05,
+                              "p": float(2 * norm.sf(abs(z_e)))})
             map_rows.append({"gene": f"gene{g}", "snp": f"rs{i}"})
     import pandas as pd
     gwas = tmp_path / "gwas.tsv"; eqtl = tmp_path / "eqtl.tsv"; gmap = tmp_path / "map.tsv"
@@ -56,6 +61,10 @@ def test_api_smr_runs(tmp_path):
     assert isinstance(r, SMRRun)
     assert r.n_genes_tested == n_genes
     assert "gene_id" in r.results.columns
+    # SMR should genuinely detect the mediated genes (shared cis signal),
+    # not just count them — proves the integration runs end-to-end.
+    assert r.n_significant_smr >= 1
+    assert r.results["p_smr"].notna().any()
     assert (tmp_path / "smr.tsv").exists()
 
 
