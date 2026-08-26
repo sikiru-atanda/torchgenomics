@@ -36,3 +36,27 @@ def test_run_cli_subcommand_friendly_error_on_failure():
     with pytest.raises(RuntimeError) as e:
         run_cli_subcommand("lmm-scan", genotype="/no/such.bed", phenotype="/no/such.txt")
     assert "lmm-scan" in str(e.value)   # friendly, names the subcommand; not a SystemExit
+
+
+def test_api_tier2_wrapper_runs_end_to_end(tmp_path):
+    """The api CLI-runner reachable via __getattr__ actually runs a tier-2
+    scan to completion and reports the output file in the CliRun.
+
+    Uses a single-trait phenotype (the shipped fixture has two traits Y1/Y2;
+    single-trait scan models need one) and farmcpu-scan, which writes the
+    standard ``<output>.assoc.tsv`` the CliRun output-file collector recognizes.
+    """
+    import pandas as pd
+    import torchgenomics.api as a
+    from torchgenomics.api import CliRun
+
+    bed, pheno = _tiny_bed_fixture()
+    ph = pd.read_csv(pheno, sep="\t")
+    single = tmp_path / "pheno1.txt"
+    ph[[ph.columns[0], "Y1"]].to_csv(single, sep="\t", index=False)
+
+    out = tmp_path / "farmcpu_out"
+    r = a.farmcpu_scan(genotype=bed, phenotype=str(single), output=str(out))
+    assert isinstance(r, CliRun)
+    assert r.command == "farmcpu-scan" and r.exit_code == 0
+    assert "tsv" in r.output_files          # <output>.assoc.tsv captured
