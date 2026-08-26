@@ -5,8 +5,9 @@ lmm-scan, mvlmm-scan, poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan,
 bayes-scan-rss, met-scan, farmcpu-scan, blink-scan, threshold-scan,
 family-scan, conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan,
 lro-scan, glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan,
-ld-blocks, ldsc, ldsc-rg, meta, clump, pgs-fit, pgs-score, annotate,
-mediate, mediate-scan, pipeline, gwas, recommend, models.
+ld-blocks, ldsc, ldsc-rg, meta, clump, mr, coloc, smr, mr-mega, pgs-fit,
+pgs-score, annotate, mediate, mediate-scan, pipeline, gwas, recommend,
+models.
 
 ``gwas`` / ``recommend`` / ``models`` (Task 8, friendly API) share the same
 decision core as the Python functions ``torchgenomics.api.gwas`` /
@@ -99,6 +100,8 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_clump_parser(subparsers)
     _add_mr_parser(subparsers)
     _add_coloc_parser(subparsers)
+    _add_smr_parser(subparsers)
+    _add_mr_mega_parser(subparsers)
 
     # --- Polygenic scores (Phase 40) ---
     _add_pgs_fit_parser(subparsers)
@@ -170,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
         "clump": _cmd_clump,
         "mr": _cmd_mr,
         "coloc": _cmd_coloc,
+        "smr": _cmd_smr,
+        "mr-mega": _cmd_mr_mega,
         "pgs-fit": _cmd_pgs_fit,
         "pgs-score": _cmd_pgs_score,
         "annotate": _cmd_annotate,
@@ -4347,6 +4352,27 @@ def _cmd_coloc(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_smr(args: argparse.Namespace) -> int:
+    """SMR + HEIDI (gene expression -> GWAS mediation; thin wrapper over api.smr)."""
+    from .api import smr
+
+    r = smr(args.gwas, args.eqtl, args.gene_map, output=args.output,
+            eqtl_p_threshold=args.eqtl_p_threshold, smr_p_threshold=args.smr_p_threshold,
+            heidi_p_threshold=args.heidi_p_threshold, heidi_max_snps=args.heidi_max_snps)
+    print(r.summary())
+    return 0
+
+
+def _cmd_mr_mega(args: argparse.Namespace) -> int:
+    """Multi-ancestry MR meta-analysis (thin wrapper over api.mr_mega)."""
+    from .api import mr_mega
+
+    r = mr_mega(args.sumstats, output=args.output, n_axes=args.n_axes,
+                random_effects=args.random_effects)
+    print(r.summary())
+    return 0
+
+
 def _run_pgs_fit(
     sumstats_path: str,
     ld_ref_path: str,
@@ -5566,6 +5592,28 @@ def _add_coloc_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--prior-2", type=float, default=1e-4)
     p.add_argument("--prior-12", type=float, default=1e-5)
     p.add_argument("--output", default=None, help="Output posteriors TSV.")
+
+
+def _add_smr_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("smr", help="SMR + HEIDI (gene expression -> GWAS mediation).")
+    p.add_argument("--gwas", required=True, help="GWAS sumstats TSV.")
+    p.add_argument("--eqtl", required=True, help="eQTL sumstats TSV (all cis-SNPs).")
+    p.add_argument("--gene-map", required=True,
+                   help="Long-format TSV with gene,snp columns (one row per cis pair).")
+    p.add_argument("--eqtl-p-threshold", type=float, default=5e-8)
+    p.add_argument("--smr-p-threshold", type=float, default=0.05)
+    p.add_argument("--heidi-p-threshold", type=float, default=0.05)
+    p.add_argument("--heidi-max-snps", type=int, default=20)
+    p.add_argument("--output", default=None, help="Output per-gene results TSV.")
+
+
+def _add_mr_mega_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("mr-mega", help="Multi-ancestry MR meta-analysis (MR-MEGA).")
+    p.add_argument("--sumstats", required=True, nargs="+",
+                   help="One sumstats TSV per ancestry (>= n_axes + 2).")
+    p.add_argument("--n-axes", type=int, default=4)
+    p.add_argument("--random-effects", action="store_true", default=False)
+    p.add_argument("--output", default=None, help="Output per-SNP results TSV.")
 
 
 def _add_pgs_fit_parser(subparsers: argparse._SubParsersAction) -> None:
