@@ -99,7 +99,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 48 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 46 with the addition of `mr`/`coloc`, thin CLI wrappers over `torchgenomics.api.mr`/`api.coloc` sharing the same core as the Python API — no MCP tool was added for either, that remains 14). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
+- **CLI subcommand count**: 50 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 48 with the addition of `smr`/`mr-mega`, thin CLI wrappers over `torchgenomics.api.smr`/`api.mr_mega` sharing the same core as the Python API — no MCP tool was added for either, that remains 14; prior to that, up from 46 with `mr`/`coloc`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
 
 ## Phase Index
 
@@ -359,4 +359,8 @@ torchgenomics models                                                # list every
 torchgenomics mr --exposure exp.tsv --outcome out.tsv --method all --output mr.tsv
 torchgenomics coloc --sumstats a.tsv --sumstats2 b.tsv --method pairwise --output coloc.tsv
 torchgenomics coloc --sumstats a.tsv b.tsv c.tsv --method hyprcoloc --output hypr.tsv
+
+# --- SMR/HEIDI + MR-MEGA (thin CLI wrappers over api.smr / api.mr_mega) ---
+torchgenomics smr --gwas gwas.tsv --eqtl eqtl.tsv --gene-map cis_map.tsv --output smr.tsv
+torchgenomics mr-mega --sumstats pop1.tsv pop2.tsv pop3.tsv --n-axes 1 --output mrmega.tsv
 ```
