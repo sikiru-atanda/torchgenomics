@@ -69,7 +69,7 @@ tg_mklmm_scan(
 \item{grm_method}{GRM method for additive kernel.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{mklmm-scan} CLI subcommand.

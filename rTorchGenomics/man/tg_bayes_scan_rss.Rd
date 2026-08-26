@@ -42,7 +42,7 @@ tg_bayes_scan_rss(
 \item{threads}{Number of CPU threads for torch ops (default 4).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{bayes-scan-rss} CLI subcommand.

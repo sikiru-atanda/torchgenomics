@@ -78,7 +78,7 @@ tg_threshold_scan(
 \item{em_warmup}{Number of EM warm-up iterations before NR (default: 5).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{threshold-scan} CLI subcommand.

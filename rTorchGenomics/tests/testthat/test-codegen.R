@@ -47,5 +47,5 @@ test_that("an auto-generated wrapper dispatches via bridge_call", {
     if (a$required) args[[a$name]] <- "dummy"
   }
   r <- do.call(fn, args)
-  expect_s4_class(r, "GwasResult")
+  expect_s4_class(r, "CliRun")
 })

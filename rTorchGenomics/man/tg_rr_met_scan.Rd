@@ -90,7 +90,7 @@ tg_rr_met_scan(
 \item{eval_times}{Comma-separated raw time values for per-(time, env) χ²(1) reconstruction. Produces an extra .rr_met_at_t.tsv output.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{rr-met-scan} CLI subcommand.

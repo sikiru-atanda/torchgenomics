@@ -39,7 +39,7 @@ tg_dosage_call(
 \item{keep_tmpdir}{Skip tempdir cleanup (debug aid).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{dosage-call} CLI subcommand.

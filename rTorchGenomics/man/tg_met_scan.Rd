@@ -75,7 +75,7 @@ tg_met_scan(
 \item{kernel_files}{Additional kernel matrix files (.npy or .pt). Used alongside the computed additive GRM for multi-kernel MET.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{met-scan} CLI subcommand.

@@ -81,7 +81,7 @@ tg_survival_scan(
 \item{ties}{Tie-handling method (default: breslow).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{survival-scan} CLI subcommand.

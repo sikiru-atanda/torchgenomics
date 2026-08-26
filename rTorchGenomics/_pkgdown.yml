@@ -106,6 +106,7 @@ reference:
     - LDBlocksRun-class
     - ClumpRun-class
     - MetaRun-class
+    - CliRun-class
     - MRRun-class
     - ColocRun-class
     - PgsFitRun-class

@@ -81,7 +81,7 @@ tg_me_glmm_scan(
 \item{pql_max_iter}{Max PQL outer iterations (default: 30).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{me-glmm-scan} CLI subcommand.

@@ -66,7 +66,7 @@ tg_gxe_scan(
 \item{gxe_model}{GxE model: 'het' (single-trait HetLMM, default) or 'multi' (multi-trait GxELMM).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{gxe-scan} CLI subcommand.
