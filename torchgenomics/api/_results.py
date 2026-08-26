@@ -779,6 +779,30 @@ class LGEBVResult(_BaseRun):
         return "\n".join(lines)
 
 
+@dataclass
+class CliRun(_BaseRun):
+    """Result of running a tier-2 CLI subcommand via the api CLI-runner bridge.
+
+    These commands (e.g. ``bayes-scan``, ``ldsc``, ``mediate``) are exposed for
+    Python/R parity by invoking the real CLI subcommand programmatically. The
+    command does its own file I/O; this object reports what ran, its exit code,
+    and any output files it wrote — not a rich per-command typed result.
+    """
+
+    command: str = ""
+    exit_code: int = 0
+    args: dict = field(default_factory=dict)
+
+    _kind: ClassVar[str] = "cli"
+
+    def summary(self) -> str:
+        lines = [f"CLI '{self.command}' — exit {self.exit_code}"]
+        for label, path in self.output_files.items():
+            lines.append(f"  {label}: {path}")
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
 # --- Friendly-API alias ------------------------------------------------------
 
 #: Result object returned by the friendly-API entry point ``tg.gwas(...)``.
