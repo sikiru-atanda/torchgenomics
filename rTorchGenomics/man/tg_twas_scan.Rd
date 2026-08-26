@@ -48,7 +48,7 @@ tg_twas_scan(
 \item{peer_factors}{Number of PEER factors to regress out before testing (requires R + peer).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{twas-scan} CLI subcommand.

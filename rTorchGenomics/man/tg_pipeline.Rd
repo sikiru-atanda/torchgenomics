@@ -2,7 +2,7 @@
 % Please edit documentation in R/api_auto.R
 \name{tg_pipeline}
 \alias{tg_pipeline}
-\title{Full pipeline: impute -> scan -> correct}
+\title{Full pipeline: impute -> scan -> correct (see \code{gwas} for the newer friendly single-call entry point)}
 \usage{
 tg_pipeline(
   genotype,
@@ -96,7 +96,7 @@ tg_pipeline(
 \item{sparse_threshold}{Relatedness threshold for sparse GRM (default: 0.05).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{pipeline} CLI subcommand.

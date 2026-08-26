@@ -75,7 +75,7 @@ tg_set_scan(
 \item{ploidy}{Ploidy level (default 2 for diploid).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{set-scan} CLI subcommand.

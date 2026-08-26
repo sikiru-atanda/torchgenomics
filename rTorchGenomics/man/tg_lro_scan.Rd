@@ -63,7 +63,7 @@ tg_lro_scan(
 \item{ld_method}{LD block detection method (default: r2).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{lro-scan} CLI subcommand.

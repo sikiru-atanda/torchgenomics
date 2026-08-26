@@ -33,7 +33,7 @@ tg_combine_gwas_twas(
 \item{output}{Output TSV path.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{combine-gwas-twas} CLI subcommand.

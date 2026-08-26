@@ -66,7 +66,7 @@ tg_mtmet_scan(
 \item{vg_structure}{Vg structure: 'separable' (default), 'unstructured', or 'fa(k)'.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{mtmet-scan} CLI subcommand.

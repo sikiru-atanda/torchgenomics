@@ -48,7 +48,7 @@ tg_mediate_scan(
 \item{output}{Output prefix (.tsv + .top.tsv).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{mediate-scan} CLI subcommand.

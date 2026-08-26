@@ -78,7 +78,7 @@ tg_farmcpu_scan(
 \item{maf_threshold}{Internal MAF threshold for QTN candidacy (default: 0.0).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{farmcpu-scan} CLI subcommand.

@@ -322,6 +322,22 @@ setClass("GwasResult",
   )
 )
 
+#' Generic CLI-run result (auto-generated tier-2 wrappers).
+#' @slot command Name of the CLI subcommand invoked.
+#' @slot exit_code Process exit code (0 = success).
+#' @slot args Named list of arguments passed to the subcommand.
+#' @slot raw Full result dict (for accessors not covered by the slots).
+#' @export
+setClass("CliRun",
+  contains = "_BaseRun",
+  representation(
+    command = "character",
+    exit_code = "integer",
+    args = "list",
+    raw = "list"
+  )
+)
+
 #' Local Genomic Estimated Breeding Values per haplo-block.
 #'
 #' Returned by [tg_lgebv()]. Holds per-block summed rrBLUP marker
@@ -743,6 +759,28 @@ GwasResult <- list(
   }
 )
 
+#' Constructor for the CliRun S4 class.
+#'
+#' Wrapper list exposing `$CliRun$new_from_dict(d, command)` for building
+#' an instance from a JSON-shaped list (the dict returned by
+#' `bridge_call()` for auto-generated tier-2 CLI wrappers).
+#' @name CliRun
+#' @keywords internal
+#' @export
+CliRun <- list(
+  new_from_dict = function(d, command = NULL) {
+    new("CliRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files %||% list()),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      command = .as_chr(d$command %||% command %||% ""),
+      exit_code = .as_int(d$exit_code %||% 0L),
+      args = .as_list(d$args %||% list()),
+      raw = d
+    )
+  }
+)
+
 # --- show methods ------------------------------------------------------
 
 setMethod("show", "ScanRun", function(object) {
@@ -798,6 +836,13 @@ setMethod("show", "GwasResult", function(object) {
     print(utils::head(object@top_hits, 10L))
   }
   cat(sprintf("  Runtime: %.1fs\n", object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "CliRun", function(object) {
+  cat(sprintf("CliRun (command=%s, exit_code=%d, n_output_files=%d, runtime=%.1fs)\n",
+              object@command, object@exit_code, length(object@output_files),
+              object@runtime_s))
   invisible(object)
 })
 

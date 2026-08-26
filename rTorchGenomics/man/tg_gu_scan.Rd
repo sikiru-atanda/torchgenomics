@@ -66,7 +66,7 @@ tg_gu_scan(
 \item{probs}{Path to a Phase 55 \if{html}{\out{<prefix>}}.probs.pt from \verb{torchgenomics dosage-call}. When given, --genotype and --dosage-var are derived internally via expected_dosage / dosage_variance (ploidy read from the sibling \if{html}{\out{<prefix>}}.meta.json).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{gu-scan} CLI subcommand.

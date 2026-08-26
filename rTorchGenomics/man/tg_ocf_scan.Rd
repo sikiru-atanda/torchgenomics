@@ -72,7 +72,7 @@ tg_ocf_scan(
 \item{no_genotype_projection}{Skip projecting genotypes onto covariate space.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{ocf-scan} CLI subcommand.

@@ -34,7 +34,7 @@
 #' @param ld_threshold r^2 threshold for LD grouping in credible sets (CAVI only, default 0.5).
 #' @param ploidy Ploidy level (default 2 for diploid).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_bayes_scan <- function(genotype,
                               phenotype,
@@ -89,7 +89,7 @@ tg_bayes_scan <- function(genotype,
     ploidy = if (is.null(ploidy)) NULL else as.integer(ploidy)
   ))
   d <- bridge_call("bayes_scan", args)
-  GwasResult$new_from_dict(d, command = "bayes_scan")
+  CliRun$new_from_dict(d, command = "bayes_scan")
 }
 
 #' SuSiE-RSS fine-mapping on summary statistics + LD reference
@@ -108,7 +108,7 @@ tg_bayes_scan <- function(genotype,
 #' @param output Output TSV path.
 #' @param threads Number of CPU threads for torch ops (default 4).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_bayes_scan_rss <- function(sumstats,
                               ld_ref = NULL,
@@ -135,7 +135,7 @@ tg_bayes_scan_rss <- function(sumstats,
     threads = if (is.null(threads)) NULL else as.integer(threads)
   ))
   d <- bridge_call("bayes_scan_rss", args)
-  GwasResult$new_from_dict(d, command = "bayes_scan_rss")
+  CliRun$new_from_dict(d, command = "bayes_scan_rss")
 }
 
 #' BLINK multi-locus GWAS via LD-clustering and BIC selection
@@ -166,7 +166,7 @@ tg_bayes_scan_rss <- function(sumstats,
 #' @param method_sub P-value substitution method (default: reward).
 #' @param maf_threshold Internal MAF threshold for QTN candidacy (default: 0.0).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_blink_scan <- function(genotype,
                               phenotype,
@@ -217,7 +217,7 @@ tg_blink_scan <- function(genotype,
     maf_threshold = if (is.null(maf_threshold)) NULL else as.numeric(maf_threshold)
   ))
   d <- bridge_call("blink_scan", args)
-  GwasResult$new_from_dict(d, command = "blink_scan")
+  CliRun$new_from_dict(d, command = "blink_scan")
 }
 
 #' Combine gene-level GWAS evidence with gene-level TWAS evidence using a chosen p-value combination method.
@@ -233,7 +233,7 @@ tg_blink_scan <- function(genotype,
 #' @param p_threshold Significance threshold after correction.
 #' @param output Output TSV path.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_combine_gwas_twas <- function(gwas_sumstats,
                               twas_results,
@@ -254,7 +254,7 @@ tg_combine_gwas_twas <- function(gwas_sumstats,
     output = .as_path(output)
   ))
   d <- bridge_call("combine_gwas_twas", args)
-  GwasResult$new_from_dict(d, command = "combine_gwas_twas")
+  CliRun$new_from_dict(d, command = "combine_gwas_twas")
 }
 
 #' LD-conditional GWAS with block-aware conditioning and persistence metrics
@@ -284,7 +284,7 @@ tg_combine_gwas_twas <- function(gwas_sumstats,
 #' @param sig_threshold Significance threshold for persistence evaluation (default: 5e-8).
 #' @param max_conditioning Max lead SNPs to condition on per block (default: 5).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_conditional_scan <- function(genotype,
                               phenotype,
@@ -333,7 +333,7 @@ tg_conditional_scan <- function(genotype,
     max_conditioning = if (is.null(max_conditioning)) NULL else as.integer(max_conditioning)
   ))
   d <- bridge_call("conditional_scan", args)
-  GwasResult$new_from_dict(d, command = "conditional_scan")
+  CliRun$new_from_dict(d, command = "conditional_scan")
 }
 
 #' Call polyploid allele dosages from VCF read counts via updog
@@ -351,7 +351,7 @@ tg_conditional_scan <- function(genotype,
 #' @param n_cores Parallelism passed to updog::multidog (default: 1).
 #' @param keep_tmpdir Skip tempdir cleanup (debug aid).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_dosage_call <- function(vcf,
                               output,
@@ -376,7 +376,7 @@ tg_dosage_call <- function(vcf,
     keep_tmpdir = if (is.null(keep_tmpdir)) NULL else as.logical(keep_tmpdir)
   ))
   d <- bridge_call("dosage_call", args)
-  GwasResult$new_from_dict(d, command = "dosage_call")
+  CliRun$new_from_dict(d, command = "dosage_call")
 }
 
 #' Within-family GWAS with confounding diagnostics (Young et al. 2022)
@@ -404,7 +404,7 @@ tg_dosage_call <- function(vcf,
 #' @param min_family_size Minimum members per family for within-family scan (default: 2).
 #' @param confound_threshold Attenuation deviation threshold for confounding flag (default: 0.5).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_family_scan <- function(genotype,
                               phenotype,
@@ -449,7 +449,7 @@ tg_family_scan <- function(genotype,
     confound_threshold = if (is.null(confound_threshold)) NULL else as.numeric(confound_threshold)
   ))
   d <- bridge_call("family_scan", args)
-  GwasResult$new_from_dict(d, command = "family_scan")
+  CliRun$new_from_dict(d, command = "family_scan")
 }
 
 #' FarmCPU multi-locus GWAS via iterative FEM/REM
@@ -480,7 +480,7 @@ tg_family_scan <- function(genotype,
 #' @param method_sub P-value substitution method (default: reward).
 #' @param maf_threshold Internal MAF threshold for QTN candidacy (default: 0.0).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_farmcpu_scan <- function(genotype,
                               phenotype,
@@ -531,7 +531,7 @@ tg_farmcpu_scan <- function(genotype,
     maf_threshold = if (is.null(maf_threshold)) NULL else as.numeric(maf_threshold)
   ))
   d <- bridge_call("farmcpu_scan", args)
-  GwasResult$new_from_dict(d, command = "farmcpu_scan")
+  CliRun$new_from_dict(d, command = "farmcpu_scan")
 }
 
 #' GLMM association scan (binary/ordinal with random effects, SAIGE-style PQL)
@@ -561,7 +561,7 @@ tg_farmcpu_scan <- function(genotype,
 #' @param no_spa Disable SPA tail correction (binary only).
 #' @param pql_max_iter Max PQL outer iterations (default: 30).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_glmm_scan <- function(genotype,
                               phenotype,
@@ -610,7 +610,7 @@ tg_glmm_scan <- function(genotype,
     pql_max_iter = if (is.null(pql_max_iter)) NULL else as.integer(pql_max_iter)
   ))
   d <- bridge_call("glmm_scan", args)
-  GwasResult$new_from_dict(d, command = "glmm_scan")
+  CliRun$new_from_dict(d, command = "glmm_scan")
 }
 
 #' Genotype-Uncertainty LMM scan (dosage-variance corrected)
@@ -637,7 +637,7 @@ tg_glmm_scan <- function(genotype,
 #' @param dosage_var Path to dosage variance file (.pt or .npy, shape n×m).
 #' @param probs Path to a Phase 55 <prefix>.probs.pt from `torchgenomics dosage-call`. When given, --genotype and --dosage-var are derived internally via expected_dosage / dosage_variance (ploidy read from the sibling <prefix>.meta.json).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_gu_scan <- function(genotype = NULL,
                               phenotype,
@@ -680,7 +680,7 @@ tg_gu_scan <- function(genotype = NULL,
     probs = .as_path(probs)
   ))
   d <- bridge_call("gu_scan", args)
-  GwasResult$new_from_dict(d, command = "gu_scan")
+  CliRun$new_from_dict(d, command = "gu_scan")
 }
 
 #' Gene-environment interaction LMM scan
@@ -707,7 +707,7 @@ tg_gu_scan <- function(genotype = NULL,
 #' @param env Environment variable file (TSV: SAMPLE, ENV).
 #' @param gxe_model GxE model: 'het' (single-trait HetLMM, default) or 'multi' (multi-trait GxELMM).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_gxe_scan <- function(genotype,
                               phenotype,
@@ -750,7 +750,7 @@ tg_gxe_scan <- function(genotype,
     gxe_model = if (is.null(gxe_model)) NULL else match.arg(gxe_model, c("het", "multi"))
   ))
   d <- bridge_call("gxe_scan", args)
-  GwasResult$new_from_dict(d, command = "gxe_scan")
+  CliRun$new_from_dict(d, command = "gxe_scan")
 }
 
 #' Knockoff FDR-controlled GWAS (Sesia et al. 2020)
@@ -780,7 +780,7 @@ tg_gxe_scan <- function(genotype,
 #' @param aggregation Block importance aggregation (default: max_stat).
 #' @param seed Random seed for knockoff generation.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_knockoff_scan <- function(genotype,
                               phenotype,
@@ -829,7 +829,7 @@ tg_knockoff_scan <- function(genotype,
     seed = if (is.null(seed)) NULL else as.integer(seed)
   ))
   d <- bridge_call("knockoff_scan", args)
-  GwasResult$new_from_dict(d, command = "knockoff_scan")
+  CliRun$new_from_dict(d, command = "knockoff_scan")
 }
 
 #' LDSC SNP heritability estimation
@@ -842,7 +842,7 @@ tg_knockoff_scan <- function(genotype,
 #' @param n Sample size (if not in sumstats).
 #' @param output argparse-derived str parameter.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_ldsc <- function(sumstats,
                               genotype,
@@ -857,7 +857,7 @@ tg_ldsc <- function(sumstats,
     output = .as_path(output)
   ))
   d <- bridge_call("ldsc", args)
-  GwasResult$new_from_dict(d, command = "ldsc")
+  CliRun$new_from_dict(d, command = "ldsc")
 }
 
 #' LDSC genetic correlation
@@ -872,7 +872,7 @@ tg_ldsc <- function(sumstats,
 #' @param n2 Sample size trait 2.
 #' @param output argparse-derived str parameter.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_ldsc_rg <- function(sumstats1,
                               sumstats2,
@@ -891,7 +891,7 @@ tg_ldsc_rg <- function(sumstats1,
     output = .as_path(output)
   ))
   d <- bridge_call("ldsc_rg", args)
-  GwasResult$new_from_dict(d, command = "ldsc_rg")
+  CliRun$new_from_dict(d, command = "ldsc_rg")
 }
 
 #' Leave-Region-Out LMM scan (block-level LOCO)
@@ -917,7 +917,7 @@ tg_ldsc_rg <- function(sumstats1,
 #' @param traits Comma-separated trait column names from phenotype file. For univariate models, selects the specified trait(s). For multivariate models, all traits are analyzed jointly.
 #' @param ld_method LD block detection method (default: r2).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_lro_scan <- function(genotype,
                               phenotype,
@@ -958,7 +958,7 @@ tg_lro_scan <- function(genotype,
     ld_method = if (is.null(ld_method)) NULL else match.arg(ld_method, c("gabriel", "four_gamete", "spine", "r2", "gwas_aligned", "graphical", "changepoint", "big_ld", "cc_graph", "dp_optimize"))
   ))
   d <- bridge_call("lro_scan", args)
-  GwasResult$new_from_dict(d, command = "lro_scan")
+  CliRun$new_from_dict(d, command = "lro_scan")
 }
 
 #' Multi-environment GLMM scan (binary/ordinal across environments)
@@ -990,7 +990,7 @@ tg_lro_scan <- function(genotype,
 #' @param no_spa Disable SPA for per-env binary marginals.
 #' @param pql_max_iter Max PQL outer iterations (default: 30).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_me_glmm_scan <- function(genotype,
                               phenotype,
@@ -1043,7 +1043,7 @@ tg_me_glmm_scan <- function(genotype,
     pql_max_iter = if (is.null(pql_max_iter)) NULL else as.integer(pql_max_iter)
   ))
   d <- bridge_call("me_glmm_scan", args)
-  GwasResult$new_from_dict(d, command = "me_glmm_scan")
+  CliRun$new_from_dict(d, command = "me_glmm_scan")
 }
 
 #' GRM-corrected single-triple causal mediation (SNP -> M -> Y)
@@ -1062,7 +1062,7 @@ tg_me_glmm_scan <- function(genotype,
 #' @param no_sensitivity Skip Imai rho.
 #' @param output Output JSON path.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_mediate <- function(y,
                               snp,
@@ -1089,7 +1089,7 @@ tg_mediate <- function(y,
     output = .as_path(output)
   ))
   d <- bridge_call("mediate", args)
-  GwasResult$new_from_dict(d, command = "mediate")
+  CliRun$new_from_dict(d, command = "mediate")
 }
 
 #' Genome x molecular-feature mediation scan with cis-window filtering
@@ -1110,7 +1110,7 @@ tg_mediate <- function(y,
 #' @param seed argparse-derived int parameter.
 #' @param output Output prefix (.tsv + .top.tsv).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_mediate_scan <- function(y,
                               genotype,
@@ -1141,7 +1141,7 @@ tg_mediate_scan <- function(y,
     output = .as_path(output)
   ))
   d <- bridge_call("mediate_scan", args)
-  GwasResult$new_from_dict(d, command = "mediate_scan")
+  CliRun$new_from_dict(d, command = "mediate_scan")
 }
 
 #' Multi-environment trial (MET) GWAS: stable vs environment-contingent effects
@@ -1171,7 +1171,7 @@ tg_mediate_scan <- function(y,
 #' @param vg_structure Genetic covariance structure: 'unstructured' or 'fa(k)' for factor analytic with k factors (default: unstructured).
 #' @param kernel_files Additional kernel matrix files (.npy or .pt). Used alongside the computed additive GRM for multi-kernel MET.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_met_scan <- function(genotype,
                               phenotype,
@@ -1220,7 +1220,7 @@ tg_met_scan <- function(genotype,
     kernel_files = if (is.null(kernel_files)) NULL else as.character(kernel_files)
   ))
   d <- bridge_call("met_scan", args)
-  GwasResult$new_from_dict(d, command = "met_scan")
+  CliRun$new_from_dict(d, command = "met_scan")
 }
 
 #' Multi-kernel LMM scan (additive + dominance + epistatic)
@@ -1248,7 +1248,7 @@ tg_met_scan <- function(genotype,
 #' @param ploidy Ploidy level (default 2).
 #' @param grm_method GRM method for additive kernel.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_mklmm_scan <- function(genotype,
                               phenotype,
@@ -1293,7 +1293,7 @@ tg_mklmm_scan <- function(genotype,
     grm_method = if (is.null(grm_method)) NULL else match.arg(grm_method, c("vanraden", "zhang"))
   ))
   d <- bridge_call("mklmm_scan", args)
-  GwasResult$new_from_dict(d, command = "mklmm_scan")
+  CliRun$new_from_dict(d, command = "mklmm_scan")
 }
 
 #' Multi-trait multi-environment GWAS with separable Kronecker covariance
@@ -1320,7 +1320,7 @@ tg_mklmm_scan <- function(genotype,
 #' @param env_cols Comma-separated environment names (e.g., E1,E2,E3).
 #' @param vg_structure Vg structure: 'separable' (default), 'unstructured', or 'fa(k)'.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_mtmet_scan <- function(genotype,
                               phenotype,
@@ -1363,7 +1363,7 @@ tg_mtmet_scan <- function(genotype,
     vg_structure = .as_path(vg_structure)
   ))
   d <- bridge_call("mtmet_scan", args)
-  GwasResult$new_from_dict(d, command = "mtmet_scan")
+  CliRun$new_from_dict(d, command = "mtmet_scan")
 }
 
 #' Multi-trait mvLMM association scan
@@ -1390,7 +1390,7 @@ tg_mtmet_scan <- function(genotype,
 #' @param grm Path to pre-computed GRM matrix (NumPy .npy, .npz, or space/tab-delimited text). If provided, --grm-method is ignored.
 #' @param grm_method GRM method: 'vanraden' (streaming, scalable) or 'zhang' (matches GAPIT, requires full materialization).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_mvlmm_scan <- function(genotype,
                               phenotype,
@@ -1433,7 +1433,7 @@ tg_mvlmm_scan <- function(genotype,
     grm_method = if (is.null(grm_method)) NULL else match.arg(grm_method, c("vanraden", "zhang"))
   ))
   d <- bridge_call("mvlmm_scan", args)
-  GwasResult$new_from_dict(d, command = "mvlmm_scan")
+  CliRun$new_from_dict(d, command = "mvlmm_scan")
 }
 
 #' Orthogonal Cross-Fit LMM scan (DML debiased inference)
@@ -1462,7 +1462,7 @@ tg_mvlmm_scan <- function(genotype,
 #' @param variance_type Variance estimator: HC (sandwich) or homoskedastic (default: HC).
 #' @param no_genotype_projection Skip projecting genotypes onto covariate space.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_ocf_scan <- function(genotype,
                               phenotype,
@@ -1509,7 +1509,7 @@ tg_ocf_scan <- function(genotype,
     no_genotype_projection = if (is.null(no_genotype_projection)) NULL else as.logical(no_genotype_projection)
   ))
   d <- bridge_call("ocf_scan", args)
-  GwasResult$new_from_dict(d, command = "ocf_scan")
+  CliRun$new_from_dict(d, command = "ocf_scan")
 }
 
 #' Polyploid F1 phasing via PolyOrigin (Phase 56)
@@ -1528,7 +1528,7 @@ tg_ocf_scan <- function(genotype,
 #' @param auto_install Auto-install Julia if not found (non-interactive; sets consent=True).
 #' @param keep_workdir Do not delete the temp work directory after success (debug aid).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_phase_poly <- function(probs,
                               pedigree,
@@ -1555,10 +1555,10 @@ tg_phase_poly <- function(probs,
     keep_workdir = if (is.null(keep_workdir)) NULL else as.logical(keep_workdir)
   ))
   d <- bridge_call("phase_poly", args)
-  GwasResult$new_from_dict(d, command = "phase_poly")
+  CliRun$new_from_dict(d, command = "phase_poly")
 }
 
-#' Full pipeline: impute -> scan -> correct
+#' Full pipeline: impute -> scan -> correct (see `gwas` for the newer friendly single-call entry point)
 #'
 #' Auto-generated from torchgenomics `pipeline` CLI subcommand.
 #'
@@ -1592,7 +1592,7 @@ tg_phase_poly <- function(probs,
 #' @param approx_landmarks Number of landmark samples for Nystrom (default: 500).
 #' @param sparse_threshold Relatedness threshold for sparse GRM (default: 0.05).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_pipeline <- function(genotype,
                               phenotype,
@@ -1655,7 +1655,7 @@ tg_pipeline <- function(genotype,
     sparse_threshold = if (is.null(sparse_threshold)) NULL else as.numeric(sparse_threshold)
   ))
   d <- bridge_call("pipeline", args)
-  GwasResult$new_from_dict(d, command = "pipeline")
+  CliRun$new_from_dict(d, command = "pipeline")
 }
 
 #' Polyploid GWAS scan
@@ -1688,7 +1688,7 @@ tg_pipeline <- function(genotype,
 #' @param joint_qtl Fit multi-QTL joint model on detected peaks.
 #' @param meff_method Effective test count method (default: gao).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_poly_scan <- function(genotype,
                               phenotype,
@@ -1743,7 +1743,7 @@ tg_poly_scan <- function(genotype,
     meff_method = if (is.null(meff_method)) NULL else match.arg(meff_method, c("gao", "moskvina"))
   ))
   d <- bridge_call("poly_scan", args)
-  GwasResult$new_from_dict(d, command = "poly_scan")
+  CliRun$new_from_dict(d, command = "poly_scan")
 }
 
 #' Random Regression LMM × Multi-Environment GWAS for longitudinal MET data
@@ -1778,7 +1778,7 @@ tg_poly_scan <- function(genotype,
 #' @param vg_structure Genetic covariance structure for the (b·E) pseudo-traits (default: separable Vg = K_coef ⊗ Vg_env).
 #' @param eval_times Comma-separated raw time values for per-(time, env) χ²(1) reconstruction. Produces an extra .rr_met_at_t.tsv output.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_rr_met_scan <- function(genotype,
                               phenotype,
@@ -1837,7 +1837,7 @@ tg_rr_met_scan <- function(genotype,
     eval_times = .as_path(eval_times)
   ))
   d <- bridge_call("rr_met_scan", args)
-  GwasResult$new_from_dict(d, command = "rr_met_scan")
+  CliRun$new_from_dict(d, command = "rr_met_scan")
 }
 
 #' Random Regression LMM GWAS for longitudinal / spatio-temporal data
@@ -1879,7 +1879,7 @@ tg_rr_met_scan <- function(genotype,
 #' @param lambda_row argparse-derived float parameter.
 #' @param lambda_col argparse-derived float parameter.
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_rr_scan <- function(genotype,
                               phenotype,
@@ -1952,7 +1952,7 @@ tg_rr_scan <- function(genotype,
     lambda_col = if (is.null(lambda_col)) NULL else as.numeric(lambda_col)
   ))
   d <- bridge_call("rr_scan", args)
-  GwasResult$new_from_dict(d, command = "rr_scan")
+  CliRun$new_from_dict(d, command = "rr_scan")
 }
 
 #' Set-based association tests (SKAT/Burden/SKAT-O)
@@ -1982,7 +1982,7 @@ tg_rr_scan <- function(genotype,
 #' @param weight_a2 Beta(MAF; a1, a2) weight parameter a2 (default 25.0).
 #' @param ploidy Ploidy level (default 2 for diploid).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_set_scan <- function(genotype,
                               phenotype,
@@ -2031,7 +2031,7 @@ tg_set_scan <- function(genotype,
     ploidy = if (is.null(ploidy)) NULL else as.integer(ploidy)
   ))
   d <- bridge_call("set_scan", args)
-  GwasResult$new_from_dict(d, command = "set_scan")
+  CliRun$new_from_dict(d, command = "set_scan")
 }
 
 #' Survival GWAS scan (Cox PH frailty model with martingale residual score test)
@@ -2063,7 +2063,7 @@ tg_set_scan <- function(genotype,
 #' @param pql_tol PQL convergence tolerance (default: 1e-4).
 #' @param ties Tie-handling method (default: breslow).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_survival_scan <- function(genotype,
                               phenotype,
@@ -2116,7 +2116,7 @@ tg_survival_scan <- function(genotype,
     ties = if (is.null(ties)) NULL else match.arg(ties, c("breslow"))
   ))
   d <- bridge_call("survival_scan", args)
-  GwasResult$new_from_dict(d, command = "survival_scan")
+  CliRun$new_from_dict(d, command = "survival_scan")
 }
 
 #' Threshold-linear GWAS for ordinal + continuous traits (Bermann et al. 2026)
@@ -2147,7 +2147,7 @@ tg_survival_scan <- function(genotype,
 #' @param solver Solver: 'nr' (T-EM warm-start then Newton-Raphson) or 'em' (SQUAREM-accelerated EM).
 #' @param em_warmup Number of EM warm-up iterations before NR (default: 5).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_threshold_scan <- function(genotype,
                               phenotype,
@@ -2198,7 +2198,7 @@ tg_threshold_scan <- function(genotype,
     em_warmup = if (is.null(em_warmup)) NULL else as.integer(em_warmup)
   ))
   d <- bridge_call("threshold_scan", args)
-  GwasResult$new_from_dict(d, command = "threshold_scan")
+  CliRun$new_from_dict(d, command = "threshold_scan")
 }
 
 #' Observed-expression TWAS: gene-trait association on already-normalized RNA-seq expression (no eQTL weights required).
@@ -2219,7 +2219,7 @@ tg_threshold_scan <- function(genotype,
 #' @param quantile_norm Quantile-normalize columns before testing.
 #' @param peer_factors Number of PEER factors to regress out before testing (requires R + peer).
 #'
-#' @return A `GwasResult` S4 object.
+#' @return A `CliRun` S4 object.
 #' @export
 tg_twas_scan <- function(expression,
                               phenotype,
@@ -2250,6 +2250,6 @@ tg_twas_scan <- function(expression,
     peer_factors = if (is.null(peer_factors)) NULL else as.integer(peer_factors)
   ))
   d <- bridge_call("twas_scan", args)
-  GwasResult$new_from_dict(d, command = "twas_scan")
+  CliRun$new_from_dict(d, command = "twas_scan")
 }
 

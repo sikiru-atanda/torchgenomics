@@ -6,6 +6,16 @@
 # per tier-2 CLI subcommand. The generated file is checked in; users
 # never run codegen. Re-run it whenever the manifest changes.
 
+# Commands with hand-crafted R wrappers elsewhere in the package (e.g.
+# tg_gwas, tg_mr, tg_coloc, tg_recommend, tg_models, and the tier-1
+# scan/pgs/ld/lgebv/annotate/convert/impute/validate wrappers). These
+# must be excluded from api_auto.R generation or they would clobber the
+# hand-crafted versions.
+.HANDCRAFTED_COMMANDS <- c("gwas", "recommend", "models", "mr", "coloc",
+                           "clump", "meta", "lmm_scan", "glm_scan",
+                           "pgs_fit", "pgs_score", "ld_blocks", "lgebv",
+                           "annotate_hits", "convert", "impute", "validate")
+
 #' Generate R/api_auto.R from the rbridge manifest.
 #'
 #' Run at package build time by the developer; the generated file is
@@ -24,6 +34,8 @@
 generate_api_auto <- function(manifest_path = "inst/rbridge_manifest.json",
                               output_path = "R/api_auto.R") {
   manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = FALSE)
+  manifest$commands <- Filter(function(cmd) !(cmd$name %in% .HANDCRAFTED_COMMANDS),
+                              manifest$commands)
 
   preamble <- c(
     "# rTorchGenomics/R/api_auto.R",
@@ -176,12 +188,12 @@ generate_api_auto <- function(manifest_path = "inst/rbridge_manifest.json",
     "#'\n",
     params, "\n",
     "#'\n",
-    "#' @return A `GwasResult` S4 object.\n",
+    "#' @return A `CliRun` S4 object.\n",
     "#' @export\n",
     "tg_", cmd$name, " <- function(", sig, ") {\n",
     "  args <- .compact(list(\n    ", coerce, "\n  ))\n",
     "  d <- bridge_call(\"", cmd$name, "\", args)\n",
-    "  GwasResult$new_from_dict(d, command = \"", cmd$name, "\")\n",
+    "  CliRun$new_from_dict(d, command = \"", cmd$name, "\")\n",
     "}\n"
   )
 }

@@ -42,7 +42,7 @@ tg_phase_poly(
 \item{keep_workdir}{Do not delete the temp work directory after success (debug aid).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{phase-poly} CLI subcommand.

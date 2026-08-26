@@ -66,7 +66,7 @@ tg_mvlmm_scan(
 \item{grm_method}{GRM method: 'vanraden' (streaming, scalable) or 'zhang' (matches GAPIT, requires full materialization).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{mvlmm-scan} CLI subcommand.

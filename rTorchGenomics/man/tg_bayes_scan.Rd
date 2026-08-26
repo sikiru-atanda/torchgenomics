@@ -84,7 +84,7 @@ tg_bayes_scan(
 \item{ploidy}{Ploidy level (default 2 for diploid).}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{bayes-scan} CLI subcommand.

@@ -30,7 +30,7 @@ tg_ldsc_rg(
 \item{output}{argparse-derived str parameter.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{ldsc-rg} CLI subcommand.

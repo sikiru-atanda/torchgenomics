@@ -75,7 +75,7 @@ tg_knockoff_scan(
 \item{seed}{Random seed for knockoff generation.}
 }
 \value{
-A \code{GwasResult} S4 object.
+A \code{CliRun} S4 object.
 }
 \description{
 Auto-generated from torchgenomics \code{knockoff-scan} CLI subcommand.

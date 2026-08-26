@@ -597,6 +597,79 @@
       ]
     },
     {
+      "name": "coloc",
+      "cli_subcommand": "coloc",
+      "description": "Colocalization (pairwise / hyprcoloc).",
+      "args": [
+        {
+          "name": "sumstats",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "One sumstats TSV (pairwise, with --sumstats2) or \u22652 (hyprcoloc).",
+          "choices": null,
+          "nargs": "+"
+        },
+        {
+          "name": "sumstats2",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Second sumstats TSV (pairwise).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "method",
+          "type": "str",
+          "required": false,
+          "default": "pairwise",
+          "help": "",
+          "choices": [
+            "pairwise",
+            "hyprcoloc"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "prior_1",
+          "type": "float",
+          "required": false,
+          "default": 0.0001,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "prior_2",
+          "type": "float",
+          "required": false,
+          "default": 0.0001,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "prior_12",
+          "type": "float",
+          "required": false,
+          "default": 1e-05,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Output posteriors TSV.",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
       "name": "combine_gwas_twas",
       "cli_subcommand": "combine-gwas-twas",
       "description": "Combine gene-level GWAS evidence with gene-level TWAS evidence using a chosen p-value combination method.",
@@ -1879,6 +1952,161 @@
           "required": false,
           "default": null,
           "help": "Path to a Phase 55 <prefix>.probs.pt from `torchgenomics dosage-call`. When given, --genotype and --dosage-var are derived internally via expected_dosage / dosage_variance (ploidy read from the sibling <prefix>.meta.json).",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "gwas",
+      "cli_subcommand": "gwas",
+      "description": "Friendly single-call GWAS: auto model selection, decision log, optional multi-model comparison (shares the tg.gwas core)",
+      "args": [
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Phenotype file path",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Genotype file path",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "models",
+          "type": "str",
+          "required": false,
+          "default": "auto",
+          "help": "Comma-separated model alias(es), or 'auto' (default) to let tg.gwas pick one. Two or more aliases (e.g. 'lmm,blink') run a multi-model comparison. See `torchgenomics models` for the full registry.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariates",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional covariates file path",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "kinship",
+          "type": "str",
+          "required": false,
+          "default": "auto",
+          "help": "'auto' (default, computes a streaming VanRaden GRM), 'none' (disable kinship correction), or a path to a pre-computed GRM",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "pcs",
+          "type": "str",
+          "required": false,
+          "default": "auto",
+          "help": "'auto' (default) or an integer number of genotype principal components to add as covariates",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "trait",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Phenotype column name to select (default: first numeric column)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "trait_type",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Force the trait type instead of auto-detecting it",
+          "choices": [
+            "continuous",
+            "binary",
+            "categorical"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "correction",
+          "type": "str",
+          "required": false,
+          "default": "bh",
+          "help": "Multiple-testing correction (default: bh)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Output directory for results + report (default: a temp dir)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "device",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "'cpu' / 'cuda' / 'auto' (default: auto)",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "quiet",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Suppress the decision-log printout (verbose=False)",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "model_options",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "JSON dict of per-model advanced settings, keyed by model alias, e.g. '{\"glmm\": {\"family\": \"ordinal\"}}'.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "env",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Environment variable file (TSV with an ENV column) for --models gxe.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "regions",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Regions/BED file for --models set.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "traits",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated trait columns for --models mvlmm (multi-trait).",
           "choices": null,
           "nargs": null
         }
@@ -3562,6 +3790,88 @@
       ]
     },
     {
+      "name": "models",
+      "cli_subcommand": "models",
+      "description": "List every model available to `gwas --models` (alias, label, trait types)",
+      "args": []
+    },
+    {
+      "name": "mr",
+      "cli_subcommand": "mr",
+      "description": "Two-sample Mendelian randomization.",
+      "args": [
+        {
+          "name": "exposure",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Exposure sumstats TSV.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "outcome",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Outcome sumstats TSV.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "method",
+          "type": "str",
+          "required": false,
+          "default": "ivw",
+          "help": "",
+          "choices": [
+            "ivw",
+            "egger",
+            "weighted_median",
+            "presso",
+            "all"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "n_boot",
+          "type": "int",
+          "required": false,
+          "default": 1000,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_perm",
+          "type": "int",
+          "required": false,
+          "default": 1000,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "required": false,
+          "default": 42,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Output results TSV.",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
       "name": "mtmet_scan",
       "cli_subcommand": "mtmet-scan",
       "description": "Multi-trait multi-environment GWAS with separable Kronecker covariance",
@@ -4283,7 +4593,7 @@
     {
       "name": "pipeline",
       "cli_subcommand": "pipeline",
-      "description": "Full pipeline: impute -> scan -> correct",
+      "description": "Full pipeline: impute -> scan -> correct (see `gwas` for the newer friendly single-call entry point)",
       "args": [
         {
           "name": "genotype",
@@ -4842,6 +5152,40 @@
             "gao",
             "moskvina"
           ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "recommend",
+      "cli_subcommand": "recommend",
+      "description": "Preview the model tg.gwas would pick, without running a scan (dry run)",
+      "args": [
+        {
+          "name": "phenotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Phenotype file path",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "genotype",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Genotype file path",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "covariates",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional covariates file path",
+          "choices": null,
           "nargs": null
         }
       ]
