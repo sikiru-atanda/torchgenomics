@@ -75,6 +75,8 @@ reference:
   contents:
     - tg_mr
     - tg_coloc
+    - tg_smr
+    - tg_mr_mega
 - title: "Causal mediation"
   contents:
     - tg_mediate
@@ -109,6 +111,8 @@ reference:
     - CliRun-class
     - MRRun-class
     - ColocRun-class
+    - SMRRun-class
+    - MRMegaRun-class
     - PgsFitRun-class
     - PgsScoreRun-class
     - AnnotateRun-class

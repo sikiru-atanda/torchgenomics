@@ -384,6 +384,60 @@ tg_coloc <- function(sumstats, sumstats2 = NULL,
   ColocRun$new_from_dict(d)
 }
 
+#' SMR + HEIDI (gene expression -> GWAS mediation).
+#'
+#' @param gwas Path to GWAS sumstats TSV (chr/pos/snp/a1/a2/beta/se/p).
+#' @param eqtl Path to cis-eQTL sumstats TSV, same columns plus a gene id.
+#' @param gene_map Path to a gene map TSV (gene id -> chr/start/end or
+#'   top-SNP position) used to associate eQTL top-SNPs with genes.
+#' @param output Optional path to write the results TSV.
+#' @param eqtl_p_threshold P-value threshold for selecting a gene's
+#'   top cis-eQTL SNP.
+#' @param smr_p_threshold Significance threshold for the SMR test.
+#' @param heidi_p_threshold Significance threshold for the HEIDI
+#'   heterogeneity test (genes below this threshold fail HEIDI, i.e. are
+#'   flagged as linkage rather than pleiotropy/causality).
+#' @param heidi_max_snps Maximum number of SNPs used in the HEIDI test.
+#'
+#' @return An `SMRRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_smr("gwas.tsv", "eqtl.tsv", "gene_map.tsv")
+#' }
+#' @export
+tg_smr <- function(gwas, eqtl, gene_map, output = NULL,
+                   eqtl_p_threshold = 5e-8, smr_p_threshold = 0.05,
+                   heidi_p_threshold = 0.05, heidi_max_snps = 20L) {
+  d <- bridge_call("smr", .compact(list(
+    gwas = .as_path(gwas), eqtl = .as_path(eqtl), gene_map = .as_path(gene_map),
+    output = .as_path(output), eqtl_p_threshold = eqtl_p_threshold,
+    smr_p_threshold = smr_p_threshold, heidi_p_threshold = heidi_p_threshold,
+    heidi_max_snps = as.integer(heidi_max_snps))))
+  SMRRun$new_from_dict(d)
+}
+
+#' Multi-ancestry MR meta-analysis (MR-MEGA).
+#'
+#' @param sumstats Character vector of >= 3 per-population MR sumstats
+#'   paths.
+#' @param output Optional path to write the results TSV.
+#' @param n_axes Number of MEGA axes of genetic variation to regress out.
+#' @param random_effects If `TRUE`, use a random-effects meta-analysis
+#'   term in addition to the MEGA-axis regression.
+#'
+#' @return An `MRMegaRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_mr_mega(c("pop1.tsv", "pop2.tsv", "pop3.tsv"), n_axes = 2)
+#' }
+#' @export
+tg_mr_mega <- function(sumstats, output = NULL, n_axes = 4L, random_effects = FALSE) {
+  d <- bridge_call("mr_mega", .compact(list(
+    sumstats = as.character(sumstats), output = .as_path(output),
+    n_axes = as.integer(n_axes), random_effects = isTRUE(random_effects))))
+  MRMegaRun$new_from_dict(d)
+}
+
 #' Fit polygenic-score weights.
 #'
 #' @param sumstats Path to GWAS sumstats.
