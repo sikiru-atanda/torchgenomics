@@ -540,6 +540,51 @@ class ColocRun(_BaseRun):
         return "\n".join(lines)
 
 
+@dataclass
+class SMRRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.smr` — SMR + HEIDI across genes."""
+
+    n_genes_tested: int = 0
+    n_significant_smr: int = 0
+    n_pass_heidi: int = 0
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "smr"
+
+    def summary(self) -> str:
+        lines = [
+            f"SMR — {self.n_genes_tested} genes tested, "
+            f"{self.n_significant_smr} SMR-significant, {self.n_pass_heidi} pass HEIDI",
+        ]
+        if not self.results.empty:
+            lines.append(self.results.head(10).to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
+@dataclass
+class MRMegaRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.mr_mega` — multi-ancestry MR meta-analysis."""
+
+    method: str = ""
+    n_axes: int = 0
+    n_populations: int = 0
+    n_snps: int = 0
+    min_p_meta: float | None = None
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "mr_mega"
+
+    def summary(self) -> str:
+        mp = f"min p_meta={self.min_p_meta:.3e}" if self.min_p_meta is not None else ""
+        lines = [
+            f"MR-MEGA — {self.n_populations} populations, {self.n_axes} axes, "
+            f"{self.n_snps} SNPs {mp}".rstrip(),
+        ]
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
 # --- PGS tier ---------------------------------------------------------------
 
 
