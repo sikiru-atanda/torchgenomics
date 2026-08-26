@@ -62,10 +62,12 @@ from .api import (
     manhattan,
     meta,
     mr,
+    mr_mega,
     pgs_fit,
     pgs_score,
     qq,
     recommend,
+    smr,
     validate,
 )
 
@@ -86,10 +88,12 @@ __all__ = [
     "manhattan",
     "meta",
     "mr",
+    "mr_mega",
     "pgs_fit",
     "pgs_score",
     "qq",
     "recommend",
+    "smr",
     "validate",
     # Result types
     "AnnotateRun",

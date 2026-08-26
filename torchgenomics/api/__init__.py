@@ -62,7 +62,7 @@ from .ld import ld_blocks
 from .lgebv import lgebv
 from .pgs import pgs_fit, pgs_score
 from .plotting import manhattan, qq
-from .postgwas import clump, coloc, meta, mr
+from .postgwas import clump, coloc, meta, mr, mr_mega, smr
 from .scans import glm_scan, lmm_scan
 
 __all__ = [
@@ -76,6 +76,8 @@ __all__ = [
     "clump",
     "meta",
     "mr",
+    "smr",
+    "mr_mega",
     "coloc",
     "pgs_fit",
     "pgs_score",

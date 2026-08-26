@@ -1,4 +1,5 @@
-"""Post-GWAS tier-1 API: :func:`clump`, :func:`meta`, :func:`mr`."""
+"""Post-GWAS tier-1 API: :func:`clump`, :func:`meta`, :func:`mr`, :func:`smr`,
+:func:`mr_mega`."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,7 +9,7 @@ import pandas as pd
 
 from ._decorator import tool
 from ._helpers import ProgressCallback, emit_progress, resolve_output_dir, timed
-from ._results import ClumpRun, ColocRun, MetaRun, MRRun
+from ._results import ClumpRun, ColocRun, MetaRun, MRMegaRun, MRRun, SMRRun
 
 
 @tool(
@@ -407,3 +408,149 @@ def coloc(
             output_files["tsv"] = Path(str(output))
             run.output_files = output_files
         return run
+
+
+def _load_gene_map(gene_map, sep="\t") -> dict:
+    """Load a long-format gene->cis-SNP map (columns ``gene``, ``snp``) into a dict.
+
+    Accepts a path (str/Path) to a TSV with ``gene`` and ``snp`` columns (one row
+    per gene–SNP pair) or an already-built ``dict[str, list[str]]`` (returned
+    as-is). Raises a friendly ``ValueError`` if the columns are missing.
+    """
+    import pandas as pd
+    if isinstance(gene_map, dict):
+        return gene_map
+    df = pd.read_csv(str(gene_map), sep=sep)
+    if "gene" not in df.columns or "snp" not in df.columns:
+        raise ValueError(
+            f"gene-map file must have 'gene' and 'snp' columns (one row per "
+            f"gene–cis-SNP pair); got columns {list(df.columns)}."
+        )
+    out: dict[str, list[str]] = {}
+    for gene, snp in zip(df["gene"].astype(str), df["snp"].astype(str)):
+        out.setdefault(gene, [])
+        if snp not in out[gene]:
+            out[gene].append(snp)
+    return out
+
+
+def smr(gwas, eqtl, gene_map, *, output=None, eqtl_p_threshold=5e-8,
+        smr_p_threshold=0.05, heidi_p_threshold=0.05, heidi_max_snps=20,
+        sep="\t") -> "SMRRun":
+    """SMR + HEIDI: test whether a gene's expression mediates the GWAS signal.
+
+    Parameters
+    ----------
+    gwas, eqtl
+        Paths to GWAS and eQTL summary-statistics TSVs (columns chr/pos/snp/
+        a1/a2/beta/se/p). The eQTL file holds all cis-SNPs across genes.
+    gene_map
+        Path to a long-format TSV (``gene``, ``snp`` columns; one row per
+        gene–cis-SNP pair) or a ``dict[str, list[str]]``.
+    output
+        Optional path to write the per-gene results TSV.
+    eqtl_p_threshold, smr_p_threshold, heidi_p_threshold, heidi_max_snps
+        SMR / HEIDI thresholds (see :func:`torchgenomics.postgwas.smr_heidi`).
+
+    Returns
+    -------
+    SMRRun
+    """
+    from ..postgwas import load_sumstats, smr_heidi
+
+    g = load_sumstats(str(gwas), sep=sep)
+    e = load_sumstats(str(eqtl), sep=sep)
+    gm = _load_gene_map(gene_map, sep=sep)
+
+    with timed() as elapsed:
+        summ = smr_heidi(g, e, gm, eqtl_p_threshold=eqtl_p_threshold,
+                         smr_p_threshold=smr_p_threshold,
+                         heidi_p_threshold=heidi_p_threshold,
+                         heidi_max_snps=heidi_max_snps)
+        rows = [{
+            "gene_id": r.gene_id, "probe_snp": r.probe_snp,
+            "beta_smr": r.beta_smr, "se_smr": r.se_smr, "p_smr": r.p_smr,
+            "chi2_smr": r.chi2_smr, "beta_gwas": r.beta_gwas, "beta_eqtl": r.beta_eqtl,
+            "p_heidi": r.p_heidi, "n_heidi_snps": r.n_heidi_snps, "heidi_stat": r.heidi_stat,
+        } for r in summ.results]
+        df = pd.DataFrame(rows)
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            df.to_csv(str(output), sep="\t", index=False)
+            output_files["tsv"] = Path(str(output))
+        return SMRRun(
+            runtime_s=elapsed(), output_files=output_files, results=df,
+            n_genes_tested=int(summ.n_genes_tested),
+            n_significant_smr=int(summ.n_significant_smr),
+            n_pass_heidi=int(summ.n_pass_heidi),
+        )
+
+
+def mr_mega(sumstats, *, output=None, n_axes=4, random_effects=False,
+            sep="\t") -> "MRMegaRun":
+    """MR-MEGA: multi-ancestry meta-regression of SNP effects on ancestry axes.
+
+    Parameters
+    ----------
+    sumstats
+        A list of >= ``n_axes + 2`` sumstats TSV paths, one per ancestry.
+    output
+        Optional path to write the per-SNP results TSV.
+    n_axes
+        Number of ancestry principal axes to fit.
+    random_effects
+        Whether to use the random-effects variant.
+
+    Returns
+    -------
+    MRMegaRun
+    """
+    from ..postgwas import load_sumstats, mr_mega as _mr_mega
+
+    if isinstance(sumstats, (str, Path)):
+        raise ValueError(
+            "mr_mega needs a list of sumstats paths (one per ancestry), not a "
+            "single path."
+        )
+    paths = list(sumstats)
+    need = int(n_axes) + 2
+    if len(paths) < need:
+        raise ValueError(
+            f"MR-MEGA with n_axes={n_axes} needs at least {need} populations "
+            f"(sumstats files); got {len(paths)}."
+        )
+    ss_list = [load_sumstats(str(p), sep=sep) for p in paths]
+
+    with timed() as elapsed:
+        res = _mr_mega(ss_list, n_axes=int(n_axes), random_effects=bool(random_effects))
+
+        m = int(res.n_snps)
+
+        def _col(x):
+            # log10_bf / posterior_effect are MANTRA-only fields and are
+            # None for mr_mega's MultiAncestryResult; fill with NaN so the
+            # results DataFrame keeps a uniform per-SNP row shape.
+            if x is None:
+                return [float("nan")] * m
+            try:
+                return [float(v) for v in x.tolist()]
+            except Exception:
+                return list(x)
+
+        df = pd.DataFrame({
+            "beta_meta": _col(res.beta_meta), "se_meta": _col(res.se_meta),
+            "p_meta": _col(res.p_meta), "p_heterogeneity": _col(res.p_heterogeneity),
+            "p_ancestry": _col(res.p_ancestry), "p_residual": _col(res.p_residual),
+            "log10_bf": _col(res.log10_bf), "posterior_effect": _col(res.posterior_effect),
+        })
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            df.to_csv(str(output), sep="\t", index=False)
+            output_files["tsv"] = Path(str(output))
+        pmeta = df["p_meta"].dropna()
+        return MRMegaRun(
+            runtime_s=elapsed(), output_files=output_files, results=df,
+            method=str(res.method), n_axes=int(res.n_axes),
+            n_populations=int(res.n_populations), n_snps=int(res.n_snps),
+            min_p_meta=float(pmeta.min()) if len(pmeta) else None,
+        )
