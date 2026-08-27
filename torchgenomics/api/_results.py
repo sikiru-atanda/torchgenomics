@@ -585,6 +585,101 @@ class MRMegaRun(_BaseRun):
         return "\n".join(lines)
 
 
+@dataclass
+class PowerRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.power` — per-variant GWAS detection power."""
+
+    alpha: float = 5e-8
+    n: float = 0.0
+    target_power: float = 0.8
+    n_variants: int = 0
+    n_powered: int = 0
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+    curve: pd.DataFrame | None = None
+
+    _kind: ClassVar[str] = "power"
+
+    def summary(self) -> str:
+        lines = [
+            f"Power — {self.n_variants} variants, {self.n_powered} at power>={self.target_power} "
+            f"(alpha={self.alpha:.1e}, N={self.n:g})",
+        ]
+        if not self.results.empty:
+            lines.append(self.results.head(10).to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
+@dataclass
+class WinnersCurseRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.winners_curse` — effect-size de-biasing."""
+
+    method: str = ""
+    n_corrected: int = 0
+    n_variants: int = 0
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "winners_curse"
+
+    def summary(self) -> str:
+        lines = [
+            f"Winner's-curse ({self.method}) — {self.n_corrected} of {self.n_variants} "
+            f"variants corrected",
+        ]
+        if not self.results.empty:
+            lines.append(self.results.head(10).to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
+@dataclass
+class EnrichmentRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.gene_set_enrichment` — MAGMA-style test."""
+
+    n_genes_total: int = 0
+    n_gene_sets: int = 0
+    n_significant: int = 0
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+    genes: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "enrichment"
+
+    def summary(self) -> str:
+        lines = [
+            f"Gene-set enrichment — {self.n_gene_sets} sets over {self.n_genes_total} genes, "
+            f"{self.n_significant} significant (p<0.05)",
+        ]
+        if not self.results.empty:
+            lines.append(self.results.head(10).to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
+@dataclass
+class HessRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.hess` — local heritability / genetic correlation."""
+
+    mode: str = "h2"  # "h2" | "rg"
+    h2_total: float = 0.0
+    h2_total_se: float = 0.0
+    n_regions: int = 0
+    n_snps_total: int = 0
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "hess"
+
+    def summary(self) -> str:
+        label = "local h²" if self.mode == "h2" else "local rg"
+        lines = [
+            f"HESS {label} — {self.n_regions} regions, {self.n_snps_total} SNPs, "
+            f"total={self.h2_total:.4f} (se {self.h2_total_se:.4f})",
+        ]
+        if not self.results.empty:
+            lines.append(self.results.head(10).to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
 # --- PGS tier ---------------------------------------------------------------
 
 
