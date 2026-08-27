@@ -12,6 +12,7 @@ from ._helpers import ProgressCallback, emit_progress, resolve_output_dir, timed
 from ._results import (
     ClumpRun,
     ColocRun,
+    EnrichmentRun,
     MetaRun,
     MRMegaRun,
     MRRun,
@@ -443,6 +444,61 @@ def _load_gene_map(gene_map, sep="\t") -> dict:
     return out
 
 
+def _load_gene_annotation(gene_annotation, sep="\t"):
+    """Load a gene annotation TSV (columns gene, chr, start, end) into four lists."""
+    df = pd.read_csv(str(gene_annotation), sep=sep)
+    need = {"gene", "chr", "start", "end"}
+    if not need.issubset(df.columns):
+        raise ValueError(
+            f"gene-annotation file must have columns {sorted(need)}; got {list(df.columns)}."
+        )
+    return (
+        [str(x) for x in df["gene"]],
+        [str(x) for x in df["chr"]],
+        [int(x) for x in df["start"]],
+        [int(x) for x in df["end"]],
+    )
+
+
+def _load_gene_sets(gene_sets, fmt="auto", sep="\t") -> dict:
+    """Load a gene-set mapping from a long TSV (set,gene) or a .gmt file."""
+    if isinstance(gene_sets, dict):
+        return gene_sets
+    path = str(gene_sets)
+    if fmt == "auto":
+        fmt = "gmt" if path.lower().endswith(".gmt") else "tsv"
+    out: dict[str, list[str]] = {}
+    if fmt == "gmt":
+        with open(path) as fh:
+            for line in fh:
+                parts = [p for p in line.rstrip("\n").split("\t") if p != ""]
+                if len(parts) < 3:
+                    continue  # need set-name, description, >=1 gene
+                name, genes = parts[0], parts[2:]
+                out.setdefault(name, [])
+                for g in genes:
+                    if g not in out[name]:
+                        out[name].append(g)
+    elif fmt == "tsv":
+        # keep_default_na=False: gene-set / gene identifiers are free-text
+        # labels, not numeric data — a set literally named "null" or "NA"
+        # must not collide with pandas' default missing-value sentinels.
+        df = pd.read_csv(path, sep=sep, keep_default_na=False)
+        if "set" not in df.columns or "gene" not in df.columns:
+            raise ValueError(
+                f"gene-sets TSV must have 'set' and 'gene' columns; got {list(df.columns)}."
+            )
+        for s, g in zip(df["set"].astype(str), df["gene"].astype(str)):
+            out.setdefault(s, [])
+            if g not in out[s]:
+                out[s].append(g)
+    else:
+        raise ValueError(f"gene_sets_format must be auto/tsv/gmt; got {fmt!r}.")
+    if not out:
+        raise ValueError(f"no gene sets parsed from {path!r}.")
+    return out
+
+
 def smr(gwas, eqtl, gene_map, *, output=None, eqtl_p_threshold=5e-8,
         smr_p_threshold=0.05, heidi_p_threshold=0.05, heidi_max_snps=20,
         sep="\t") -> "SMRRun":
@@ -656,4 +712,46 @@ def winners_curse(gwas, *, method="conditional_likelihood", alpha=5e-8,
         return WinnersCurseRun(
             runtime_s=elapsed(), output_files=output_files, results=df,
             method=str(res.method), n_corrected=int(res.n_corrected), n_variants=int(m),
+        )
+
+
+def gene_set_enrichment(gwas, gene_annotation, gene_sets, *, window_kb=0.0,
+                        covariate_gene_size=True, covariate_log_size=True,
+                        gene_sets_format="auto", output=None, sep="\t") -> "EnrichmentRun":
+    """MAGMA-style competitive gene-set enrichment (snp_to_gene then set test)."""
+    from ..postgwas import load_sumstats, snp_to_gene
+    from ..postgwas import gene_set_enrichment as _gse
+
+    ss = load_sumstats(str(gwas), sep=sep)
+    gid, gchr, gstart, gend = _load_gene_annotation(gene_annotation, sep=sep)
+    sets = _load_gene_sets(gene_sets, fmt=gene_sets_format, sep=sep)
+
+    with timed() as elapsed:
+        gene_result = snp_to_gene(ss, gid, gchr, gstart, gend, window_kb=window_kb)
+        enr = _gse(gene_result, sets, covariate_gene_size=covariate_gene_size,
+                   covariate_log_size=covariate_log_size)
+        df = pd.DataFrame({
+            "gene_set_name": list(enr.gene_set_name),
+            "n_genes_in_set": [int(x) for x in enr.n_genes_in_set],
+            "beta_enrichment": [float(v) for v in enr.beta_enrichment.tolist()],
+            "se": [float(v) for v in enr.se.tolist()],
+            "p": [float(v) for v in enr.p.tolist()],
+        })
+        genes_df = pd.DataFrame({
+            "gene_id": list(gene_result.gene_id),
+            "gene_chr": list(gene_result.gene_chr),
+            "gene_start": [int(x) for x in gene_result.gene_start],
+            "gene_end": [int(x) for x in gene_result.gene_end],
+            "n_snps": [int(x) for x in gene_result.n_snps],
+            "stat": [float(v) for v in gene_result.stat.tolist()],
+            "p": [float(v) for v in gene_result.p.tolist()],
+        })
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            df.to_csv(str(output), sep="\t", index=False)
+            output_files["tsv"] = Path(str(output))
+        return EnrichmentRun(
+            runtime_s=elapsed(), output_files=output_files, results=df, genes=genes_df,
+            n_genes_total=int(enr.n_genes_total), n_gene_sets=int(len(df)),
+            n_significant=int((df["p"] < 0.05).sum()),
         )

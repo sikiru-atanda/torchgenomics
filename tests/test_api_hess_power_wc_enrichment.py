@@ -76,3 +76,62 @@ def test_api_winners_curse_all_methods(tmp_path):
         # so the winner's-curse bias is real and large relative to bootstrap MC noise —
         # all three methods must shrink |beta| strictly toward zero.
         assert abs(res.loc["rs0", "beta_adjusted"]) < abs(res.loc["rs0", "beta_original"])
+
+
+def _write_enrichment_fixture(tmp_path, gmt=False):
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(0)
+    # 6 genes x 10 SNPs each; genes g0,g1 carry strong signal, g2..g5 null
+    rows, ann = [], []
+    from scipy.stats import norm
+    for gi in range(6):
+        strong = gi < 2
+        for j in range(10):
+            i = gi * 10 + j
+            z = rng.normal(4.0 if strong else 0.0, 1.0)
+            rows.append({"chr": 1, "pos": gi * 1000 + j, "snp": f"rs{i}",
+                         "a1": "A", "a2": "G", "beta": z * 0.05, "se": 0.05,
+                         "p": float(2 * norm.sf(abs(z))), "n": 5000, "af": 0.3})
+        ann.append({"gene": f"g{gi}", "chr": 1, "start": gi * 1000, "end": gi * 1000 + 9})
+    gwas = tmp_path / "gwas.tsv"; pd.DataFrame(rows).to_csv(gwas, sep="\t", index=False)
+    gann = tmp_path / "ann.tsv"; pd.DataFrame(ann).to_csv(gann, sep="\t", index=False)
+    if gmt:
+        gsets = tmp_path / "sets.gmt"
+        gsets.write_text("hot\tdesc\tg0\tg1\nnull\tdesc\tg3\tg4\tg5\n")
+    else:
+        gsets = tmp_path / "sets.tsv"
+        pd.DataFrame({"set": ["hot", "hot", "null", "null", "null"],
+                      "gene": ["g0", "g1", "g3", "g4", "g5"]}).to_csv(gsets, sep="\t", index=False)
+    return str(gwas), str(gann), str(gsets)
+
+
+def test_api_gene_set_enrichment_runs(tmp_path):
+    import torchgenomics as tg
+    from torchgenomics.api import EnrichmentRun
+    gwas, gann, gsets = _write_enrichment_fixture(tmp_path)
+    r = tg.gene_set_enrichment(gwas, gann, gsets, output=str(tmp_path / "enr.tsv"))
+    assert isinstance(r, EnrichmentRun)
+    res = r.results.set_index("gene_set_name")
+    # the enriched set has a smaller p than the null set
+    assert res.loc["hot", "p"] < res.loc["null", "p"]
+    assert not r.genes.empty
+    assert (tmp_path / "enr.tsv").exists()
+
+
+def test_gene_sets_tsv_and_gmt_agree(tmp_path):
+    from torchgenomics.api.postgwas import _load_gene_sets
+    _, _, tsv = _write_enrichment_fixture(tmp_path, gmt=False)
+    tmp2 = tmp_path / "g"; tmp2.mkdir()
+    _, _, gmt = _write_enrichment_fixture(tmp2, gmt=True)
+    a = _load_gene_sets(tsv, "auto", "\t")
+    b = _load_gene_sets(gmt, "auto", "\t")
+    assert {k: sorted(v) for k, v in a.items()} == {k: sorted(v) for k, v in b.items()}
+
+
+def test_gene_annotation_bad_columns(tmp_path):
+    import torchgenomics as tg, pandas as pd, pytest
+    gwas, _, gsets = _write_enrichment_fixture(tmp_path)
+    bad = tmp_path / "bad.tsv"
+    pd.DataFrame({"foo": [1]}).to_csv(bad, sep="\t", index=False)
+    with pytest.raises(ValueError):
+        tg.gene_set_enrichment(gwas, str(bad), gsets)
