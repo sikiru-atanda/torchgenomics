@@ -110,14 +110,23 @@ winners_curse(gwas, *, method="conditional_likelihood", alpha=5e-8,
               n_boot=10000, seed=None, output=None, sep="\t") -> WinnersCurseRun
 ```
 - Load sumstats → `beta`, `se`. Validate `method` ∈ the three; friendly error otherwise.
-- Call `correct_winners_curse(beta, se, method=method, alpha=alpha,
-  n_boot=n_boot, seed=seed)` (extra kwargs are harmless for CL/FIQT which ignore them —
-  BUT to avoid passing unsupported kwargs, only forward `n_boot`/`seed` when
-  `method=="bootstrap"`).
+- **Kwargs forwarding (mandatory conditional).** `correct_winners_curse` dispatches
+  to `conditional_likelihood(beta, se, alpha)` and `fiqt(z, se, ...)` — **neither
+  accepts `n_boot`/`seed`, so passing them raises `TypeError`.** Only
+  `bootstrap_correction` accepts them. Therefore build kwargs conditionally:
+  ```python
+  extra = {"n_boot": n_boot, "seed": seed} if method == "bootstrap" else {}
+  res = correct_winners_curse(beta, se, method=method, alpha=alpha, **extra)
+  ```
+  Do NOT call `correct_winners_curse(..., n_boot=n_boot, seed=seed)` unconditionally.
+  (For `method="fiqt"`, `correct_winners_curse` itself computes `z = beta/se`
+  internally, so the wrapper passes `beta`/`se` uniformly for all three methods.)
 - **WinnersCurseRun**(`method, n_corrected, n_variants`, `results` df:
   `snp, beta_original, beta_adjusted, se_adjusted, shrinkage_factor`).
-  `se_adjusted` is all-NaN when upstream returns None (handled like MR-MEGA's
-  `_col`).
+  Upstream returns `se_adjusted=None` for **all three** methods (the docstring's
+  "available for conditional likelihood" is stale), so the `se_adjusted` column is
+  always all-NaN — build it like MR-MEGA's `_col(None)`, and do NOT assert a
+  non-NaN `se_adjusted` in tests.
 
 ### `gene_set_enrichment`
 ```python
@@ -159,8 +168,16 @@ hess(gwas, ld_matrix, regions, *, n=None, gwas2=None,
   contiguous block (`sorted(idx) == list(range(first, last+1))`); otherwise raise
   a friendly `ValueError` telling the user the sumstats + LD matrix must be sorted
   by genomic position. `region_labels = f"{chrom}:{start}-{end}"`.
-- `n`: `--n` if given, else median finite `n`; for `rg`, `n1`/`n2` both derived
-  (a single `--n` applies to both unless a separate `--n2` is given — add `--n2`).
+- **All-regions-skipped guard:** if, after mapping, NO region matched any SNP (the
+  bounds list is empty), raise a friendly `ValueError` ("none of the N regions in
+  `<regions>` matched any SNP in the sumstats — check chrom naming / coordinates")
+  BEFORE calling `hess_local_*`. Otherwise upstream raises the misleading
+  "At least one region is required." (`_hess.py:141`).
+- `n`: `--n` if given, else the median of the finite `n` column; for `rg`, `n1`/`n2`
+  both derived (a single `--n` applies to both unless a separate `--n2` is given —
+  add `--n2`). If `--n`/`--n2` is omitted AND the finite-`n` median is empty/NaN,
+  raise a friendly `ValueError` (parity with the `power` N guard) rather than
+  silently producing NaN heritabilities.
 - Call `hess_local_h2(z, ld, n, bounds, labels, eigenvalue_threshold)` or
   `hess_local_rg(z, z2, ld, n1, n2, bounds, labels, eigenvalue_threshold)`.
 - **HessRun**(`mode, h2_total, h2_total_se, n_regions, n_snps_total`, `results` df:
@@ -206,6 +223,21 @@ mirroring `SMRRun`/`MRMegaRun` (reuse `%||%`, `.as_int/.as_num/.as_chr/.as_list`
 (one per function + one per S4 class), add mocked `tests/testthat/test-hess-power-wc-enrichment.R`.
 The two-DataFrame results (`PowerRun.curve`, `EnrichmentRun.genes`) serialize as a
 second records list and rebuild as a second tibble.
+
+**Codegen exclusion (REQUIRED — prevents auto-wrapper clobber).** Every command
+with a hand-crafted R wrapper must be listed in `.HANDCRAFTED_COMMANDS` in
+`rTorchGenomics/R/codegen.R:14`, or a future `generate_api_auto()` regenerates a
+colliding auto-wrapper in `api_auto.R`. Add the four new manifest names
+(underscored): `"power"`, `"winners_curse"`, `"gene_set_enrichment"`, `"hess"`.
+**Also back-fill the two names the SMR/MR-MEGA pass missed:** `"smr"`, `"mr_mega"`
+(latent gap, currently masked only because `api_auto.R` is stale). After editing,
+regenerate the bundled manifest + `api_auto.R` and confirm no duplicate wrapper for
+any hand-crafted command.
+
+**Single-trait scope note.** `load_sumstats` reads a single `beta_col`, so `beta`
+is always 1-D `(m,)` and the wrappers are single-trait by construction; no
+multi-trait branch is added. (Optional defensive `beta.ndim == 1` assertion in
+power/winners-curse/hess is fine but not required.)
 
 ## Testing
 
