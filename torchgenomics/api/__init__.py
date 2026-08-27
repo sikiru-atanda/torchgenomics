@@ -66,7 +66,17 @@ from .ld import ld_blocks
 from .lgebv import lgebv
 from .pgs import pgs_fit, pgs_score
 from .plotting import manhattan, qq
-from .postgwas import clump, coloc, meta, mr, mr_mega, power, smr, winners_curse
+from .postgwas import (
+    clump,
+    coloc,
+    gene_set_enrichment,
+    meta,
+    mr,
+    mr_mega,
+    power,
+    smr,
+    winners_curse,
+)
 from .scans import glm_scan, lmm_scan
 
 __all__ = [
@@ -84,6 +94,7 @@ __all__ = [
     "mr_mega",
     "power",
     "winners_curse",
+    "gene_set_enrichment",
     "coloc",
     "pgs_fit",
     "pgs_score",
