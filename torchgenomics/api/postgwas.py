@@ -573,7 +573,6 @@ def power(gwas, *, n=None, alpha=5e-8, target_power=0.8,
     the finite ``n`` column. With ``power_curve=True`` also returns the
     min-detectable-|beta| envelope over an allele-frequency grid.
     """
-    import numpy as np
     import torch
     from ..postgwas import load_sumstats, gwas_power, required_n
     from ..postgwas import power_curve as _power_curve  # avoid shadowing the bool param

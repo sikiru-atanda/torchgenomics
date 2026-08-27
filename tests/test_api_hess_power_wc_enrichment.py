@@ -63,7 +63,7 @@ def test_api_winners_curse_all_methods(tmp_path):
     df = pd.DataFrame({
         "chr": [1] * 5, "pos": list(range(5)), "snp": [f"rs{i}" for i in range(5)],
         "a1": ["A"] * 5, "a2": ["G"] * 5,
-        "beta": [0.6, 0.02, -0.01, 0.03, 0.55], "se": [0.05] * 5,
+        "beta": [0.285, 0.02, -0.01, 0.03, 0.55], "se": [0.05] * 5,
         "p": [1e-20, 0.7, 0.8, 0.6, 1e-18], "n": [10000] * 5, "af": [0.3] * 5,
     })
     fp = tmp_path / "gwas.tsv"; df.to_csv(fp, sep="\t", index=False)
@@ -72,15 +72,7 @@ def test_api_winners_curse_all_methods(tmp_path):
         r = tg.winners_curse(str(fp), method=method, **kw)
         assert isinstance(r, WinnersCurseRun) and r.n_variants == 5
         res = r.results.set_index("snp")
-        # the strong hit is shrunk toward zero. For rs0 (z=12, far past the
-        # alpha=5e-8 threshold of z~5.53) the true winner's-curse bias is
-        # ~0, so the parametric bootstrap's Monte Carlo estimate of that bias
-        # is symmetric noise (sd ~ se/sqrt(n_boot) ~ 0.0035 here) — it can
-        # land on either side of beta_original by chance even at a fixed
-        # seed (verified: seeds 1-10 split roughly evenly, and the split
-        # persists at n_boot up to 50000, since the true correction is ~0
-        # rather than the noise being large). CL/fiqt are deterministic
-        # analytic corrections so they get the tight tolerance; bootstrap
-        # gets a tolerance sized to its expected Monte Carlo noise.
-        tol = 0.02 if method == "bootstrap" else 1e-9
-        assert abs(res.loc["rs0", "beta_adjusted"]) <= abs(res.loc["rs0", "beta_original"]) + tol
+        # rs0 is marginally significant (z≈5.7, just past the alpha=5e-8 threshold),
+        # so the winner's-curse bias is real and large relative to bootstrap MC noise —
+        # all three methods must shrink |beta| strictly toward zero.
+        assert abs(res.loc["rs0", "beta_adjusted"]) < abs(res.loc["rs0", "beta_original"])
