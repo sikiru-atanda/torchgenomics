@@ -9,7 +9,16 @@ import pandas as pd
 
 from ._decorator import tool
 from ._helpers import ProgressCallback, emit_progress, resolve_output_dir, timed
-from ._results import ClumpRun, ColocRun, MetaRun, MRMegaRun, MRRun, SMRRun
+from ._results import (
+    ClumpRun,
+    ColocRun,
+    MetaRun,
+    MRMegaRun,
+    MRRun,
+    PowerRun,
+    SMRRun,
+    WinnersCurseRun,
+)
 
 
 @tool(
@@ -553,4 +562,99 @@ def mr_mega(sumstats, *, output=None, n_axes=4, random_effects=False,
             method=str(res.method), n_axes=int(res.n_axes),
             n_populations=int(res.n_populations), n_snps=int(res.n_snps),
             min_p_meta=float(pmeta.min()) if len(pmeta) else None,
+        )
+
+
+def power(gwas, *, n=None, alpha=5e-8, target_power=0.8,
+          power_curve=False, af_grid=None, output=None, sep="\t") -> "PowerRun":
+    """Per-variant GWAS detection power, NCP, min-detectable-beta and required-N.
+
+    Loads ``af``/``beta`` from a sumstats TSV; ``n`` defaults to the median of
+    the finite ``n`` column. With ``power_curve=True`` also returns the
+    min-detectable-|beta| envelope over an allele-frequency grid.
+    """
+    import numpy as np
+    import torch
+    from ..postgwas import load_sumstats, gwas_power, required_n
+    from ..postgwas import power_curve as _power_curve  # avoid shadowing the bool param
+
+    ss = load_sumstats(str(gwas), sep=sep)
+    if ss.af is None:
+        raise ValueError("power needs an allele-frequency column ('af') in the sumstats.")
+    if n is None:
+        finite = ss.n[torch.isfinite(ss.n)]
+        if finite.numel() == 0:
+            raise ValueError("power needs a sample size: pass n=... (no usable 'n' column).")
+        n = float(finite.median().item())
+    n = float(n)
+
+    with timed() as elapsed:
+        pr = gwas_power(n, ss.af, ss.beta, alpha=alpha, target_power=target_power)
+        req = required_n(ss.af, ss.beta, alpha=alpha, target_power=target_power)
+        df = pd.DataFrame({
+            "snp": ss.snp,
+            "af": [float(v) for v in ss.af.tolist()],
+            "beta": [float(v) for v in ss.beta.tolist()],
+            "power": [float(v) for v in pr.power.tolist()],
+            "ncp": [float(v) for v in pr.ncp.tolist()],
+            "min_detectable_beta": [float(v) for v in pr.min_detectable_beta.tolist()],
+            "required_n": [float(v) for v in req.tolist()],
+        })
+        curve = None
+        if power_curve:
+            if af_grid is None:
+                grid = torch.linspace(0.01, 0.5, 50, dtype=torch.float64)
+            elif isinstance(af_grid, str):
+                grid = torch.tensor([float(x) for x in af_grid.split(",") if x.strip()],
+                                    dtype=torch.float64)
+            else:
+                grid = torch.as_tensor(list(af_grid), dtype=torch.float64)
+            mdb = _power_curve(n, grid, alpha=alpha, target_power=target_power)
+            curve = pd.DataFrame({
+                "af": [float(v) for v in grid.tolist()],
+                "min_detectable_beta": [float(v) for v in mdb.tolist()],
+            })
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            df.to_csv(str(output), sep="\t", index=False)
+            output_files["tsv"] = Path(str(output))
+        n_powered = int((df["power"] >= target_power).sum())
+        return PowerRun(
+            runtime_s=elapsed(), output_files=output_files, results=df, curve=curve,
+            alpha=float(alpha), n=n, target_power=float(target_power),
+            n_variants=int(len(df)), n_powered=n_powered,
+        )
+
+
+def winners_curse(gwas, *, method="conditional_likelihood", alpha=5e-8,
+                  n_boot=10000, seed=None, output=None, sep="\t") -> "WinnersCurseRun":
+    """Winner's-curse effect-size de-biasing (conditional_likelihood / fiqt / bootstrap)."""
+    from ..postgwas import load_sumstats, correct_winners_curse
+
+    valid = {"conditional_likelihood", "fiqt", "bootstrap"}
+    if method not in valid:
+        raise ValueError(f"method must be one of {sorted(valid)}; got {method!r}.")
+    ss = load_sumstats(str(gwas), sep=sep)
+
+    with timed() as elapsed:
+        # CL/fiqt take no **kwargs and raise TypeError on n_boot/seed — forward only for bootstrap
+        extra = {"n_boot": int(n_boot), "seed": seed} if method == "bootstrap" else {}
+        res = correct_winners_curse(ss.beta, ss.se, method=method, alpha=alpha, **extra)
+        beta_orig = [float(v) for v in ss.beta.tolist()]
+        beta_adj = [float(v) for v in res.beta_adjusted.tolist()]
+        shrink = [float(v) for v in res.shrinkage_factor.tolist()]
+        m = len(beta_orig)
+        se_adj = ([float("nan")] * m if res.se_adjusted is None
+                  else [float(v) for v in res.se_adjusted.tolist()])
+        df = pd.DataFrame({
+            "snp": ss.snp, "beta_original": beta_orig, "beta_adjusted": beta_adj,
+            "se_adjusted": se_adj, "shrinkage_factor": shrink,
+        })
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            df.to_csv(str(output), sep="\t", index=False)
+            output_files["tsv"] = Path(str(output))
+        return WinnersCurseRun(
+            runtime_s=elapsed(), output_files=output_files, results=df,
+            method=str(res.method), n_corrected=int(res.n_corrected), n_variants=int(m),
         )
