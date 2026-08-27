@@ -146,3 +146,56 @@ def test_gene_annotation_bad_columns(tmp_path):
     pd.DataFrame({"foo": [1]}).to_csv(bad, sep="\t", index=False)
     with pytest.raises(ValueError):
         tg.gene_set_enrichment(gwas, str(bad), gsets)
+
+
+def _write_hess_fixture(tmp_path, shuffle=False):
+    import numpy as np, pandas as pd, torch
+    rng = np.random.default_rng(0)
+    m = 40  # 4 regions x 10 SNPs, positions sorted
+    pos = list(range(1, m + 1))
+    z = rng.normal(0, 1, size=m)
+    z[0:10] += 3.0  # region 1 carries signal
+    order = list(range(m))
+    if shuffle:
+        rng.shuffle(order)
+    df = pd.DataFrame({
+        "chr": [1] * m, "pos": [pos[i] for i in order],
+        "snp": [f"rs{order[i]}" for i in range(m)],
+        "a1": ["A"] * m, "a2": ["G"] * m,
+        "beta": [z[order[i]] * 0.02 for i in range(m)], "se": [0.02] * m,
+        "p": [0.01] * m, "n": [10000] * m, "af": [0.3] * m,
+    })
+    gwas = tmp_path / "gwas.tsv"; df.to_csv(gwas, sep="\t", index=False)
+    ld = (torch.eye(m, dtype=torch.float64)).numpy()
+    ldp = tmp_path / "ld.npy"; np.save(ldp, ld)
+    reg = pd.DataFrame({"chrom": [1, 1, 1, 1],
+                        "start": [1, 11, 21, 31], "end": [10, 20, 30, 40]})
+    regp = tmp_path / "regions.tsv"; reg.to_csv(regp, sep="\t", index=False)
+    return str(gwas), str(ldp), str(regp)
+
+
+def test_api_hess_h2_runs(tmp_path):
+    import torchgenomics as tg
+    from torchgenomics.api import HessRun
+    gwas, ld, reg = _write_hess_fixture(tmp_path)
+    r = tg.hess(gwas, ld, reg, output=str(tmp_path / "hess.tsv"))
+    assert isinstance(r, HessRun) and r.mode == "h2"
+    assert r.n_regions == 4 and r.n_snps_total == 40
+    # region label carries the bp coords from the regions file, not indices
+    assert r.results["region_id"].iloc[0] == "1:1-10"
+    assert (tmp_path / "hess.tsv").exists()
+
+
+def test_api_hess_contiguity_guard(tmp_path):
+    import torchgenomics as tg, pytest
+    gwas, ld, reg = _write_hess_fixture(tmp_path, shuffle=True)
+    with pytest.raises(ValueError):
+        tg.hess(gwas, ld, reg)
+
+
+def test_api_hess_rg_mode(tmp_path):
+    import torchgenomics as tg
+    gwas, ld, reg = _write_hess_fixture(tmp_path)
+    # reuse the same sumstats as a second trait -> rg path runs
+    r = tg.hess(gwas, ld, reg, gwas2=gwas)
+    assert r.mode == "rg" and r.n_regions == 4
