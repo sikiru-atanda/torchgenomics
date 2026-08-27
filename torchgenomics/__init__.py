@@ -65,10 +65,12 @@ from .api import (
     mr_mega,
     pgs_fit,
     pgs_score,
+    power,
     qq,
     recommend,
     smr,
     validate,
+    winners_curse,
 )
 
 __all__ = [
@@ -91,10 +93,12 @@ __all__ = [
     "mr_mega",
     "pgs_fit",
     "pgs_score",
+    "power",
     "qq",
     "recommend",
     "smr",
     "validate",
+    "winners_curse",
     # Result types
     "AnnotateRun",
     "ClumpRun",
