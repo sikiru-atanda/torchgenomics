@@ -81,27 +81,33 @@ def test_api_winners_curse_all_methods(tmp_path):
 def _write_enrichment_fixture(tmp_path, gmt=False):
     import pandas as pd, numpy as np
     rng = np.random.default_rng(0)
-    # 6 genes x 10 SNPs each; genes g0,g1 carry strong signal, g2..g5 null
+    # 6 genes x 10 SNPs each; genes g0,g1 carry strong signal, g2..g5 null.
+    # g0 is renamed to the literal string "NA" throughout (annotation gene_id
+    # and gene-set membership) to exercise the keep_default_na=False fix in
+    # _load_gene_annotation: pandas' default NA sentinels ("NA","null","None",
+    # "NaN") must not collide with a real gene identifier, or that gene's
+    # SNPs are silently dropped from every downstream set-level statistic.
     rows, ann = [], []
     from scipy.stats import norm
     for gi in range(6):
         strong = gi < 2
+        gene_name = "NA" if gi == 0 else f"g{gi}"
         for j in range(10):
             i = gi * 10 + j
             z = rng.normal(4.0 if strong else 0.0, 1.0)
             rows.append({"chr": 1, "pos": gi * 1000 + j, "snp": f"rs{i}",
                          "a1": "A", "a2": "G", "beta": z * 0.05, "se": 0.05,
                          "p": float(2 * norm.sf(abs(z))), "n": 5000, "af": 0.3})
-        ann.append({"gene": f"g{gi}", "chr": 1, "start": gi * 1000, "end": gi * 1000 + 9})
+        ann.append({"gene": gene_name, "chr": 1, "start": gi * 1000, "end": gi * 1000 + 9})
     gwas = tmp_path / "gwas.tsv"; pd.DataFrame(rows).to_csv(gwas, sep="\t", index=False)
     gann = tmp_path / "ann.tsv"; pd.DataFrame(ann).to_csv(gann, sep="\t", index=False)
     if gmt:
         gsets = tmp_path / "sets.gmt"
-        gsets.write_text("hot\tdesc\tg0\tg1\nnull\tdesc\tg3\tg4\tg5\n")
+        gsets.write_text("hot\tdesc\tNA\tg1\nnull\tdesc\tg3\tg4\tg5\n")
     else:
         gsets = tmp_path / "sets.tsv"
         pd.DataFrame({"set": ["hot", "hot", "null", "null", "null"],
-                      "gene": ["g0", "g1", "g3", "g4", "g5"]}).to_csv(gsets, sep="\t", index=False)
+                      "gene": ["NA", "g1", "g3", "g4", "g5"]}).to_csv(gsets, sep="\t", index=False)
     return str(gwas), str(gann), str(gsets)
 
 
@@ -115,6 +121,11 @@ def test_api_gene_set_enrichment_runs(tmp_path):
     # the enriched set has a smaller p than the null set
     assert res.loc["hot", "p"] < res.loc["null", "p"]
     assert not r.genes.empty
+    # the gene literally named "NA" (formerly g0, a strong-signal gene) must
+    # survive the annotation load and cross-reference into the "hot" set —
+    # pandas' default NA sentinels must not swallow a real gene identifier
+    # (see _load_gene_annotation's keep_default_na=False).
+    assert "NA" in set(r.genes["gene_id"].astype(str))
     assert (tmp_path / "enr.tsv").exists()
 
 

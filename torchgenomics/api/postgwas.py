@@ -446,7 +446,7 @@ def _load_gene_map(gene_map, sep="\t") -> dict:
 
 def _load_gene_annotation(gene_annotation, sep="\t"):
     """Load a gene annotation TSV (columns gene, chr, start, end) into four lists."""
-    df = pd.read_csv(str(gene_annotation), sep=sep)
+    df = pd.read_csv(str(gene_annotation), sep=sep, keep_default_na=False)
     need = {"gene", "chr", "start", "end"}
     if not need.issubset(df.columns):
         raise ValueError(
