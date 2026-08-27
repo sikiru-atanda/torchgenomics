@@ -13,6 +13,7 @@ from ._results import (
     ClumpRun,
     ColocRun,
     EnrichmentRun,
+    HessRun,
     MetaRun,
     MRMegaRun,
     MRRun,
@@ -754,4 +755,124 @@ def gene_set_enrichment(gwas, gene_annotation, gene_sets, *, window_kb=0.0,
             runtime_s=elapsed(), output_files=output_files, results=df, genes=genes_df,
             n_genes_total=int(enr.n_genes_total), n_gene_sets=int(len(df)),
             n_significant=int((df["p"] < 0.05).sum()),
+        )
+
+
+def _load_matrix(path):
+    """Load an (m, m) LD matrix from a .npy or .pt/.pth file as a float64 Tensor."""
+    import numpy as np
+    import torch
+    p = str(path)
+    if p.lower().endswith(".npy"):
+        arr = np.load(p)
+        mat = torch.as_tensor(arr, dtype=torch.float64)
+    elif p.lower().endswith((".pt", ".pth")):
+        obj = torch.load(p, map_location="cpu")
+        mat = torch.as_tensor(obj, dtype=torch.float64)
+    else:
+        raise ValueError(f"ld_matrix must be a .npy or .pt/.pth file; got {p!r}.")
+    if mat.ndim != 2 or mat.shape[0] != mat.shape[1]:
+        raise ValueError(f"ld_matrix must be square (m, m); got shape {tuple(mat.shape)}.")
+    return mat
+
+
+def _load_regions(regions, sep="\t"):
+    """Load a genomic regions TSV (columns chrom, start, end) into a list of tuples."""
+    df = pd.read_csv(str(regions), sep=sep)
+    need = {"chrom", "start", "end"}
+    if not need.issubset(df.columns):
+        raise ValueError(
+            f"regions file must have columns {sorted(need)} (bp); got {list(df.columns)}."
+        )
+    return [(str(c), int(s), int(e))
+            for c, s, e in zip(df["chrom"], df["start"], df["end"])]
+
+
+def hess(gwas, ld_matrix, regions, *, n=None, n2=None, gwas2=None,
+         eigenvalue_threshold=1.0, output=None, sep="\t") -> "HessRun":
+    """HESS local heritability (or local genetic correlation with ``gwas2``).
+
+    ``ld_matrix`` (.npy/.pt) must be (m, m) aligned to the sumstats row order.
+    ``regions`` is a TSV (chrom,start,end in bp); each region is mapped to a
+    CONTIGUOUS SNP-index block, so the sumstats + LD matrix must be sorted by
+    genomic position.
+    """
+    import warnings
+    import torch
+    from ..postgwas import load_sumstats, hess_local_h2, hess_local_rg
+
+    ss = load_sumstats(str(gwas), sep=sep)
+    ld = _load_matrix(ld_matrix)
+    if ld.shape[0] != ss.m:
+        raise ValueError(f"ld_matrix is {ld.shape[0]}x{ld.shape[0]} but the sumstats "
+                         f"has {ss.m} SNPs — they must align 1:1.")
+    reg = _load_regions(regions, sep=sep)
+
+    def _resolve_n(nval, label):
+        if nval is not None:
+            return float(nval)
+        finite = ss.n[torch.isfinite(ss.n)]
+        if finite.numel() == 0:
+            raise ValueError(f"hess needs {label}: pass it explicitly (no usable 'n' column).")
+        return float(finite.median().item())
+
+    # map bp regions -> contiguous (start, end) index blocks
+    chr_str = [str(c) for c in ss.chr]
+    pos = [int(p) for p in ss.pos]
+    bounds: list[tuple[int, int]] = []
+    labels: list[str] = []
+    bp_meta: list[tuple[str, int, int]] = []
+    for chrom, start, end in reg:
+        idx = [i for i in range(ss.m)
+               if chr_str[i] == str(chrom) and start <= pos[i] <= end]
+        if not idx:
+            warnings.warn(f"hess: region {chrom}:{start}-{end} matched no SNPs — skipping.")
+            continue
+        first, last = min(idx), max(idx)
+        if sorted(idx) != list(range(first, last + 1)):
+            raise ValueError(
+                f"region {chrom}:{start}-{end} maps to non-contiguous SNP indices — "
+                f"the sumstats and LD matrix must be sorted by genomic position."
+            )
+        bounds.append((first, last + 1))
+        labels.append(f"{chrom}:{start}-{end}")
+        bp_meta.append((str(chrom), int(start), int(end)))
+    if not bounds:
+        raise ValueError(
+            f"none of the {len(reg)} regions matched any SNP in the sumstats — "
+            f"check chromosome naming and coordinates."
+        )
+
+    with timed() as elapsed:
+        if gwas2 is not None:
+            ss2 = load_sumstats(str(gwas2), sep=sep)
+            if ss2.m != ss.m:
+                raise ValueError("gwas2 must have the same SNPs (same m) as gwas.")
+            n1v = _resolve_n(n, "n (trait 1)")
+            n2v = _resolve_n(n2 if n2 is not None else n, "n2 (trait 2)")
+            hres = hess_local_rg(ss.z, ss2.z, ld, n1v, n2v, bounds,
+                                 region_labels=labels,
+                                 eigenvalue_threshold=eigenvalue_threshold)
+            mode = "rg"
+        else:
+            nv = _resolve_n(n, "n")
+            hres = hess_local_h2(ss.z, ld, nv, bounds, region_labels=labels,
+                                 eigenvalue_threshold=eigenvalue_threshold)
+            mode = "h2"
+        rows = []
+        for rr, (chrom, start, end) in zip(hres.regions, bp_meta):
+            rows.append({
+                "region_id": rr.region_id, "chrom": chrom, "start": start, "end": end,
+                "h2_local": rr.h2_local, "h2_local_se": rr.h2_local_se,
+                "n_snps": rr.n_snps, "n_eigenvalues_kept": rr.n_eigenvalues_kept,
+            })
+        df = pd.DataFrame(rows)
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            df.to_csv(str(output), sep="\t", index=False)
+            output_files["tsv"] = Path(str(output))
+        return HessRun(
+            runtime_s=elapsed(), output_files=output_files, results=df, mode=mode,
+            h2_total=float(hres.h2_total), h2_total_se=float(hres.h2_total_se),
+            n_regions=int(hres.n_regions), n_snps_total=int(hres.n_snps_total),
         )
