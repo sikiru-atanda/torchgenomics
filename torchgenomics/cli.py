@@ -102,6 +102,10 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_coloc_parser(subparsers)
     _add_smr_parser(subparsers)
     _add_mr_mega_parser(subparsers)
+    _add_power_parser(subparsers)
+    _add_winners_curse_parser(subparsers)
+    _add_gene_set_enrichment_parser(subparsers)
+    _add_hess_parser(subparsers)
 
     # --- Polygenic scores (Phase 40) ---
     _add_pgs_fit_parser(subparsers)
@@ -175,6 +179,10 @@ def main(argv: list[str] | None = None) -> int:
         "coloc": _cmd_coloc,
         "smr": _cmd_smr,
         "mr-mega": _cmd_mr_mega,
+        "power": _cmd_power,
+        "winners-curse": _cmd_winners_curse,
+        "gene-set-enrichment": _cmd_gene_set_enrichment,
+        "hess": _cmd_hess,
         "pgs-fit": _cmd_pgs_fit,
         "pgs-score": _cmd_pgs_score,
         "annotate": _cmd_annotate,
@@ -4373,6 +4381,50 @@ def _cmd_mr_mega(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_power(args: argparse.Namespace) -> int:
+    """Per-variant GWAS detection power (thin wrapper over api.power)."""
+    from .api import power
+
+    r = power(args.gwas, n=args.n, alpha=args.alpha, target_power=args.target_power,
+              power_curve=args.power_curve, af_grid=args.af_grid, output=args.output)
+    print(r.summary())
+    return 0
+
+
+def _cmd_winners_curse(args: argparse.Namespace) -> int:
+    """Winner's-curse effect-size de-biasing (thin wrapper over api.winners_curse)."""
+    from .api import winners_curse
+
+    r = winners_curse(args.gwas, method=args.method, alpha=args.alpha,
+                      n_boot=args.n_boot, seed=args.seed, output=args.output)
+    print(r.summary())
+    return 0
+
+
+def _cmd_gene_set_enrichment(args: argparse.Namespace) -> int:
+    """MAGMA-style gene-set enrichment (thin wrapper over api.gene_set_enrichment)."""
+    from .api import gene_set_enrichment
+
+    r = gene_set_enrichment(args.gwas, args.gene_annotation, args.gene_sets,
+                            window_kb=args.window_kb, gene_sets_format=args.gene_sets_format,
+                            covariate_gene_size=not args.no_covariate_gene_size,
+                            covariate_log_size=not args.no_covariate_log_size,
+                            output=args.output)
+    print(r.summary())
+    return 0
+
+
+def _cmd_hess(args: argparse.Namespace) -> int:
+    """HESS local heritability / genetic correlation (thin wrapper over api.hess)."""
+    from .api import hess
+
+    r = hess(args.gwas, args.ld_matrix, args.regions, n=args.n, n2=args.n2,
+             gwas2=args.gwas2, eigenvalue_threshold=args.eigenvalue_threshold,
+             output=args.output)
+    print(r.summary())
+    return 0
+
+
 def _run_pgs_fit(
     sumstats_path: str,
     ld_ref_path: str,
@@ -5614,6 +5666,53 @@ def _add_mr_mega_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--n-axes", type=int, default=4)
     p.add_argument("--random-effects", action="store_true", default=False)
     p.add_argument("--output", default=None, help="Output per-SNP results TSV.")
+
+
+def _add_power_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("power", help="Per-variant GWAS detection power.")
+    p.add_argument("--gwas", required=True, help="GWAS sumstats TSV (needs af, beta).")
+    p.add_argument("--n", type=float, default=None, help="Sample size (default: median n col).")
+    p.add_argument("--alpha", type=float, default=5e-8)
+    p.add_argument("--target-power", type=float, default=0.8)
+    p.add_argument("--power-curve", action="store_true", default=False,
+                   help="Also compute the min-detectable-|beta| AF envelope.")
+    p.add_argument("--af-grid", default=None, help="Comma-separated AF grid for the curve.")
+    p.add_argument("--output", default=None)
+
+
+def _add_winners_curse_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("winners-curse", help="Winner's-curse effect-size de-biasing.")
+    p.add_argument("--gwas", required=True)
+    p.add_argument("--method", choices=["conditional_likelihood", "fiqt", "bootstrap"],
+                   default="conditional_likelihood")
+    p.add_argument("--alpha", type=float, default=5e-8)
+    p.add_argument("--n-boot", type=int, default=10000)
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--output", default=None)
+
+
+def _add_gene_set_enrichment_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("gene-set-enrichment", help="MAGMA-style gene-set enrichment.")
+    p.add_argument("--gwas", required=True)
+    p.add_argument("--gene-annotation", required=True, help="TSV: gene,chr,start,end.")
+    p.add_argument("--gene-sets", required=True, help="Long TSV (set,gene) or .gmt.")
+    p.add_argument("--window-kb", type=float, default=0.0)
+    p.add_argument("--gene-sets-format", choices=["auto", "tsv", "gmt"], default="auto")
+    p.add_argument("--no-covariate-gene-size", action="store_true", default=False)
+    p.add_argument("--no-covariate-log-size", action="store_true", default=False)
+    p.add_argument("--output", default=None)
+
+
+def _add_hess_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser("hess", help="HESS local heritability / genetic correlation.")
+    p.add_argument("--gwas", required=True)
+    p.add_argument("--ld-matrix", required=True, help="(m,m) LD matrix .npy or .pt.")
+    p.add_argument("--regions", required=True, help="TSV: chrom,start,end (bp).")
+    p.add_argument("--n", type=float, default=None)
+    p.add_argument("--n2", type=float, default=None, help="Trait-2 N (rg mode).")
+    p.add_argument("--gwas2", default=None, help="Second sumstats -> local rg mode.")
+    p.add_argument("--eigenvalue-threshold", type=float, default=1.0)
+    p.add_argument("--output", default=None)
 
 
 def _add_pgs_fit_parser(subparsers: argparse._SubParsersAction) -> None:
