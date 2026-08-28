@@ -99,7 +99,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 50 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 48 with the addition of `smr`/`mr-mega`, thin CLI wrappers over `torchgenomics.api.smr`/`api.mr_mega` sharing the same core as the Python API — no MCP tool was added for either, that remains 14; prior to that, up from 46 with `mr`/`coloc`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
+- **CLI subcommand count**: 54 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 50 with the addition of `power`/`winners-curse`/`gene-set-enrichment`/`hess`, thin CLI wrappers over `torchgenomics.api.power`/`api.winners_curse`/`api.gene_set_enrichment`/`api.hess` sharing the same core as the Python API — no MCP tool was added for any of the four, that remains 14; prior to that, up from 48 with `smr`/`mr-mega`; prior to that, up from 46 with `mr`/`coloc`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
 
 ## Phase Index
 
@@ -363,4 +363,10 @@ torchgenomics coloc --sumstats a.tsv b.tsv c.tsv --method hyprcoloc --output hyp
 # --- SMR/HEIDI + MR-MEGA (thin CLI wrappers over api.smr / api.mr_mega) ---
 torchgenomics smr --gwas gwas.tsv --eqtl eqtl.tsv --gene-map cis_map.tsv --output smr.tsv
 torchgenomics mr-mega --sumstats pop1.tsv pop2.tsv pop3.tsv --n-axes 1 --output mrmega.tsv
+
+# --- Power / winner's curse / gene-set enrichment / HESS (thin CLI wrappers over api.power / api.winners_curse / api.gene_set_enrichment / api.hess) ---
+torchgenomics power --gwas gwas.tsv --power-curve --output power.tsv
+torchgenomics winners-curse --gwas gwas.tsv --method conditional_likelihood --output wc.tsv
+torchgenomics gene-set-enrichment --gwas gwas.tsv --gene-annotation genes.tsv --gene-sets sets.gmt --output enr.tsv
+torchgenomics hess --gwas gwas.tsv --ld-matrix ld.npy --regions regions.tsv --output hess.tsv
 ```
