@@ -13,6 +13,7 @@ from ._results import (
     ClumpRun,
     ColocRun,
     EnrichmentRun,
+    FineMapRun,
     HessRun,
     MetaRun,
     MRMegaRun,
@@ -877,4 +878,82 @@ def hess(gwas, ld_matrix, regions, *, n=None, n2=None, gwas2=None,
             runtime_s=elapsed(), output_files=output_files, results=df, mode=mode,
             h2_total=float(hres.h2_total), h2_total_se=float(hres.h2_total_se),
             n_regions=int(hres.n_regions), n_snps_total=int(hres.n_snps_total),
+        )
+
+
+def _summarize_credible_sets(df) -> "pd.DataFrame":
+    """Per-credible-set summary derived from the finemap output TSV.
+
+    Columns: credible_set, n_snps, lead_snp, lead_pip, sum_pip. Named for exactly
+    what the TSV provides — lead_pip is the max per-variant PIP in the set and
+    sum_pip is the PIP sum; neither is a claimed SuSiE per-layer coverage (the
+    per-layer alpha is not written to the TSV).
+    """
+    rows = []
+    for cs in sorted(int(c) for c in df["CREDIBLE_SET"].unique() if int(c) > 0):
+        sub = df[df["CREDIBLE_SET"] == cs]
+        lead = sub.loc[sub["PIP"].idxmax()]
+        rows.append({
+            "credible_set": int(cs), "n_snps": int(len(sub)),
+            "lead_snp": str(lead["SNP"]), "lead_pip": float(lead["PIP"]),
+            "sum_pip": float(sub["PIP"].sum()),
+        })
+    return pd.DataFrame(rows, columns=["credible_set", "n_snps", "lead_snp",
+                                       "lead_pip", "sum_pip"])
+
+
+def finemap(sumstats, ld_ref=None, *, geno=None, regions=None, prior_pi=None,
+            max_num_causal=10, coverage=0.95, purity=0.5,
+            block_size_threshold=5000, output=None, threads=4) -> "FineMapRun":
+    """SuSiE-RSS fine-mapping — friendly rich-result front-end over ``bayes-scan-rss``.
+
+    Runs the validated ``bayes-scan-rss`` SuSiE-RSS pipeline unchanged (identical
+    inputs, identical output) and returns a rich :class:`FineMapRun` with a
+    per-variant PIP table and a per-credible-set summary. See ``bayes-scan-rss`` for
+    input formats: uppercase ``SNP/CHR/BP/A1/A2`` + ``Z`` (or ``BETA/SE/N``) sumstats;
+    a ``.pt``/``.npz`` LD reference carrying SNP ids; index-based ``start,stop`` regions.
+    """
+    import tempfile
+    from ._cli_bridge import run_cli_subcommand
+
+    if ld_ref is None and geno is None:
+        raise ValueError(
+            "finemap needs an LD reference: pass ld_ref=<.pt/.npz> (carrying SNP "
+            "ids). (geno= in-sample LD is not yet wired upstream.)"
+        )
+
+    def _run(out_path):
+        return run_cli_subcommand(
+            "bayes-scan-rss",
+            sumstats=str(sumstats),
+            ld_ref=(str(ld_ref) if ld_ref is not None else None),
+            geno=(str(geno) if geno is not None else None),
+            regions=(str(regions) if regions is not None else None),
+            prior_pi=(str(prior_pi) if prior_pi is not None else None),
+            max_num_causal=int(max_num_causal),
+            coverage=float(coverage),
+            purity=float(purity),
+            block_size_threshold=int(block_size_threshold),
+            output=out_path,
+            threads=int(threads),
+        )
+
+    with timed() as elapsed:
+        output_files: dict[str, Path] = {}
+        if output is not None:
+            _run(str(output))
+            df = pd.read_csv(str(output), sep="\t")
+            output_files["tsv"] = Path(str(output))
+        else:
+            with tempfile.TemporaryDirectory() as td:
+                tmp = str(Path(td) / "finemap.tsv")
+                _run(tmp)
+                df = pd.read_csv(tmp, sep="\t")
+        cs_df = _summarize_credible_sets(df)
+        return FineMapRun(
+            runtime_s=elapsed(), output_files=output_files,
+            results=df, credible_sets=cs_df,
+            n_variants=int(len(df)),
+            n_credible_sets=int(cs_df.shape[0]),
+            n_variants_in_credible_sets=int((df["CREDIBLE_SET"] > 0).sum()),
         )
