@@ -70,6 +70,7 @@ from .plotting import manhattan, qq
 from .postgwas import (
     clump,
     coloc,
+    finemap,
     gene_set_enrichment,
     hess,
     meta,
@@ -99,6 +100,7 @@ __all__ = [
     "gene_set_enrichment",
     "hess",
     "coloc",
+    "finemap",
     "pgs_fit",
     "pgs_score",
     "lgebv",
