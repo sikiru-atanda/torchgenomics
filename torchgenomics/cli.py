@@ -5,9 +5,9 @@ lmm-scan, mvlmm-scan, poly-scan, mklmm-scan, gxe-scan, set-scan, bayes-scan,
 bayes-scan-rss, met-scan, farmcpu-scan, blink-scan, threshold-scan,
 family-scan, conditional-scan, mtmet-scan, ocf-scan, knockoff-scan, gu-scan,
 lro-scan, glmm-scan, me-glmm-scan, survival-scan, rr-scan, rr-met-scan,
-ld-blocks, ldsc, ldsc-rg, meta, clump, mr, coloc, smr, mr-mega, pgs-fit,
-pgs-score, annotate, mediate, mediate-scan, pipeline, gwas, recommend,
-models.
+ld-blocks, ldsc, ldsc-rg, meta, clump, mr, coloc, smr, mr-mega, finemap,
+pgs-fit, pgs-score, annotate, mediate, mediate-scan, pipeline, gwas,
+recommend, models.
 
 ``gwas`` / ``recommend`` / ``models`` (Task 8, friendly API) share the same
 decision core as the Python functions ``torchgenomics.api.gwas`` /
@@ -102,6 +102,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_coloc_parser(subparsers)
     _add_smr_parser(subparsers)
     _add_mr_mega_parser(subparsers)
+    _add_finemap_parser(subparsers)
     _add_power_parser(subparsers)
     _add_winners_curse_parser(subparsers)
     _add_gene_set_enrichment_parser(subparsers)
@@ -179,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         "coloc": _cmd_coloc,
         "smr": _cmd_smr,
         "mr-mega": _cmd_mr_mega,
+        "finemap": _cmd_finemap,
         "power": _cmd_power,
         "winners-curse": _cmd_winners_curse,
         "gene-set-enrichment": _cmd_gene_set_enrichment,
@@ -4381,6 +4383,19 @@ def _cmd_mr_mega(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_finemap(args: argparse.Namespace) -> int:
+    """SuSiE-RSS fine-mapping (thin friendly front-end over api.finemap/bayes-scan-rss)."""
+    from .api import finemap
+
+    r = finemap(args.sumstats, ld_ref=args.ld_ref, geno=args.geno,
+                regions=args.regions, prior_pi=args.prior_pi,
+                max_num_causal=args.max_num_causal, coverage=args.coverage,
+                purity=args.purity, block_size_threshold=args.block_size_threshold,
+                output=args.output, threads=args.threads)
+    print(r.summary())
+    return 0
+
+
 def _cmd_power(args: argparse.Namespace) -> int:
     """Per-variant GWAS detection power (thin wrapper over api.power)."""
     from .api import power
@@ -5666,6 +5681,28 @@ def _add_mr_mega_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--n-axes", type=int, default=4)
     p.add_argument("--random-effects", action="store_true", default=False)
     p.add_argument("--output", default=None, help="Output per-SNP results TSV.")
+
+
+def _add_finemap_parser(subparsers: argparse._SubParsersAction) -> None:
+    p = subparsers.add_parser(
+        "finemap",
+        help=("SuSiE-RSS fine-mapping (friendly front-end over the same engine as "
+              "bayes-scan-rss); prints a credible-set summary."))
+    p.add_argument("--sumstats", required=True,
+                   help="Sumstats TSV (SNP,CHR,BP,A1,A2 + Z or BETA/SE/N).")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--ld-ref", help="Pre-built LD reference (.pt or .npz, carrying SNP ids).")
+    g.add_argument("--geno", help="Genotype panel for in-sample LD (not yet wired upstream).")
+    p.add_argument("--regions", default=None,
+                   help="Block regions TSV with start,stop INDEX columns.")
+    p.add_argument("--prior-pi", default=None,
+                   help="Scalar prior inclusion prob OR path to a PRIOR_PI file.")
+    p.add_argument("--max-num-causal", type=int, default=10)
+    p.add_argument("--coverage", type=float, default=0.95)
+    p.add_argument("--purity", type=float, default=0.5)
+    p.add_argument("--block-size-threshold", type=int, default=5000)
+    p.add_argument("--threads", type=int, default=4)
+    p.add_argument("--output", default=None, help="Optional output TSV path.")
 
 
 def _add_power_parser(subparsers: argparse._SubParsersAction) -> None:
