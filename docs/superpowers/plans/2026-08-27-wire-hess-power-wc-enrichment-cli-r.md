@@ -953,7 +953,7 @@ git commit -m "cli: power/winners-curse/gene-set-enrichment/hess subcommands + m
 - Regenerate: `inst/rbridge_manifest.json`, `R/api_auto.R`
 
 **Interfaces:**
-- Consumes: the CLI subcommands from Task 5 via `bridge_call("<name>", args)` (the R bridge invokes the api through the CLI-runner).
+- Consumes: the Python api functions via `bridge_call("<name>", args)` (the R bridge calls `torchgenomics.api.<name>` directly through reticulate, not through the CLI).
 - Produces: `tg_power`, `tg_winners_curse`, `tg_gene_set_enrichment`, `tg_hess` + S4 classes.
 
 - [ ] **Step 1: Add the four `tg_*` wrappers** to `R/api.R` (mirror `tg_smr`). Use `.as_path`/`.compact`; `bridge_call` name = underscored manifest name.

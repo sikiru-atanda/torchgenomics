@@ -778,7 +778,9 @@ def _load_matrix(path):
 
 def _load_regions(regions, sep="\t"):
     """Load a genomic regions TSV (columns chrom, start, end) into a list of tuples."""
-    df = pd.read_csv(str(regions), sep=sep)
+    # keep_default_na=False: a chromosome literally named "NA" must stay the
+    # string "NA" so it matches ss.chr (mirrors the enrichment loaders).
+    df = pd.read_csv(str(regions), sep=sep, keep_default_na=False)
     need = {"chrom", "start", "end"}
     if not need.issubset(df.columns):
         raise ValueError(
