@@ -77,6 +77,7 @@ reference:
     - tg_coloc
     - tg_smr
     - tg_mr_mega
+    - tg_finemap
     - tg_power
     - tg_winners_curse
     - tg_gene_set_enrichment
@@ -116,6 +117,7 @@ reference:
     - MRRun-class
     - ColocRun-class
     - SMRRun-class
+    - FineMapRun-class
     - MRMegaRun-class
     - PowerRun-class
     - WinnersCurseRun-class

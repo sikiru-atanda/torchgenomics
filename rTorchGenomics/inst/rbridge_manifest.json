@@ -1537,6 +1537,112 @@
       ]
     },
     {
+      "name": "finemap",
+      "cli_subcommand": "finemap",
+      "description": "SuSiE-RSS fine-mapping (friendly front-end over the same engine as bayes-scan-rss); prints a credible-set summary.",
+      "args": [
+        {
+          "name": "sumstats",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Sumstats TSV (SNP,CHR,BP,A1,A2 + Z or BETA/SE/N).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_ref",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Pre-built LD reference (.pt or .npz, carrying SNP ids).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "geno",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Genotype panel for in-sample LD (not yet wired upstream).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "regions",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Block regions TSV with start,stop INDEX columns.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "prior_pi",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Scalar prior inclusion prob OR path to a PRIOR_PI file.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "max_num_causal",
+          "type": "int",
+          "required": false,
+          "default": 10,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "coverage",
+          "type": "float",
+          "required": false,
+          "default": 0.95,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "purity",
+          "type": "float",
+          "required": false,
+          "default": 0.5,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "block_size_threshold",
+          "type": "int",
+          "required": false,
+          "default": 5000,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "threads",
+          "type": "int",
+          "required": false,
+          "default": 4,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Optional output TSV path.",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
       "name": "gene_set_enrichment",
       "cli_subcommand": "gene-set-enrichment",
       "description": "MAGMA-style gene-set enrichment.",
