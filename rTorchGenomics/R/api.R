@@ -438,6 +438,120 @@ tg_mr_mega <- function(sumstats, output = NULL, n_axes = 4L, random_effects = FA
   MRMegaRun$new_from_dict(d)
 }
 
+#' GWAS detection power.
+#'
+#' Per-variant power, non-centrality parameter, min-detectable-|beta|, and
+#' required sample size, given a sumstats TSV with an allele-frequency
+#' column.
+#'
+#' @param gwas Path to GWAS sumstats TSV (needs an `af` column).
+#' @param n Sample size. Defaults to the median of the sumstats' `n` column.
+#' @param alpha Genome-wide significance threshold.
+#' @param target_power Target power used for `required_n` / powered-count.
+#' @param power_curve If `TRUE`, also compute the min-detectable-|beta|
+#'   envelope over an allele-frequency grid.
+#' @param af_grid Optional numeric vector (or comma-separated string) of
+#'   allele frequencies for the power curve. Defaults to a 50-point grid.
+#' @param output Optional path to write the results TSV.
+#'
+#' @return A `PowerRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_power("gwas.tsv", power_curve = TRUE)
+#' }
+#' @export
+tg_power <- function(gwas, n = NULL, alpha = 5e-8, target_power = 0.8,
+                     power_curve = FALSE, af_grid = NULL, output = NULL) {
+  d <- bridge_call("power", .compact(list(
+    gwas = .as_path(gwas), n = n, alpha = alpha, target_power = target_power,
+    power_curve = power_curve, af_grid = af_grid, output = .as_path(output))))
+  PowerRun$new_from_dict(d)
+}
+
+#' Winner's-curse effect-size correction.
+#'
+#' @param gwas Path to GWAS sumstats TSV.
+#' @param method `"conditional_likelihood"`, `"fiqt"`, or `"bootstrap"`.
+#' @param alpha Genome-wide significance threshold used by the correction.
+#' @param n_boot Number of bootstrap replicates (`method = "bootstrap"` only).
+#' @param seed Optional integer RNG seed (`method = "bootstrap"` only).
+#' @param output Optional path to write the results TSV.
+#'
+#' @return A `WinnersCurseRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_winners_curse("gwas.tsv", method = "conditional_likelihood")
+#' }
+#' @export
+tg_winners_curse <- function(gwas, method = "conditional_likelihood", alpha = 5e-8,
+                             n_boot = 10000L, seed = NULL, output = NULL) {
+  d <- bridge_call("winners_curse", .compact(list(
+    gwas = .as_path(gwas), method = method, alpha = alpha,
+    n_boot = as.integer(n_boot), seed = seed, output = .as_path(output))))
+  WinnersCurseRun$new_from_dict(d)
+}
+
+#' Gene-set enrichment (MAGMA-style).
+#'
+#' SNP-to-gene assignment followed by a competitive gene-set test.
+#'
+#' @param gwas Path to GWAS sumstats TSV.
+#' @param gene_annotation Path to a gene annotation TSV (gene id/chr/start/end).
+#' @param gene_sets Path to a gene-set file (GMT or TSV; see `gene_sets_format`).
+#' @param window_kb Symmetric window (kb) added around each gene body when
+#'   assigning SNPs to genes.
+#' @param covariate_gene_size If `TRUE`, regress out gene size.
+#' @param covariate_log_size If `TRUE`, regress out log gene size.
+#' @param gene_sets_format `"auto"`, `"gmt"`, or `"tsv"`.
+#' @param output Optional path to write the results TSV.
+#'
+#' @return An `EnrichmentRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_gene_set_enrichment("gwas.tsv", "genes.tsv", "sets.gmt")
+#' }
+#' @export
+tg_gene_set_enrichment <- function(gwas, gene_annotation, gene_sets, window_kb = 0.0,
+                                   covariate_gene_size = TRUE, covariate_log_size = TRUE,
+                                   gene_sets_format = "auto", output = NULL) {
+  d <- bridge_call("gene_set_enrichment", .compact(list(
+    gwas = .as_path(gwas), gene_annotation = .as_path(gene_annotation),
+    gene_sets = .as_path(gene_sets), window_kb = window_kb,
+    covariate_gene_size = covariate_gene_size, covariate_log_size = covariate_log_size,
+    gene_sets_format = gene_sets_format, output = .as_path(output))))
+  EnrichmentRun$new_from_dict(d)
+}
+
+#' HESS local heritability / genetic correlation.
+#'
+#' @param gwas Path to GWAS sumstats TSV.
+#' @param ld_matrix Path to an (m, m) LD matrix (.npy/.pt) aligned to the
+#'   sumstats row order.
+#' @param regions Path to a regions TSV (chrom/start/end in bp); each region
+#'   must map to a contiguous SNP-index block.
+#' @param n Sample size for `gwas`. Defaults to the sumstats' `n` column.
+#' @param n2 Sample size for `gwas2` (local rg only).
+#' @param gwas2 Optional second GWAS sumstats TSV; if given, computes local
+#'   genetic correlation instead of local heritability.
+#' @param eigenvalue_threshold Eigenvalue truncation threshold for the
+#'   per-region LD sub-block.
+#' @param output Optional path to write the results TSV.
+#'
+#' @return A `HessRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_hess("gwas.tsv", "ld.npy", "regions.tsv", n = 50000)
+#' }
+#' @export
+tg_hess <- function(gwas, ld_matrix, regions, n = NULL, n2 = NULL, gwas2 = NULL,
+                    eigenvalue_threshold = 1.0, output = NULL) {
+  d <- bridge_call("hess", .compact(list(
+    gwas = .as_path(gwas), ld_matrix = .as_path(ld_matrix), regions = .as_path(regions),
+    n = n, n2 = n2, gwas2 = .as_path(gwas2),
+    eigenvalue_threshold = eigenvalue_threshold, output = .as_path(output))))
+  HessRun$new_from_dict(d)
+}
+
 #' Fit polygenic-score weights.
 #'
 #' @param sumstats Path to GWAS sumstats.
