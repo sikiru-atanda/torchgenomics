@@ -14,7 +14,9 @@
 .HANDCRAFTED_COMMANDS <- c("gwas", "recommend", "models", "mr", "coloc",
                            "clump", "meta", "lmm_scan", "glm_scan",
                            "pgs_fit", "pgs_score", "ld_blocks", "lgebv",
-                           "annotate_hits", "convert", "impute", "validate")
+                           "annotate_hits", "convert", "impute", "validate",
+                           "smr", "mr_mega",
+                           "power", "winners_curse", "gene_set_enrichment", "hess")
 
 #' Generate R/api_auto.R from the rbridge manifest.
 #'

@@ -1537,6 +1537,89 @@
       ]
     },
     {
+      "name": "gene_set_enrichment",
+      "cli_subcommand": "gene-set-enrichment",
+      "description": "MAGMA-style gene-set enrichment.",
+      "args": [
+        {
+          "name": "gwas",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_annotation",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "TSV: gene,chr,start,end.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_sets",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Long TSV (set,gene) or .gmt.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "window_kb",
+          "type": "float",
+          "required": false,
+          "default": 0.0,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_sets_format",
+          "type": "str",
+          "required": false,
+          "default": "auto",
+          "help": "",
+          "choices": [
+            "auto",
+            "tsv",
+            "gmt"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "no_covariate_gene_size",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "no_covariate_log_size",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
       "name": "glmm_scan",
       "cli_subcommand": "glmm-scan",
       "description": "GLMM association scan (binary/ordinal with random effects, SAIGE-style PQL)",
@@ -2306,6 +2389,85 @@
             "het",
             "multi"
           ],
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "hess",
+      "cli_subcommand": "hess",
+      "description": "HESS local heritability / genetic correlation.",
+      "args": [
+        {
+          "name": "gwas",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "ld_matrix",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "(m,m) LD matrix .npy or .pt.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "regions",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "TSV: chrom,start,end (bp).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n",
+          "type": "float",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n2",
+          "type": "float",
+          "required": false,
+          "default": null,
+          "help": "Trait-2 N (rg mode).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gwas2",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Second sumstats -> local rg mode.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "eigenvalue_threshold",
+          "type": "float",
+          "required": false,
+          "default": 1.0,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
           "nargs": null
         }
       ]
@@ -3872,6 +4034,49 @@
       ]
     },
     {
+      "name": "mr_mega",
+      "cli_subcommand": "mr-mega",
+      "description": "Multi-ancestry MR meta-analysis (MR-MEGA).",
+      "args": [
+        {
+          "name": "sumstats",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "One sumstats TSV per ancestry (>= n_axes + 2).",
+          "choices": null,
+          "nargs": "+"
+        },
+        {
+          "name": "n_axes",
+          "type": "int",
+          "required": false,
+          "default": 4,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "random_effects",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Output per-SNP results TSV.",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
       "name": "mtmet_scan",
       "cli_subcommand": "mtmet-scan",
       "description": "Multi-trait multi-environment GWAS with separable Kronecker covariance",
@@ -5157,6 +5362,76 @@
       ]
     },
     {
+      "name": "power",
+      "cli_subcommand": "power",
+      "description": "Per-variant GWAS detection power.",
+      "args": [
+        {
+          "name": "gwas",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "GWAS sumstats TSV (needs af, beta).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n",
+          "type": "float",
+          "required": false,
+          "default": null,
+          "help": "Sample size (default: median n col).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "alpha",
+          "type": "float",
+          "required": false,
+          "default": 5e-08,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "target_power",
+          "type": "float",
+          "required": false,
+          "default": 0.8,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "power_curve",
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "help": "Also compute the min-detectable-|beta| AF envelope.",
+          "choices": null,
+          "nargs": 0
+        },
+        {
+          "name": "af_grid",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Comma-separated AF grid for the curve.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
       "name": "recommend",
       "cli_subcommand": "recommend",
       "description": "Preview the model tg.gwas would pick, without running a scan (dry run)",
@@ -6029,6 +6304,85 @@
       ]
     },
     {
+      "name": "smr",
+      "cli_subcommand": "smr",
+      "description": "SMR + HEIDI (gene expression -> GWAS mediation).",
+      "args": [
+        {
+          "name": "gwas",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "GWAS sumstats TSV.",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "eqtl",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "eQTL sumstats TSV (all cis-SNPs).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "gene_map",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "Long-format TSV with gene,snp columns (one row per cis pair).",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "eqtl_p_threshold",
+          "type": "float",
+          "required": false,
+          "default": 5e-08,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "smr_p_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.05,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "heidi_p_threshold",
+          "type": "float",
+          "required": false,
+          "default": 0.05,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "heidi_max_snps",
+          "type": "int",
+          "required": false,
+          "default": 20,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "Output per-gene results TSV.",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
       "name": "survival_scan",
       "cli_subcommand": "survival-scan",
       "description": "Survival GWAS scan (Cox PH frailty model with martingale residual score test)",
@@ -6630,6 +6984,71 @@
           "required": false,
           "default": null,
           "help": "Number of PEER factors to regress out before testing (requires R + peer).",
+          "choices": null,
+          "nargs": null
+        }
+      ]
+    },
+    {
+      "name": "winners_curse",
+      "cli_subcommand": "winners-curse",
+      "description": "Winner's-curse effect-size de-biasing.",
+      "args": [
+        {
+          "name": "gwas",
+          "type": "str",
+          "required": true,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "method",
+          "type": "str",
+          "required": false,
+          "default": "conditional_likelihood",
+          "help": "",
+          "choices": [
+            "conditional_likelihood",
+            "fiqt",
+            "bootstrap"
+          ],
+          "nargs": null
+        },
+        {
+          "name": "alpha",
+          "type": "float",
+          "required": false,
+          "default": 5e-08,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "n_boot",
+          "type": "int",
+          "required": false,
+          "default": 10000,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "help": "",
+          "choices": null,
+          "nargs": null
+        },
+        {
+          "name": "output",
+          "type": "str",
+          "required": false,
+          "default": null,
+          "help": "",
           "choices": null,
           "nargs": null
         }

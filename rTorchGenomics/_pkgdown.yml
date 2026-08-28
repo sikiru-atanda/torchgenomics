@@ -77,6 +77,10 @@ reference:
     - tg_coloc
     - tg_smr
     - tg_mr_mega
+    - tg_power
+    - tg_winners_curse
+    - tg_gene_set_enrichment
+    - tg_hess
 - title: "Causal mediation"
   contents:
     - tg_mediate
@@ -113,6 +117,10 @@ reference:
     - ColocRun-class
     - SMRRun-class
     - MRMegaRun-class
+    - PowerRun-class
+    - WinnersCurseRun-class
+    - EnrichmentRun-class
+    - HessRun-class
     - PgsFitRun-class
     - PgsScoreRun-class
     - AnnotateRun-class

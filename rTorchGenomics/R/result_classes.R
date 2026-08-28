@@ -226,6 +226,91 @@ setClass("MRMegaRun",
   )
 )
 
+#' GWAS detection power result.
+#' @slot alpha Genome-wide significance threshold used.
+#' @slot n Sample size used.
+#' @slot target_power Target power used for `required_n` / powered-count.
+#' @slot n_variants Number of variants scored.
+#' @slot n_powered Number of variants at or above `target_power`.
+#' @slot results Tibble of per-variant power statistics.
+#' @slot curve Tibble of the min-detectable-|beta| power curve, if requested.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("PowerRun",
+  contains = "_BaseRun",
+  representation(
+    alpha = "numeric",
+    n = "numeric",
+    target_power = "numeric",
+    n_variants = "integer",
+    n_powered = "integer",
+    results = "data.frame",
+    curve = "data.frame",
+    raw = "list"
+  )
+)
+
+#' Winner's-curse correction result.
+#' @slot method Correction method used.
+#' @slot n_corrected Number of variants that received a nonzero correction.
+#' @slot n_variants Number of variants in the input.
+#' @slot results Tibble of per-variant original/adjusted effect sizes.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("WinnersCurseRun",
+  contains = "_BaseRun",
+  representation(
+    method = "character",
+    n_corrected = "integer",
+    n_variants = "integer",
+    results = "data.frame",
+    raw = "list"
+  )
+)
+
+#' Gene-set enrichment (MAGMA-style) result.
+#' @slot n_genes_total Number of genes with an assigned SNP-level statistic.
+#' @slot n_gene_sets Number of gene sets tested.
+#' @slot n_significant Number of gene sets significant at p<0.05.
+#' @slot results Tibble of per-gene-set enrichment statistics.
+#' @slot genes Tibble of per-gene statistics.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("EnrichmentRun",
+  contains = "_BaseRun",
+  representation(
+    n_genes_total = "integer",
+    n_gene_sets = "integer",
+    n_significant = "integer",
+    results = "data.frame",
+    genes = "data.frame",
+    raw = "list"
+  )
+)
+
+#' HESS local heritability / genetic correlation result.
+#' @slot mode `"h2"` or `"rg"`.
+#' @slot h2_total Total heritability (or genetic covariance for `"rg"`) summed
+#'   over regions.
+#' @slot h2_total_se Standard error of `h2_total`.
+#' @slot n_regions Number of LD regions analyzed.
+#' @slot n_snps_total Total number of SNPs across all analyzed regions.
+#' @slot results Tibble of per-region statistics.
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("HessRun",
+  contains = "_BaseRun",
+  representation(
+    mode = "character",
+    h2_total = "numeric",
+    h2_total_se = "numeric",
+    n_regions = "integer",
+    n_snps_total = "integer",
+    results = "data.frame",
+    raw = "list"
+  )
+)
+
 #' PGS fit result.
 #' @slot method PGS method (ct / ldpred2-* / prscs).
 #' @slot n_variants_input Input variants.
@@ -687,6 +772,104 @@ MRMegaRun <- list(
   }
 )
 
+#' Constructor for the PowerRun S4 class.
+#'
+#' Wrapper list exposing `$PowerRun$new_from_dict(d)` for building an
+#' instance from a JSON-shaped list (the dict returned by
+#' `py_to_r(to_dict())`).
+#' @name PowerRun
+#' @keywords internal
+#' @export
+PowerRun <- list(
+  new_from_dict = function(d) {
+    new("PowerRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      alpha = .as_num(d$alpha),
+      n = .as_num(d$n),
+      target_power = .as_num(d$target_power),
+      n_variants = .as_int(d$n_variants),
+      n_powered = .as_int(d$n_powered),
+      results = .tibble_from_list_of_dicts(d$results),
+      curve = .tibble_from_list_of_dicts(d$curve %||% list()),
+      raw = d
+    )
+  }
+)
+
+#' Constructor for the WinnersCurseRun S4 class.
+#'
+#' Wrapper list exposing `$WinnersCurseRun$new_from_dict(d)` for building an
+#' instance from a JSON-shaped list (the dict returned by
+#' `py_to_r(to_dict())`).
+#' @name WinnersCurseRun
+#' @keywords internal
+#' @export
+WinnersCurseRun <- list(
+  new_from_dict = function(d) {
+    new("WinnersCurseRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      method = .as_chr(d$method),
+      n_corrected = .as_int(d$n_corrected),
+      n_variants = .as_int(d$n_variants),
+      results = .tibble_from_list_of_dicts(d$results),
+      raw = d
+    )
+  }
+)
+
+#' Constructor for the EnrichmentRun S4 class.
+#'
+#' Wrapper list exposing `$EnrichmentRun$new_from_dict(d)` for building an
+#' instance from a JSON-shaped list (the dict returned by
+#' `py_to_r(to_dict())`).
+#' @name EnrichmentRun
+#' @keywords internal
+#' @export
+EnrichmentRun <- list(
+  new_from_dict = function(d) {
+    new("EnrichmentRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      n_genes_total = .as_int(d$n_genes_total),
+      n_gene_sets = .as_int(d$n_gene_sets),
+      n_significant = .as_int(d$n_significant),
+      results = .tibble_from_list_of_dicts(d$results),
+      genes = .tibble_from_list_of_dicts(d$genes %||% list()),
+      raw = d
+    )
+  }
+)
+
+#' Constructor for the HessRun S4 class.
+#'
+#' Wrapper list exposing `$HessRun$new_from_dict(d)` for building an
+#' instance from a JSON-shaped list (the dict returned by
+#' `py_to_r(to_dict())`).
+#' @name HessRun
+#' @keywords internal
+#' @export
+HessRun <- list(
+  new_from_dict = function(d) {
+    new("HessRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      mode = .as_chr(d$mode),
+      h2_total = .as_num(d$h2_total),
+      h2_total_se = .as_num(d$h2_total_se),
+      n_regions = .as_int(d$n_regions),
+      n_snps_total = .as_int(d$n_snps_total),
+      results = .tibble_from_list_of_dicts(d$results),
+      raw = d
+    )
+  }
+)
+
 #' Constructor for the PgsFitRun S4 class.
 #'
 #' Wrapper list exposing `$PgsFitRun$new_from_dict(d)` for building an instance
@@ -985,6 +1168,34 @@ setMethod("show", "MRMegaRun", function(object) {
               object@n_axes, object@n_populations, object@n_snps,
               ifelse(is.na(object@min_p_meta), "NA", sprintf("%.3e", object@min_p_meta)),
               object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "PowerRun", function(object) {
+  cat(sprintf("PowerRun (%d variants, %d powered, alpha=%.1e, N=%g, runtime=%.1fs)\n",
+              object@n_variants, object@n_powered, object@alpha, object@n,
+              object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "WinnersCurseRun", function(object) {
+  cat(sprintf("WinnersCurseRun (method=%s, n_corrected=%d/%d, runtime=%.1fs)\n",
+              object@method, object@n_corrected, object@n_variants,
+              object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "EnrichmentRun", function(object) {
+  cat(sprintf("EnrichmentRun (n_sets=%d, n_genes=%d, n_sig=%d, runtime=%.1fs)\n",
+              object@n_gene_sets, object@n_genes_total, object@n_significant,
+              object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "HessRun", function(object) {
+  cat(sprintf("HessRun (mode=%s, n_regions=%d, n_snps=%d, h2_total=%.4f (se %.4f), runtime=%.1fs)\n",
+              object@mode, object@n_regions, object@n_snps_total,
+              object@h2_total, object@h2_total_se, object@runtime_s))
   invisible(object)
 })
 
