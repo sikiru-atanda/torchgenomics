@@ -680,6 +680,34 @@ class HessRun(_BaseRun):
         return "\n".join(lines)
 
 
+@dataclass
+class FineMapRun(_BaseRun):
+    """Result of :func:`torchgenomics.api.finemap` — SuSiE-RSS credible sets.
+
+    Produced by wrapping the validated ``bayes-scan-rss`` pipeline; ``results`` is
+    the PolyFun-format per-variant table (byte-identical to that command's TSV) and
+    ``credible_sets`` is a per-set summary derived from it.
+    """
+    n_variants: int = 0
+    n_credible_sets: int = 0
+    n_variants_in_credible_sets: int = 0
+    results: pd.DataFrame = field(default_factory=pd.DataFrame)
+    credible_sets: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    _kind: ClassVar[str] = "finemap"
+
+    def summary(self) -> str:
+        lines = [
+            f"Fine-mapping (SuSiE-RSS via bayes-scan-rss) — {self.n_variants} variants, "
+            f"{self.n_credible_sets} credible sets, "
+            f"{self.n_variants_in_credible_sets} variants in a credible set",
+        ]
+        if not self.credible_sets.empty:
+            lines.append(self.credible_sets.head(10).to_string(index=False))
+        lines.append(f"Runtime: {self.runtime_s:.1f}s")
+        return "\n".join(lines)
+
+
 # --- PGS tier ---------------------------------------------------------------
 
 
