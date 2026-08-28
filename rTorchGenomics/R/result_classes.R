@@ -204,6 +204,29 @@ setClass("SMRRun",
   )
 )
 
+#' SuSiE-RSS fine-mapping result (friendly front-end over bayes-scan-rss).
+#' @slot n_variants Number of variants in the fine-mapping input.
+#' @slot n_credible_sets Number of credible sets identified.
+#' @slot n_variants_in_credible_sets Number of variants belonging to any
+#'   credible set.
+#' @slot results Tibble of per-variant fine-mapping statistics (PIP, credible
+#'   set membership), byte-identical to the underlying `bayes-scan-rss` TSV.
+#' @slot credible_sets Tibble of per-credible-set summary statistics
+#'   (`lead_pip`/`sum_pip`, not a claimed exact SuSiE per-layer coverage).
+#' @slot raw Full result dict, for fields not otherwise exposed.
+#' @export
+setClass("FineMapRun",
+  contains = "_BaseRun",
+  representation(
+    n_variants = "integer",
+    n_credible_sets = "integer",
+    n_variants_in_credible_sets = "integer",
+    results = "data.frame",
+    credible_sets = "data.frame",
+    raw = "list"
+  )
+)
+
 #' Multi-ancestry MR meta-analysis (MR-MEGA) result.
 #' @slot method Meta-analysis method (always "mr_mega").
 #' @slot n_axes Number of MEGA axes of genetic variation used.
@@ -747,6 +770,30 @@ SMRRun <- list(
   }
 )
 
+#' Constructor for the FineMapRun S4 class.
+#'
+#' Wrapper list exposing `$FineMapRun$new_from_dict(d)` for building an
+#' instance from a JSON-shaped list (the dict returned by
+#' `py_to_r(to_dict())`).
+#' @name FineMapRun
+#' @keywords internal
+#' @export
+FineMapRun <- list(
+  new_from_dict = function(d) {
+    new("FineMapRun",
+      runtime_s = .as_num(d$runtime_s),
+      output_files = .as_list(d$output_files),
+      log_excerpt = .as_chr_vec(d$log_excerpt),
+      n_variants = .as_int(d$n_variants),
+      n_credible_sets = .as_int(d$n_credible_sets),
+      n_variants_in_credible_sets = .as_int(d$n_variants_in_credible_sets),
+      results = .tibble_from_list_of_dicts(d$results),
+      credible_sets = .tibble_from_list_of_dicts(d$credible_sets %||% list()),
+      raw = d
+    )
+  }
+)
+
 #' Constructor for the MRMegaRun S4 class.
 #'
 #' Wrapper list exposing `$MRMegaRun$new_from_dict(d)` for building an
@@ -1160,6 +1207,12 @@ setMethod("show", "SMRRun", function(object) {
   cat(sprintf("SMRRun (n_genes=%d, n_sig_smr=%d, n_pass_heidi=%d, runtime=%.1fs)\n",
               object@n_genes_tested, object@n_significant_smr,
               object@n_pass_heidi, object@runtime_s))
+  invisible(object)
+})
+
+setMethod("show", "FineMapRun", function(object) {
+  cat(sprintf("FineMapRun (n_variants=%d, n_credible_sets=%d, runtime=%.1fs)\n",
+              object@n_variants, object@n_credible_sets, object@runtime_s))
   invisible(object)
 })
 

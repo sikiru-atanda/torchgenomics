@@ -416,6 +416,47 @@ tg_smr <- function(gwas, eqtl, gene_map, output = NULL,
   SMRRun$new_from_dict(d)
 }
 
+#' SuSiE-RSS fine-mapping (friendly front-end over bayes-scan-rss).
+#'
+#' Thin wrapper that runs the validated `bayes-scan-rss` SuSiE-RSS pipeline
+#' unchanged and returns a rich [FineMapRun] result with a per-variant PIP
+#' table and a per-credible-set summary. Uses the same engine (and produces
+#' byte-identical output on identical inputs) as `tg_bayes_scan_rss`.
+#'
+#' @param sumstats Sumstats TSV (SNP,CHR,BP,A1,A2 + Z or BETA/SE/N).
+#' @param ld_ref Pre-built LD reference (.pt or .npz, carrying SNP ids).
+#' @param geno Genotype panel for in-sample LD (not yet wired upstream).
+#' @param regions Optional block regions TSV with start,stop INDEX columns.
+#' @param prior_pi Optional scalar prior inclusion probability, or a path
+#'   to a PRIOR_PI file.
+#' @param max_num_causal Maximum number of causal variants per SuSiE model.
+#' @param coverage Target credible-set coverage.
+#' @param purity Minimum credible-set purity (min pairwise |r|).
+#' @param block_size_threshold Max block size before an LD block is
+#'   further split.
+#' @param output Optional path to write the results TSV.
+#' @param threads Number of threads.
+#'
+#' @return A `FineMapRun` S4 object.
+#' @examples
+#' \dontrun{
+#' r <- tg_finemap("sumstats.tsv", ld_ref = "ld.pt", max_num_causal = 5)
+#' }
+#' @export
+tg_finemap <- function(sumstats, ld_ref = NULL, geno = NULL, regions = NULL,
+                       prior_pi = NULL, max_num_causal = 10L, coverage = 0.95,
+                       purity = 0.5, block_size_threshold = 5000L,
+                       output = NULL, threads = 4L) {
+  d <- bridge_call("finemap", .compact(list(
+    sumstats = .as_path(sumstats), ld_ref = .as_path(ld_ref), geno = .as_path(geno),
+    regions = .as_path(regions), prior_pi = prior_pi,
+    max_num_causal = as.integer(max_num_causal), coverage = as.numeric(coverage),
+    purity = as.numeric(purity),
+    block_size_threshold = as.integer(block_size_threshold),
+    output = .as_path(output), threads = as.integer(threads))))
+  FineMapRun$new_from_dict(d)
+}
+
 #' Multi-ancestry MR meta-analysis (MR-MEGA).
 #'
 #' @param sumstats Character vector of >= 3 per-population MR sumstats
