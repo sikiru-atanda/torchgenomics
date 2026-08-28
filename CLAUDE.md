@@ -99,7 +99,7 @@ These conventions are invariants across the codebase — when editing a hot loop
 - **Every phase ships as a commit with "Phase N" in the message.** To recover per-phase detail, read `git log --grep="Phase N"` (the commit body is the authoritative changelog) and the corresponding `tests/test_*.py` + module docstrings.
 - **Novelty claims** are qualified with "to our knowledge."
 - **Validation gates** use numerical tolerance, not bitwise identity (GPU non-determinism).
-- **CLI subcommand count**: 54 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 50 with the addition of `power`/`winners-curse`/`gene-set-enrichment`/`hess`, thin CLI wrappers over `torchgenomics.api.power`/`api.winners_curse`/`api.gene_set_enrichment`/`api.hess` sharing the same core as the Python API — no MCP tool was added for any of the four, that remains 14; prior to that, up from 48 with `smr`/`mr-mega`; prior to that, up from 46 with `mr`/`coloc`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
+- **CLI subcommand count**: 55 as of 2026-08 (verified via `python -m torchgenomics --help`; up from 54 with the addition of `finemap`, a thin CLI wrapper over `torchgenomics.api.finemap` — a friendly front-end over the same `bayes-scan-rss` SuSiE-RSS engine, byte-identical output on identical inputs; no MCP tool was added for it; prior to that, up from 50 with the addition of `power`/`winners-curse`/`gene-set-enrichment`/`hess`, thin CLI wrappers over `torchgenomics.api.power`/`api.winners_curse`/`api.gene_set_enrichment`/`api.hess` sharing the same core as the Python API — no MCP tool was added for any of the four, that remains 14; prior to that, up from 48 with `smr`/`mr-mega`; prior to that, up from 46 with `mr`/`coloc`). Includes `combine-gwas-twas` (gene-level GWAS↔TWAS integration with 8 classical + 6 novel p-value combination methods), `twas-scan`, `rr-scan`, `rr-met-scan`, `pgs-fit`, `pgs-score`, `annotate`, `mediate`, `mediate-scan`, `bayes-scan-rss`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta` plus the core scans. See CLI Commands section for examples (note: 6 subs lack illustrative lines: `bayes-scan-rss`, `clump`, `ldsc`, `ldsc-rg`, `me-glmm-scan`, `meta`).
 
 ## Phase Index
 
@@ -369,4 +369,7 @@ torchgenomics power --gwas gwas.tsv --power-curve --output power.tsv
 torchgenomics winners-curse --gwas gwas.tsv --method conditional_likelihood --output wc.tsv
 torchgenomics gene-set-enrichment --gwas gwas.tsv --gene-annotation genes.tsv --gene-sets sets.gmt --output enr.tsv
 torchgenomics hess --gwas gwas.tsv --ld-matrix ld.npy --regions regions.tsv --output hess.tsv
+
+# --- Fine-mapping (thin CLI wrapper over api.finemap / bayes-scan-rss) ---
+torchgenomics finemap --sumstats ss.tsv --ld-ref ld.pt --max-num-causal 10 --output finemap.tsv
 ```

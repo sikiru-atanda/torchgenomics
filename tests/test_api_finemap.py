@@ -67,3 +67,19 @@ def test_api_finemap_needs_ld(tmp_path):
     ss, _ = _write_finemap_fixture(tmp_path)
     with pytest.raises(ValueError):
         tg.finemap(ss)  # no ld_ref, no geno
+
+
+def test_finemap_byte_identical_to_bayes_scan_rss(tmp_path):
+    """NO-MISMATCH: finemap's TSV is byte-identical to a direct bayes-scan-rss run,
+    and the rich table equals a re-read of that TSV. threads=1 for determinism."""
+    import filecmp
+    import torchgenomics as tg
+    from torchgenomics.api._cli_bridge import run_cli_subcommand
+    ss, ld = _write_finemap_fixture(tmp_path)
+    a = tmp_path / "direct.tsv"
+    b = tmp_path / "finemap.tsv"
+    run_cli_subcommand("bayes-scan-rss", sumstats=ss, ld_ref=ld,
+                       max_num_causal=2, threads=1, output=str(a))
+    r = tg.finemap(ss, ld, max_num_causal=2, threads=1, output=str(b))
+    assert filecmp.cmp(str(a), str(b), shallow=False), "finemap TSV != bayes-scan-rss TSV"
+    pd.testing.assert_frame_equal(r.results, pd.read_csv(str(b), sep="\t"))

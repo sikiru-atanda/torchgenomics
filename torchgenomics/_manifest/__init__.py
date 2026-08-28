@@ -23,7 +23,7 @@ _TIER_2_CLI_SUBCOMMANDS: set[str] = {
     "rr-met-scan", "twas-scan", "combine-gwas-twas", "ldsc", "ldsc-rg",
     "dosage-call", "phase-poly", "mediate", "mediate-scan", "pipeline",
     "gwas", "recommend", "models", "mr", "coloc", "smr", "mr-mega",
-    "power", "winners-curse", "gene-set-enrichment", "hess",
+    "power", "winners-curse", "gene-set-enrichment", "hess", "finemap",
 }
 
 
