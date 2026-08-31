@@ -60,6 +60,10 @@ def test_api_finemap_no_output_temp(tmp_path):
     r = tg.finemap(ss, ld, max_num_causal=2, threads=1)  # output=None
     assert r.n_variants == 5 and not r.results.empty
     assert r.output_files == {}  # temp dir cleaned; nothing persisted
+    # No-mismatch also on the temp path: results are identical to the output=<file>
+    # run (same engine, same TSV), so the internal temp handling introduces nothing.
+    r2 = tg.finemap(ss, ld, max_num_causal=2, threads=1, output=str(tmp_path / "out.tsv"))
+    pd.testing.assert_frame_equal(r.results, r2.results)
 
 
 def test_api_finemap_needs_ld(tmp_path):
