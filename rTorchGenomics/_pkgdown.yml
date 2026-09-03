@@ -17,6 +17,8 @@ navbar:
           href: articles/quickstart.html
         - text: LMM walkthrough
           href: articles/lmm-walkthrough.html
+        - text: Post-GWAS toolkit
+          href: articles/post-gwas-toolkit.html
         - text: Reticulate bridge
           href: articles/reticulate-bridge.html
 
