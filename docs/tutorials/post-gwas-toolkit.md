@@ -284,7 +284,9 @@ Meta-analysis (fixed) across 2 studies, 50 variants, 1 significant, median I²=0
 Meta-regresses effect sizes across multiple ancestries/populations against
 axes of genetic ancestry, rather than assuming one shared effect — better
 suited than standard fixed-effect meta-analysis when effect sizes vary
-systematically by ancestry. Needs at least 3 populations for `n_axes=1`.
+systematically by ancestry. `tg.mr_mega` requires at least `n_axes + 2`
+populations (so ≥ 3 for `n_axes=1`) — fewer raises a `ValueError`, since the
+residual-heterogeneity test needs degrees of freedom beyond the fitted axes.
 
 ```python
 r = tg.mr_mega([str(p) for p in mrmega_paths], n_axes=1, output=str(tmp / "mrmega_out.tsv"))
