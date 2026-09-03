@@ -1,0 +1,395 @@
+---
+title: "Post-GWAS Analysis Toolkit"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Post-GWAS Analysis Toolkit}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE, message = FALSE}
+library(rTorchGenomics)
+
+# Backend-availability guard (mirrors reticulate-bridge.Rmd): if the
+# Python torchgenomics engine isn't importable (CRAN check machines,
+# no venv configured), every chunk below is skipped rather than
+# erroring. `rTorchGenomics`'s .onLoad() already points reticulate at
+# the managed `r-rtorchgenomics` venv when it exists, so a plain
+# availability check is enough here.
+have_backend <- requireNamespace("reticulate", quietly = TRUE) &&
+  reticulate::py_module_available("torchgenomics")
+
+knitr::opts_chunk$set(
+  eval = have_backend,
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r backend-note, echo = FALSE, results = "asis", eval = TRUE}
+if (!have_backend) {
+  cat(
+    "**Python backend not available in this environment** -- every code ",
+    "chunk below is shown but was NOT executed. Run `tg_install()` once ",
+    "to set up the managed Python runtime, then re-knit.\n",
+    sep = ""
+  )
+}
+```
+
+# Post-GWAS Analysis Toolkit
+
+You've run a GWAS and have summary statistics (or a fitted model) in hand.
+This vignette tours the post-GWAS facade in `rTorchGenomics` -- the same
+`tg_*` functions available from the CLI and from Python's
+`torchgenomics.api` -- covering LD clumping, fine-mapping, heritability,
+LDSC, power / winner's-curse diagnostics, meta-analysis, multi-ancestry
+meta-regression, colocalization, Mendelian randomization, SMR/HEIDI,
+gene-set enrichment, and polygenic scoring. Every section below is
+executed live against tiny synthetic fixtures (except `tg_annotate_hits`,
+which needs live NCBI network access and is shown reference-only).
+
+For the Python-side tour of the same facade with representative output,
+see `docs/tutorials/post-gwas-toolkit.md` in the TorchGenomics repository.
+
+## Fixtures
+
+Rather than re-implement the fixture builders in R, this vignette reuses
+the verified Python fixture builders from
+`examples/python/post_gwas_toolkit.py` via `reticulate::import_from_path()`.
+This guarantees the data fed to every `tg_*` call below is byte-identical
+to the fixtures used in the (separately verified) Python tutorial.
+
+```{r fixtures}
+# Walk up from the current working directory to find the repo's
+# examples/python/ directory -- robust to knitr's working directory
+# being the vignette's own folder (the usual case) or the repo root.
+.find_up <- function(rel, start = getwd(), max_up = 8) {
+  d <- normalizePath(start, mustWork = FALSE)
+  for (i in 0:max_up) {
+    cand <- file.path(d, rel)
+    if (file.exists(cand)) return(normalizePath(cand))
+    parent <- dirname(d)
+    if (identical(parent, d)) break
+    d <- parent
+  }
+  stop(sprintf("Could not locate '%s' by walking up from '%s'.", rel, start))
+}
+
+examples_dir <- .find_up(file.path("examples", "python"))
+mod <- reticulate::import_from_path("post_gwas_toolkit", path = examples_dir)
+
+tmp_dir <- tempfile("tg_postgwas_vignette_")
+dir.create(tmp_dir)
+py_path <- reticulate::import("pathlib")$Path(tmp_dir)
+
+fx <- mod$build_clump_ldsc_fixture(py_path)
+gwas_clump_ldsc <- as.character(fx[[1]])
+geno_clump_ldsc <- as.character(fx[[2]])
+
+gwas_power_wc <- as.character(mod$build_power_wc_fixture(py_path))
+
+fx <- mod$build_finemap_fixture(py_path)
+finemap_ss <- as.character(fx[[1]])
+finemap_ld <- as.character(fx[[2]])
+
+fx <- mod$build_hess_fixture(py_path)
+gwas_hess <- as.character(fx[[1]])
+ld_hess <- as.character(fx[[2]])
+regions_hess <- as.character(fx[[3]])
+
+fx <- mod$build_coloc_meta_fixture(py_path)
+sumstats_a <- as.character(fx[[1]])
+sumstats_b <- as.character(fx[[2]])
+sumstats_c <- as.character(fx[[3]])
+
+fx <- mod$build_mr_fixture(py_path)
+mr_exposure <- as.character(fx[[1]])
+mr_outcome <- as.character(fx[[2]])
+mr_true_effect <- as.numeric(fx[[3]])
+
+fx <- mod$build_mrmega_fixture(py_path)
+mrmega_paths <- vapply(fx, as.character, character(1))
+
+fx <- mod$build_smr_fixture(py_path)
+smr_gwas <- as.character(fx[[1]])
+smr_eqtl <- as.character(fx[[2]])
+smr_gene_map <- as.character(fx[[3]])
+
+fx <- mod$build_enrichment_fixture(py_path)
+enrich_gwas <- as.character(fx[[1]])
+enrich_genes <- as.character(fx[[2]])
+enrich_sets <- as.character(fx[[3]])
+
+fx <- mod$build_pgs_fixture(py_path)
+pgs_sumstats <- as.character(fx[[1]])
+pgs_ld_ref <- as.character(fx[[2]])
+pgs_target_geno <- as.character(fx[[3]])
+```
+
+## LD clumping (`tg_clump`)
+
+LD clumping collapses correlated significant hits down to independent
+index variants. The fixture has 3 LD blocks of 10 SNPs each, with one
+strongly-significant "causal" SNP planted per block.
+
+```{r clump}
+r_clump <- tg_clump(
+  sumstats = gwas_clump_ldsc, genotype = geno_clump_ldsc,
+  output = file.path(tmp_dir, "clump_run"),
+  p_threshold = 1e-3, r2 = 0.1, window_kb = 250
+)
+print(r_clump)
+print(r_clump@clumps)
+```
+
+## Fine-mapping (`tg_finemap`)
+
+`tg_finemap` runs the SuSiE-RSS engine (the same validated pipeline as
+`bayes-scan-rss`) and returns per-variant PIPs plus credible-set summaries.
+It expects the uppercase `SNP/CHR/BP/A1/A2/BETA/SE/N` sumstats schema and
+a pre-built LD reference carrying matching SNP ids.
+
+```{r finemap}
+r_finemap <- tg_finemap(
+  sumstats = finemap_ss, ld_ref = finemap_ld,
+  max_num_causal = 2L, threads = 1L,
+  output = file.path(tmp_dir, "finemap_out.tsv")
+)
+print(r_finemap)
+print(r_finemap@credible_sets)
+```
+
+## Local heritability and genetic correlation (`tg_hess`)
+
+HESS estimates local (region-level) SNP heritability from GWAS summary
+statistics and an LD matrix; passing a second GWAS (`gwas2 =`) switches
+to local genetic correlation instead. The fixture has 4 contiguous
+10-SNP regions on chr1, with a heritability signal planted in region 1.
+
+```{r hess-h2}
+r_hess_h2 <- tg_hess(
+  gwas_hess, ld_hess, regions_hess,
+  output = file.path(tmp_dir, "hess_h2.tsv")
+)
+print(r_hess_h2)
+print(r_hess_h2@results)
+```
+
+```{r hess-rg}
+r_hess_rg <- tg_hess(gwas_hess, ld_hess, regions_hess, gwas2 = gwas_hess)
+print(r_hess_rg)
+```
+
+## SNP heritability and genetic correlation via LD score regression (`tg_ldsc` / `tg_ldsc_rg`)
+
+`tg_ldsc` and `tg_ldsc_rg` are auto-generated `CliRun` wrappers over the
+`ldsc` / `ldsc-rg` CLI subcommands -- they compute LD scores in-process
+from a genotype panel and write a small text report to
+`<output>.ldsc.txt` / `<output>.ldsc_rg.txt`. **Caveat:** with only 30
+SNPs the block-jackknife falls back to a single block, so the printed SE
+is `NaN` below -- this demonstrates the call mechanics on toy data, not a
+statistically meaningful h2/rg estimate (real runs use thousands of SNPs
+across hundreds of jackknife blocks).
+
+```{r ldsc}
+ldsc_out <- file.path(tmp_dir, "ldsc_run")
+r_ldsc <- tg_ldsc(
+  sumstats = gwas_clump_ldsc, genotype = geno_clump_ldsc,
+  output = ldsc_out
+)
+print(r_ldsc)
+cat(readLines(paste0(ldsc_out, ".ldsc.txt")), sep = "\n")
+```
+
+```{r ldsc-rg}
+ldsc_rg_out <- file.path(tmp_dir, "ldsc_rg_run")
+r_ldsc_rg <- tg_ldsc_rg(
+  sumstats1 = gwas_clump_ldsc, sumstats2 = gwas_clump_ldsc,
+  genotype = geno_clump_ldsc, output = ldsc_rg_out
+)
+print(r_ldsc_rg)
+cat(readLines(paste0(ldsc_rg_out, ".ldsc_rg.txt")), sep = "\n")
+```
+
+## GWAS detection power (`tg_power`)
+
+Per-variant statistical power, non-centrality parameter, and (with
+`power_curve = TRUE`) a min-detectable-effect-size envelope over an
+allele-frequency grid.
+
+```{r power}
+r_power <- tg_power(
+  gwas_power_wc, power_curve = TRUE,
+  output = file.path(tmp_dir, "power_out.tsv")
+)
+print(r_power)
+print(r_power@results)
+```
+
+## Winner's-curse correction (`tg_winners_curse`)
+
+Significant hits' effect sizes are upward-biased by the selection that
+found them ("winner's curse"). `tg_winners_curse` supports three
+de-biasing methods; the fixture has two strong hits (subject to the
+curse) plus four null/weak SNPs.
+
+```{r winners-curse}
+for (method in c("conditional_likelihood", "fiqt", "bootstrap")) {
+  r_wc <- if (method == "bootstrap") {
+    tg_winners_curse(gwas_power_wc, method = method, n_boot = 200L, seed = 1L)
+  } else {
+    tg_winners_curse(gwas_power_wc, method = method)
+  }
+  cat(sprintf("[%s] ", method))
+  print(r_wc)
+}
+```
+
+## Meta-analysis (`tg_meta`)
+
+Fixed-effect meta-analysis of two "studies" over the same 50-SNP region,
+sharing one strong causal SNP.
+
+```{r meta}
+r_meta <- tg_meta(
+  c(sumstats_a, sumstats_b), method = "fixed",
+  output = file.path(tmp_dir, "meta_run")
+)
+print(r_meta)
+print(head(r_meta@results))
+```
+
+## Multi-ancestry meta-regression (`tg_mr_mega`)
+
+MR-MEGA regresses effect-size heterogeneity onto axes of genetic
+variation across populations, rather than assuming a single fixed/random
+effect. The fixture has 4 ancestry populations sharing a common causal
+effect plus ancestry-specific perturbation.
+
+```{r mrmega}
+r_mrmega <- tg_mr_mega(
+  mrmega_paths, n_axes = 1L,
+  output = file.path(tmp_dir, "mrmega_out.tsv")
+)
+print(r_mrmega)
+print(head(r_mrmega@results))
+```
+
+## Colocalization (`tg_coloc`)
+
+Pairwise Giambartolomei-style coloc (PP.H0-H4) for two traits, plus
+hyprcoloc for N (here 3) traits sharing a causal SNP.
+
+```{r coloc-pairwise}
+r_coloc <- tg_coloc(
+  sumstats_a, sumstats2 = sumstats_b, method = "pairwise",
+  output = file.path(tmp_dir, "coloc_pairwise.tsv")
+)
+print(r_coloc)
+print(r_coloc@table)
+```
+
+```{r coloc-hyprcoloc}
+r_hypr <- tg_coloc(c(sumstats_a, sumstats_b, sumstats_c), method = "hyprcoloc")
+print(r_hypr)
+```
+
+## Two-sample Mendelian randomization (`tg_mr`)
+
+`method = "all"` runs the full sensitivity panel (IVW / Egger /
+weighted-median / MR-PRESSO) in one call. The fixture simulates a true
+causal effect from exposure to outcome, printed at the end of the chunk
+below for comparison against each method's estimate.
+
+```{r mr}
+r_mr <- tg_mr(
+  mr_exposure, mr_outcome, method = "all",
+  n_boot = 200L, n_perm = 200L, seed = 42L,
+  output = file.path(tmp_dir, "mr_out.tsv")
+)
+print(r_mr)
+print(r_mr@results)
+cat(sprintf("(simulated causal effect = %.2f)\n", mr_true_effect))
+```
+
+## SMR + HEIDI (`tg_smr`)
+
+Tests whether a GWAS signal is mediated by gene expression (SMR), then
+uses HEIDI to distinguish a single shared causal variant from linkage
+between distinct GWAS/eQTL signals.
+
+```{r smr}
+r_smr <- tg_smr(
+  smr_gwas, smr_eqtl, smr_gene_map,
+  output = file.path(tmp_dir, "smr_out.tsv")
+)
+print(r_smr)
+print(r_smr@results)
+```
+
+## Gene-set enrichment (`tg_gene_set_enrichment`)
+
+A MAGMA-style competitive gene-set test: SNPs are assigned to genes,
+gene-level statistics are aggregated, and gene sets are tested for
+enrichment relative to the genomic background. The fixture has 6 genes
+(2 strong, 4 null) and one enriched set ("hot" = the 2 strong genes).
+
+```{r enrichment}
+r_enrich <- tg_gene_set_enrichment(
+  enrich_gwas, enrich_genes, enrich_sets,
+  output = file.path(tmp_dir, "enrich_out.tsv")
+)
+print(r_enrich)
+print(r_enrich@results)
+```
+
+## Polygenic scores (`tg_pgs_fit` / `tg_pgs_score`)
+
+`tg_pgs_fit` estimates per-SNP PGS weights from summary statistics and
+an LD reference panel (here the fast C+T method, suitable for a toy
+fixture); `tg_pgs_score` applies fitted weights to a target genotype
+panel to produce per-individual scores.
+
+```{r pgs-fit}
+pgs_weights <- file.path(tmp_dir, "pgs_weights.tsv")
+r_pgs_fit <- tg_pgs_fit(
+  pgs_sumstats, pgs_ld_ref, pgs_weights,
+  method = "ct", clump_p = 0.5, clump_r2 = 0.9, device = "cpu"
+)
+print(r_pgs_fit)
+```
+
+```{r pgs-score}
+r_pgs_score <- tg_pgs_score(
+  pgs_target_geno, pgs_weights, file.path(tmp_dir, "pgs_scores.tsv"),
+  device = "cpu"
+)
+print(r_pgs_score)
+```
+
+## Gene annotation (`tg_annotate_hits`) -- reference only
+
+`tg_annotate_hits` looks up genes near GWAS hits via the live NCBI
+Datasets/E-utilities APIs. It needs network access and is **not
+executed** in this vignette; the call shape below is reference only.
+
+```{r annotate, eval = FALSE}
+r_annotate <- tg_annotate_hits(
+  gwas_power_wc, crop = "maize", p_threshold = 5e-8,
+  window_up = 50000L, window_down = 50000L,
+  output = file.path(tmp_dir, "annotate_out")
+)
+print(r_annotate)
+```
+
+## Where to go next
+
+Every function above also has a CLI subcommand
+(`torchgenomics <subcommand> --help`) and a Python `torchgenomics.api`
+equivalent -- see `docs/tutorials/post-gwas-toolkit.md` for the Python
+tour with representative output.
+
+```{r cleanup, include = FALSE}
+unlink(tmp_dir, recursive = TRUE, force = TRUE)
+```
