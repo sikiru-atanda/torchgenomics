@@ -105,3 +105,4 @@ for the Section-16 tolerances and the current golden-data CI gate.
 - [CLI Reference](cli.md) — every subcommand with examples
 - [API Reference](api/index.md) — module-level auto-generated documentation
 - [Tutorials](tutorials/single-trait-lmm.md) — end-to-end walkthroughs
+- [Post-GWAS Toolkit Tutorial](tutorials/post-gwas-toolkit.md) — clump, finemap, hess, ldsc, power, winners_curse, meta, mr_mega, coloc, mr, smr, gene-set enrichment, PGS
